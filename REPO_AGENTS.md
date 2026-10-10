@@ -32,7 +32,7 @@ MCWorld is a Mac app for viewing Minecraft: Java Edition worlds. Ryan approved i
   - It remembers that folder as a read-only security-scoped bookmark in its own preferences.
   - It never writes to a world folder.
 - **Dependency:** MCWorldKit (`https://github.com/fahlman/MCWorldKit.git`), pinned "up to next
-  minor" from `0.1.0`.
+  minor" from `0.2.0`.
   - MCWorldKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     MCWorldKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same MCWorldKit commit.
