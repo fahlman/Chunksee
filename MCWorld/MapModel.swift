@@ -81,6 +81,7 @@ final class MapModel {
     /// no longer visible.
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
         guard size.width > 0, size.height > 0 else { return }
+        lastView = (size, displayScale)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
         // runs on every frame of a pan.
@@ -91,7 +92,7 @@ final class MapModel {
         visibleRegions = Set(visible)
         wantsFullResolution = full
         let needed = visible.filter {
-            availableRegions.contains($0) && !failed.contains($0) && (full ? tiles[$0] == nil : previews[$0] == nil)
+            availableRegions.contains($0) && !failed.contains($0) && ((full ? tiles[$0] == nil : previews[$0] == nil) || stale.contains($0))
         }
         // Keep rendering regions that are still needed; cancel only those that left the view, so a
         // pan doesn't throw away half-decoded regions and start them again.
@@ -166,6 +167,40 @@ final class MapModel {
     }
 
     private var lastRequest: (range: MapViewport.RegionRange, full: Bool)?
+    /// The view size and pixel density of the last request, to request again after the world changes.
+    private var lastView: (size: CGSize, displayScale: CGFloat)?
+    /// Regions the game saved since their tiles were drawn. Their old images stay on screen until
+    /// the new ones are ready, so a redraw doesn't flicker.
+    private var stale: Set<RegionCoordinate> = []
+
+    /// Redraws regions whose files the game saved, and shows regions it just created.
+    func regionsChanged(_ regions: Set<RegionCoordinate>) {
+        for region in regions {
+            let file = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+            if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
+            // A render that started before the save may have read the old file; start it again.
+            inFlight[region]?.task.cancel()
+            inFlight[region] = nil
+        }
+        failed.subtract(regions)
+        stale.formUnion(regions.filter { tiles[$0] != nil || previews[$0] != nil })
+        lastRequest = nil
+        if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
+    }
+
+    /// Reads structures, places, creatures and biomes again after the game saved. Regions that
+    /// didn't change come from the scan cache; the current markers stay until the new ones arrive.
+    func reloadMarkers() {
+        for task in [structureTask, placeTask, creatureTask, biomeTask] { task?.cancel() }
+        structureTask = nil
+        placeTask = nil
+        creatureTask = nil
+        biomeTask = nil
+        loadStructures()
+        loadPlaces()
+        loadCreatures()
+        loadBiomeAreas()
+    }
 
     /// Regions in the view at the last request; never evicted.
     private var visibleRegions: Set<RegionCoordinate> = []
@@ -181,7 +216,12 @@ final class MapModel {
     }
 
     private func store(_ tile: RegionTileRenderer.RenderedTile, for region: RegionCoordinate) {
-        if wantsFullResolution { tiles[region] = tile.full }
+        let wasStale = stale.remove(region) != nil
+        if wantsFullResolution {
+            tiles[region] = tile.full
+        } else if wasStale {
+            tiles[region] = nil   // drawn from the old file; zooming in will draw it again
+        }
         previews[region] = tile.preview
         for region in Self.regionsToEvict(from: Set(tiles.keys), keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
             tiles[region] = nil
