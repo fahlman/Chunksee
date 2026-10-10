@@ -131,6 +131,62 @@ import Testing
     }
 }
 
+@Suite struct LevelOfDetailTests {
+    func stoneWorld(regions: [RegionCoordinate]) throws -> URL {
+        try TestWorld.make(chunks: regions.map { r in
+            TestWorld.chunk(x: r.x * 32, z: r.z * 32, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+        })
+    }
+
+    @Test func fullResolutionOnlyWhenRegionsAreLargeOnScreen() throws {
+        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
+        map.viewport.scale = 0.25   // a region is 128 points: 256 pixels at 2×, the preview's size
+        #expect(!map.needsFullResolution(displayScale: 2))
+        map.viewport.scale = 0.5
+        #expect(map.needsFullResolution(displayScale: 2))
+        #expect(!map.needsFullResolution(displayScale: 1))
+    }
+
+    @Test func visibleTilesSurviveASmallCacheAndPreviewsArePrepared() async throws {
+        let regions = [RegionCoordinate(x: -1, z: -1), RegionCoordinate(x: 0, z: -1), RegionCoordinate(x: -1, z: 0), RegionCoordinate(x: 0, z: 0)]
+        let world = try stoneWorld(regions: regions)
+        defer { try? FileManager.default.removeItem(at: world) }
+        let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero,
+                           maxTiles: 1, maxPreviews: 1)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
+        await map.waitUntilIdle()
+        // All four regions are visible, so none is evicted despite the limit of one.
+        #expect(Set(map.tiles.keys) == Set(regions))
+        #expect(Set(map.previews.keys) == Set(regions))
+        #expect(map.previews[RegionCoordinate(x: 0, z: 0)]?.width == RegionTileRenderer.previewSide)
+    }
+
+    @Test func zoomedOutRequestsNeedOnlyPreviews() async throws {
+        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
+        map.viewport.scale = 1.0 / 16
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
+        await map.waitUntilIdle()
+        #expect(map.image(for: RegionCoordinate(x: 0, z: 0), fullResolution: false)?.width == RegionTileRenderer.previewSide)
+        #expect(map.tiles.isEmpty)  // full tiles aren't kept when only previews are needed
+        // A second request at the same zoom has nothing left to do.
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
+        #expect(!map.isLoading)
+    }
+
+    @Test func halfSizeAveragesBlocksOfFour() {
+        var pixels = [UInt8](repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
+        // Top-left 2×2 block: two opaque white pixels, two transparent.
+        for i in [0, 1] { for c in 0..<4 { pixels[i * 4 + c] = 255 } }
+        let half = RegionTileRenderer.halfSize(pixels)
+        #expect(half.count == RegionTileRenderer.previewSide * RegionTileRenderer.previewSide * 4)
+        #expect(Array(half[0..<4]) == [128, 128, 128, 128])
+    }
+}
+
 /// Builds minimal 26.x worlds on disk using MCWorldKit's public NBT and compression API.
 enum TestWorld {
     struct ChunkSpec {
@@ -163,13 +219,13 @@ enum TestWorld {
         try FileManager.default.createDirectory(at: regionDir, withIntermediateDirectories: true)
         let level = NBT.compound(["Data": .compound(["LevelName": .string("Test"), "DataVersion": .int(5023)])])
         try Data(Compression.deflate(level.serialized(), gzip: true)).write(to: root.appendingPathComponent("level.dat"))
-        if !chunks.isEmpty {
-            try Data(regionFile(chunks)).write(to: regionDir.appendingPathComponent("r.0.0.mca"))
+        for (region, regionChunks) in Dictionary(grouping: chunks, by: { RegionCoordinate(x: $0.x >> 5, z: $0.z >> 5) }) {
+            try Data(regionFile(regionChunks)).write(to: regionDir.appendingPathComponent("r.\(region.x).\(region.z).mca"))
         }
         return root
     }
 
-    /// A region file holding chunks in region (0, 0), zlib-compressed, one record per sector run.
+    /// A region file holding chunks of one region, zlib-compressed, one record per sector run.
     private static func regionFile(_ chunks: [ChunkSpec]) throws -> [UInt8] {
         var file = [UInt8](repeating: 0, count: 8192)
         func be32(_ v: Int) -> [UInt8] { [UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)] }

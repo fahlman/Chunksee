@@ -50,7 +50,39 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     func image(for region: RegionCoordinate) async throws -> CGImage? {
-        try await pixels(for: region).flatMap(Self.makeImage)
+        try await pixels(for: region).flatMap { Self.makeImage($0, side: Self.side) }
+    }
+
+    /// A region's full-resolution image and a half-resolution preview for zoomed-out views.
+    struct RenderedTile: @unchecked Sendable {  // CGImage is immutable.
+        var full: CGImage
+        var preview: CGImage
+    }
+
+    static let previewSide = side / 2
+
+    func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
+        guard let pixels = try await pixels(for: region),
+              let full = Self.makeImage(pixels, side: Self.side),
+              let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
+        return RenderedTile(full: full, preview: preview)
+    }
+
+    /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
+    /// rather than alias.
+    static func halfSize(_ pixels: [UInt8]) -> [UInt8] {
+        let half = side / 2
+        var out = [UInt8](repeating: 0, count: half * half * 4)
+        for z in 0..<half {
+            for x in 0..<half {
+                let a = ((2 * z) * side + 2 * x) * 4, b = a + side * 4
+                for c in 0..<4 {
+                    let sum = Int(pixels[a + c]) + Int(pixels[a + 4 + c]) + Int(pixels[b + c]) + Int(pixels[b + 4 + c])
+                    out[(z * half + x) * 4 + c] = UInt8((sum + 2) / 4)
+                }
+            }
+        }
+        return out
     }
 
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
@@ -248,8 +280,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
     }
 
-    static func makeImage(_ pixels: [UInt8]) -> CGImage? {
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+    static func makeImage(_ pixels: [UInt8], side: Int = side) -> CGImage? {
+        guard pixels.count == side * side * 4, let provider = CGDataProvider(data: Data(pixels) as CFData),
               let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         return CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
                        space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
