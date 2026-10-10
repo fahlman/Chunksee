@@ -22,6 +22,7 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var chunks: Path
     var outline: Path
     var name: String { String(localized: "\(chunkCount) chunks") }
+    var searchText: String { group.name + " " + group.id }
 }
 
 /// Biome areas, and every sampled chunk's biome for the hover readout.

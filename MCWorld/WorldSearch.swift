@@ -2,8 +2,8 @@ import CoreGraphics
 import Foundation
 import MCWorldKit
 
-/// Everything searchable in a world's dimensions: containers with their items, signs, and named
-/// creatures.
+/// Everything searchable in a world's dimensions: containers with their items, signs, and every
+/// sidebar layer's markers.
 nonisolated struct SearchIndex: Sendable {
     struct Placed<Value: Sendable>: Sendable {
         var dimension: String
@@ -12,7 +12,47 @@ nonisolated struct SearchIndex: Sendable {
 
     var containers: [Placed<ItemContainer>] = []
     var signs: [Placed<Sign>] = []
-    var creatures: [Placed<Creature>] = []
+    var structures: [Placed<StructureMarker>] = []
+    var places: [Placed<PlaceMarker>] = []
+    var creatures: [Placed<CreatureMarker>] = []
+    var biomeAreas: [Placed<BiomeArea>] = []
+}
+
+/// A search that looks at one sidebar layer instead of items and text: `structure:village`,
+/// `pet:`, `biome:pale garden`. On its own, a filter lists everything of its kind.
+nonisolated enum LayerFilter: String, CaseIterable, Sendable {
+    case structure, place, creature, pet, villager, biome
+
+    /// What the filter finds, for search suggestions.
+    var prompt: String {
+        switch self {
+        case .structure: String(localized: "structure: villages, strongholds…")
+        case .place: String(localized: "place: portals, beds, bells…")
+        case .creature: String(localized: "creature: named creatures, pets, villagers")
+        case .pet: String(localized: "pet: tamed creatures")
+        case .villager: String(localized: "villager: villagers and traders")
+        case .biome: String(localized: "biome: areas of a biome")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .structure: StructureGroup.village.symbol
+        case .place: PlaceGroup.portal.symbol
+        case .creature: CreatureGroup.named.symbol
+        case .pet: CreatureGroup.pet.symbol
+        case .villager: CreatureGroup.villager.symbol
+        case .biome: "leaf"
+        }
+    }
+
+    /// The filter a query starts with, and the rest of the query.
+    static func parse(_ query: String) -> (filter: LayerFilter, rest: String)? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard let colon = trimmed.firstIndex(of: ":"),
+              let filter = LayerFilter(rawValue: trimmed[..<colon].lowercased()) else { return nil }
+        return (filter, String(trimmed[trimmed.index(after: colon)...]))
+    }
 }
 
 /// One place where matches were found: a container, a sign, a named creature, or a player's
@@ -21,9 +61,17 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case container(kind: String)
         case sign
-        case creature
+        /// A marker from a sidebar layer, by its kind.
+        case layer(Layer)
         case inventory(UUID)
         case enderChest(UUID)
+    }
+
+    enum Layer: Equatable, Sendable {
+        case structure(StructureGroup)
+        case place(PlaceGroup)
+        case creature(CreatureGroup)
+        case biome(BiomeGroup)
     }
 
     var id: String
@@ -32,18 +80,20 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     /// World X/Z, when the place is on a map (a player's ender chest isn't).
     var position: CGPoint?
     var y: Int?
-    /// "Chest", "“Valuables” Barrel", "fahlman’s ender chest", "Sign".
+    /// "Chest", "“Valuables” Barrel", "fahlman’s ender chest", "Sign", "Pale Garden".
     var title: String
-    /// "64 Diamond, 3 Diamond Sword", or a sign's lines.
+    /// "64 Diamond, 3 Diamond Sword", a sign's lines, or a biome area's size.
     var detail: String
-    /// Total matching items, for sorting; 1 for a sign.
+    /// Total matching items, for sorting; 1 for a sign, the chunk count for a biome area.
     var count: Int
 }
 
 /// Builds the search index and answers searches against it: item names, custom names, book
-/// titles, authors and pages, sign text, and creatures' names.
+/// titles, authors and pages, sign text, and creatures' names; or, with a `LayerFilter`, one
+/// sidebar layer's markers.
 nonisolated enum WorldSearch {
-    /// Every container, sign and named creature in the readers' dimensions, region by region in parallel.
+    /// Every container, sign and sidebar layer marker in the readers' dimensions, region by region
+    /// in parallel.
     @concurrent
     static func index(_ readers: [RegionReader]) async -> SearchIndex {
         var index = SearchIndex()
@@ -52,14 +102,50 @@ nonisolated enum WorldSearch {
             for part in await reader.everyRegion({ await $0.contents($1) }) {
                 index.containers += part.value.containers.map { .init(dimension: dimension, value: $0) }
                 index.signs += part.value.signs.map { .init(dimension: dimension, value: $0) }
-                index.creatures += part.value.namedCreatures.map { .init(dimension: dimension, value: $0) }
             }
+            async let structures = StructureScanner.scan(reader)
+            async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
+            async let creatures = CreatureScanner.scan(reader)
+            async let biomes = BiomeScanner.scan(reader)
+            index.structures += await structures.map { .init(dimension: dimension, value: $0) }
+            index.places += await places.map { .init(dimension: dimension, value: $0) }
+            index.creatures += await creatures.map { .init(dimension: dimension, value: $0) }
+            index.biomeAreas += await biomes.areas.map { .init(dimension: dimension, value: $0) }
         }
         return index
     }
 
     static func words(in query: String) -> [String] {
         query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// One layer's markers matching every word (all of them with no words): biome areas largest
+    /// first, everything else by id.
+    static func search(_ filter: LayerFilter, words: [String], in index: SearchIndex) -> [SearchHit] {
+        let hits: [SearchHit]
+        switch filter {
+        case .structure: hits = layerHits(index.structures, words: words) { .structure($0.group) }
+        case .place: hits = layerHits(index.places, words: words) { .place($0.group) }
+        case .creature: hits = layerHits(index.creatures, words: words) { .creature($0.group) }
+        case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words) { .creature($0.group) }
+        case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words) { .creature($0.group) }
+        case .biome:
+            // An area is named by its size, so its biome leads the row.
+            hits = layerHits(index.biomeAreas, words: words, count: \.chunkCount) { .biome($0.group) }
+                .map { var hit = $0; swap(&hit.title, &hit.detail); return hit }
+        }
+        return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
+    }
+
+    /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
+    private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], words: [String],
+                                                                     count: (Marker) -> Int = { _ in 1 },
+                                                                     layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
+        entries.filter { contains($0.value.searchText, words: words) }.map { entry in
+            SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value)), dimension: entry.dimension,
+                      position: entry.value.position, y: nil, title: entry.value.group.name, detail: entry.value.name,
+                      count: count(entry.value))
+        }
     }
 
     /// Whether `text` contains every word, ignoring case.
@@ -98,6 +184,9 @@ nonisolated enum WorldSearch {
     /// Places matching `query`, most items first. `name(of:)` names players.
     static func search(_ query: String, in index: SearchIndex, players: [PlayerInfo],
                        name: (PlayerInfo) -> String) -> [SearchHit] {
+        if let (filter, rest) = LayerFilter.parse(query) {
+            return search(filter, words: words(in: rest), in: index)
+        }
         let words = words(in: query)
         guard !words.isEmpty else { return [] }
         var hits: [SearchHit] = []
@@ -132,11 +221,12 @@ nonisolated enum WorldSearch {
                                   dimension: entry.dimension, position: CGPoint(x: Double(sign.x) + 0.5, y: Double(sign.z) + 0.5),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
         }
+        // Named creatures by name; `creature:` and `pet:` find the rest.
         for entry in index.creatures {
-            let creature = entry.value
+            let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
-            hits.append(SearchHit(id: "\(entry.dimension)@\(creature.id)@\(creature.x),\(creature.y),\(creature.z)", source: .creature,
-                                  dimension: entry.dimension, position: CGPoint(x: creature.x, y: creature.z), y: Int(creature.y.rounded(.down)),
+            hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group)),
+                                  dimension: entry.dimension, position: entry.value.position, y: Int(creature.y.rounded(.down)),
                                   title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }

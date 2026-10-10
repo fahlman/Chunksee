@@ -1,11 +1,11 @@
 import Foundation
 import MCWorldKit
 
-/// What search finds in a region: containers with their items, signs with text, named creatures.
+/// What search reads from a region's block entities and entities: containers with their items, and
+/// signs with text. Creatures come from the creature layer.
 nonisolated struct SearchContents: Codable, Sendable {
     var containers: [ItemContainer] = []
     var signs: [Sign] = []
-    var namedCreatures: [Creature] = []
 }
 
 /// Everything the app's scans take from one region, read in a single pass over its chunks and its
@@ -43,9 +43,7 @@ nonisolated struct RegionData: Sendable {
             for (x, z) in entities.chunkCoordinates {
                 guard let nbt = try? entities.chunkNBT(localX: x, localZ: z) else { continue }
                 data.contents.containers += ItemContainer.containers(inEntityChunk: nbt)
-                let creatures = Creature.creatures(inEntityChunk: nbt)
-                data.creatures += creatures
-                data.contents.namedCreatures += creatures.filter { $0.customName != nil }
+                data.creatures += Creature.creatures(inEntityChunk: nbt)
             }
         }
         return data
