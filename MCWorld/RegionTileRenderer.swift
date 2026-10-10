@@ -5,70 +5,167 @@ import MCWorldKit
 /// Renders one region (512×512 blocks) of a dimension as a top-down image, one pixel per block.
 ///
 /// Rendering reads and decodes up to 1,024 chunks, so it runs off the main actor and checks for
-/// cancellation between chunks.
+/// cancellation between chunks. With `chunkConcurrency` above 1, chunks decode in parallel.
 nonisolated struct RegionTileRenderer: Sendable {
     static let side = RegionCoordinate.blockSize
 
     let dimension: MCWorldKit.Dimension
+    /// How many chunks of one region decode at the same time.
+    var chunkConcurrency = 1
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
-    func pixels(for region: RegionCoordinate) throws -> [UInt8]? {
+    func pixels(for region: RegionCoordinate) async throws -> [UInt8]? {
         guard let file = try dimension.region(x: region.x, z: region.z) else { return nil }
+        let coordinates = file.chunkCoordinates
         var canvas = Canvas()
-        for (localX, localZ) in file.chunkCoordinates {
-            try Task.checkCancellation()
-            // One damaged chunk shouldn't blank the whole region; it's left transparent instead.
-            guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
-                  let chunk = try? Chunk(nbt: nbt) else { continue }
-            Self.draw(chunk, into: &canvas, originX: localX * 16, originZ: localZ * 16)
+        if chunkConcurrency <= 1 {
+            for (localX, localZ) in coordinates {
+                try Task.checkCancellation()
+                if let columns = Self.columns(in: file, localX: localX, localZ: localZ) {
+                    canvas.set(columns, chunkX: localX, chunkZ: localZ)
+                }
+            }
+        } else {
+            try await withThrowingTaskGroup(of: (Int, Int, [Column?])?.self) { group in
+                var next = coordinates.startIndex
+                func startNext() {
+                    guard next < coordinates.endIndex else { return }
+                    let (localX, localZ) = coordinates[next]
+                    next += 1
+                    group.addTask {
+                        try Task.checkCancellation()
+                        return Self.columns(in: file, localX: localX, localZ: localZ).map { (localX, localZ, $0) }
+                    }
+                }
+                for _ in 0..<chunkConcurrency { startNext() }
+                for try await result in group {
+                    if let (localX, localZ, columns) = result { canvas.set(columns, chunkX: localX, chunkZ: localZ) }
+                    startNext()
+                }
+            }
         }
         canvas.applyRelief()
         return canvas.pixels
     }
 
-    func image(for region: RegionCoordinate) throws -> CGImage? {
-        try pixels(for: region).flatMap(Self.makeImage)
+    func image(for region: RegionCoordinate) async throws -> CGImage? {
+        try await pixels(for: region).flatMap(Self.makeImage)
+    }
+
+    /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
+    /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
+    static func columns(in file: RegionFile, localX: Int, localZ: Int) -> [Column?]? {
+        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
+              let chunk = try? Chunk(nbt: nbt) else { return nil }
+        var sections = ColorSections(chunk)
+        let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
+        return (0..<256).map { i in
+            // The heightmap gives the first free block above the surface; without one, scan from the top.
+            let startY = heightmap.map { $0[i] - 1 } ?? sections.topY
+            return sections.topColumn(x: i % 16, z: i / 16, from: startY)
+        }
     }
 
     /// The highest block the map should show in a column, and how deep the water above it is.
     struct Column: Equatable {
         var y: Int
-        var block: BlockState
+        var color: MapColor
         var waterDepth: Int
     }
 
-    static func topColumn(in chunk: Chunk, x: Int, z: Int, heightmap: [Int]?) -> Column? {
-        let minY = chunk.minSectionY * 16
-        guard let topSection = chunk.sections.last else { return nil }
-        // The heightmap gives the first free block above the surface; without one, scan from the top.
-        var y = (heightmap?[z * 16 + x] ?? (topSection.y * 16 + 16)) - 1
-        while y >= minY {
-            if let block = chunk.block(x: x, y: y, z: z), BlockColors.color(for: block.id) != nil {
-                break
-            }
-            y -= 1
+    /// A chunk's sections with map colors resolved per palette entry, the first time a column
+    /// reaches that entry. Looking colors up by block ID for every block examined dominated
+    /// rendering (string matching per block), while resolving every palette entry up front wastes
+    /// work on underground blocks the map never shows. Resolving lazily is never more work than either.
+    struct ColorSections {
+        enum Entry: Equatable {
+            case unresolved
+            case clear
+            case solid(MapColor)
+            case water(MapColor)
         }
-        guard y >= minY, var block = chunk.block(x: x, y: y, z: z) else { return nil }
 
-        // Look through up to 32 blocks of water so depth can tint it.
-        var depth = 0
-        let surfaceY = y
-        while BlockColors.isWater(block.id), depth < 32, y > minY {
-            y -= 1
-            depth += 1
-            guard let below = chunk.block(x: x, y: y, z: z) else { break }
-            block = below
+        struct Section {
+            var y: Int
+            var states: PalettedContainer<BlockState>
+            var entries: [Entry]
         }
-        if depth > 0 { return Column(y: surfaceY, block: BlockState("minecraft:water"), waterDepth: depth) }
-        return Column(y: y, block: block, waterDepth: 0)
+
+        private var sections: [Section]
+        private let firstY: Int
+        let minY: Int
+        let topY: Int
+
+        init(_ chunk: Chunk) {
+            sections = chunk.sections.compactMap { section in
+                section.blockStates.map {
+                    Section(y: section.y, states: $0, entries: Array(repeating: .unresolved, count: $0.palette.count))
+                }
+            }
+            firstY = sections.first?.y ?? 0
+            minY = chunk.minSectionY * 16
+            topY = ((sections.last?.y ?? 0) + 1) * 16 - 1
+        }
+
+        private func sectionIndex(forBlockY y: Int) -> Int? {
+            let sy = y >> 4
+            // Sections are normally contiguous, so try direct indexing first.
+            let guess = sy - firstY
+            if sections.indices.contains(guess), sections[guess].y == sy { return guess }
+            return sections.firstIndex { $0.y == sy }
+        }
+
+        /// The map entry for the block at section-local x/z and absolute y, or `nil` with no section there.
+        private mutating func entry(x: Int, y: Int, z: Int) -> Entry? {
+            guard let s = sectionIndex(forBlockY: y) else { return nil }
+            let p = sections[s].states.paletteIndex(at: (y & 15) << 8 | z << 4 | x)
+            guard p < sections[s].entries.count else { return .clear }
+            if sections[s].entries[p] == .unresolved {
+                let id = sections[s].states.palette[p].id
+                sections[s].entries[p] = switch BlockColors.color(for: id) {
+                case nil: .clear
+                case let color? where BlockColors.isWater(id): .water(color)
+                case let color?: .solid(color)
+                }
+            }
+            return sections[s].entries[p]
+        }
+
+        mutating func topColumn(x: Int, z: Int, from startY: Int) -> Column? {
+            var y = min(startY, topY)
+            while y >= minY {
+                guard let s = sectionIndex(forBlockY: y) else {
+                    y = (y >> 4) * 16 - 1  // no section stored here: skip it
+                    continue
+                }
+                // A uniform section is one block throughout; if the map sees through it, skip it whole.
+                if sections[s].states.isUniform, entry(x: x, y: y, z: z) == .clear {
+                    y = sections[s].y * 16 - 1
+                    continue
+                }
+                switch entry(x: x, y: y, z: z) {
+                case .solid(let color)?:
+                    return Column(y: y, color: color, waterDepth: 0)
+                case .water(let color)?:
+                    // Look through up to 32 blocks of water so depth can tint it.
+                    var depth = 1
+                    while depth < 32, y - depth >= minY, case .water? = entry(x: x, y: y - depth, z: z) {
+                        depth += 1
+                    }
+                    return Column(y: y, color: color, waterDepth: depth)
+                default:
+                    y -= 1
+                }
+            }
+            return nil
+        }
     }
 
     static func baseColor(for column: Column) -> MapColor {
-        let base = BlockColors.color(for: column.block.id) ?? MapColor(0x000000)
-        guard column.waterDepth > 0 else { return base }
+        guard column.waterDepth > 0 else { return column.color }
         // Shallow water is lighter, deep water darker.
-        return base.shaded(1.15 - min(Double(column.waterDepth), 24) / 40)
+        return column.color.shaded(1.15 - min(Double(column.waterDepth), 24) / 40)
     }
 
     /// Pixels plus the surface height of each column, kept so relief shading can compare
@@ -91,6 +188,12 @@ nonisolated struct RegionTileRenderer: Sendable {
             isWater[i] = column.waterDepth > 0
         }
 
+        mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int) {
+            for (i, column) in columns.enumerated() {
+                if let column { set(x: chunkX * 16 + i % 16, z: chunkZ * 16 + i / 16, column: column) }
+            }
+        }
+
         /// Lightens land that is higher than the block to its north and darkens land that is lower.
         mutating func applyRelief() {
             for z in stride(from: side - 1, through: 1, by: -1) {
@@ -105,16 +208,6 @@ nonisolated struct RegionTileRenderer: Sendable {
                     pixels[i * 4 + 1] = shaded.green
                     pixels[i * 4 + 2] = shaded.blue
                 }
-            }
-        }
-    }
-
-    static func draw(_ chunk: Chunk, into canvas: inout Canvas, originX: Int, originZ: Int) {
-        let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
-        for z in 0..<16 {
-            for x in 0..<16 {
-                guard let column = topColumn(in: chunk, x: x, z: z, heightmap: heightmap) else { continue }
-                canvas.set(x: originX + x, z: originZ + z, column: column)
             }
         }
     }
