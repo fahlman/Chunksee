@@ -85,15 +85,7 @@ struct CreatureCard: View {
     let marker: CreatureMarker
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
-                Spacer()
-                Button("Close", systemImage: "xmark") { session.selectedCreature = nil }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-            }
+        MapCard(title: Text(marker.name), symbol: marker.group.symbol, width: 320, close: { session.selection = nil }) {
             Text("\(ReadableName.from(marker.creature.id)) at X \(Int(marker.creature.x.rounded(.down))), Y \(Int(marker.creature.y.rounded(.down))), Z \(Int(marker.creature.z.rounded(.down)))")
                 .foregroundStyle(.secondary)
             if let owner = marker.creature.owner {
@@ -121,9 +113,6 @@ struct CreatureCard: View {
                 }
             }
         }
-        .padding(12)
-        .frame(width: 320, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     static func describe(_ item: ItemStack) -> String {

@@ -44,9 +44,12 @@ private struct WorldView: View {
     @State private var showsInGameMaps = false
 
     var body: some View {
+        @Bindable var visibility = session.visibility
+        @Bindable var search = session.search
+        @Bindable var heatMap = session.heatMap
         NavigationSplitView {
             List(selection: $session.selectedDimensionID) {
-                if !session.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                if search.isActive {
                     SearchResultsSection(session: session)
                 }
                 Section("World") {
@@ -59,7 +62,7 @@ private struct WorldView: View {
                     .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
                     .keyboardShortcut("i")
                     .help("Show the world’s settings, time, weather and game rules")
-                    Toggle(isOn: $session.showsHeatMap) {
+                    Toggle(isOn: $heatMap.isShown) {
                         Label("Time Spent", systemImage: "flame")
                     }
                     .toggleStyle(.switch)
@@ -73,18 +76,18 @@ private struct WorldView: View {
                 }
                 if let map = session.map {
                     LayerSection(title: "Structures", markers: map.structures, origin: session.spawnPoint,
-                                 shown: $session.shownStructureGroups) { session.center(on: $0.position) }
+                                 shown: $visibility.structures) { session.center(on: $0.position) }
                     LayerSection(title: "Places", markers: map.places, origin: session.spawnPoint,
-                                 shown: $session.shownPlaceGroups) { place in
+                                 shown: $visibility.places) { place in
                         if let portal = place.portal { session.show(portal) } else { session.center(on: place.position) }
                     }
                     LayerSection(title: "Creatures", markers: map.creatures, origin: session.spawnPoint,
-                                 shown: $session.shownCreatureGroups) { creature in
+                                 shown: $visibility.creatures) { creature in
                         session.center(on: creature.position)
-                        session.selectedCreature = creature
+                        session.selection = .creature(creature)
                     }
                     LayerSection(title: "Biomes", markers: map.biomeAreas, origin: session.spawnPoint,
-                                 shown: $session.shownBiomeGroups) { session.center(on: $0.position) }
+                                 shown: $visibility.biomes) { session.center(on: $0.position) }
                 }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
@@ -118,14 +121,8 @@ private struct WorldView: View {
             }
         } detail: {
             if let map = session.map {
-                MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
-                        selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
-                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder, biomeAreas: session.visibleBiomeAreas, heatMap: session.visibleHeatMap ?? [:],
-                        inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
-                        inGameMapOpacity: session.inGameMapOpacity,
-                        onSelectPortal: { session.selectedPortal = $0 },
-                        creatures: session.visibleCreatures, selectedCreatureID: session.selectedCreature?.id,
-                        onSelectCreature: { session.selectedCreature = $0 }, markers: session.markers)
+                MapView(map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
+                        onSelect: { session.mapClicked($0) })
                     .id(map.dimension.id)
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
@@ -133,20 +130,19 @@ private struct WorldView: View {
                         if !Task.isCancelled { session.saveView() }
                     }
                     .overlay(alignment: .topLeading) {
-                        if let portal = session.selectedPortal {
-                            PortalCard(session: session, portal: portal)
-                                .padding(10)
-                        } else if let creature = session.selectedCreature {
-                            CreatureCard(session: session, marker: creature)
-                                .padding(10)
-                        } else if let inGameMap = session.visibleInGameMap {
-                            InGameMapCard(session: session, map: inGameMap)
-                                .padding(10)
+                        Group {
+                            switch session.selection {
+                            case .portal(let portal)?: PortalCard(session: session, portal: portal)
+                            case .creature(let creature)?: CreatureCard(session: session, marker: creature)
+                            case .inGameMap(let item)?: InGameMapCard(session: session, map: item)
+                            case nil: EmptyView()
+                            }
                         }
+                        .padding(10)
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if session.showsHeatMap {
-                            HeatMapLegend(isLoading: session.isLoadingHeatMap)
+                        if heatMap.isShown {
+                            HeatMapLegend(isLoading: heatMap.isLoading)
                                 .padding(10)
                         }
                     }
@@ -173,7 +169,7 @@ private struct WorldView: View {
                                        description: Text("This world has no saved terrain yet."))
             }
         }
-        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items, signs and pets"))
+        .searchable(text: $search.text, placement: .toolbar, prompt: Text("Find items, signs and pets"))
     }
 
     private var inspectorShown: Binding<Bool> {
@@ -215,9 +211,9 @@ private struct PlayerRow: View {
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: Binding {
-                !session.hiddenPlayers.contains(player.uuid)
+                !session.visibility.hiddenPlayers.contains(player.uuid)
             } set: {
-                if $0 { session.hiddenPlayers.remove(player.uuid) } else { session.hiddenPlayers.insert(player.uuid) }
+                if $0 { session.visibility.hiddenPlayers.remove(player.uuid) } else { session.visibility.hiddenPlayers.insert(player.uuid) }
             })
             Button("Show Details", systemImage: "info.circle") {
                 session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
@@ -240,8 +236,7 @@ private struct PlayerRow: View {
             return String(localized: "May be in another world")
         }
         guard let position = player.position else { return String(localized: "Location unknown") }
-        let dimension = session.dimensions.first { $0.id == position.dimension }?.displayName ?? position.dimension
-        return "\(dimension)  X \(Int(position.x.rounded(.down)))  Z \(Int(position.z.rounded(.down)))"
+        return session.dimensionName(position.dimension) + "  " + Coordinates.text(x: position.x, z: position.z)
     }
 
     private var help: String {
@@ -260,72 +255,24 @@ private struct NameSources: Equatable {
     var online: Bool
 }
 
-/// Where the selected Nether portal leads, and whether the link goes both ways.
-private struct PortalCard: View {
-    let session: WorldSession
-    let portal: NetherPortal
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
-                Spacer()
-                Button("Close", systemImage: "xmark") { session.selectedPortal = nil }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-            }
-            Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-            Divider()
-            switch session.link(for: portal) {
-            case .portal(let target, _)?:
-                Text("Leads to the portal in \(dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
-                if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
-                    Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-                Button("Show the Other Side") { session.show(target) }
-            case .wouldCreateNewPortal(let destination)?:
-                Label("No portal in \(dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            case nil:
-                ProgressView().controlSize(.small)
-            }
-            Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(width: 300, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func dimensionName(_ id: String) -> String {
-        session.dimensions.first { $0.id == id }?.displayName ?? id
-    }
-}
-
 /// Places matching the search, most items first. Choosing one shows it on the map.
 private struct SearchResultsSection: View {
     let session: WorldSession
 
     var body: some View {
+        let search = session.search
         Section {
-            if session.isIndexing {
+            if search.isIndexing {
                 Label {
                     Text("Searching containers, signs and creatures…")
                 } icon: {
                     ProgressView().controlSize(.small)
                 }
                 .foregroundStyle(.secondary)
-            } else if session.searchResults.isEmpty {
+            } else if search.results.isEmpty {
                 Text("No matches").foregroundStyle(.secondary)
             } else {
-                ForEach(session.searchResults.prefix(200)) { hit in
+                ForEach(search.results.prefix(200)) { hit in
                     Button {
                         session.show(hit)
                     } label: {
@@ -337,10 +284,10 @@ private struct SearchResultsSection: View {
                     .buttonStyle(.plain)
                     .disabled(hit.position == nil)
                     .padding(.vertical, 2)
-                    .listRowBackground(hit.id == session.selectedHitID ? Color.yellow.opacity(0.25) : nil)
+                    .listRowBackground(hit.id == search.selectedHitID ? Color.yellow.opacity(0.25) : nil)
                 }
-                if session.searchResults.count > 200 {
-                    Text("Showing the first 200 of \(session.searchResults.count)").font(.caption).foregroundStyle(.secondary)
+                if search.results.count > 200 {
+                    Text("Showing the first 200 of \(search.results.count)").font(.caption).foregroundStyle(.secondary)
                 }
             }
         } header: {
@@ -350,7 +297,6 @@ private struct SearchResultsSection: View {
 
     private func location(_ hit: SearchHit) -> String {
         guard let dimension = hit.dimension, let position = hit.position else { return hit.title }
-        let name = session.dimensions.first { $0.id == dimension }?.displayName ?? dimension
-        return "\(hit.title) · \(name) X \(Int(position.x.rounded(.down))) Z \(Int(position.y.rounded(.down)))"
+        return "\(hit.title) · \(session.dimensionName(dimension))  \(Coordinates.text(position))"
     }
 }

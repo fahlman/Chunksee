@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import MCWorldKit
+import SwiftUI
 
 /// Families of points of interest, shown and filtered together.
 nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
@@ -93,7 +94,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
             return String(localized: "\(job)’s Workstation")
         case .beeNest: return base == "beehive" ? String(localized: "Beehive") : String(localized: "Bee Nest")
         case .lightningRod: return String(localized: "Lightning Rod")
-        case .other: return base.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        case .other: return ReadableName.from(base)
         }
     }
 
@@ -163,6 +164,40 @@ nonisolated enum PortalLinkStatus: Equatable, Sendable {
             return .noPartner
         case nil:
             return nil
+        }
+    }
+}
+
+/// Where the selected Nether portal leads, and whether the link goes both ways.
+struct PortalCard: View {
+    let session: WorldSession
+    let portal: NetherPortal
+
+    var body: some View {
+        MapCard(title: Text("Nether Portal"), symbol: "oval.portrait.fill", close: { session.selection = nil }) {
+            Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Divider()
+            switch session.link(for: portal) {
+            case .portal(let target, _)?:
+                Text("Leads to the portal in \(session.dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
+                if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
+                    Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                Button("Show the Other Side") { session.show(target) }
+            case .wouldCreateNewPortal(let destination)?:
+                Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            case nil:
+                ProgressView().controlSize(.small)
+            }
+            Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

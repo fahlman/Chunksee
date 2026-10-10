@@ -111,11 +111,11 @@ nonisolated struct RegionTileRenderer: Sendable {
         return out
     }
 
-    /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
-    /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
     /// The highest block under a dimension's roof, for dimensions that have one.
     var ceilingY: Int? { dimension.id == "minecraft:the_nether" ? 127 : nil }
 
+    /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
+    /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
     static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [Column?]? {
         // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
@@ -346,10 +346,6 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     static func makeImage(_ pixels: [UInt8], side: Int = side) -> CGImage? {
-        guard pixels.count == side * side * 4, let provider = CGDataProvider(data: Data(pixels) as CFData),
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        return CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
-                       space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        CGImage.rgba(pixels, width: side, height: side)
     }
 }

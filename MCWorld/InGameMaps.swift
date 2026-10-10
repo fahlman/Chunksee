@@ -14,10 +14,8 @@ nonisolated enum InGameMapImage {
             pixels[index * 4 + 2] = rgb.blue
             pixels[index * 4 + 3] = 255
         }
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(width: MapItem.size, height: MapItem.size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: MapItem.size * 4,
-                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        // Map pixels are fully opaque or fully clear, so they're already premultiplied.
+        return CGImage.rgba(pixels, width: MapItem.size, height: MapItem.size)
     }
 
     /// A zoom that fits the whole map in a typical window, as a power of two so pixels stay crisp.
@@ -47,14 +45,14 @@ struct InGameMapRow: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Map #\(map.id)")
-                    Text("X \(map.centerX)  Z \(map.centerZ) · 1:\(map.blocksPerPixel)")
+                    Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         }
         .buttonStyle(.plain)
-        .listRowBackground(session.selectedInGameMapID == map.id ? Color.accentColor.opacity(0.2) : nil)
+        .listRowBackground(session.selection == .inGameMap(map) ? Color.accentColor.opacity(0.2) : nil)
         .help("Show this map where it belongs on the world map")
     }
 }
@@ -65,15 +63,7 @@ struct InGameMapCard: View {
     let map: MapItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Map #\(map.id)", systemImage: "map").font(.headline)
-                Spacer()
-                Button("Close", systemImage: "xmark") { session.selectedInGameMapID = nil }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-            }
+        MapCard(title: Text("Map #\(map.id)"), symbol: "map", close: { session.selection = nil }) {
             Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks around X \(map.centerX), Z \(map.centerZ), 1 pixel for every \(map.blocksPerPixel) blocks.")
                 .foregroundStyle(.secondary)
             if map.isLocked {
@@ -86,8 +76,5 @@ struct InGameMapCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(12)
-        .frame(width: 300, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 }

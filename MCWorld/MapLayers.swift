@@ -46,7 +46,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(marker.name)
-                                    Text("X \(Int(marker.position.x.rounded(.down)))  Z \(Int(marker.position.y.rounded(.down)))")
+                                    Text(Coordinates.text(marker.position))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -90,5 +90,43 @@ struct VisibilityButton: View {
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
             .foregroundStyle(isShown ? .primary : .tertiary)
+    }
+}
+
+/// Which layers and players the map shows, remembered between launches in `defaults`.
+@Observable
+final class LayerVisibility {
+    var structures: Set<StructureGroup> { didSet { save(structures.map(\.rawValue), Keys.structures) } }
+    var places: Set<PlaceGroup> { didSet { save(places.map(\.rawValue), Keys.places) } }
+    var creatures: Set<CreatureGroup> { didSet { save(creatures.map(\.rawValue), Keys.creatures) } }
+    /// None at first: outlining every biome would cover the map.
+    var biomes: Set<BiomeGroup> { didSet { save(biomes.map(\.id), Keys.biomes) } }
+    var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
+
+    private let defaults: UserDefaults
+
+    private enum Keys {
+        static let structures = "shownStructureGroups"
+        static let places = "shownPlaceGroups"
+        static let creatures = "shownCreatureGroups"
+        static let biomes = "shownBiomeGroups"
+        static let hiddenPlayers = "hiddenPlayers"
+    }
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+        func saved<Group: RawRepresentable & CaseIterable>(_ key: String, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
+            guard let names = defaults.stringArray(forKey: key) else { return Set(Group.allCases.filter(isShown)) }
+            return Set(names.compactMap(Group.init(rawValue:)))
+        }
+        structures = saved(Keys.structures, default: \.isShownByDefault)
+        places = saved(Keys.places, default: \.isShownByDefault)
+        creatures = saved(Keys.creatures, default: \.isShownByDefault)
+        biomes = Set((defaults.stringArray(forKey: Keys.biomes) ?? []).map(BiomeGroup.init(id:)))
+        hiddenPlayers = Set((defaults.stringArray(forKey: Keys.hiddenPlayers) ?? []).compactMap(UUID.init(uuidString:)))
+    }
+
+    private func save(_ names: [String], _ key: String) {
+        defaults.set(names.sorted(), forKey: key)
     }
 }
