@@ -113,7 +113,7 @@ private struct WorldView: View {
                                        description: Text("This world has no saved terrain yet."))
             }
         }
-        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items"))
+        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items, signs and books"))
     }
 
     private func symbol(for id: String) -> String {
@@ -273,7 +273,7 @@ private struct PortalCard: View {
     }
 }
 
-/// Places holding items that match the search, most items first. Choosing one shows it on the map.
+/// Places matching the search, most items first. Choosing one shows it on the map.
 private struct SearchResultsSection: View {
     let session: WorldSession
 
@@ -281,13 +281,13 @@ private struct SearchResultsSection: View {
         Section {
             if session.isIndexing {
                 Label {
-                    Text("Searching every container…")
+                    Text("Searching every container and sign…")
                 } icon: {
                     ProgressView().controlSize(.small)
                 }
                 .foregroundStyle(.secondary)
             } else if session.searchResults.isEmpty {
-                Text("No matching items").foregroundStyle(.secondary)
+                Text("No matches").foregroundStyle(.secondary)
             } else {
                 ForEach(session.searchResults.prefix(200)) { hit in
                     Button {
@@ -308,11 +308,11 @@ private struct SearchResultsSection: View {
                 }
             }
         } header: {
-            Text("Found Items")
+            Text("Search Results")
         }
     }
 
-    private func location(_ hit: ItemHit) -> String {
+    private func location(_ hit: SearchHit) -> String {
         guard let dimension = hit.dimension, let position = hit.position else { return hit.title }
         let name = session.dimensions.first { $0.id == dimension }?.displayName ?? dimension
         return "\(hit.title) · \(name) X \(Int(position.x.rounded(.down))) Z \(Int(position.y.rounded(.down)))"

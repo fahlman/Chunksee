@@ -13,8 +13,8 @@ struct MapView: View {
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
     /// Item search results in this dimension, drawn as pins above everything but players.
-    var hits: [ItemHit] = []
-    var selectedHitID: ItemHit.ID?
+    var hits: [SearchHit] = []
+    var selectedHitID: SearchHit.ID?
     /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
     var onSelectPortal: (NetherPortal?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.

@@ -544,7 +544,7 @@ import Testing
     }
 }
 
-@Suite struct ItemSearchTests {
+@Suite struct WorldSearchTests {
     func item(_ id: String, _ count: Int32, components: [String: NBT]? = nil) -> NBT {
         var c: [String: NBT] = ["id": .string(id), "count": .int(count)]
         if let components { c["components"] = .compound(components) }
@@ -554,9 +554,9 @@ import Testing
     @Test func readableNamesAndMatching() throws {
         #expect(ReadableName.from("minecraft:diamond_sword") == "Diamond Sword")
         let sword = try #require(ItemStack(item("minecraft:diamond_sword", 1, components: ["minecraft:custom_name": .string("Excalibur")])))
-        #expect(ItemSearch.matches(sword, words: ["diamond", "sword"]))
-        #expect(ItemSearch.matches(sword, words: ["excal"]))
-        #expect(!ItemSearch.matches(sword, words: ["diamond", "pickaxe"]))
+        #expect(WorldSearch.matches(sword, words: ["diamond", "sword"]))
+        #expect(WorldSearch.matches(sword, words: ["excal"]))
+        #expect(!WorldSearch.matches(sword, words: ["diamond", "pickaxe"]))
     }
 
     @Test func searchFindsContainersNestedItemsAndPlayers() {
@@ -565,24 +565,48 @@ import Testing
             .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
             .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:dirt", 64)])]),
         ])])
-        let containers = ItemContainer.containers(inChunk: chunk).map { IndexedContainer(dimension: "minecraft:overworld", container: $0) }
+        let index = SearchIndex(containers: ItemContainer.containers(inChunk: chunk).map { .init(dimension: "minecraft:overworld", value: $0) })
         let player = PlayerInfo(uuid: UUID(), nbt: .compound([
             "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)]),
             "EnderItems": .list([item("minecraft:diamond", 5)]),
         ]))
-        let hits = ItemSearch.search("diamond", containers: containers, players: [player]) { _ in "fahlman" }
+        let hits = WorldSearch.search("diamond", in: index, players: [player]) { _ in "fahlman" }
         #expect(hits.map(\.count) == [67, 5])   // chest (3 + 64 in the shulker box), then the ender chest
         #expect(hits[0].title == "Chest" && hits[0].detail == "67 Diamond")
         #expect(hits[0].position == CGPoint(x: 10.5, y: -4.5))
         #expect(hits[1].title == "fahlman’s ender chest" && hits[1].position == nil)
-        #expect(ItemSearch.search("  ", containers: containers, players: [player]) { _ in "" }.isEmpty)
+        #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in "" }.isEmpty)
+    }
+
+    @Test func signsAndBooksMatchTheirText() throws {
+        let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
+        let chunk = NBT.compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:sign"), "x": .int(-2895), "y": .int(68), "z": .int(2245),
+                       "front_text": side(["East", "Northeast", "to", "Desert"]), "back_text": side(["Village", "", "", ""])]),
+            .compound(["id": .string("minecraft:hanging_sign"), "x": .int(0), "y": .int(70), "z": .int(0), "front_text": side(["Exit", "", "", ""])]),
+            .compound(["id": .string("minecraft:lectern"), "x": .int(5), "y": .int(64), "z": .int(5), "Book": item("minecraft:written_book", 1, components: [
+                "minecraft:written_book_content": .compound(["title": .compound(["raw": .string("Travels")]), "author": .string("fahlman"),
+                                                            "pages": .list([.compound(["raw": .string("We found a desert village today.")])])]),
+            ])]),
+        ])])
+        let index = SearchIndex(containers: ItemContainer.containers(inChunk: chunk).map { .init(dimension: "minecraft:overworld", value: $0) },
+                                signs: Sign.signs(inChunk: chunk).map { .init(dimension: "minecraft:overworld", value: $0) })
+        // A phrase can run across a sign's lines and onto its back.
+        let hits = WorldSearch.search("desert village", in: index, players: []) { _ in "" }
+        #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
+        #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")
+        #expect(hits.first { $0.title == "Lectern" }?.detail == "1 “Travels” by fahlman")
+        #expect(WorldSearch.search("written book", in: index, players: []) { _ in "" }.map(\.title) == ["Lectern"])
+        #expect(WorldSearch.search("exit", in: index, players: []) { _ in "" }.map(\.title) == ["Hanging Sign"])
     }
 
     @Test func sessionIndexesAndSearchesAWorld() async throws {
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
         var root = spec.nbt.compound!
         root["block_entities"] = .list([.compound(["id": .string("minecraft:chest"), "x": .int(3), "y": .int(1), "z": .int(4),
-                                                   "Items": .list([item("minecraft:golden_apple", 2)])])])
+                                                   "Items": .list([item("minecraft:golden_apple", 2)])]),
+                                       .compound(["id": .string("minecraft:sign"), "x": .int(8), "y": .int(1), "z": .int(9),
+                                                  "front_text": .compound(["messages": .list([.string("Orchard"), .string(""), .string(""), .string("")])])])])
         spec.nbt = .compound(root)
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
@@ -596,6 +620,8 @@ import Testing
         session.show(session.searchResults[0])
         #expect(session.selectedHitID == session.searchResults[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
+        session.searchText = "orchard"
+        #expect(session.searchResults.map(\.detail) == ["Orchard"])
         session.searchText = ""
         #expect(session.searchResults.isEmpty)
     }
