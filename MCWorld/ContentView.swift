@@ -198,11 +198,11 @@ private struct PlayerRow: View {
             .foregroundStyle(session.inspector == .player(player.uuid) ? Color.accentColor : .secondary)
             .help("Show inventory, health and experience")
         }
-        .accessibilityElement(children: .contain)
-        // Native sidebar rows combine their controls, so expose the secondary actions on the row.
-        .accessibilityAction(named: Text(isShown ? "Hide from Map" : "Show on Map")) { setShown(!isShown) }
-        .accessibilityAction(named: Text(session.inspector == .player(player.uuid) ? "Hide Details" : "Show Details")) {
-            toggleDetails()
+        .accessibilityElement(children: .combine)
+        // Native sidebar rows combine their controls. Their context menu keeps each action reachable.
+        .contextMenu {
+            Button(isShown ? "Hide from Map" : "Show on Map") { setShown(!isShown) }
+            Button(session.inspector == .player(player.uuid) ? "Hide Details" : "Show Details") { toggleDetails() }
         }
     }
 

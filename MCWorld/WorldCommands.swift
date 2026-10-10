@@ -19,7 +19,7 @@ struct WorldCommands: Commands {
     var body: some Commands {
         CommandGroup(before: .sidebar) {
             Button("Zoom In") { session?.map?.zoom(by: 2) }
-                .keyboardShortcut("=")
+                .keyboardShortcut("+")
                 .disabled((session?.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
             Button("Zoom Out") { session?.map?.zoom(by: 0.5) }
                 .keyboardShortcut("-")

@@ -10,7 +10,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
    folder.
 2. Pick a dimension in the sidebar.
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
-4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘=**, **⌘−** and **⌘0**.
+4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in the **Structures** menu in
    the toolbar. Mineshafts and Nether fossils start hidden because there are so many.
