@@ -1,3 +1,4 @@
+import MCWorldKit
 import SwiftUI
 
 /// The pannable, zoomable top-down map of one dimension.
@@ -7,6 +8,12 @@ struct MapView: View {
     var structures: [StructureMarker] = []
     /// Points of interest to draw, above structures and below player markers.
     var places: [PlaceMarker] = []
+    /// The portal whose details are showing, drawn with a highlight ring.
+    var selectedPortal: NetherPortal?
+    /// Link status per portal, for warning badges; `nil` while unknown.
+    var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
+    /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
+    var onSelectPortal: (NetherPortal?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.
     var markers: [MapMarker] = []
 
@@ -40,8 +47,11 @@ struct MapView: View {
             }
             // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
             for place in places where map.viewport.scale >= 0.125 || place.group == .portal {
-                Self.draw(place, at: map.viewport.viewPoint(for: place.position, in: size), scale: map.viewport.scale,
-                          in: context, bounds: bounds)
+                let point = map.viewport.viewPoint(for: place.position, in: size)
+                Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds)
+                if let portal = place.portal {
+                    Self.drawPortalState(at: point, selected: portal == selectedPortal, status: portalStatus(portal), in: context)
+                }
             }
             for marker in markers {
                 Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
@@ -53,6 +63,7 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
+        .simultaneousGesture(SpatialTapGesture().onEnded { value in onSelectPortal(portal(at: value.location)) })
         .scrollWheelInput { action in
             switch action {
             case .pan(let delta): map.viewport.pan(by: delta)
@@ -141,6 +152,31 @@ struct MapView: View {
                            width: textSize.width + 10, height: textSize.height + 2)
         context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
         context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+    }
+
+    /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
+    private static func drawPortalState(at point: CGPoint, selected: Bool, status: PortalLinkStatus?, in context: GraphicsContext) {
+        if selected {
+            let ring = Path(ellipseIn: CGRect(x: point.x - 13, y: point.y - 13, width: 26, height: 26))
+            context.stroke(ring, with: .color(.white), lineWidth: 3)
+            context.stroke(ring, with: .color(.accentColor), lineWidth: 1.5)
+        }
+        guard let status, status != .linked else { return }
+        let badge = CGRect(x: point.x + 4, y: point.y - 12, width: 10, height: 10)
+        context.fill(Path(ellipseIn: badge), with: .color(status == .noPartner ? .red : .orange))
+        var mark = context.resolve(Text("!").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white))
+        mark.shading = .color(.white)
+        context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
+    }
+
+    /// The portal under a click, within 14 points of its marker.
+    private func portal(at point: CGPoint) -> NetherPortal? {
+        places.compactMap { place -> (NetherPortal, CGFloat)? in
+            guard let portal = place.portal else { return nil }
+            let p = map.viewport.viewPoint(for: place.position, in: size)
+            let distance = hypot(p.x - point.x, p.y - point.y)
+            return distance <= 14 ? (portal, distance) : nil
+        }.min { $0.1 < $1.1 }?.0
     }
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.

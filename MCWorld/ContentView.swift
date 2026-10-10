@@ -74,8 +74,16 @@ private struct WorldView: View {
             }
         } detail: {
             if let map = session.map {
-                MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces, markers: session.markers)
+                MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
+                        selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
+                        onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
                     .id(map.dimension.id)
+                    .overlay(alignment: .topLeading) {
+                        if let portal = session.selectedPortal {
+                            PortalCard(session: session, portal: portal)
+                                .padding(10)
+                        }
+                    }
                     .toolbar {
                         ToolbarItem {
                             LayerMenu(title: "Structures", systemImage: "building.columns",
@@ -208,5 +216,54 @@ private struct LayerMenu<Group: MapLayerGroup>: View where Group.AllCases: Rando
             Label(title, systemImage: systemImage)
         }
         .help(help)
+    }
+}
+
+/// Where the selected Nether portal leads, and whether the link goes both ways.
+private struct PortalCard: View {
+    let session: WorldSession
+    let portal: NetherPortal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
+                Spacer()
+                Button("Close", systemImage: "xmark") { session.selectedPortal = nil }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+            }
+            Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Divider()
+            switch session.link(for: portal) {
+            case .portal(let target, _)?:
+                Text("Leads to the portal in \(dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
+                if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
+                    Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                Button("Show the Other Side") { session.show(target) }
+            case .wouldCreateNewPortal(let destination)?:
+                Label("No portal in \(dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            case nil:
+                ProgressView().controlSize(.small)
+            }
+            Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(width: 300, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func dimensionName(_ id: String) -> String {
+        session.dimensions.first { $0.id == id }?.displayName ?? id
     }
 }

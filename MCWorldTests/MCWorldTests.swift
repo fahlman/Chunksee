@@ -500,15 +500,29 @@ import Testing
         #expect(!PlaceMarker(poi("minecraft:meeting", 0, 64, 0, tickets: 0)).isClaimed)  // only beds and workstations
     }
 
-    @Test func portalBlocksMergeIntoOnePlacePerPortal() {
+    @Test func onePlacePerPortalFromMCWorldKitsGrouping() {
         // A 2-wide, 3-tall portal at x 10–11, plus a separate single block far away.
         let blocks = [(10, 64), (11, 64), (10, 65), (11, 65), (10, 66), (11, 66)].map { poi("minecraft:nether_portal", $0.0, $0.1, 5) }
-            + [poi("minecraft:nether_portal", 200, 70, 5), poi("minecraft:meeting", 0, 64, 0)]
-        let merged = PlaceMarker.mergingPortals(blocks.map(PlaceMarker.init), blocks: blocks)
-        let portals = merged.filter { $0.group == .portal }
-        #expect(portals.count == 2)
-        #expect(portals.contains { $0.position == CGPoint(x: 11, y: 5.5) && $0.y == 64 })
-        #expect(merged.contains { $0.group == .bell })
+            + [poi("minecraft:nether_portal", 200, 70, 5)]
+        let places = NetherPortal.portals(from: blocks, in: "minecraft:overworld").map(PlaceMarker.init)
+        #expect(places.count == 2)
+        #expect(places.contains { $0.position == CGPoint(x: 11, y: 5.5) && $0.y == 64 && $0.portal?.blocks.count == 6 })
+        #expect(places.allSatisfy { $0.group == .portal })
+    }
+
+    @Test func portalLinkStatuses() {
+        typealias Block = NetherPortal.Block
+        func frame(_ d: String, _ x: Int, _ z: Int) -> NetherPortal {
+            NetherPortal(dimension: d, blocks: [0, 1].flatMap { dx in (0..<3).map { Block(x: x + dx, y: 64 + $0, z: z) } })
+        }
+        let a = frame("minecraft:overworld", 800, 0), b = frame("minecraft:overworld", 840, 0)  // both lead near nether x 100–105
+        let n = frame("minecraft:the_nether", 100, 0)
+        let lonely = frame("minecraft:overworld", 8000, 8000)
+        let portals = ["minecraft:overworld": [a, b, lonely], "minecraft:the_nether": [n]]
+        #expect(PortalLinkStatus.status(of: a, portals: portals) == .linked)    // n leads back to a (closer to 800)
+        #expect(PortalLinkStatus.status(of: b, portals: portals) == .oneWay)    // b -> n, but n -> a
+        #expect(PortalLinkStatus.status(of: lonely, portals: portals) == .noPartner)
+        #expect(PortalLinkStatus.status(of: a, portals: ["minecraft:overworld": [a]]) == nil)  // Nether not loaded yet
     }
 
     @Test func scannerReadsPoiFiles() async throws {
