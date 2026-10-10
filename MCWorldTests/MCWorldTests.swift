@@ -674,11 +674,13 @@ import Testing
             try Data(Compression.deflate(root.serialized(), gzip: true)).write(to: url)
         }
         try write("data/minecraft/game_rules.dat", ["minecraft:keep_inventory": .byte(1)])
+        try write("data/minecraft/wandering_trader.dat", ["spawn_delay": .int(20_400), "spawn_chance": .int(75)])
         try write("dimensions/minecraft/overworld/data/minecraft/world_border.dat", ["size": .double(2000), "center_x": .double(100), "center_z": .double(0)])
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
+        #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
         #expect(session.visibleBorder?.size == 2000)
         session.inspector = .world
         #expect(session.inspector == .world)
