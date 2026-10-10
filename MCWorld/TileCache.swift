@@ -6,7 +6,11 @@ import Foundation
 /// game re-render automatically.
 nonisolated struct TileCache: Sendable {
     /// Bump whenever rendering output changes (colors, shading, layout), invalidating old entries.
-    static let rendererVersion = 1
+    /// 2: relief shading on each region's top row. 3: the Nether drawn under its roof.
+    /// 4: solid Nether columns drawn darkened instead of left empty. 5: that block taken from below
+    /// the roof's bedrock band.
+    /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
+    static let rendererVersion = 5
 
     let directory: URL
 

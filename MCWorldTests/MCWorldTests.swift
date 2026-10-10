@@ -106,6 +106,42 @@ import Testing
         #expect(parallel == sequential)
     }
 
+    @Test func topRowOfARegionIsShadedLikeTheRest() async throws {
+        // A slope rising to the south: every row is one block higher than the row to its north.
+        let world = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, z in y <= z ? 1 : 0 },
+        ])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 0, z: 0)))
+        func rgb(_ x: Int, _ z: Int) -> [UInt8] { Array(pixels[(z * 512 + x) * 4 ..< (z * 512 + x) * 4 + 3]) }
+        let lit = MapColor(0x7D7D7D).shaded(1.12)
+        #expect(rgb(3, 5) == [lit.red, lit.green, lit.blue])
+        #expect(rgb(3, 0) == rgb(3, 5))  // the region's top row matches its neighbors
+    }
+
+    @Test func ceilingDimensionsShowTheFloorUnderTheRoof() throws {
+        // Netherrack floor at y 0–4, open air at 5–11, bedrock roof at 12–15.
+        let spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:netherrack", "minecraft:bedrock"]) { _, y, _ in
+            y <= 4 ? 1 : y >= 12 ? 2 : 0
+        }
+        let chunk = try Chunk(nbt: spec.nbt)
+        var open = RegionTileRenderer.ColorSections(chunk)
+        let top = open.topColumns { _ in 15 }
+        #expect(top[0]?.y == 15)  // without a ceiling, the roof is the top block
+        var underRoof = RegionTileRenderer.ColorSections(chunk)
+        let floor = underRoof.topColumns(underCeiling: true) { _ in 15 }
+        #expect(floor[0]?.y == 4)
+        #expect(floor[0]?.color == BlockColors.color(for: "minecraft:netherrack"))
+
+        // A column that is solid all the way down shows its first block under the roof, darkened.
+        let solid = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:netherrack"]) { _, _, _ in 0 }
+        var solidSections = RegionTileRenderer.ColorSections(try Chunk(nbt: solid.nbt))
+        let rock = solidSections.topColumns(underCeiling: true) { _ in 15 }
+        #expect(rock[0]?.y == 10)  // below the five-block roof band
+        #expect(rock[0]?.color == BlockColors.color(for: "minecraft:netherrack")?.shaded(0.6))
+    }
+
     @Test func missingRegionFileRendersNothing() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }

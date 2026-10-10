@@ -28,7 +28,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = Self.columns(in: file, localX: localX, localZ: localZ) {
+                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ)
                 }
             }
@@ -41,7 +41,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        return Self.columns(in: file, localX: localX, localZ: localZ).map { (localX, localZ, $0) }
+                        return Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY).map { (localX, localZ, $0) }
                     }
                 }
                 for _ in 0..<chunkConcurrency { startNext() }
@@ -113,7 +113,10 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
     /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
-    static func columns(in file: RegionFile, localX: Int, localZ: Int) -> [Column?]? {
+    /// The highest block under a dimension's roof, for dimensions that have one.
+    var ceilingY: Int? { dimension.id == "minecraft:the_nether" ? 127 : nil }
+
+    static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [Column?]? {
         // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
@@ -122,6 +125,9 @@ nonisolated struct RegionTileRenderer: Sendable {
         // upgraded from old versions have none), every column starts at the top of the chunk.
         let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
         let topY = sections.topY
+        if let ceilingY {
+            return sections.topColumns(underCeiling: true) { _ in ceilingY }
+        }
         return sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
     }
 
@@ -181,15 +187,21 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// `startY(i)`. Sections are visited top-down and each one's palette indices are decoded in
         /// one sequential pass, so all columns advance together instead of each column doing
         /// hundreds of random lookups; the scan stops as soon as every column is resolved.
-        mutating func topColumns(startY: (Int) -> Int) -> [Column?] {
-            enum State { case searching, water, done }
+        /// With `underCeiling`, each column first steps down through solid blocks until it reaches
+        /// open space, then searches as usual: the Nether's bedrock roof would otherwise hide everything.
+        mutating func topColumns(underCeiling: Bool = false, startY: (Int) -> Int) -> [Column?] {
+            enum State { case ceiling, searching, water, done }
             var result = [Column?](repeating: nil, count: 256)
-            var state = [State](repeating: .searching, count: 256)
+            var state = [State](repeating: underCeiling ? .ceiling : .searching, count: 256)
             let start = (0..<256).map { min(startY($0), topY) }
             var waterY = [Int](repeating: 0, count: 256)
             var waterColor = [MapColor](repeating: MapColor(0), count: 256)
             var depth = [Int](repeating: 0, count: 256)
             var remaining = 256
+            // Under a ceiling, the first solid block below the roof's bedrock band (at most five
+            // blocks thick in the Nether), drawn darkened if a column never reaches open space
+            // (solid rock all the way down) instead of leaving a hole.
+            var ceilingFallback = [Column?](repeating: nil, count: 256)
 
             func finishWater(_ i: Int) {
                 result[i] = Column(y: waterY[i], color: waterColor[i], waterDepth: depth[i])
@@ -208,7 +220,9 @@ nonisolated struct RegionTileRenderer: Sendable {
                 previousSectionY = sectionY
                 guard remaining > 0, low >= minY - 15 else { break }
                 // Skip sections that every still-searching column starts below.
-                guard (0..<256).contains(where: { state[$0] == .water || (state[$0] == .searching && start[$0] >= low) }) else {
+                guard (0..<256).contains(where: {
+                    state[$0] == .water || ((state[$0] == .searching || state[$0] == .ceiling) && start[$0] >= low)
+                }) else {
                     continue
                 }
 
@@ -216,6 +230,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                 let indices = uniform ? [] : sections[s].states.allPaletteIndices()
                 if uniform, resolve(section: s, palette: 0) == .clear {
                     for i in 0..<256 where state[i] == .water { finishWater(i) }
+                    // An open section below a ceiling: those columns now search for the floor.
+                    for i in 0..<256 where state[i] == .ceiling && start[i] >= low { state[i] = .searching }
                     continue
                 }
                 for y in stride(from: 15, through: 0, by: -1) where remaining > 0 {
@@ -225,6 +241,18 @@ nonisolated struct RegionTileRenderer: Sendable {
                         switch state[i] {
                         case .done:
                             continue
+                        case .ceiling:
+                            guard absoluteY <= start[i] else { continue }
+                            switch resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
+                            case .clear:
+                                state[i] = .searching
+                            case .solid(let color), .water(let color):
+                                if ceilingFallback[i] == nil, absoluteY <= start[i] - 5 {
+                                    ceilingFallback[i] = Column(y: absoluteY, color: color.shaded(0.6), waterDepth: 0)
+                                }
+                            case .unresolved:
+                                continue
+                            }
                         case .searching:
                             guard absoluteY <= start[i] else { continue }
                             switch resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
@@ -253,6 +281,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
             for i in 0..<256 where state[i] == .water { finishWater(i) }
+            for i in 0..<256 where state[i] == .ceiling { result[i] = ceilingFallback[i] }
             return result
         }
     }
@@ -290,10 +319,19 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
 
         /// Lightens land that is higher than the block to its north and darkens land that is lower.
+        /// The top row has no north neighbor in this region, so its north height is extrapolated from
+        /// the row below; leaving it unshaded drew a visible line along every region edge.
         mutating func applyRelief() {
-            for z in stride(from: side - 1, through: 1, by: -1) {
+            for z in stride(from: side - 1, through: 0, by: -1) {
                 for x in 0..<side {
-                    let i = z * side + x, north = heights[i - side]
+                    let i = z * side + x
+                    let north: Int32
+                    if z > 0 {
+                        north = heights[i - side]
+                    } else {
+                        let below = heights[i + side]
+                        north = heights[i] == Self.noHeight || below == Self.noHeight ? Self.noHeight : 2 * heights[i] - below
+                    }
                     guard heights[i] != Self.noHeight, north != Self.noHeight, !isWater[i] else { continue }
                     let factor: Double = heights[i] > north ? 1.12 : heights[i] < north ? 0.85 : 1
                     guard factor != 1 else { continue }
