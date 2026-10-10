@@ -188,12 +188,10 @@ private struct PlayerRow: View {
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: Binding {
-                !session.visibility.hiddenPlayers.contains(player.uuid)
-            } set: {
-                if $0 { session.visibility.hiddenPlayers.remove(player.uuid) } else { session.visibility.hiddenPlayers.insert(player.uuid) }
-            })
+                isShown
+            } set: { setShown($0) })
             Button("Show Details", systemImage: "info.circle") {
-                session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
+                toggleDetails()
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
@@ -201,6 +199,22 @@ private struct PlayerRow: View {
             .help("Show inventory, health and experience")
         }
         .accessibilityElement(children: .contain)
+        // Native sidebar rows combine their controls, so expose the secondary actions on the row.
+        .accessibilityAction(named: Text(isShown ? "Hide from Map" : "Show on Map")) { setShown(!isShown) }
+        .accessibilityAction(named: Text(session.inspector == .player(player.uuid) ? "Hide Details" : "Show Details")) {
+            toggleDetails()
+        }
+    }
+
+    private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
+
+    private func setShown(_ shown: Bool) {
+        if shown { session.visibility.hiddenPlayers.remove(player.uuid) }
+        else { session.visibility.hiddenPlayers.insert(player.uuid) }
+    }
+
+    private func toggleDetails() {
+        session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
     }
 
     private var canFocus: Bool {
