@@ -17,7 +17,10 @@ It shows a top-down view of a world, the structures and places found in it, and 
 6. Places from the world's point-of-interest data appear too: Nether portals and village bells by
    default, and beds, villager workstations, bee nests and more from the **Places** menu. Beds and
    workstations a villager has claimed are dimmed.
-7. Players appear on the map at their last saved position, with their last death (✕) and respawn
+7. Click a Nether portal to see where it leads: the matching portal in the other dimension (with a
+   button to jump there), a warning if the link is one-way, or a warning that going through would
+   make the game build a new portal. Portals that don't link both ways carry a small badge.
+8. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Choose a player in the sidebar to jump to them, or hide markers with the people
    button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so MCWorld
    can read the names Minecraft remembers. You can also turn on looking up other players' names

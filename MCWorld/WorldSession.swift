@@ -10,7 +10,11 @@ final class WorldSession {
     let world: World
     let dimensions: [MCWorldKit.Dimension]
     var selectedDimensionID: String? {
-        didSet { if oldValue != selectedDimensionID { makeMapForSelection() } }
+        didSet {
+            guard oldValue != selectedDimensionID else { return }
+            if selectedPortal?.dimension != selectedDimensionID { selectedPortal = nil }
+            makeMapForSelection()
+        }
     }
     private(set) var map: MapModel?
     /// Players with saved data, most recently saved first.
@@ -23,6 +27,11 @@ final class WorldSession {
         }
     }
     private static let shownStructuresKey = "shownStructureGroups"
+    /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
+    private(set) var portalsByDimension: [String: [NetherPortal]] = [:]
+    /// The portal whose details card is showing.
+    var selectedPortal: NetherPortal?
+
     /// Point-of-interest groups shown on the map; remembered between launches.
     var shownPlaceGroups: Set<PlaceGroup> {
         didSet { UserDefaults.standard.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
@@ -53,6 +62,41 @@ final class WorldSession {
         self.selectedDimensionID = dimensions.first?.id
         makeMapForSelection()
         Self.maintainTileCache(forWorldAt: url)
+        loadPortals()
+    }
+
+    /// Reads both dimensions' portals in the background; links need the other side's portals.
+    private func loadPortals() {
+        let dimensions = dimensions.filter { NetherPortal.targetDimension(from: $0.id) != nil }
+        Task(priority: .utility) { [weak self] in
+            let found = await Self.readPortals(dimensions)
+            self?.portalsByDimension = found
+        }
+    }
+
+    @concurrent
+    private nonisolated static func readPortals(_ dimensions: [MCWorldKit.Dimension]) async -> [String: [NetherPortal]] {
+        var result: [String: [NetherPortal]] = [:]
+        for dimension in dimensions { result[dimension.id] = (try? dimension.netherPortals()) ?? [] }
+        return result
+    }
+
+    /// Where a portal leads, or `nil` until both sides' portals are loaded.
+    func link(for portal: NetherPortal) -> NetherPortal.Link? {
+        guard let target = NetherPortal.targetDimension(from: portal.dimension),
+              let candidates = portalsByDimension[target] else { return nil }
+        return portal.link(into: candidates)
+    }
+
+    /// Whether a portal links both ways, one way, or to nothing.
+    func linkStatus(for portal: NetherPortal) -> PortalLinkStatus? {
+        PortalLinkStatus.status(of: portal, portals: portalsByDimension)
+    }
+
+    /// Selects a portal and centers the map on it, switching dimension if needed.
+    func show(_ portal: NetherPortal) {
+        focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ))
+        selectedPortal = portal
     }
 
     /// The tile cache is limited to about 1 GB across all worlds; the least recently opened worlds'

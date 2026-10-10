@@ -78,6 +78,8 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var y: Int
     /// For beds and workstations: whether a villager has claimed it (no free tickets left).
     var isClaimed: Bool
+    /// For Nether portals: the whole portal (its blocks), as grouped by MCWorldKit.
+    var portal: NetherPortal?
 
     var name: String {
         let base = type.hasPrefix("minecraft:") ? String(type.dropFirst(10)) : type
@@ -104,31 +106,12 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
     }
 
-    /// Merges touching portal blocks (sharing a face) into one place per portal, at their center.
-    static func mergingPortals(_ places: [PlaceMarker], blocks: [PointOfInterest]) -> [PlaceMarker] {
-        let portalBlocks = blocks.filter { PlaceGroup.group(for: $0.type) == .portal }
-        guard !portalBlocks.isEmpty else { return places }
-        struct Key: Hashable { var x: Int, y: Int, z: Int }
-        var unvisited = Set(portalBlocks.map { Key(x: $0.x, y: $0.y, z: $0.z) })
-        var portals: [PlaceMarker] = []
-        while let seed = unvisited.first {
-            unvisited.remove(seed)
-            var stack = [seed], members: [Key] = []
-            while let block = stack.popLast() {
-                members.append(block)
-                for (dx, dy, dz) in [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)] {
-                    let next = Key(x: block.x + dx, y: block.y + dy, z: block.z + dz)
-                    if unvisited.remove(next) != nil { stack.append(next) }
-                }
-            }
-            let n = Double(members.count)
-            let lowest = members.min { $0.y < $1.y }!
-            var portal = PlaceMarker(PointOfInterest(type: "minecraft:nether_portal", x: lowest.x, y: lowest.y, z: lowest.z, freeTickets: 0))
-            portal.position = CGPoint(x: members.map { Double($0.x) + 0.5 }.reduce(0, +) / n,
-                                      y: members.map { Double($0.z) + 0.5 }.reduce(0, +) / n)
-            portals.append(portal)
-        }
-        return places.filter { $0.group != .portal } + portals
+    /// One place for a whole Nether portal, at the center of its blocks.
+    init(_ portal: NetherPortal) {
+        self.init(PointOfInterest(type: "minecraft:nether_portal", x: portal.entry.x, y: portal.minY, z: portal.entry.z, freeTickets: 0))
+        id = "portal@\(portal.entry.x),\(portal.entry.y),\(portal.entry.z)"
+        position = CGPoint(x: portal.centerX, y: portal.centerZ)
+        self.portal = portal
     }
 }
 
@@ -145,7 +128,36 @@ nonisolated enum PlaceScanner {
             for await found in group { all += found }
             return all
         }
-        let places = blocks.map(PlaceMarker.init)
-        return PlaceMarker.mergingPortals(places, blocks: blocks).sorted { $0.id < $1.id }
+        // Portal blocks become one place per portal (MCWorldKit owns the grouping rule).
+        let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
+        let portals = NetherPortal.portals(from: blocks, in: dimension.id).map(PlaceMarker.init)
+        return (others + portals).sorted { $0.id < $1.id }
+    }
+}
+
+/// Where a portal leads, as the app shows it.
+nonisolated enum PortalLinkStatus: Equatable, Sendable {
+    /// Leads to a portal that leads back here.
+    case linked
+    /// Leads to a portal that leads back to a different one.
+    case oneWay
+    /// No portal in range on the other side; the game would build a new one.
+    case noPartner
+
+    /// A portal's status given every portal by dimension, or `nil` while the other side is unknown.
+    static func status(of portal: NetherPortal, portals: [String: [NetherPortal]]) -> PortalLinkStatus? {
+        func link(_ p: NetherPortal) -> NetherPortal.Link? {
+            guard let target = NetherPortal.targetDimension(from: p.dimension), let candidates = portals[target] else { return nil }
+            return p.link(into: candidates)
+        }
+        switch link(portal) {
+        case .portal(let target, _)?:
+            guard case .portal(let back, _)? = link(target) else { return nil }
+            return back == portal ? .linked : .oneWay
+        case .wouldCreateNewPortal?:
+            return .noPartner
+        case nil:
+            return nil
+        }
     }
 }
