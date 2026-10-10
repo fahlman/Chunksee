@@ -29,7 +29,11 @@ final class WorldSession {
     private(set) var map: MapModel?
     /// Players with saved data, most recently saved first. Reread when the game saves them.
     private(set) var players: [PlayerInfo]
-    var showsPlayers = true
+    /// Players whose markers are hidden; remembered between launches.
+    var hiddenPlayers: Set<UUID> {
+        didSet { defaults.set(hiddenPlayers.map(\.uuidString).sorted(), forKey: Self.hiddenPlayersKey) }
+    }
+    private static let hiddenPlayersKey = "hiddenPlayers"
     /// What the inspector shows, if it's open.
     var inspector: Inspector?
     /// Game rules, weather, borders and the like, read when the world opens.
@@ -243,6 +247,7 @@ final class WorldSession {
             shownCreatureGroups = Set(CreatureGroup.allCases.filter(\.isShownByDefault))
         }
         shownBiomeGroups = Set((defaults.stringArray(forKey: Self.shownBiomesKey) ?? []).map(BiomeGroup.init(id:)))
+        hiddenPlayers = Set((defaults.stringArray(forKey: Self.hiddenPlayersKey) ?? []).compactMap(UUID.init(uuidString:)))
         self.world = world
         self.players = players
         self.dimensions = world.dimensions()
@@ -422,9 +427,9 @@ final class WorldSession {
 
     /// Player, death and respawn markers for the selected dimension, when players are shown.
     var markers: [MapMarker] {
-        guard showsPlayers, let id = selectedDimensionID else { return [] }
+        guard let id = selectedDimensionID else { return [] }
         let names = names
-        return PlayerPresentation.markers(for: players, in: id, singleplayerUUID: world.level.singleplayerUUID,
+        return PlayerPresentation.markers(for: players.filter { !hiddenPlayers.contains($0.uuid) }, in: id, singleplayerUUID: world.level.singleplayerUUID,
                                           worldDataVersion: world.level.dataVersion, knownName: { names.name(for: $0) })
     }
 
