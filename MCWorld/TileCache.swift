@@ -26,18 +26,18 @@ nonisolated struct TileCache: Sendable {
         var prefix: String { "r.\(region.x).\(region.z)." }
     }
 
-    /// The folder for one world's tiles: `Tiles/<hash of the world's path>`.
-    static func worldFolder(forWorldAt world: URL) -> URL? {
+    /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
+    static func worldFolder(forWorldAt world: URL, root: URL? = TileCache.root) -> URL? {
         // A stable FNV-1a hash of the world's path keeps different worlds' tiles apart.
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in world.standardizedFileURL.path.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
         return root?.appendingPathComponent(String(hash, radix: 16), isDirectory: true)
     }
 
-    /// The cache directory for one dimension of one world, inside the app's Caches folder.
-    static func directory(forWorldAt world: URL, dimensionID: String) -> URL? {
+    /// The cache directory for one dimension of one world, by default inside the app's Caches folder.
+    static func directory(forWorldAt world: URL, dimensionID: String, root: URL? = TileCache.root) -> URL? {
         let dimension = String(dimensionID.map { $0.isLetter || $0.isNumber ? $0 : "_" })
-        return worldFolder(forWorldAt: world)?.appendingPathComponent(dimension, isDirectory: true)
+        return worldFolder(forWorldAt: world, root: root)?.appendingPathComponent(dimension, isDirectory: true)
     }
 
     /// The folder holding every world's tiles.

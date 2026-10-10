@@ -612,7 +612,7 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The index is built as the world opens, before anyone searches.
         #expect(session.isIndexing)
@@ -676,7 +676,7 @@ import Testing
         try write("data/minecraft/game_rules.dat", ["minecraft:keep_inventory": .byte(1)])
         try write("dimensions/minecraft/overworld/data/minecraft/world_border.dat", ["size": .double(2000), "center_x": .double(100), "center_z": .double(0)])
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
         #expect(session.visibleBorder?.size == 2000)
@@ -749,7 +749,7 @@ import Testing
         try write(5, mapNBT(dimension: .byte(15)))                                       // another Bukkit world
         try write(6, mapNBT(dimension: .string("minecraft:the_nether")))                 // dimension not in this world
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.inGameMaps.map(\.id) == [3])
         session.show(session.inGameMaps[0])
@@ -785,7 +785,7 @@ import Testing
         let world = try TestWorld.make(chunks: [lived])
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.visibleHeatMap == nil && !session.isLoadingHeatMap)
         session.showsHeatMap = true
@@ -828,7 +828,7 @@ import Testing
         ])])
         try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: entities.appendingPathComponent("r.0.0.mca"))
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.map?.waitForCreatures()
         #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
@@ -870,7 +870,7 @@ import Testing
         let world = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.map?.waitForBiomeAreas()
         #expect(session.map?.biomeAreas.map(\.chunkCount) == [4])
@@ -940,13 +940,13 @@ import Testing
         try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
         first.selectedDimensionID = "minecraft:the_nether"   // leaving the Overworld remembers it
         first.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
         first.close()
 
-        let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { second.close() }
         #expect(second.selectedDimensionID == "minecraft:the_nether")
         #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 7, y: 8), scale: 4))
@@ -1004,7 +1004,7 @@ import Testing
         let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         session.refreshDelay = .zero
         #expect(session.players.isEmpty)
@@ -1022,6 +1022,27 @@ import Testing
         await session.waitForRefresh()
         #expect(session.map?.availableRegions.contains(RegionCoordinate(x: -1, z: 0)) == true)
         #expect(session.players.count == 1)
+    }
+}
+
+@Suite struct CacheRootTests {
+    @Test func sessionsCacheOnlyUnderTheirRoot() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: world)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
+        await session.waitForIndex()
+        session.close()
+        let scans = try #require(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root))
+            .appendingPathComponent("scans")
+        #expect(FileManager.default.fileExists(atPath: scans.path))
+        // Nothing for this world in the app's own Caches folder.
+        let appFolder = try #require(TileCache.worldFolder(forWorldAt: world))
+        #expect(!FileManager.default.fileExists(atPath: appFolder.path))
     }
 }
 

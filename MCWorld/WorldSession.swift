@@ -88,9 +88,9 @@ final class WorldSession {
         guard indexTask == nil else { return }
         // Rebuilding after the game saved keeps showing the current results meanwhile.
         isIndexing = searchIndex == nil
-        let dimensions = dimensions, url = url
+        let dimensions = dimensions, url = url, cacheRoot = cacheRoot
         indexTask = Task(priority: .utility) { [weak self] in
-            let index = await WorldSearch.index(dimensions) { ScanCache(forWorldAt: url, dimensionID: $0.id) }
+            let index = await WorldSearch.index(dimensions) { ScanCache(forWorldAt: url, dimensionID: $0.id, root: cacheRoot) }
             guard let self, !Task.isCancelled else { return }
             self.searchIndex = index
             self.isIndexing = false
@@ -215,10 +215,12 @@ final class WorldSession {
 
     private let isAccessingSecurityScope: Bool
     private let defaults: UserDefaults
+    private let cacheRoot: URL?
 
     private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, defaults: UserDefaults,
-                 isAccessingSecurityScope: Bool) {
+                 cacheRoot: URL?, isAccessingSecurityScope: Bool) {
         self.defaults = defaults
+        self.cacheRoot = cacheRoot
         self.url = url
         self.details = details
         self.names = names
@@ -247,7 +249,7 @@ final class WorldSession {
             .flatMap { id in dimensions.first { $0.id == id }?.id }
         self.selectedDimensionID = saved ?? dimensions.first?.id
         makeMapForSelection()
-        Self.maintainTileCache(forWorldAt: url)
+        Self.maintainTileCache(forWorldAt: url, root: cacheRoot)
         loadPortals()
         buildIndex()
         watcher = WorldWatcher(folder: url) { [weak self] files in self?.worldChanged(files) }
@@ -355,8 +357,8 @@ final class WorldSession {
 
     /// The tile cache is limited to about 1 GB across all worlds; the least recently opened worlds'
     /// tiles go first, never the one being opened.
-    private static func maintainTileCache(forWorldAt url: URL) {
-        guard let root = TileCache.root, let worldFolder = TileCache.worldFolder(forWorldAt: url) else { return }
+    private static func maintainTileCache(forWorldAt url: URL, root: URL?) {
+        guard let root, let worldFolder = TileCache.worldFolder(forWorldAt: url, root: root) else { return }
         Task.detached(priority: .background) {
             TileCache.markUsed(worldFolder: worldFolder)
             TileCache.prune(root: root, limit: 1 << 30, keeping: worldFolder)
@@ -364,13 +366,15 @@ final class WorldSession {
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
-    /// `defaults` keeps which layers are shown; tests pass their own so they leave the app's alone.
-    static func open(_ url: URL, names: PlayerNames, defaults: UserDefaults = .standard) async throws -> WorldSession {
+    /// `defaults` keeps which layers are shown and where the map was; `cacheRoot` holds tiles and
+    /// scans (`nil` keeps nothing). Tests pass their own so they leave the app's alone.
+    static func open(_ url: URL, names: PlayerNames, defaults: UserDefaults = .standard,
+                     cacheRoot: URL? = TileCache.root) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let (world, players, details) = try await load(url)
             return WorldSession(url: url, world: world, players: players, details: details, names: names, defaults: defaults,
-                                isAccessingSecurityScope: accessing)
+                                cacheRoot: cacheRoot, isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
@@ -470,7 +474,7 @@ final class WorldSession {
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
         map = MapModel(dimension: dimension, center: spawnPoint,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
+                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
         if let viewport = savedViewport(for: dimension.id) { map?.viewport = viewport }
         map?.loadStructures()
         map?.loadPlaces()
