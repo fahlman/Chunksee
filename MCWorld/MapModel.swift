@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import MCWorldKit
 import Observation
 
@@ -22,8 +23,13 @@ final class MapModel {
     private static let maxCachedTiles = 200
     private let regionConcurrency: Int
 
+    /// Measured on a 14-core M4 Pro (fahlman/MCWorld#3): rendering regions and their chunks one
+    /// per core filled every tested view fastest or tied-fastest, and the cooperative thread pool
+    /// keeps the total thread count at the core count however many tasks are queued.
+    static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
+
     init(dimension: MCWorldKit.Dimension, center: CGPoint,
-         regionConcurrency: Int = 4, chunkConcurrency: Int = 1) {
+         regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency) {
         self.dimension = dimension
         self.regionConcurrency = max(1, regionConcurrency)
         self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency))
