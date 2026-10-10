@@ -13,12 +13,16 @@ final class WorldSession {
         didSet { if oldValue != selectedDimensionID { makeMapForSelection() } }
     }
     private(set) var map: MapModel?
+    /// Players with saved data, most recently saved first.
+    let players: [PlayerInfo]
+    var showsPlayers = true
 
     private let isAccessingSecurityScope: Bool
 
-    private init(url: URL, world: World, isAccessingSecurityScope: Bool) {
+    private init(url: URL, world: World, players: [PlayerInfo], isAccessingSecurityScope: Bool) {
         self.url = url
         self.world = world
+        self.players = players
         self.dimensions = world.dimensions()
         self.isAccessingSecurityScope = isAccessingSecurityScope
         self.selectedDimensionID = dimensions.first?.id
@@ -40,19 +44,21 @@ final class WorldSession {
     static func open(_ url: URL) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
-            let world = try await load(url)
-            return WorldSession(url: url, world: world, isAccessingSecurityScope: accessing)
+            let (world, players) = try await load(url)
+            return WorldSession(url: url, world: world, players: players, isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
         }
     }
 
-    /// Reading `level.dat` and listing dimensions touches the disk, so it runs off the main actor.
+    /// Reading `level.dat`, listing dimensions and reading player files touches the disk, so it
+    /// runs off the main actor.
     @concurrent
-    private nonisolated static func load(_ url: URL) async throws -> World {
+    private nonisolated static func load(_ url: URL) async throws -> (World, [PlayerInfo]) {
         do {
-            return try World(contentsOf: url)
+            let world = try World(contentsOf: url)
+            return (world, world.players())
         } catch WorldError.missingLevelDat {
             throw WorldOpenError.notAWorld
         } catch {
@@ -61,6 +67,29 @@ final class WorldSession {
     }
 
     var displayName: String { world.level.name ?? url.lastPathComponent }
+
+    func name(of player: PlayerInfo) -> String {
+        PlayerPresentation.name(of: player, singleplayerUUID: world.level.singleplayerUUID)
+    }
+
+    func isOutdated(_ player: PlayerInfo) -> Bool {
+        PlayerPresentation.isOutdated(player, worldDataVersion: world.level.dataVersion)
+    }
+
+    /// Player, death and respawn markers for the selected dimension, when players are shown.
+    var markers: [MapMarker] {
+        guard showsPlayers, let id = selectedDimensionID else { return [] }
+        return PlayerPresentation.markers(for: players, in: id, singleplayerUUID: world.level.singleplayerUUID,
+                                          worldDataVersion: world.level.dataVersion)
+    }
+
+    /// Shows a location: switches to its dimension if needed and centers the map on it.
+    func focus(on location: PlayerInfo.Location) {
+        guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
+        selectedDimensionID = location.dimension
+        map?.viewport.center = CGPoint(x: location.x, y: location.z)
+        if let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
+    }
 
     var selectedDimension: MCWorldKit.Dimension? {
         dimensions.first { $0.id == selectedDimensionID }
