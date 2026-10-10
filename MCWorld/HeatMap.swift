@@ -79,6 +79,7 @@ final class HeatMapLayer {
     private var images: [String: [RegionCoordinate: CGImage]] = [:]
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
     private let readers: [String: RegionReader]
+    private var isClosed = false
 
     init(readers: [String: RegionReader]) {
         self.readers = readers
@@ -95,7 +96,7 @@ final class HeatMapLayer {
     /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
     /// the current ones stay until the new ones are ready.
     func load(reread: Bool = false) {
-        guard isShown, let dimension, reread || images[dimension] == nil, tasks[dimension] == nil,
+        guard !isClosed, isShown, let dimension, reread || images[dimension] == nil, tasks[dimension] == nil,
               let reader = readers[dimension] else { return }
         tasks[dimension] = Task(priority: .userInitiated) { [weak self] in
             let images = await HeatMap.images(reader)
@@ -110,6 +111,7 @@ final class HeatMapLayer {
     }
 
     func cancel() {
+        isClosed = true
         tasks.values.forEach { $0.cancel() }
     }
 }

@@ -79,11 +79,13 @@ import Testing
         await session.search.waitForIndex()
         #expect(!session.search.isIndexing)
         session.search.text = "golden apple"
+        await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
         session.show(session.search.results[0])
         #expect(session.search.selectedHitID == session.search.results[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
+        await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["Orchard"])
         session.search.text = ""
         #expect(session.search.results.isEmpty)
@@ -92,6 +94,7 @@ import Testing
         // A saved search keeps its results pinned on the map after the search bar is cleared, and
         // is remembered for every world.
         session.search.text = "orchard"
+        await session.search.waitForSearch()
         session.saveSearch()
         session.search.text = ""
         #expect(session.mapContent.hits.map(\.detail) == ["Orchard"])
@@ -227,6 +230,7 @@ import Testing
         defer { session.close() }
         await session.search.waitForIndex()
         session.search.text = "biome:plains"
+        await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.visibility.biomes.isEmpty)
         session.show(hit)

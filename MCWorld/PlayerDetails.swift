@@ -76,7 +76,9 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
-    @State private var records: PlayerRecords?
+    private var records: PlayerRecords? {
+        session.playerRecords.uuid == player.uuid ? session.playerRecords.records : nil
+    }
     @State private var showsAllStatistics = false
 
     var body: some View {
@@ -88,6 +90,13 @@ struct PlayerDetailView: View {
                 }
             } header: {
                 Text(session.name(of: player)).font(.headline)
+            }
+            if PlayerPresentation.isMappable(player) {
+                Section("Locations") {
+                    if let location = player.position { locationButton("Last Position", location) }
+                    if let location = player.lastDeath { locationButton("Last Death", location) }
+                    if let location = player.respawn { locationButton("Respawn Point", location) }
+                }
             }
             Section("Status") {
                 if let health = player.health {
@@ -142,14 +151,18 @@ struct PlayerDetailView: View {
             PlayerRecordsSections(records: records, showsAllStatistics: $showsAllStatistics)
         }
         .formStyle(.grouped)
-        .task(id: player.uuid) {
-            records = nil
-            let world = session.world, uuid = player.uuid, name = session.names.name(for: uuid)
-            records = await PlayerRecords.load(from: world, uuid: uuid, name: name)
+        .task(id: RecordRequest(uuid: player.uuid, name: session.names.name(for: player.uuid), saved: player.lastSaved)) {
+            await session.playerRecords.load(player.uuid, name: session.names.name(for: player.uuid))
         }
         .sheet(isPresented: $showsAllStatistics) {
             StatisticsTable(rows: records?.rows ?? [])
         }
+    }
+
+    private struct RecordRequest: Hashable {
+        var uuid: UUID
+        var name: String?
+        var saved: Date?
     }
 
     private var gameMode: String {
@@ -160,6 +173,13 @@ struct PlayerDetailView: View {
         case .spectator: String(localized: "Spectator")
         case nil: String(localized: "Unknown")
         }
+    }
+
+    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location) -> some View {
+        Button { session.focus(on: location) } label: {
+            LabeledContent(title, value: String(localized: "\(session.dimensionName(location.dimension)): X \(Int(location.x)), Y \(Int(location.y)), Z \(Int(location.z))"))
+        }
+        .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }
 
     private static let equipmentOrder: [(key: String, name: LocalizedStringKey)] = [

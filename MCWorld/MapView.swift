@@ -27,6 +27,37 @@ struct MapContent {
     func biome(at block: CGPoint) -> String? {
         biomes[ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)]
     }
+
+    /// The individual locations represented by Canvas. Names and actions remain available
+    /// to VoiceOver even though Canvas itself creates no accessibility children.
+    func accessibleLocations(viewport: MapViewport, size: CGSize) -> [AccessibleMapLocation] {
+        var locations: [AccessibleMapLocation] = []
+        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
+        func add(_ id: String, _ name: String, _ position: CGPoint, selection: MapSelection? = nil) {
+            guard bounds.contains(viewport.viewPoint(for: position, in: size)) else { return }
+            locations.append(.init(id: id, name: name, position: position, selection: selection))
+        }
+        for marker in structures { add("structure-" + marker.id, marker.name, marker.position) }
+        for marker in places where viewport.scale >= 0.125 || marker.group == .portal {
+            add("place-" + marker.id, marker.name, marker.position, selection: marker.portal.map(MapSelection.portal))
+        }
+        for marker in creatures where viewport.scale >= 0.25 || selection == .creature(marker) {
+            add("creature-" + marker.id, marker.name, marker.position, selection: .creature(marker))
+        }
+        for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position) }
+        for hit in hits {
+            if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position) }
+        }
+        for marker in players { add("player-" + marker.id, marker.label, marker.position) }
+        return locations
+    }
+}
+
+struct AccessibleMapLocation: Identifiable {
+    var id: String
+    var name: String
+    var position: CGPoint
+    var selection: MapSelection?
 }
 
 /// The pannable, zoomable top-down map of one dimension.
@@ -155,20 +186,33 @@ struct MapView: View {
         .onAppear { isFocused = true }
         .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
-        .accessibilityElement()
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
-        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y))"))
+        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(Double(map.viewport.scale).formatted(.percent.precision(.fractionLength(0))))"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
+        .accessibilityChildren {
+            ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
+                Button(location.name) {
+                    map.viewport.center = location.position
+                    onSelect(location.selection)
+                }
+                .accessibilityValue(Text("X \(Int(location.position.x)), Z \(Int(location.position.y))"))
+                .accessibilityHint(Text("Center the map on this location"))
+            }
+        }
+        .accessibilityAction(named: Text("Zoom In")) { map.zoom(by: 2) }
+        .accessibilityAction(named: Text("Zoom Out")) { map.zoom(by: 0.5) }
+        .accessibilityAction(named: Text("Move North")) { map.viewport.pan(by: CGSize(width: 0, height: size.height / 4)) }
+        .accessibilityAction(named: Text("Move South")) { map.viewport.pan(by: CGSize(width: 0, height: -size.height / 4)) }
+        .accessibilityAction(named: Text("Move West")) { map.viewport.pan(by: CGSize(width: size.width / 4, height: 0)) }
+        .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
         .overlay(alignment: .bottom) { statusBar }
         .toolbar {
             ToolbarItemGroup {
-                Button("Zoom Out", systemImage: "minus.magnifyingglass") { zoom(by: 1 / Self.zoomStep) }
-                    .keyboardShortcut("-")
+                Button("Zoom Out", systemImage: "minus.magnifyingglass") { map.zoom(by: 1 / Self.zoomStep) }
                     .disabled(map.viewport.scale <= MapViewport.scaleRange.lowerBound)
                 Button("Actual Size", systemImage: "1.magnifyingglass") { map.viewport.scale = 1 }
-                    .keyboardShortcut("0")
-                Button("Zoom In", systemImage: "plus.magnifyingglass") { zoom(by: Self.zoomStep) }
-                    .keyboardShortcut("=")  // ⌘= is the Mac convention; "+" needs Shift on most layouts
+                Button("Zoom In", systemImage: "plus.magnifyingglass") { map.zoom(by: Self.zoomStep) }
                     .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
             }
         }
@@ -368,7 +412,4 @@ struct MapView: View {
             .onEnded { _ in magnifyStart = nil }
     }
 
-    private func zoom(by factor: CGFloat) {
-        map.viewport.zoom(by: factor, anchor: CGPoint(x: size.width / 2, y: size.height / 2), in: size)
-    }
 }
