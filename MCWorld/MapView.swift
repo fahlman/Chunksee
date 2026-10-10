@@ -266,7 +266,7 @@ struct MapView: View {
 
     /// Creatures look like places; a selected one is larger and always named.
     private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
-        drawBadge(symbol: creature.group.symbol, color: creature.group.color, radius: selected ? 9 : 6, name: creature.title,
+        drawBadge(symbol: creature.group.symbol, color: creature.group.color, radius: selected ? 9 : 6, name: creature.name,
                   showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
     }
 

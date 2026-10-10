@@ -50,8 +50,6 @@ private struct WorldView: View {
                     SearchResultsSection(session: session)
                 }
                 Section("World") {
-                    // A sidebar row rather than a toolbar button: with the inspector open, the toolbar
-                    // has no room for another item and starts hiding them in its overflow menu.
                     Button {
                         session.inspector = session.inspector == .world ? nil : .world
                     } label: {
@@ -79,6 +77,20 @@ private struct WorldView: View {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Label(dimension.displayName, systemImage: symbol(for: dimension.id))
                     }
+                }
+                if let map = session.map {
+                    LayerSection(title: "Structures", markers: map.structures, origin: session.spawnPoint,
+                                 shown: $session.shownStructureGroups) { session.center(on: $0.position) }
+                    LayerSection(title: "Places", markers: map.places, origin: session.spawnPoint,
+                                 shown: $session.shownPlaceGroups) { place in
+                        if let portal = place.portal { session.show(portal) } else { session.center(on: place.position) }
+                    }
+                    LayerSection(title: "Creatures", markers: map.creatures, origin: session.spawnPoint,
+                                 shown: $session.shownCreatureGroups) { creature in
+                        session.center(on: creature.position)
+                        session.selectedCreature = creature
+                    }
+                    LayerSection(title: "Biomes", markers: map.biomeAreas, origin: session.spawnPoint) { session.center(on: $0.position) }
                 }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
@@ -157,24 +169,6 @@ private struct WorldView: View {
                         .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
                     }
                     .toolbar {
-                        ToolbarItem {
-                            LayerMenu(title: "Structures", systemImage: "building.columns",
-                                      help: "Choose which structures appear on the map",
-                                      empty: "No structures found in explored areas",
-                                      groups: map.structures.map(\.group), shown: $session.shownStructureGroups)
-                        }
-                        ToolbarItem {
-                            LayerMenu(title: "Places", systemImage: "mappin.and.ellipse",
-                                      help: "Choose which places (portals, bells, beds, workstations…) appear on the map",
-                                      empty: "No places recorded in this dimension",
-                                      groups: map.places.map(\.group), shown: $session.shownPlaceGroups)
-                        }
-                        ToolbarItem {
-                            LayerMenu(title: "Creatures", systemImage: "pawprint",
-                                      help: "Choose which creatures (named ones, pets, villagers) appear on the map",
-                                      empty: "No named creatures, pets or villagers in this dimension",
-                                      groups: map.creatures.map(\.group), shown: $session.shownCreatureGroups)
-                        }
                         ToolbarItem {
                             Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
                                 .help("Show players, their last deaths and respawn points on the map")
@@ -268,50 +262,6 @@ private struct PlayerRow: View {
 private struct NameSources: Equatable {
     var folder: URL?
     var online: Bool
-}
-
-/// A group of map markers that a toolbar menu can show or hide.
-protocol MapLayerGroup: CaseIterable, Hashable {
-    var name: String { get }
-    var symbol: String { get }
-}
-
-extension StructureGroup: MapLayerGroup {}
-extension PlaceGroup: MapLayerGroup {}
-extension CreatureGroup: MapLayerGroup {}
-
-/// Chooses which groups of markers the map shows. Lists only groups present, with their counts.
-private struct LayerMenu<Group: MapLayerGroup>: View where Group.AllCases: RandomAccessCollection {
-    let title: LocalizedStringKey
-    let systemImage: String
-    let help: LocalizedStringKey
-    let empty: LocalizedStringKey
-    let groups: [Group]
-    @Binding var shown: Set<Group>
-
-    var body: some View {
-        let counts = Dictionary(grouping: groups, by: { $0 }).mapValues(\.count)
-        Menu {
-            if counts.isEmpty {
-                Text(empty)
-            } else {
-                ForEach(Group.allCases.filter { counts[$0] != nil }, id: \.self) { group in
-                    Toggle(isOn: Binding(
-                        get: { shown.contains(group) },
-                        set: { if $0 { shown.insert(group) } else { shown.remove(group) } }
-                    )) {
-                        Label("\(group.name) (\(counts[group] ?? 0))", systemImage: group.symbol)
-                    }
-                }
-                Divider()
-                Button("Show All") { shown.formUnion(counts.keys) }
-                Button("Hide All") { shown.subtract(counts.keys) }
-            }
-        } label: {
-            Label(title, systemImage: systemImage)
-        }
-        .help(help)
-    }
 }
 
 /// Where the selected Nether portal leads, and whether the link goes both ways.
