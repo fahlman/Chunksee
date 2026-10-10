@@ -76,6 +76,8 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
+    @State private var records: PlayerRecords?
+    @State private var showsAllStatistics = false
 
     var body: some View {
         Form {
@@ -137,8 +139,17 @@ struct PlayerDetailView: View {
             Section("Ender Chest") {
                 SlotGrid(slots: ItemAppearance.slots(player.enderChest, count: 27))
             }
+            PlayerRecordsSections(records: records, showsAllStatistics: $showsAllStatistics)
         }
         .formStyle(.grouped)
+        .task(id: player.uuid) {
+            records = nil
+            let world = session.world, uuid = player.uuid, name = session.names.name(for: uuid)
+            records = await PlayerRecords.load(from: world, uuid: uuid, name: name)
+        }
+        .sheet(isPresented: $showsAllStatistics) {
+            StatisticsTable(rows: records?.rows ?? [])
+        }
     }
 
     private var gameMode: String {
