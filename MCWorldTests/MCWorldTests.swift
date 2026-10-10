@@ -237,6 +237,33 @@ import Testing
     }
 }
 
+@Suite struct TileCachePruningTests {
+    @Test func prunesLeastRecentlyUsedWorldsButKeepsTheOpenOne() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("MCWorldPrune-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func world(_ name: String, bytes: Int, daysAgo: Double) throws -> URL {
+            let folder = root.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent("overworld"), withIntermediateDirectories: true)
+            try Data(count: bytes).write(to: folder.appendingPathComponent("overworld/r.0.0.x"))
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-daysAgo * 86_400)], ofItemAtPath: folder.path)
+            return folder
+        }
+        let oldest = try world("a", bytes: 400, daysAgo: 30)
+        let middle = try world("b", bytes: 400, daysAgo: 10)
+        let open = try world("c", bytes: 400, daysAgo: 60)   // oldest, but it's the world being opened
+        TileCache.prune(root: root, limit: 900, keeping: open)
+        // A dimension's folder sits inside its world's folder, which sits directly in the root.
+        let world = URL(fileURLWithPath: "/tmp/Some World")
+        let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world))
+        #expect(worldFolder.deletingLastPathComponent().standardizedFileURL == TileCache.root?.standardizedFileURL)
+        #expect(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld")?.deletingLastPathComponent().standardizedFileURL
+                == worldFolder.standardizedFileURL)
+        #expect(!FileManager.default.fileExists(atPath: oldest.path))
+        #expect(FileManager.default.fileExists(atPath: middle.path))
+        #expect(FileManager.default.fileExists(atPath: open.path))
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

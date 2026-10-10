@@ -22,14 +22,50 @@ nonisolated struct TileCache: Sendable {
         var prefix: String { "r.\(region.x).\(region.z)." }
     }
 
-    /// The cache directory for one dimension of one world, inside the app's Caches folder.
-    static func directory(forWorldAt world: URL, dimensionID: String) -> URL? {
-        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+    /// The folder for one world's tiles: `Tiles/<hash of the world's path>`.
+    static func worldFolder(forWorldAt world: URL) -> URL? {
         // A stable FNV-1a hash of the world's path keeps different worlds' tiles apart.
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in world.standardizedFileURL.path.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
-        let dimension = dimensionID.map { $0.isLetter || $0.isNumber ? $0 : "_" }
-        return caches.appendingPathComponent("Tiles/\(String(hash, radix: 16))/\(String(dimension))", isDirectory: true)
+        return root?.appendingPathComponent(String(hash, radix: 16), isDirectory: true)
+    }
+
+    /// The cache directory for one dimension of one world, inside the app's Caches folder.
+    static func directory(forWorldAt world: URL, dimensionID: String) -> URL? {
+        let dimension = String(dimensionID.map { $0.isLetter || $0.isNumber ? $0 : "_" })
+        return worldFolder(forWorldAt: world)?.appendingPathComponent(dimension, isDirectory: true)
+    }
+
+    /// The folder holding every world's tiles.
+    static var root: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("Tiles", isDirectory: true)
+    }
+
+    /// Removes whole worlds' tiles, least recently used first, until the cache is under `limit`
+    /// bytes. A world's folder is marked used whenever it's opened (see `markUsed`).
+    static func prune(root: URL, limit: Int, keeping keep: URL? = nil) {
+        let fileManager = FileManager.default
+        let worlds = (try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        func size(of folder: URL) -> Int {
+            let files = fileManager.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []
+            return files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        }
+        var entries = worlds.map { folder in
+            (folder: folder, size: size(of: folder),
+             used: (try? folder.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+        }
+        var total = entries.reduce(0) { $0 + $1.size }
+        entries.sort { $0.used < $1.used }
+        for entry in entries where total > limit && entry.folder.standardizedFileURL != keep?.standardizedFileURL {
+            try? fileManager.removeItem(at: entry.folder)
+            total -= entry.size
+        }
+    }
+
+    /// Records that a world's tiles were just used, for least-recently-used pruning.
+    static func markUsed(worldFolder: URL) {
+        try? FileManager.default.createDirectory(at: worldFolder, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: worldFolder.path)
     }
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.

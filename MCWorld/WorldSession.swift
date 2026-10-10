@@ -23,6 +23,17 @@ final class WorldSession {
         self.isAccessingSecurityScope = isAccessingSecurityScope
         self.selectedDimensionID = dimensions.first?.id
         makeMapForSelection()
+        Self.maintainTileCache(forWorldAt: url)
+    }
+
+    /// The tile cache is limited to about 1 GB across all worlds; the least recently opened worlds'
+    /// tiles go first, never the one being opened.
+    private static func maintainTileCache(forWorldAt url: URL) {
+        guard let root = TileCache.root, let worldFolder = TileCache.worldFolder(forWorldAt: url) else { return }
+        Task.detached(priority: .background) {
+            TileCache.markUsed(worldFolder: worldFolder)
+            TileCache.prune(root: root, limit: 1 << 30, keeping: worldFolder)
+        }
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
