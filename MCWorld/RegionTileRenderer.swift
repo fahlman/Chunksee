@@ -114,7 +114,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
     /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
     static func columns(in file: RegionFile, localX: Int, localZ: Int) -> [Column?]? {
-        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
+        // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
+        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk)
         // The heightmap gives the first free block above the surface; without one (most chunks
