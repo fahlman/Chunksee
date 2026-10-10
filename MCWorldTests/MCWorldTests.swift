@@ -217,7 +217,7 @@ import Testing
         }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let region = RegionCoordinate(x: 0, z: 0)
-        let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: cacheDir))
+        let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: cacheDir), savesInBackground: false)
         let regionFile = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
 
         let first = try #require(try await renderer.tile(for: region))

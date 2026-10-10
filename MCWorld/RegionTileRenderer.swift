@@ -14,6 +14,9 @@ nonisolated struct RegionTileRenderer: Sendable {
     var chunkConcurrency = 1
     /// Rendered pixels saved between launches; `nil` renders every time.
     var cache: TileCache?
+    /// Saving compresses and writes about 1 MB, so by default it happens after the tile is
+    /// returned, at low priority, keeping it off the path to the screen. Tests save synchronously.
+    var savesInBackground = true
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
@@ -77,7 +80,13 @@ nonisolated struct RegionTileRenderer: Sendable {
             pixels = cached
         } else {
             pixels = try await self.pixels(for: region)
-            if let cache, let key, let pixels { cache.store(pixels, for: key) }
+            if let cache, let key, let pixels {
+                if savesInBackground {
+                    Task.detached(priority: .utility) { cache.store(pixels, for: key) }
+                } else {
+                    cache.store(pixels, for: key)
+                }
+            }
         }
         guard let pixels,
               let full = Self.makeImage(pixels, side: Self.side),
