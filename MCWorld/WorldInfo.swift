@@ -12,6 +12,7 @@ nonisolated struct WorldDetails: Sendable {
     /// World borders by dimension id.
     var borders: [String: WorldBorder] = [:]
     var dragonFight: EnderDragonFight?
+    var wanderingTrader: WanderingTraderTimer?
     /// Maps made in the game that have something drawn, in a recognized dimension.
     var maps: [MapItem] = []
 
@@ -26,6 +27,7 @@ nonisolated struct WorldDetails: Sendable {
             if let border = try? world.worldBorder(of: dimension) { details.borders[dimension.id] = border }
         }
         details.dragonFight = try? world.enderDragonFight()
+        details.wanderingTrader = try? world.wanderingTrader()
         details.maps = world.mapItems().filter { !$0.isBlank && $0.dimension != nil }
         return details
     }
@@ -100,6 +102,18 @@ struct WorldInfoView: View {
                         .help("Each time the dragon is defeated, one more gateway to the outer End islands opens")
                 }
             }
+            if let trader = details.wanderingTrader {
+                Section("Wandering Trader") {
+                    if tradersAreOff {
+                        Text("Turned off by a game rule").foregroundStyle(.secondary)
+                    } else {
+                        LabeledContent("Next Chance", value: trader.spawnDelay < 1200 ? String(localized: "Within a minute of play")
+                                       : String(localized: "In about \(trader.spawnDelay / 1200) minutes of play"))
+                        LabeledContent("Odds", value: (Double(trader.spawnChance) / 100).formatted(.percent))
+                            .help("The odds rise after each attempt that doesn’t bring a trader")
+                    }
+                }
+            }
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
                     LabeledContent(dimension.displayName, value: borderDescription(details.borders[dimension.id]))
@@ -128,6 +142,11 @@ struct WorldInfoView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// `spawn_wandering_traders` in 26.1+, `doTraderSpawning` before.
+    private var tradersAreOff: Bool {
+        details.gameRules.contains { ["Spawn Wandering Traders", "Do Trader Spawning"].contains($0.name) && $0.value == .bool(false) }
     }
 
     private var difficulty: String {
