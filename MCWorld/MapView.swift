@@ -285,6 +285,9 @@ struct MapView: View {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 Text("X \(Int(hoverBlock.x.rounded(.down)))  Z \(Int(hoverBlock.y.rounded(.down)))")
                     .monospacedDigit()
+                if let biome = map.biome(at: hoverBlock) {
+                    Text(ReadableName.from(biome))
+                }
             }
             if map.isLoading {
                 ProgressView().controlSize(.small)
