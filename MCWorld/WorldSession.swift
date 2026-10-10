@@ -343,6 +343,19 @@ final class WorldSession {
     }
 
     /// Shows a location: switches to its dimension if needed and centers the map on it.
+    /// The world spawn when it's in the selected dimension, otherwise the origin.
+    var spawnPoint: CGPoint {
+        guard let spawn = world.level.spawnPosition,
+              (world.level.spawnDimension ?? "minecraft:overworld") == selectedDimensionID else { return .zero }
+        return CGPoint(x: spawn.x, y: spawn.z)
+    }
+
+    /// Centers the map on a point in the selected dimension.
+    func center(on point: CGPoint) {
+        guard let id = selectedDimensionID else { return }
+        focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y))
+    }
+
     func focus(on location: PlayerInfo.Location) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
         selectedDimensionID = location.dimension
@@ -368,18 +381,19 @@ final class WorldSession {
         }
         // Start at the world spawn when it's in this dimension, otherwise at the origin. A new
         // style for the same dimension keeps the view where it was.
-        var center = CGPoint.zero
-        if let spawn = world.level.spawnPosition, (world.level.spawnDimension ?? "minecraft:overworld") == dimension.id {
-            center = CGPoint(x: spawn.x, y: spawn.z)
-        }
+        let center = spawnPoint
         // Each style keeps its own tiles.
         var cacheDirectory = TileCache.directory(forWorldAt: url, dimensionID: dimension.id)
         if mapStyle == .biomes { cacheDirectory = cacheDirectory?.appendingPathComponent("biomes", isDirectory: true) }
         map = MapModel(dimension: dimension, center: center, style: mapStyle, cacheDirectory: cacheDirectory)
-        if let previous, previous.dimension.id == dimension.id { map?.viewport = previous.viewport }
+        if let previous, previous.dimension.id == dimension.id {
+            map?.viewport = previous.viewport
+            map?.keepMarkers(of: previous)
+        }
         map?.loadStructures()
         map?.loadPlaces()
         map?.loadCreatures()
+        map?.loadBiomeAreas()
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.

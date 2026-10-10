@@ -837,10 +837,10 @@ import Testing
         let villager = try #require(Creature(entity("minecraft:villager", x: 0, z: 0, extra: [
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
-        #expect(marker.group == .villager && marker.title == "Librarian")
+        #expect(marker.group == .villager && marker.name == "Librarian")
         #expect(CreatureCard.levelName(5) == "Master")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
-        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.title == "Mittens")
+        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
     }
 
@@ -862,14 +862,46 @@ import Testing
         await session.map?.waitForCreatures()
         #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
         session.shownCreatureGroups = [.pet]
-        #expect(session.visibleCreatures.map(\.title) == ["Summer"])
+        #expect(session.visibleCreatures.map(\.name) == ["Summer"])
         session.selectedCreature = session.visibleCreatures.first
-        #expect(session.selectedCreature?.title == "Summer")
+        #expect(session.selectedCreature?.name == "Summer")
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
+        session.center(on: CGPoint(x: 10, y: 20))
+        #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
+        #expect(session.spawnPoint == .zero)   // the test world has no spawn
         session.searchText = "summer"
         await session.waitForIndex()
         #expect(session.searchResults.map(\.detail) == ["“Summer”"])
         #expect(session.searchResults.first?.source == .creature)
+    }
+}
+
+@Suite struct BiomeAreaTests {
+    @Test func neighboringChunksJoinAndSliversAreLeftOut() {
+        var biomes: [ChunkCoordinate: String] = [:]
+        for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
+        biomes[ChunkCoordinate(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk sliver
+        for z in 5..<9 { biomes[ChunkCoordinate(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
+        let areas = BiomeScanner.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
+        #expect(areas.map(\.chunkCount) == [6, 4])
+        #expect(areas.allSatisfy { $0.group.id == "minecraft:plains" } && areas[0].group.name == "Plains")
+        #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
+        #expect(areas[0].name == "6 chunks")
+    }
+
+    @Test func sessionFindsBiomeAreas() async throws {
+        let chunks = (0..<2).flatMap { x in (0..<2).map { z in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } }
+        let world = try TestWorld.make(chunks: chunks)
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        await session.map?.waitForBiomeAreas()
+        #expect(session.map?.biomeAreas.map(\.chunkCount) == [4])
+        #expect(session.map?.biomeAreas.first?.group.name == "Plains")
+        // A new style keeps what was found instead of scanning again.
+        session.mapStyle = .biomes
+        #expect(session.map?.style == .biomes && session.map?.biomeAreas.map(\.chunkCount) == [4])
     }
 }
 

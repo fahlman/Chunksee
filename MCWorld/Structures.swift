@@ -118,7 +118,7 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable {
     /// Ryan's Realm has exactly one).
     var portalRoom: CGPoint?
 
-    var center: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
+    var position: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
 
     /// "Plains Village", "Stronghold", "Ocean Ruin Cold" and so on, from the id. Minecraft's own
     /// names live in its language files, which can't be redistributed.

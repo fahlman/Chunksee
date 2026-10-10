@@ -54,7 +54,7 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     var position: CGPoint { CGPoint(x: creature.x, y: creature.z) }
 
     /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
-    var title: String {
+    var name: String {
         if let name = creature.customName { return name }
         if let job = creature.villager?.profession, job != "minecraft:none" { return ReadableName.from(job) }
         return ReadableName.from(creature.id)
@@ -98,7 +98,7 @@ struct CreatureCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(marker.title, systemImage: marker.group.symbol).font(.headline)
+                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
                 Spacer()
                 Button("Close", systemImage: "xmark") { session.selectedCreature = nil }
                     .labelStyle(.iconOnly)

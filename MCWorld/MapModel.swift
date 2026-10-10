@@ -20,8 +20,10 @@ final class MapModel {
     /// Every point of interest (portals, bells, beds…), once the background scan finishes.
     private(set) var places: [PlaceMarker] = []
     private(set) var creatures: [CreatureMarker] = []
+    private(set) var biomeAreas: [BiomeArea] = []
     private var placeTask: Task<Void, Never>?
     private var creatureTask: Task<Void, Never>?
+    private var biomeTask: Task<Void, Never>?
 
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
@@ -216,7 +218,7 @@ final class MapModel {
 
     /// Reads the dimension's structures in the background, at a lower priority than map tiles.
     func loadStructures() {
-        guard structureTask == nil else { return }
+        guard structureTask == nil, structures.isEmpty else { return }
         let dimension = dimension
         structureTask = Task(priority: .utility) { [weak self] in
             let found = await StructureScanner.scan(dimension)
@@ -227,7 +229,7 @@ final class MapModel {
 
     /// Reads the dimension's named creatures, pets and villagers in the background.
     func loadCreatures() {
-        guard creatureTask == nil else { return }
+        guard creatureTask == nil, creatures.isEmpty else { return }
         let dimension = dimension
         creatureTask = Task(priority: .utility) { [weak self] in
             let found = await CreatureScanner.scan(dimension)
@@ -241,9 +243,35 @@ final class MapModel {
         await creatureTask?.value
     }
 
+    /// Takes the markers another model of this dimension already found, so a new map style
+    /// doesn't scan the world again. Scans it hadn't finished start over with the `load` calls.
+    func keepMarkers(of other: MapModel) {
+        structures = other.structures
+        places = other.places
+        creatures = other.creatures
+        biomeAreas = other.biomeAreas
+    }
+
+    /// Finds the dimension's biome areas in the background. It reads every chunk (3.4 s for Ryan's
+    /// Realm's Overworld); background priority, rather than utility, slowed it to over a minute.
+    func loadBiomeAreas() {
+        guard biomeTask == nil, biomeAreas.isEmpty else { return }
+        let dimension = dimension
+        biomeTask = Task(priority: .utility) { [weak self] in
+            let found = await BiomeScanner.scan(dimension)
+            guard !Task.isCancelled else { return }
+            self?.biomeAreas = found
+        }
+    }
+
+    /// Waits for the scan started by `loadBiomeAreas()`.
+    func waitForBiomeAreas() async {
+        await biomeTask?.value
+    }
+
     /// Reads the dimension's points of interest in the background.
     func loadPlaces() {
-        guard placeTask == nil else { return }
+        guard placeTask == nil, places.isEmpty else { return }
         let dimension = dimension
         placeTask = Task(priority: .utility) { [weak self] in
             let found = await PlaceScanner.scan(dimension)
@@ -266,6 +294,7 @@ final class MapModel {
         structureTask?.cancel()
         placeTask?.cancel()
         creatureTask?.cancel()
+        biomeTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]
