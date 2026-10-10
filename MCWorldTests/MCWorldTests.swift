@@ -237,6 +237,27 @@ import Testing
     }
 }
 
+@Suite struct ScrollWheelInputTests {
+    let point = CGPoint(x: 100, y: 50)
+
+    @Test func trackpadScrollPansWithTheFingers() {
+        #expect(ScrollWheelInput.action(deltaX: 12, deltaY: -5, isTrackpad: true, command: false, at: point) == .pan(CGSize(width: 12, height: -5)))
+    }
+
+    @Test func commandScrollAndMouseWheelZoomAroundThePointer() {
+        guard case .zoom(let up, let anchor)? = ScrollWheelInput.action(deltaX: 0, deltaY: 20, isTrackpad: true, command: true, at: point) else {
+            Issue.record("expected a zoom"); return
+        }
+        #expect(up > 1)
+        #expect(anchor == point)
+        guard case .zoom(let down, _)? = ScrollWheelInput.action(deltaX: 0, deltaY: -1, isTrackpad: false, command: false, at: point) else {
+            Issue.record("expected a zoom"); return
+        }
+        #expect(down < 1)
+        #expect(ScrollWheelInput.action(deltaX: 3, deltaY: 0, isTrackpad: false, command: false, at: point) == nil)
+    }
+}
+
 /// Builds minimal 26.x worlds on disk using MCWorldKit's public NBT and compression API.
 enum TestWorld {
     struct ChunkSpec {

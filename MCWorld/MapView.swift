@@ -30,6 +30,12 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
+        .scrollWheelInput { action in
+            switch action {
+            case .pan(let delta): map.viewport.pan(by: delta)
+            case .zoom(let factor, let anchor): map.viewport.zoom(by: factor, anchor: anchor, in: size)
+            }
+        }
         .onContinuousHover { phase in
             switch phase {
             case .active(let point): hoverBlock = map.viewport.blockPoint(at: point, in: size)
@@ -55,7 +61,7 @@ struct MapView: View {
         .accessibilityElement()
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y))"))
-        .accessibilityHint(Text("Use the arrow keys to move the map."))
+        .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .overlay(alignment: .bottom) { statusBar }
         .toolbar {
             ToolbarItemGroup {

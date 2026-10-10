@@ -9,10 +9,12 @@ The first version shows a top-down view of a world. Later versions will add over
 1. Choose **File ▸ Open World…** and select a world's folder inside your Minecraft `saves`
    folder.
 2. Pick a dimension in the sidebar.
-3. To move around the map, drag or use the arrow keys.
-4. To zoom, pinch or use **⌘+**, **⌘−** and **⌘0**.
+3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
+4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
 
 MCWorld only reads your world; it never changes it. It reopens the last world when it launches.
+Rendered map tiles are kept in MCWorld's cache folder, so reopening a world is nearly instant; any
+part of the world that has changed since is drawn again.
 
 ## Building
 
