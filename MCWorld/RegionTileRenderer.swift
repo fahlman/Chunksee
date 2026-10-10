@@ -58,7 +58,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     static func columns(in file: RegionFile, localX: Int, localZ: Int) -> [Column?]? {
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
-        let sections = ColorSections(chunk)
+        var sections = ColorSections(chunk)
         let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
         return (0..<256).map { i in
             // The heightmap gives the first free block above the surface; without one, scan from the top.
@@ -74,17 +74,22 @@ nonisolated struct RegionTileRenderer: Sendable {
         var waterDepth: Int
     }
 
-    /// A chunk's sections with each palette entry's map color worked out once. Looking colors up
-    /// by block ID for every block dominated rendering time (string matching per block), so the
-    /// per-block work here is a palette index lookup.
+    /// A chunk's sections with map colors resolved per palette entry, the first time a column
+    /// reaches that entry. Looking colors up by block ID for every block examined dominated
+    /// rendering (string matching per block), while resolving every palette entry up front wastes
+    /// work on underground blocks the map never shows. Resolving lazily is never more work than either.
     struct ColorSections {
+        enum Entry: Equatable {
+            case unresolved
+            case clear
+            case solid(MapColor)
+            case water(MapColor)
+        }
+
         struct Section {
             var y: Int
             var states: PalettedContainer<BlockState>
-            /// Map color per palette entry; `nil` for blocks the map sees through.
-            var colors: [MapColor?]
-            var isWater: [Bool]
-            var isAllClear: Bool
+            var entries: [Entry]
         }
 
         private var sections: [Section]
@@ -94,11 +99,9 @@ nonisolated struct RegionTileRenderer: Sendable {
 
         init(_ chunk: Chunk) {
             sections = chunk.sections.compactMap { section in
-                guard let states = section.blockStates else { return nil }
-                let colors = states.palette.map { BlockColors.color(for: $0.id) }
-                return Section(y: section.y, states: states, colors: colors,
-                               isWater: states.palette.map { BlockColors.isWater($0.id) },
-                               isAllClear: colors.allSatisfy { $0 == nil })
+                section.blockStates.map {
+                    Section(y: section.y, states: $0, entries: Array(repeating: .unresolved, count: $0.palette.count))
+                }
             }
             firstY = sections.first?.y ?? 0
             minY = chunk.minSectionY * 16
@@ -113,47 +116,49 @@ nonisolated struct RegionTileRenderer: Sendable {
             return sections.firstIndex { $0.y == sy }
         }
 
-        /// Palette index and section for the block at section-local x/z and absolute y.
-        private func entry(x: Int, y: Int, z: Int) -> (section: Int, palette: Int)? {
+        /// The map entry for the block at section-local x/z and absolute y, or `nil` with no section there.
+        private mutating func entry(x: Int, y: Int, z: Int) -> Entry? {
             guard let s = sectionIndex(forBlockY: y) else { return nil }
-            let index = (y & 15) << 8 | z << 4 | x
-            return (s, sections[s].states.paletteIndex(at: index))
+            let p = sections[s].states.paletteIndex(at: (y & 15) << 8 | z << 4 | x)
+            guard p < sections[s].entries.count else { return .clear }
+            if sections[s].entries[p] == .unresolved {
+                let id = sections[s].states.palette[p].id
+                sections[s].entries[p] = switch BlockColors.color(for: id) {
+                case nil: .clear
+                case let color? where BlockColors.isWater(id): .water(color)
+                case let color?: .solid(color)
+                }
+            }
+            return sections[s].entries[p]
         }
 
-        func topColumn(x: Int, z: Int, from startY: Int) -> Column? {
+        mutating func topColumn(x: Int, z: Int, from startY: Int) -> Column? {
             var y = min(startY, topY)
-            var found: (section: Int, palette: Int)?
             while y >= minY {
                 guard let s = sectionIndex(forBlockY: y) else {
-                    y = (y >> 4) * 16 - 1  // missing section: skip it
+                    y = (y >> 4) * 16 - 1  // no section stored here: skip it
                     continue
                 }
-                if sections[s].isAllClear {
+                // A uniform section is one block throughout; if the map sees through it, skip it whole.
+                if sections[s].states.isUniform, entry(x: x, y: y, z: z) == .clear {
                     y = sections[s].y * 16 - 1
                     continue
                 }
-                let p = sections[s].states.paletteIndex(at: (y & 15) << 8 | z << 4 | x)
-                if p < sections[s].colors.count, sections[s].colors[p] != nil {
-                    found = (s, p)
-                    break
+                switch entry(x: x, y: y, z: z) {
+                case .solid(let color)?:
+                    return Column(y: y, color: color, waterDepth: 0)
+                case .water(let color)?:
+                    // Look through up to 32 blocks of water so depth can tint it.
+                    var depth = 1
+                    while depth < 32, y - depth >= minY, case .water? = entry(x: x, y: y - depth, z: z) {
+                        depth += 1
+                    }
+                    return Column(y: y, color: color, waterDepth: depth)
+                default:
+                    y -= 1
                 }
-                y -= 1
             }
-            guard let surface = found, let surfaceColor = sections[surface.section].colors[surface.palette] else {
-                return nil
-            }
-            guard sections[surface.section].isWater[surface.palette] else {
-                return Column(y: y, color: surfaceColor, waterDepth: 0)
-            }
-            // Look through up to 32 blocks of water so depth can tint it.
-            var depth = 1
-            var below = y - 1
-            while depth < 32, below >= minY, let e = entry(x: x, y: below, z: z),
-                  e.palette < sections[e.section].isWater.count, sections[e.section].isWater[e.palette] {
-                depth += 1
-                below -= 1
-            }
-            return Column(y: y, color: surfaceColor, waterDepth: depth)
+            return nil
         }
     }
 
