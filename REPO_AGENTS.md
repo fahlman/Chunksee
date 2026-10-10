@@ -52,8 +52,8 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 
 | File | Owns |
 |---|---|
-| `MCWorldApp.swift` | The single `Window` scene and the File ▸ Open World… command |
-| `AppModel.swift` | The open world, and remembering it between launches with a read-only bookmark |
+| `MCWorldApp.swift` | The world window group (one window per world) and the File ▸ Open World… and Open Recent commands |
+| `AppModel.swift` | Recent worlds (read-only bookmarks), the worlds open now and reopening them at launch, and app-wide player names and saved searches |
 | `WorldSession.swift` | One open world: security-scoped access, its dimensions, the selected dimension's map, and what's drawn over it from the world index |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
