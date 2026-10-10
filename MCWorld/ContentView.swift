@@ -88,6 +88,12 @@ private struct WorldView: View {
                                 .padding(10)
                         }
                     }
+                    .inspector(isPresented: inspectorShown) {
+                        if let player = session.players.first(where: { $0.uuid == session.inspectedPlayerID }) {
+                            PlayerDetailView(session: session, player: player)
+                                .inspectorColumnWidth(min: 320, ideal: 340)
+                        }
+                    }
                     .toolbar {
                         ToolbarItem {
                             LayerMenu(title: "Structures", systemImage: "building.columns",
@@ -116,6 +122,10 @@ private struct WorldView: View {
         .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items, signs and books"))
     }
 
+    private var inspectorShown: Binding<Bool> {
+        Binding { session.inspectedPlayerID != nil } set: { if !$0 { session.inspectedPlayerID = nil } }
+    }
+
     private func symbol(for id: String) -> String {
         switch id {
         case "minecraft:overworld": "globe.americas"
@@ -132,22 +142,32 @@ private struct PlayerRow: View {
     let player: PlayerInfo
 
     var body: some View {
-        Button {
-            if let position = player.position { session.focus(on: position) }
-        } label: {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.name(of: player))
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Button {
+                if let position = player.position { session.focus(on: position) }
+            } label: {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.name(of: player))
+                        Text(detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "person.fill")
                 }
-            } icon: {
-                Image(systemName: "person.fill")
             }
+            .buttonStyle(.plain)
+            .disabled(!canFocus)
+            .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
+            .help(help)
+            Spacer(minLength: 0)
+            Button("Show Details", systemImage: "info.circle") {
+                session.inspectedPlayerID = session.inspectedPlayerID == player.uuid ? nil : player.uuid
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .foregroundStyle(session.inspectedPlayerID == player.uuid ? Color.accentColor : .secondary)
+            .help("Show inventory, health and experience")
         }
-        .buttonStyle(.plain)
-        .disabled(!canFocus)
-        .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
-        .help(help)
     }
 
     private var canFocus: Bool {
