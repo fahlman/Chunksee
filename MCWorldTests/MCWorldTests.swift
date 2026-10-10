@@ -683,6 +683,40 @@ import Testing
     }
 }
 
+@Suite struct PlayerRecordsTests {
+    @Test func namesRankingsAndDistances() {
+        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm") == "Elytra")
+        #expect(PlayerRecords.travelName("minecraft:boat_one_cm") == "Boat")
+        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond") == "Mine Diamond")
+        let records = PlayerRecords(statistics: PlayerStatistics(values: [
+            "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
+            "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
+        ]))
+        #expect(records.distances.map(\.name) == ["Boat", "Walk"])   // crouching, under 100 m, is left out
+        #expect(records.distances.first?.kilometers == 20_875.48)
+        #expect(records.top("minecraft:mined", count: 2).map(\.name) == ["Dirt", "Stone"])
+        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk One Cm" })
+    }
+
+    @Test func readsUUIDFilesAndFallsBackToNameKeyedStatistics() async throws {
+        let worldURL = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: worldURL) }
+        let uuid = UUID()
+        let stats = worldURL.appendingPathComponent("players/stats")
+        let advancements = worldURL.appendingPathComponent("players/advancements")
+        try FileManager.default.createDirectory(at: stats, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: advancements, withIntermediateDirectories: true)
+        try Data(#"{"stat.playOneMinute":144000}"#.utf8).write(to: stats.appendingPathComponent("PlayerTwo.json"))
+        try Data(#"{"minecraft:story/mine_stone":{"criteria":{"get_stone":"2012-01-01 10:00:00 +0000"},"done":true},"minecraft:recipes/misc/x":{"criteria":{},"done":true},"DataVersion":5023}"#.utf8)
+            .write(to: advancements.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
+        let world = try World(contentsOf: worldURL)
+        let records = await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo")
+        #expect(records.statistics?.playTime == 144_000)
+        #expect(records.completedAdvancements.map(\.id) == ["minecraft:story/mine_stone"])
+        #expect(await PlayerRecords.load(from: world, uuid: UUID(), name: nil).statistics == nil)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

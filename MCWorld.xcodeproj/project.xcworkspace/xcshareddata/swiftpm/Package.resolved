@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/fahlman/MCWorldKit.git",
       "state" : {
-        "revision" : "fc8534c80ab2cb97ce1908f4c9ffa4a6733b0ca5",
-        "version" : "0.11.0"
+        "revision" : "3144617c8f184b9fbefdb164ba341a2b9e0b3996",
+        "version" : "0.12.0"
       }
     }
   ],
