@@ -484,6 +484,52 @@ import Testing
     }
 }
 
+@Suite struct PlaceTests {
+    func poi(_ type: String, _ x: Int, _ y: Int, _ z: Int, tickets: Int = 1) -> PointOfInterest {
+        PointOfInterest(type: type, x: x, y: y, z: z, freeTickets: tickets)
+    }
+
+    @Test func groupsNamesAndClaims() {
+        #expect(PlaceGroup.group(for: "minecraft:librarian") == .workstation)
+        #expect(PlaceGroup.group(for: "minecraft:meeting") == .bell)
+        #expect(PlaceGroup.group(for: "minecraft:beehive") == .beeNest)
+        #expect(PlaceGroup.portal.isShownByDefault && !PlaceGroup.bed.isShownByDefault)
+        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name == "Librarian’s Workstation")
+        let claimedBed = PlaceMarker(poi("minecraft:home", 0, 64, 0, tickets: 0))
+        #expect(claimedBed.isClaimed && claimedBed.name == "Villager’s Bed")
+        #expect(!PlaceMarker(poi("minecraft:meeting", 0, 64, 0, tickets: 0)).isClaimed)  // only beds and workstations
+    }
+
+    @Test func portalBlocksMergeIntoOnePlacePerPortal() {
+        // A 2-wide, 3-tall portal at x 10–11, plus a separate single block far away.
+        let blocks = [(10, 64), (11, 64), (10, 65), (11, 65), (10, 66), (11, 66)].map { poi("minecraft:nether_portal", $0.0, $0.1, 5) }
+            + [poi("minecraft:nether_portal", 200, 70, 5), poi("minecraft:meeting", 0, 64, 0)]
+        let merged = PlaceMarker.mergingPortals(blocks.map(PlaceMarker.init), blocks: blocks)
+        let portals = merged.filter { $0.group == .portal }
+        #expect(portals.count == 2)
+        #expect(portals.contains { $0.position == CGPoint(x: 11, y: 5.5) && $0.y == 64 })
+        #expect(merged.contains { $0.group == .bell })
+    }
+
+    @Test func scannerReadsPoiFiles() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let records: [NBT] = [
+            .compound(["type": .string("minecraft:nether_portal"), "pos": .intArray([1, 70, 1]), "free_tickets": .int(0)]),
+            .compound(["type": .string("minecraft:nether_portal"), "pos": .intArray([1, 71, 1]), "free_tickets": .int(0)]),
+            .compound(["type": .string("minecraft:home"), "pos": .intArray([5, 64, 5]), "free_tickets": .int(0)]),
+        ]
+        let chunk = NBT.compound(["DataVersion": .int(5023), "Sections": .compound(["4": .compound(["Valid": .byte(1), "Records": .list(records)])])])
+        let poiDir = world.appendingPathComponent("dimensions/minecraft/overworld/poi")
+        try FileManager.default.createDirectory(at: poiDir, withIntermediateDirectories: true)
+        try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: poiDir.appendingPathComponent("r.0.0.mca"))
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let places = await PlaceScanner.scan(dimension)
+        #expect(places.filter { $0.group == .portal }.count == 1)  // two blocks, one portal
+        #expect(places.filter { $0.group == .bed }.count == 1)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
@@ -544,7 +590,7 @@ enum TestWorld {
     }
 
     /// A region file holding chunks of one region, zlib-compressed, one record per sector run.
-    private static func regionFile(_ chunks: [ChunkSpec]) throws -> [UInt8] {
+    static func regionFile(_ chunks: [ChunkSpec]) throws -> [UInt8] {
         var file = [UInt8](repeating: 0, count: 8192)
         func be32(_ v: Int) -> [UInt8] { [UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)] }
         for chunk in chunks {

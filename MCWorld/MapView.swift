@@ -5,6 +5,8 @@ struct MapView: View {
     @Bindable var map: MapModel
     /// Structures to draw, above the tiles and below player markers.
     var structures: [StructureMarker] = []
+    /// Points of interest to draw, above structures and below player markers.
+    var places: [PlaceMarker] = []
     /// Points of interest for this dimension, drawn above the tiles.
     var markers: [MapMarker] = []
 
@@ -35,6 +37,11 @@ struct MapView: View {
             let bounds = CGRect(origin: .zero, size: size)
             for structure in structures {
                 Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
+            }
+            // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
+            for place in places where map.viewport.scale >= 0.125 || place.group == .portal {
+                Self.draw(place, at: map.viewport.viewPoint(for: place.position, in: size), scale: map.viewport.scale,
+                          in: context, bounds: bounds)
             }
             for marker in markers {
                 Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
@@ -132,6 +139,30 @@ struct MapView: View {
         let textSize = text.measure(in: CGSize(width: 240, height: 40))
         let label = CGRect(x: center.x - textSize.width / 2 - 5, y: center.y + radius + 2,
                            width: textSize.width + 10, height: textSize.height + 2)
+        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
+        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+    }
+
+    /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
+    private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
+        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
+        var context = context
+        context.opacity = place.isClaimed ? 0.65 : 1
+        let color = Color(red: Double((place.group.color >> 16) & 0xFF) / 255,
+                          green: Double((place.group.color >> 8) & 0xFF) / 255,
+                          blue: Double(place.group.color & 0xFF) / 255)
+        let radius: CGFloat = place.group == .portal ? 8 : 6
+        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+        context.fill(circle, with: .color(color))
+        context.stroke(circle, with: .color(.white.opacity(0.9)), lineWidth: 1)
+        var symbol = context.resolve(Image(systemName: place.group.symbol))
+        symbol.shading = .color(.white)
+        let side = radius * 1.2
+        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        guard scale >= 2 else { return }
+        let text = context.resolve(Text(place.name).font(.caption2.weight(.medium)).foregroundStyle(.white))
+        let size = text.measure(in: CGSize(width: 200, height: 30))
+        let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + radius + 2, width: size.width + 8, height: size.height + 2)
         context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
         context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
     }

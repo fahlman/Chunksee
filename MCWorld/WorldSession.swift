@@ -23,6 +23,11 @@ final class WorldSession {
         }
     }
     private static let shownStructuresKey = "shownStructureGroups"
+    /// Point-of-interest groups shown on the map; remembered between launches.
+    var shownPlaceGroups: Set<PlaceGroup> {
+        didSet { UserDefaults.standard.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
+    }
+    private static let shownPlacesKey = "shownPlaceGroups"
     /// App-wide player names, shared across worlds.
     let names: PlayerNames
 
@@ -35,6 +40,11 @@ final class WorldSession {
             shownStructureGroups = Set(saved.compactMap(StructureGroup.init(rawValue:)))
         } else {
             shownStructureGroups = Set(StructureGroup.allCases.filter(\.isShownByDefault))
+        }
+        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownPlacesKey) {
+            shownPlaceGroups = Set(saved.compactMap(PlaceGroup.init(rawValue:)))
+        } else {
+            shownPlaceGroups = Set(PlaceGroup.allCases.filter(\.isShownByDefault))
         }
         self.world = world
         self.players = players
@@ -107,6 +117,11 @@ final class WorldSession {
         (map?.structures ?? []).filter { shownStructureGroups.contains($0.group) }
     }
 
+    /// Points of interest of the shown groups in the selected dimension.
+    var visiblePlaces: [PlaceMarker] {
+        (map?.places ?? []).filter { shownPlaceGroups.contains($0.group) }
+    }
+
     /// Shows a location: switches to its dimension if needed and centers the map on it.
     func focus(on location: PlayerInfo.Location) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
@@ -133,6 +148,7 @@ final class WorldSession {
         map = MapModel(dimension: dimension, center: center,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
         map?.loadStructures()
+        map?.loadPlaces()
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.

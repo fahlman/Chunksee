@@ -74,11 +74,20 @@ private struct WorldView: View {
             }
         } detail: {
             if let map = session.map {
-                MapView(map: map, structures: session.visibleStructures, markers: session.markers)
+                MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces, markers: session.markers)
                     .id(map.dimension.id)
                     .toolbar {
                         ToolbarItem {
-                            StructureMenu(session: session, structures: map.structures)
+                            LayerMenu(title: "Structures", systemImage: "building.columns",
+                                      help: "Choose which structures appear on the map",
+                                      empty: "No structures found in explored areas",
+                                      groups: map.structures.map(\.group), shown: $session.shownStructureGroups)
+                        }
+                        ToolbarItem {
+                            LayerMenu(title: "Places", systemImage: "mappin.and.ellipse",
+                                      help: "Choose which places (portals, bells, beds, workstations…) appear on the map",
+                                      empty: "No places recorded in this dimension",
+                                      groups: map.places.map(\.group), shown: $session.shownPlaceGroups)
                         }
                         ToolbarItem {
                             Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
@@ -159,32 +168,45 @@ private struct NameSources: Equatable {
     var online: Bool
 }
 
-/// Chooses which kinds of structure the map shows. Lists only kinds found in this dimension.
-private struct StructureMenu: View {
-    @Bindable var session: WorldSession
-    let structures: [StructureMarker]
+/// A group of map markers that a toolbar menu can show or hide.
+protocol MapLayerGroup: CaseIterable, Hashable {
+    var name: String { get }
+    var symbol: String { get }
+}
+
+extension StructureGroup: MapLayerGroup {}
+extension PlaceGroup: MapLayerGroup {}
+
+/// Chooses which groups of markers the map shows. Lists only groups present, with their counts.
+private struct LayerMenu<Group: MapLayerGroup>: View where Group.AllCases: RandomAccessCollection {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let help: LocalizedStringKey
+    let empty: LocalizedStringKey
+    let groups: [Group]
+    @Binding var shown: Set<Group>
 
     var body: some View {
-        let counts = Dictionary(grouping: structures, by: \.group).mapValues(\.count)
+        let counts = Dictionary(grouping: groups, by: { $0 }).mapValues(\.count)
         Menu {
             if counts.isEmpty {
-                Text("No structures found in explored areas")
+                Text(empty)
             } else {
-                ForEach(StructureGroup.allCases.filter { counts[$0] != nil }, id: \.self) { group in
+                ForEach(Group.allCases.filter { counts[$0] != nil }, id: \.self) { group in
                     Toggle(isOn: Binding(
-                        get: { session.shownStructureGroups.contains(group) },
-                        set: { if $0 { session.shownStructureGroups.insert(group) } else { session.shownStructureGroups.remove(group) } }
+                        get: { shown.contains(group) },
+                        set: { if $0 { shown.insert(group) } else { shown.remove(group) } }
                     )) {
                         Label("\(group.name) (\(counts[group] ?? 0))", systemImage: group.symbol)
                     }
                 }
                 Divider()
-                Button("Show All") { session.shownStructureGroups.formUnion(counts.keys) }
-                Button("Hide All") { session.shownStructureGroups.subtract(counts.keys) }
+                Button("Show All") { shown.formUnion(counts.keys) }
+                Button("Hide All") { shown.subtract(counts.keys) }
             }
         } label: {
-            Label("Structures", systemImage: "building.columns")
+            Label(title, systemImage: systemImage)
         }
-        .help("Choose which structures appear on the map")
+        .help(help)
     }
 }

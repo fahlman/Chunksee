@@ -17,6 +17,9 @@ final class MapModel {
     /// Every structure in the dimension's generated chunks, once the background scan finishes.
     private(set) var structures: [StructureMarker] = []
     private var structureTask: Task<Void, Never>?
+    /// Every point of interest (portals, bells, beds…), once the background scan finishes.
+    private(set) var places: [PlaceMarker] = []
+    private var placeTask: Task<Void, Never>?
 
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
@@ -195,6 +198,22 @@ final class MapModel {
         }
     }
 
+    /// Reads the dimension's points of interest in the background.
+    func loadPlaces() {
+        guard placeTask == nil else { return }
+        let dimension = dimension
+        placeTask = Task(priority: .utility) { [weak self] in
+            let found = await PlaceScanner.scan(dimension)
+            guard !Task.isCancelled else { return }
+            self?.places = found
+        }
+    }
+
+    /// Waits for the scan started by `loadPlaces()`.
+    func waitForPlaces() async {
+        await placeTask?.value
+    }
+
     /// Waits for the structure scan started by `loadStructures()`.
     func waitForStructures() async {
         await structureTask?.value
@@ -202,6 +221,7 @@ final class MapModel {
 
     func cancel() {
         structureTask?.cancel()
+        placeTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]
