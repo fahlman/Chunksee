@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import MCWorldKit
+import SwiftUI
 import Testing
 @testable import MCWorld
 
@@ -624,6 +625,31 @@ import Testing
         #expect(session.searchResults.map(\.detail) == ["Orchard"])
         session.searchText = ""
         #expect(session.searchResults.isEmpty)
+    }
+}
+
+@Suite struct ItemAppearanceTests {
+    @Test func symbolsAndTintsByCategoryAndMaterial() {
+        #expect(ItemAppearance.symbol(for: "minecraft:diamond_pickaxe") == "hammer.fill")
+        #expect(ItemAppearance.symbol(for: "minecraft:iron_chestplate") == "tshirt.fill")
+        #expect(ItemAppearance.symbol(for: "minecraft:golden_apple") == "fork.knife")
+        #expect(ItemAppearance.symbol(for: "minecraft:filled_map") == "map.fill")
+        #expect(ItemAppearance.symbol(for: "minecraft:cobblestone") == "cube.fill")
+        #expect(ItemAppearance.tint(for: "minecraft:redstone_torch") == .red)
+        #expect(ItemAppearance.tint(for: "minecraft:stone_axe") == .gray)
+    }
+
+    @Test func slotsDescriptionsAndEnchantments() throws {
+        let sword = try #require(ItemStack(.compound(["id": .string("minecraft:diamond_sword"), "count": .int(1), "Slot": .byte(10), "components": .compound([
+            "minecraft:custom_name": .string("Excalibur"), "minecraft:enchantments": .compound(["minecraft:sharpness": .int(5)]),
+        ])])))
+        let torches = ItemStack(id: "minecraft:torch", count: 64, slot: 0)
+        #expect(ItemAppearance.description(of: sword) == "Diamond Sword “Excalibur”, enchanted")
+        #expect(ItemAppearance.description(of: torches) == "64 Torch")
+        let hotbar = ItemAppearance.slots([torches, sword], count: 9)
+        #expect(hotbar.count == 9 && hotbar[0]?.id == "minecraft:torch" && hotbar.compactMap(\.self).count == 1)
+        #expect(ItemAppearance.slots([torches, sword], first: 9, count: 27)[1]?.id == "minecraft:diamond_sword")
+        #expect(!ItemAppearance.isEnchanted(torches))
     }
 }
 

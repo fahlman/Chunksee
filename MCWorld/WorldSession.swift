@@ -20,6 +20,8 @@ final class WorldSession {
     /// Players with saved data, most recently saved first.
     let players: [PlayerInfo]
     var showsPlayers = true
+    /// The player whose details the inspector shows.
+    var inspectedPlayerID: UUID?
     /// Structure groups shown on the map; remembered between launches.
     var shownStructureGroups: Set<StructureGroup> {
         didSet {
