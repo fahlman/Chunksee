@@ -917,13 +917,17 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let cache = ScanCache(directory: world.appendingPathComponent("cache"))
+        // A whole-second date can be set back exactly; restoring a file's own date can come back a
+        // microsecond off, which correctly counts as a change.
+        let region = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         let first = await BiomeScanner.scan(dimension, cache: cache)
         #expect(first.areas.map(\.chunkCount) == [4])
         // Blank the region file but keep its size and date: only the saved result can still answer.
-        let region = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
-        let attributes = try FileManager.default.attributesOfItem(atPath: region.path)
-        try Data(count: (attributes[.size] as? NSNumber)?.intValue ?? 0).write(to: region)
-        try FileManager.default.setAttributes([.modificationDate: attributes[.modificationDate]!], ofItemAtPath: region.path)
+        let size = (try FileManager.default.attributesOfItem(atPath: region.path)[.size] as? NSNumber)?.intValue ?? 0
+        try Data(count: size).write(to: region)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         #expect(await BiomeScanner.scan(dimension, cache: cache).areas.map(\.chunkCount) == [4])
         #expect(await BiomeScanner.scan(dimension).areas.isEmpty)
     }
