@@ -82,8 +82,10 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps MCWorld out of Open With while retaining native opening
-and drop support. The old app-owned recent/open-world preferences are removed; users reopen
-each old world once to establish native history and restoration state.
+through File > Open and Open Recent. Opening folders from within the app and native window
+restoration are required; Finder and Dock opening are not required. The old app-owned
+recent/open-world preferences are removed; users reopen each old world once to establish
+native history and restoration state.
 
 ## Build and test
 
@@ -109,7 +111,7 @@ xcodebuild -project MCWorld.xcodeproj -scheme MCWorld -destination 'platform=mac
   Zoom In and Zoom Out with and without Shift and with another world or Settings focused.
 - **Finder registration smoke check:** register a disposable Release app copy outside `/tmp`
   (Launch Services excludes temporary-directory apps from Open With). Confirm MCWorld isn't
-  offered for plain folders or world folders, and check dropping a world onto its Dock icon.
+  offered for plain folders or world folders.
   Unregister and remove only that test copy afterwards.
 - **Automated GitHub checks:** none, because Ryan's projects run no hosted macOS CI. This was
   recorded on 2026-10-09.
