@@ -16,5 +16,9 @@ struct MCWorldApp: App {
                     .keyboardShortcut("o")
             }
         }
+
+        Settings {
+            SettingsView(names: model.names)
+        }
     }
 }

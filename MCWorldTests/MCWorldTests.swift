@@ -339,6 +339,90 @@ import Testing
     }
 }
 
+@Suite struct PlayerNameTests {
+    let friend = UUID(uuidString: "06D119DA-BC79-410F-8F7B-062CE442A86D")!
+    let you = UUID(uuidString: "52DFB519-DE9C-47E6-BC6C-BB053CC423E7")!
+
+    /// A fake Mojang that records requests and answers from a table.
+    nonisolated final class FakeMojang: @unchecked Sendable {  // state guarded by `lock`
+        var requests: [URL] = []
+        var answers: [String: (String, Int)] = [:]
+        let lock = NSLock()
+
+        var profiles: MojangProfiles {
+            MojangProfiles(fetch: { url in
+                self.lock.withLock {
+                    self.requests.append(url)
+                    let (body, status) = self.answers[url.lastPathComponent] ?? ("", 404)
+                    return (Data(body.utf8), status)
+                }
+            })
+        }
+    }
+
+    func freshDefaults() -> UserDefaults {
+        let name = "MCWorldTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    @Test func mojangProfileURLAndResponses() async throws {
+        #expect(MojangProfiles.profileURL(for: friend).absoluteString
+                == "https://sessionserver.mojang.com/session/minecraft/profile/06d119dabc79410f8f7b062ce442a86d")
+        let fake = FakeMojang()
+        fake.answers["06d119dabc79410f8f7b062ce442a86d"] = (#"{"id":"06d119dabc79410f8f7b062ce442a86d","name":"Friend"}"#, 200)
+        fake.answers["52dfb519de9c47e6bc6cbb053cc423e7"] = ("", 500)
+        #expect(try await fake.profiles.name(for: friend) == "Friend")
+        await #expect(throws: MojangProfiles.LookupError.unexpectedStatus(500)) { try await fake.profiles.name(for: you) }
+        #expect(try await fake.profiles.name(for: UUID()) == nil)  // 404: no such profile
+    }
+
+    @Test func onlineLookupIsOffByDefaultAndSendsNothing() async {
+        let fake = FakeMojang()
+        let names = PlayerNames(defaults: freshDefaults(), mojang: fake.profiles)
+        #expect(!names.looksUpOnline)
+        await names.lookUp([friend])
+        #expect(fake.requests.isEmpty)
+        #expect(names.name(for: friend) == nil)
+    }
+
+    @Test func onlineLookupFindsRemembersAndDoesNotRepeat() async {
+        let fake = FakeMojang()
+        fake.answers["06d119dabc79410f8f7b062ce442a86d"] = (#"{"name":"Friend"}"#, 200)
+        let defaults = freshDefaults()
+        let names = PlayerNames(defaults: defaults, mojang: fake.profiles)
+        names.looksUpOnline = true
+        await names.lookUp([friend, you])  // `you` answers 404
+        await names.lookUp([friend, you])
+        #expect(names.name(for: friend) == "Friend")
+        #expect(fake.requests.count == 2)  // each UUID asked once
+        // Remembered across launches, without asking again.
+        let relaunched = PlayerNames(defaults: defaults, mojang: FakeMojang().profiles)
+        #expect(relaunched.name(for: friend) == "Friend")
+        #expect(relaunched.looksUpOnline)
+    }
+
+    @Test func localCachesWinAndAreReadFromTheChosenFolder() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MCWorldNames-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("vanilla/release"), withIntermediateDirectories: true)
+        try Data(#"[{"uuid":"52dfb519-de9c-47e6-bc6c-bb053cc423e7","name":"fahlman","expiresOn":"2026-11-09 21:40:44 -0500"}]"#.utf8)
+            .write(to: folder.appendingPathComponent("vanilla/release/usercache.json"))
+        let fake = FakeMojang()
+        let names = PlayerNames(defaults: freshDefaults(), mojang: fake.profiles)
+        await names.chooseMinecraftFolder(folder)
+        names.looksUpOnline = true
+        await names.lookUp([you])
+        #expect(names.name(for: you) == "fahlman")
+        #expect(fake.requests.isEmpty)  // known locally, so not sent online
+        let player = PlayerInfo(uuid: you, nbt: .compound([:]))
+        #expect(PlayerPresentation.name(of: player, singleplayerUUID: you, knownName: names.name(for: you)) == "fahlman")
+        names.forgetMinecraftFolder()
+        #expect(names.name(for: you) == nil)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

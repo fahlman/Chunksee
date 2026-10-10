@@ -54,10 +54,24 @@ private struct WorldView: View {
                         ForEach(session.players, id: \.uuid) { player in
                             PlayerRow(session: session, player: player)
                         }
+                        // A row rather than a section footer: sidebar lists don't show footers.
+                        if session.hasUnnamedPlayers {
+                            SettingsLink {
+                                Label("Find Player Names…", systemImage: "magnifyingglass")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+            // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
+            // whenever either setting changes.
+            .task(id: NameSources(folder: session.names.minecraftFolder, online: session.names.looksUpOnline)) {
+                await session.names.reloadLocal()
+                await session.names.lookUp(session.players.filter(PlayerPresentation.isMappable).map(\.uuid))
+            }
         } detail: {
             if let map = session.map {
                 MapView(map: map, markers: session.markers)
@@ -135,4 +149,9 @@ private struct PlayerRow: View {
         }
         return String(localized: "Show on the map")
     }
+}
+
+private struct NameSources: Equatable {
+    var folder: URL?
+    var online: Bool
 }

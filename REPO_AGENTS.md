@@ -27,12 +27,20 @@ MCWorld is a Mac app for viewing Minecraft: Java Edition worlds. Ryan approved i
 - **Entitlements:**
   - read-only access to files the user selects
   - app-scoped security-scoped bookmarks
+  - outgoing network connections (`network.client`), used only to look up player names from Mojang
+    when the user turns that on. Ryan approved this on 2026-10-10 (fahlman/MCWorld#11), off by
+    default.
 - **Data locations:**
   - The app reads only the world or saves folder the user picks with an Open panel.
   - It remembers that folder as a read-only security-scoped bookmark in its own preferences.
   - It never writes to a world folder.
+  - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
+    Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
+    can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
+    preferences.
+  - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** MCWorldKit (`https://github.com/fahlman/MCWorldKit.git`), pinned "up to next
-  minor" from `0.3.0`.
+  minor" from `0.4.0`.
   - MCWorldKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     MCWorldKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same MCWorldKit commit.
@@ -51,6 +59,8 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
+| `PlayerNames.swift` | Player names from local caches and, when allowed, Mojang (`MojangProfiles`) |
+| `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from MCWorldKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | Trackpad and scroll-wheel pan and zoom. The app's only AppKit: SwiftUI on macOS 27 has no scroll-wheel input for arbitrary views |

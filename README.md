@@ -13,8 +13,9 @@ It shows a top-down view of a world and where its players were last. Later versi
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘=**, **⌘−** and **⌘0**.
 5. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Choose a player in the sidebar to jump to them, or hide markers with the people
-   button in the toolbar. Player files store no names, so other players are labelled by the start of
-   their ID. Faded markers belong to players who haven't joined since the world was upgraded.
+   button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so MCWorld
+   can read the names Minecraft remembers. You can also turn on looking up other players' names
+   from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
 MCWorld only reads your world; it never changes it. It reopens the last world when it launches.
 Rendered map tiles are kept in MCWorld's cache folder, so reopening a world is nearly instant; any
