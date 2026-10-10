@@ -12,6 +12,9 @@ struct MapView: View {
     var selectedPortal: NetherPortal?
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
+    /// Item search results in this dimension, drawn as pins above everything but players.
+    var hits: [ItemHit] = []
+    var selectedHitID: ItemHit.ID?
     /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
     var onSelectPortal: (NetherPortal?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.
@@ -52,6 +55,11 @@ struct MapView: View {
                 if let portal = place.portal {
                     Self.drawPortalState(at: point, selected: portal == selectedPortal, status: portalStatus(portal), in: context)
                 }
+            }
+            for hit in hits {
+                guard let position = hit.position else { continue }
+                Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == selectedHitID,
+                             in: context, bounds: bounds)
             }
             for marker in markers {
                 Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
@@ -167,6 +175,19 @@ struct MapView: View {
         var mark = context.resolve(Text("!").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white))
         mark.shading = .color(.white)
         context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
+    }
+
+    /// A yellow search-result pin; the selected one is larger with a ring.
+    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect) {
+        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
+        let radius: CGFloat = selected ? 10 : 7
+        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+        context.fill(circle, with: .color(.yellow))
+        context.stroke(circle, with: .color(.black.opacity(0.6)), lineWidth: selected ? 2 : 1)
+        var symbol = context.resolve(Image(systemName: "magnifyingglass"))
+        symbol.shading = .color(.black)
+        let side = radius * 1.1
+        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
     }
 
     /// The portal under a click, within 14 points of its marker.

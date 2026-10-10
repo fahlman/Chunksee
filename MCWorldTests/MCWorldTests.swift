@@ -544,6 +544,63 @@ import Testing
     }
 }
 
+@Suite struct ItemSearchTests {
+    func item(_ id: String, _ count: Int32, components: [String: NBT]? = nil) -> NBT {
+        var c: [String: NBT] = ["id": .string(id), "count": .int(count)]
+        if let components { c["components"] = .compound(components) }
+        return .compound(c)
+    }
+
+    @Test func readableNamesAndMatching() throws {
+        #expect(ReadableName.from("minecraft:diamond_sword") == "Diamond Sword")
+        let sword = try #require(ItemStack(item("minecraft:diamond_sword", 1, components: ["minecraft:custom_name": .string("Excalibur")])))
+        #expect(ItemSearch.matches(sword, words: ["diamond", "sword"]))
+        #expect(ItemSearch.matches(sword, words: ["excal"]))
+        #expect(!ItemSearch.matches(sword, words: ["diamond", "pickaxe"]))
+    }
+
+    @Test func searchFindsContainersNestedItemsAndPlayers() {
+        let shulker = item("minecraft:shulker_box", 1, components: ["minecraft:container": .list([.compound(["slot": .int(0), "item": item("minecraft:diamond", 64)])])])
+        let chunk = NBT.compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
+            .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:dirt", 64)])]),
+        ])])
+        let containers = ItemContainer.containers(inChunk: chunk).map { IndexedContainer(dimension: "minecraft:overworld", container: $0) }
+        let player = PlayerInfo(uuid: UUID(), nbt: .compound([
+            "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)]),
+            "EnderItems": .list([item("minecraft:diamond", 5)]),
+        ]))
+        let hits = ItemSearch.search("diamond", containers: containers, players: [player]) { _ in "fahlman" }
+        #expect(hits.map(\.count) == [67, 5])   // chest (3 + 64 in the shulker box), then the ender chest
+        #expect(hits[0].title == "Chest" && hits[0].detail == "67 Diamond")
+        #expect(hits[0].position == CGPoint(x: 10.5, y: -4.5))
+        #expect(hits[1].title == "fahlman’s ender chest" && hits[1].position == nil)
+        #expect(ItemSearch.search("  ", containers: containers, players: [player]) { _ in "" }.isEmpty)
+    }
+
+    @Test func sessionIndexesAndSearchesAWorld() async throws {
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+        var root = spec.nbt.compound!
+        root["block_entities"] = .list([.compound(["id": .string("minecraft:chest"), "x": .int(3), "y": .int(1), "z": .int(4),
+                                                   "Items": .list([item("minecraft:golden_apple", 2)])])])
+        spec.nbt = .compound(root)
+        let world = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        session.searchText = "golden apple"
+        #expect(session.isIndexing)
+        await session.waitForIndex()
+        #expect(session.searchResults.map(\.detail) == ["2 Golden Apple"])
+        session.show(session.searchResults[0])
+        #expect(session.selectedHitID == session.searchResults[0].id)
+        #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
+        session.searchText = ""
+        #expect(session.searchResults.isEmpty)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

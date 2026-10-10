@@ -20,7 +20,10 @@ It shows a top-down view of a world, the structures and places found in it, and 
 7. Click a Nether portal to see where it leads: the matching portal in the other dimension (with a
    button to jump there), a warning if the link is one-way, or a warning that going through would
    make the game build a new portal. Portals that don't link both ways carry a small badge.
-8. Players appear on the map at their last saved position, with their last death (✕) and respawn
+8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")
+   or a custom name to list every chest, barrel, shulker box, minecart and player inventory holding it,
+   most items first. Choose a result to jump there; results in the current dimension show as yellow pins.
+9. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Choose a player in the sidebar to jump to them, or hide markers with the people
    button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so MCWorld
    can read the names Minecraft remembers. You can also turn on looking up other players' names
