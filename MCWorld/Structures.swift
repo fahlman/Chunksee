@@ -154,33 +154,18 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
 /// Reads every structure in a dimension. Only structure entries are decoded (block data is
 /// skipped), and regions are read in parallel.
 nonisolated enum StructureScanner {
+    /// Every structure in the reader's dimension, region by region in parallel.
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off,
-                     concurrency: Int = ProcessInfo.processInfo.activeProcessorCount) async -> [StructureMarker] {
-        let files = dimension.regionFiles()
-        return await withTaskGroup(of: [StructureMarker].self) { group in
-            var next = files.startIndex
-            func startNext() {
-                guard next < files.endIndex else { return }
-                let file = files[next]
-                next += 1
+    static func scan(_ reader: RegionReader) async -> [StructureMarker] {
+        await withTaskGroup(of: [StructureMarker].self) { group in
+            for file in reader.dimension.regionFiles() {
                 group.addTask {
                     guard !Task.isCancelled else { return [] }
-                    return cache.value("structures", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
-                        guard let region = try? RegionFile(contentsOf: file.url) else { return [] }
-                        return region.chunkCoordinates.flatMap { (x, z) -> [StructureMarker] in
-                            guard let nbt = try? region.chunkNBT(localX: x, localZ: z, skipping: Chunk.keysNotNeededForStructures) else { return [] }
-                            return StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
-                        }
-                    }
+                    return await reader.structures(RegionCoordinate(x: file.x, z: file.z))
                 }
             }
-            for _ in 0..<max(1, concurrency) { startNext() }
             var all: [StructureMarker] = []
-            for await markers in group {
-                all += markers
-                startNext()
-            }
+            for await markers in group { all += markers }
             return all.sorted { $0.id < $1.id }
         }
     }

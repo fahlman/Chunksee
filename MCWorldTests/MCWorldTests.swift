@@ -479,7 +479,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let found = await StructureScanner.scan(dimension, concurrency: 2)
+        let found = await StructureScanner.scan(RegionReader(dimension: dimension, cache: .off))
         #expect(found.map(\.structureID).sorted() == ["minecraft:stronghold", "minecraft:village_plains"])
         #expect(found.first { $0.group == .stronghold }?.bounds == CGRect(x: 640, y: -16, width: 10, height: 10))
     }
@@ -911,7 +911,7 @@ import Testing
         #expect(offReads == 2)
     }
 
-    @Test func scannersUseSavedResults() async throws {
+    @Test func oneReadSavesEveryScansPart() async throws {
         let world = try TestWorld.make(chunks: (0..<2).flatMap { x in (0..<2).map { z in
             TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } })
         defer { try? FileManager.default.removeItem(at: world) }
@@ -922,14 +922,19 @@ import Testing
         let region = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
         let date = Date(timeIntervalSince1970: 1_790_000_000)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
-        let first = await BiomeScanner.scan(dimension, cache: cache)
+        // One scan reads the region...
+        let first = await BiomeScanner.scan(RegionReader(dimension: dimension, cache: cache))
         #expect(first.areas.map(\.chunkCount) == [4])
-        // Blank the region file but keep its size and date: only the saved result can still answer.
+        // ...then blank its file but keep its size and date: only saved parts can still answer, and
+        // the biome read saved the other scans' parts too.
         let size = (try FileManager.default.attributesOfItem(atPath: region.path)[.size] as? NSNumber)?.intValue ?? 0
         try Data(count: size).write(to: region)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
-        #expect(await BiomeScanner.scan(dimension, cache: cache).areas.map(\.chunkCount) == [4])
-        #expect(await BiomeScanner.scan(dimension).areas.isEmpty)
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        #expect(await BiomeScanner.scan(reader).areas.map(\.chunkCount) == [4])
+        #expect(await reader.inhabitedTimes(RegionCoordinate(x: 0, z: 0)).count == 1024)
+        #expect(await reader.biomes(RegionCoordinate(x: 0, z: 0)).count == 4)
+        #expect(await BiomeScanner.scan(RegionReader(dimension: dimension, cache: .off)).areas.isEmpty)
     }
 }
 
