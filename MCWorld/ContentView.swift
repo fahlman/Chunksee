@@ -74,9 +74,12 @@ private struct WorldView: View {
             }
         } detail: {
             if let map = session.map {
-                MapView(map: map, markers: session.markers)
+                MapView(map: map, structures: session.visibleStructures, markers: session.markers)
                     .id(map.dimension.id)
                     .toolbar {
+                        ToolbarItem {
+                            StructureMenu(session: session, structures: map.structures)
+                        }
                         ToolbarItem {
                             Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
                                 .help("Show players, their last deaths and respawn points on the map")
@@ -154,4 +157,34 @@ private struct PlayerRow: View {
 private struct NameSources: Equatable {
     var folder: URL?
     var online: Bool
+}
+
+/// Chooses which kinds of structure the map shows. Lists only kinds found in this dimension.
+private struct StructureMenu: View {
+    @Bindable var session: WorldSession
+    let structures: [StructureMarker]
+
+    var body: some View {
+        let counts = Dictionary(grouping: structures, by: \.group).mapValues(\.count)
+        Menu {
+            if counts.isEmpty {
+                Text("No structures found in explored areas")
+            } else {
+                ForEach(StructureGroup.allCases.filter { counts[$0] != nil }, id: \.self) { group in
+                    Toggle(isOn: Binding(
+                        get: { session.shownStructureGroups.contains(group) },
+                        set: { if $0 { session.shownStructureGroups.insert(group) } else { session.shownStructureGroups.remove(group) } }
+                    )) {
+                        Label("\(group.name) (\(counts[group] ?? 0))", systemImage: group.symbol)
+                    }
+                }
+                Divider()
+                Button("Show All") { session.shownStructureGroups.formUnion(counts.keys) }
+                Button("Hide All") { session.shownStructureGroups.subtract(counts.keys) }
+            }
+        } label: {
+            Label("Structures", systemImage: "building.columns")
+        }
+        .help("Choose which structures appear on the map")
+    }
 }

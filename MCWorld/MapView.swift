@@ -3,6 +3,8 @@ import SwiftUI
 /// The pannable, zoomable top-down map of one dimension.
 struct MapView: View {
     @Bindable var map: MapModel
+    /// Structures to draw, above the tiles and below player markers.
+    var structures: [StructureMarker] = []
     /// Points of interest for this dimension, drawn above the tiles.
     var markers: [MapMarker] = []
 
@@ -29,6 +31,10 @@ struct MapView: View {
                 // through as seams between tiles.
                 let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+            }
+            let bounds = CGRect(origin: .zero, size: size)
+            for structure in structures {
+                Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
             }
             for marker in markers {
                 Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
@@ -85,6 +91,49 @@ struct MapView: View {
                     .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
             }
         }
+    }
+
+    /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
+    /// 1/2×) and, for strongholds, the End portal room.
+    private static func draw(_ structure: StructureMarker, viewport: MapViewport, in context: GraphicsContext,
+                             size: CGSize, bounds: CGRect) {
+        let topLeft = viewport.viewPoint(for: structure.bounds.origin, in: size)
+        let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
+                                                           height: structure.bounds.height * viewport.scale))
+        guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return }
+        let color = Color(red: Double((structure.group.color >> 16) & 0xFF) / 255,
+                          green: Double((structure.group.color >> 8) & 0xFF) / 255,
+                          blue: Double(structure.group.color & 0xFF) / 255)
+        if viewport.scale >= 0.25 {
+            let path = Path(outline)
+            context.fill(path, with: .color(color.opacity(0.12)))
+            context.stroke(path, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+        }
+        let center = CGPoint(x: outline.midX, y: outline.midY)
+        let radius: CGFloat = 9
+        let disc = Path(roundedRect: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2),
+                        cornerRadius: 4)
+        context.fill(disc, with: .color(color))
+        context.stroke(disc, with: .color(.white.opacity(0.9)), lineWidth: 1)
+        var symbol = context.resolve(Image(systemName: structure.group.symbol))
+        symbol.shading = .color(.white)
+        context.draw(symbol, in: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12))
+
+        if viewport.scale >= 0.25, let room = structure.portalRoom {
+            let p = viewport.viewPoint(for: room, in: size)
+            let ring = Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14))
+            context.fill(ring, with: .color(.black.opacity(0.7)))
+            var sparkle = context.resolve(Image(systemName: "sparkles"))
+            sparkle.shading = .color(.mint)
+            context.draw(sparkle, in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
+        }
+        guard viewport.scale >= 0.5 else { return }
+        let text = context.resolve(Text(structure.name).font(.caption2.weight(.semibold)).foregroundStyle(.white))
+        let textSize = text.measure(in: CGSize(width: 240, height: 40))
+        let label = CGRect(x: center.x - textSize.width / 2 - 5, y: center.y + radius + 2,
+                           width: textSize.width + 10, height: textSize.height + 2)
+        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
+        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
     }
 
     /// Markers keep a constant size at every zoom; players also get a name label.

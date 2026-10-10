@@ -40,7 +40,7 @@ MCWorld is a Mac app for viewing Minecraft: Java Edition worlds. Ryan approved i
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** MCWorldKit (`https://github.com/fahlman/MCWorldKit.git`), pinned "up to next
-  minor" from `0.4.0`.
+  minor" from `0.5.0`.
   - MCWorldKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     MCWorldKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same MCWorldKit commit.
@@ -59,6 +59,7 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
+| `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `PlayerNames.swift` | Player names from local caches and, when allowed, Mojang (`MojangProfiles`) |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from MCWorldKit's `PlayerInfo`) |
