@@ -50,24 +50,21 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
 /// Builds the search index and answers searches against it: item names, custom names, book
 /// titles, authors and pages, sign text, and creatures' names.
 nonisolated enum WorldSearch {
-    /// Every container and sign in the given dimensions, read region by region in parallel.
+    /// Every container, sign and named creature in the readers' dimensions, region by region in parallel.
     @concurrent
-    static func index(_ dimensions: [MCWorldKit.Dimension], cache: @Sendable (MCWorldKit.Dimension) -> ScanCache = { _ in .off }) async -> SearchIndex {
+    static func index(_ readers: [RegionReader]) async -> SearchIndex {
         await withTaskGroup(of: SearchIndex.self) { group in
-            for dimension in dimensions {
-                let cache = cache(dimension)
-                for region in dimension.regionFiles() {
+            for reader in readers {
+                let dimension = reader.dimension.id
+                for file in reader.dimension.regionFiles() {
                     group.addTask {
                         guard !Task.isCancelled else { return SearchIndex() }
-                        let entities = dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
-                        let contents: RegionContents? = cache.value("contents", region: RegionCoordinate(x: region.x, z: region.z),
-                                                                     sources: [region.url, entities]) {
-                            try? dimension.contents(regionX: region.x, regionZ: region.z)
-                        }
-                        guard let contents else { return SearchIndex() }
-                        return SearchIndex(containers: contents.containers.map { .init(dimension: dimension.id, value: $0) },
-                                           signs: contents.signs.map { .init(dimension: dimension.id, value: $0) },
-                                           creatures: contents.namedCreatures.map { .init(dimension: dimension.id, value: $0) })
+                        // Read into a local first: Swift 6.4 release builds can misread values captured
+                        // next to an awaited call in task-group children (see #6).
+                        let contents = await reader.contents(RegionCoordinate(x: file.x, z: file.z))
+                        return SearchIndex(containers: contents.containers.map { .init(dimension: dimension, value: $0) },
+                                           signs: contents.signs.map { .init(dimension: dimension, value: $0) },
+                                           creatures: contents.namedCreatures.map { .init(dimension: dimension, value: $0) })
                     }
                 }
             }

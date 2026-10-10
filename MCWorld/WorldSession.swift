@@ -88,9 +88,9 @@ final class WorldSession {
         guard indexTask == nil else { return }
         // Rebuilding after the game saved keeps showing the current results meanwhile.
         isIndexing = searchIndex == nil
-        let dimensions = dimensions, url = url, cacheRoot = cacheRoot
+        let readers = dimensions.compactMap { readers[$0.id] }
         indexTask = Task(priority: .utility) { [weak self] in
-            let index = await WorldSearch.index(dimensions) { ScanCache(forWorldAt: url, dimensionID: $0.id, root: cacheRoot) }
+            let index = await WorldSearch.index(readers)
             guard let self, !Task.isCancelled else { return }
             self.searchIndex = index
             self.isIndexing = false
@@ -129,8 +129,9 @@ final class WorldSession {
     private func loadHeatMap(reread: Bool = false) {
         guard showsHeatMap, let dimension = selectedDimension, reread || heatMaps[dimension.id] == nil,
               heatMapTasks[dimension.id] == nil else { return }
+        guard let reader = readers[dimension.id] else { return }
         heatMapTasks[dimension.id] = Task(priority: .userInitiated) { [weak self] in
-            let images = await HeatMap.images(for: dimension)
+            let images = await HeatMap.images(reader)
             guard let self, !Task.isCancelled else { return }
             self.heatMaps[dimension.id] = images
             self.heatMapTasks[dimension.id] = nil
@@ -216,6 +217,8 @@ final class WorldSession {
     private let isAccessingSecurityScope: Bool
     private let defaults: UserDefaults
     private let cacheRoot: URL?
+    /// One per dimension: reads each region once for the map's scans, search and the heat map.
+    private let readers: [String: RegionReader]
 
     private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, defaults: UserDefaults,
                  cacheRoot: URL?, isAccessingSecurityScope: Bool) {
@@ -243,6 +246,9 @@ final class WorldSession {
         self.world = world
         self.players = players
         self.dimensions = world.dimensions()
+        self.readers = Dictionary(uniqueKeysWithValues: dimensions.map { dimension in
+            (dimension.id, RegionReader(dimension: dimension, cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot)))
+        })
         self.isAccessingSecurityScope = isAccessingSecurityScope
         // Reopen in the dimension last viewed, if it still exists.
         let saved = (defaults.dictionary(forKey: "mapView." + url.standardizedFileURL.path)?["dimension"] as? String)
@@ -474,7 +480,8 @@ final class WorldSession {
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
         map = MapModel(dimension: dimension, center: spawnPoint,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
+                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
+                       reader: readers[dimension.id])
         if let viewport = savedViewport(for: dimension.id) { map?.viewport = viewport }
         map?.loadStructures()
         map?.loadPlaces()

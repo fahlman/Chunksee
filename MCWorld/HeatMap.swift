@@ -60,16 +60,17 @@ nonisolated enum HeatMap {
     /// Every region's heat image in a dimension, read in parallel; regions with nothing to show
     /// are left out.
     @concurrent
-    static func images(for dimension: MCWorldKit.Dimension) async -> [RegionCoordinate: CGImage] {
+    static func images(_ reader: RegionReader) async -> [RegionCoordinate: CGImage] {
         await withTaskGroup(of: (RegionCoordinate, CGImage?).self) { group in
-            for region in dimension.regionFiles() {
+            for file in reader.dimension.regionFiles() {
                 group.addTask {
-                    guard !Task.isCancelled else { return (RegionCoordinate(x: region.x, z: region.z), nil) }
+                    let region = RegionCoordinate(x: file.x, z: file.z)
+                    guard !Task.isCancelled else { return (region, nil) }
                     // Read into a local first: Swift 6.4 release builds can misread values captured
                     // next to an awaited call in task-group children (see #6).
-                    let ticks = (try? dimension.inhabitedTimes(regionX: region.x, regionZ: region.z)) ?? []
+                    let ticks = await reader.inhabitedTimes(region)
                     let image = image(fromTicks: ticks)
-                    return (RegionCoordinate(x: region.x, z: region.z), image)
+                    return (region, image)
                 }
             }
             var images: [RegionCoordinate: CGImage] = [:]
