@@ -2,7 +2,7 @@
 
 A Mac app for viewing Minecraft: Java Edition worlds. It's built on [MCWorldKit](https://github.com/fahlman/MCWorldKit), the open-source engine that reads world saves.
 
-It shows a top-down view of a world, the structures found in it, and where its players were last.
+It shows a top-down view of a world, the structures and places found in it, and where its players were last.
 
 ## Using MCWorld
 
@@ -14,7 +14,10 @@ It shows a top-down view of a world, the structures found in it, and where its p
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in the **Structures** menu in
    the toolbar. Mineshafts and Nether fossils start hidden because there are so many.
-6. Players appear on the map at their last saved position, with their last death (✕) and respawn
+6. Places from the world's point-of-interest data appear too: Nether portals and village bells by
+   default, and beds, villager workstations, bee nests and more from the **Places** menu. Beds and
+   workstations a villager has claimed are dimmed.
+7. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Choose a player in the sidebar to jump to them, or hide markers with the people
    button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so MCWorld
    can read the names Minecraft remembers. You can also turn on looking up other players' names
