@@ -19,8 +19,6 @@ final class MapModel {
     private(set) var isLoading = false
 
     private var failed: Set<RegionCoordinate> = []
-    private var pending: [RegionCoordinate] = []
-    private var loadTask: Task<Void, Never>?
     private let renderer: RegionTileRenderer
 
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
@@ -75,44 +73,76 @@ final class MapModel {
         let needed = visible.filter {
             availableRegions.contains($0) && !failed.contains($0) && (full ? tiles[$0] == nil : previews[$0] == nil)
         }
-        guard needed != pending else { return }
-        pending = needed
-        loadTask?.cancel()
-        guard !needed.isEmpty else {
-            isLoading = false
-            return
+        // Keep rendering regions that are still needed; cancel only those that left the view, so a
+        // pan doesn't throw away half-decoded regions and start them again.
+        let neededSet = Set(needed)
+        for (region, job) in inFlight where !neededSet.contains(region) {
+            job.task.cancel()
+            inFlight[region] = nil
         }
-        isLoading = true
-        let renderer = renderer
-        let width = regionConcurrency
-        loadTask = Task { [weak self] in
-            await withTaskGroup(of: (RegionCoordinate, RegionTileRenderer.RenderedTile?, Bool).self) { group in
-                var queue = needed[...]
-                func startNext() {
-                    guard let region = queue.popFirst() else { return }
-                    group.addTask {
-                        do {
-                            // Await into a local before building the tuple: Swift 6.4 release builds
-                            // miscompile `(region, try await …, true)` so `region` reads back as (0, 0)
-                            // after the suspension (fahlman/MCWorld#6 has a standalone reproduction).
-                            let tile = try await renderer.tile(for: region)
-                            return (region, tile, true)
-                        } catch {
-                            return (region, nil, !(error is CancellationError))
-                        }
-                    }
+        queue = needed.filter { inFlight[$0] == nil }
+        startQueued()
+        updateLoadingState()
+    }
+
+    private struct Job {
+        var id: Int
+        var task: Task<Void, Never>
+    }
+
+    /// Regions waiting to render, nearest to the view center first.
+    private var queue: [RegionCoordinate] = []
+    private var inFlight: [RegionCoordinate: Job] = [:]
+    private var nextJobID = 0
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+
+    private func startQueued() {
+        while inFlight.count < regionConcurrency, !queue.isEmpty {
+            let region = queue.removeFirst()
+            let renderer = renderer
+            nextJobID += 1
+            let id = nextJobID
+            let task = Task { [weak self] in
+                // Await into a local before using `region` again: Swift 6.4 release builds miscompile
+                // `(region, try await …, true)` so `region` reads back as (0, 0) after the suspension
+                // (fahlman/MCWorld#6 has a standalone reproduction).
+                let result: Result<RegionTileRenderer.RenderedTile?, any Error>
+                do {
+                    let tile = try await renderer.tile(for: region)
+                    result = .success(tile)
+                } catch {
+                    result = .failure(error)
                 }
-                for _ in 0..<width { startNext() }
-                for await (region, tile, finished) in group {
-                    guard !Task.isCancelled else { break }
-                    self?.store(tile, for: region, finished: finished)
-                    startNext()
-                }
+                self?.finish(region, job: id, with: result)
             }
-            guard !Task.isCancelled else { return }
-            self?.pending = []
-            self?.isLoading = false
+            inFlight[region] = Job(id: id, task: task)
         }
+    }
+
+    private func finish(_ region: RegionCoordinate, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
+        // A job cancelled because its region left the view was already removed (and may have been
+        // replaced by a newer job for the same region); its result is dropped.
+        guard inFlight[region]?.id == id else { return }
+        inFlight[region] = nil
+        switch result {
+        case .success(let tile?):
+            store(tile, for: region)
+        case .success(nil):
+            failed.insert(region)  // no region file any more
+        case .failure(let error):
+            // Unreadable regions aren't retried during this session.
+            if !(error is CancellationError) { failed.insert(region) }
+        }
+        startQueued()
+        updateLoadingState()
+    }
+
+    private func updateLoadingState() {
+        isLoading = !inFlight.isEmpty || !queue.isEmpty
+        guard !isLoading else { return }
+        let waiters = idleWaiters
+        idleWaiters = []
+        for waiter in waiters { waiter.resume() }
     }
 
     private var lastRequest: (range: MapViewport.RegionRange, full: Bool)?
@@ -123,30 +153,21 @@ final class MapModel {
     /// are dropped and only previews kept: fully zoomed out, keeping both cost about 1 GB.
     private var wantsFullResolution = true
 
-    /// Waits until every requested tile has been rendered or the request was replaced.
+    /// Waits until every requested tile has been rendered, or loading was cancelled.
     func waitUntilIdle() async {
-        while isLoading, let task = loadTask {
-            await task.value
+        while isLoading {
+            await withCheckedContinuation { idleWaiters.append($0) }
         }
     }
 
-    private func store(_ tile: RegionTileRenderer.RenderedTile?, for region: RegionCoordinate, finished: Bool) {
-        guard finished else {
-            lastRequest = nil  // cancelled work must be requested again
-            return
+    private func store(_ tile: RegionTileRenderer.RenderedTile, for region: RegionCoordinate) {
+        if wantsFullResolution { tiles[region] = tile.full }
+        previews[region] = tile.preview
+        for region in Self.regionsToEvict(from: Set(tiles.keys), keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
+            tiles[region] = nil
         }
-        if let tile {
-            if wantsFullResolution { tiles[region] = tile.full }
-            previews[region] = tile.preview
-            for region in Self.regionsToEvict(from: Set(tiles.keys), keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
-                tiles[region] = nil
-            }
-            for region in Self.regionsToEvict(from: Set(previews.keys), keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
-                previews[region] = nil
-            }
-        } else {
-            // Unreadable or empty regions aren't retried during this session.
-            failed.insert(region)
+        for region in Self.regionsToEvict(from: Set(previews.keys), keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
+            previews[region] = nil
         }
     }
 
@@ -161,9 +182,9 @@ final class MapModel {
 
     func cancel() {
         lastRequest = nil
-        loadTask?.cancel()
-        loadTask = nil
-        pending = []
-        isLoading = false
+        for job in inFlight.values { job.task.cancel() }
+        inFlight = [:]
+        queue = []
+        updateLoadingState()
     }
 }

@@ -17,6 +17,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
+    @concurrent
     func pixels(for region: RegionCoordinate) async throws -> [UInt8]? {
         guard let file = try dimension.region(x: region.x, z: region.z) else { return nil }
         let coordinates = file.chunkCoordinates
@@ -51,6 +52,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         return canvas.pixels
     }
 
+    @concurrent
     func image(for region: RegionCoordinate) async throws -> CGImage? {
         try await pixels(for: region).flatMap { Self.makeImage($0, side: Self.side) }
     }
@@ -63,6 +65,9 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     static let previewSide = side / 2
 
+    /// Runs off the caller's actor: with approachable concurrency a plain nonisolated `async`
+    /// method would otherwise run on the main actor when called from the map model.
+    @concurrent
     func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
