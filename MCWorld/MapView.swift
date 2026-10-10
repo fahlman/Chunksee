@@ -7,7 +7,9 @@ struct MapView: View {
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
     @State private var magnifyStart: MapViewport?
-    @State private var hoverBlock: CGPoint?
+    /// The pointer position in the view; the block under it is worked out from the current viewport,
+    /// so the readout stays right while the map moves under a still pointer.
+    @State private var hoverPoint: CGPoint?
     @FocusState private var isFocused: Bool
     @Environment(\.displayScale) private var displayScale
 
@@ -21,7 +23,9 @@ struct MapView: View {
             let fullResolution = map.needsFullResolution(displayScale: displayScale)
             for region in map.viewport.visibleRegionRange(in: size).regions {
                 guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
-                let rect = map.viewport.viewRect(for: region, in: size)
+                // Overlap neighbors by half a point so smoothed edges don't let the background show
+                // through as seams between tiles.
+                let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
             }
         }
@@ -38,8 +42,8 @@ struct MapView: View {
         }
         .onContinuousHover { phase in
             switch phase {
-            case .active(let point): hoverBlock = map.viewport.blockPoint(at: point, in: size)
-            case .ended: hoverBlock = nil
+            case .active(let point): hoverPoint = point
+            case .ended: hoverPoint = nil
             }
         }
         .focusable()
@@ -71,7 +75,7 @@ struct MapView: View {
                 Button("Actual Size", systemImage: "1.magnifyingglass") { map.viewport.scale = 1 }
                     .keyboardShortcut("0")
                 Button("Zoom In", systemImage: "plus.magnifyingglass") { zoom(by: Self.zoomStep) }
-                    .keyboardShortcut("+")
+                    .keyboardShortcut("=")  // ⌘= is the Mac convention; "+" needs Shift on most layouts
                     .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
             }
         }
@@ -79,7 +83,8 @@ struct MapView: View {
 
     private var statusBar: some View {
         HStack(spacing: 12) {
-            if let hoverBlock {
+            if let hoverPoint {
+                let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 Text("X \(Int(hoverBlock.x.rounded(.down)))  Z \(Int(hoverBlock.y.rounded(.down)))")
                     .monospacedDigit()
             }
@@ -95,7 +100,7 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverBlock == nil && !map.isLoading && !map.availableRegions.isEmpty ? 0 : 1)
+        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty ? 0 : 1)
     }
 
     private var dragGesture: some Gesture {
