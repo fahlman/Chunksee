@@ -120,11 +120,15 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
 nonisolated enum PlaceScanner {
     @concurrent
     static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off) async -> [PlaceMarker] {
+        guard !Task.isCancelled else { return [] }
         let blocks = await withTaskGroup(of: [PointOfInterest].self) { group in
             for file in dimension.regionFiles(.pointsOfInterest) {
+                guard !Task.isCancelled else { break }
                 group.addTask {
-                    cache.value("places", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
-                        (try? dimension.pointsOfInterest(regionX: file.x, regionZ: file.z)) ?? []
+                    guard !Task.isCancelled else { return [] }
+                    return cache.value("places", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
+                        guard !Task.isCancelled else { return [] }
+                        return (try? dimension.pointsOfInterest(regionX: file.x, regionZ: file.z)) ?? []
                     }
                 }
             }
@@ -132,6 +136,7 @@ nonisolated enum PlaceScanner {
             for await found in group { all += found }
             return all
         }
+        guard !Task.isCancelled else { return [] }
         // Portal blocks become one place per portal (MCWorldKit owns the grouping rule).
         let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
         let portals = NetherPortal.portals(from: blocks, in: dimension.id).map(PlaceMarker.init)

@@ -34,24 +34,31 @@ nonisolated struct MojangProfiles: Sendable {
     }
 }
 
-/// Player names for the whole app: from Minecraft's local name caches in a folder the user chose,
-/// and, only when the user turns it on, from Mojang. Online results are remembered between launches.
+/// Player names shared by documents. Each source owns its tasks and invalidates pending results
+/// when the user changes permission, clears names, or chooses another local folder.
 @Observable
 final class PlayerNames {
     private(set) var local: [UUID: String] = [:]
     private(set) var online: [UUID: String] = [:]
-    /// The Minecraft folder whose `usercache.json` files are read, kept as a read-only bookmark.
     private(set) var minecraftFolder: URL?
 
-    /// Off until the user turns it on: looking a name up sends that player's UUID to Mojang.
+    /// Looking up a name sends that player's UUID to Mojang, only while this remains on.
     var looksUpOnline: Bool {
-        didSet { defaults.set(looksUpOnline, forKey: Keys.looksUpOnline) }
+        didSet {
+            defaults.set(looksUpOnline, forKey: Keys.looksUpOnline)
+            if looksUpOnline != oldValue { cancelOnline() }
+        }
     }
 
     private let defaults: UserDefaults
     private let mojang: MojangProfiles
-    /// Lookups that found nothing or failed, so they aren't retried every time the list redraws.
-    private var attempted: Set<UUID> = []
+    private let readCaches: @Sendable (URL) async -> [UUID: String]
+    @ObservationIgnored private var folderAccess: WorldReadAccess?
+    @ObservationIgnored private var localGeneration = UUID()
+    @ObservationIgnored private var localTask: Task<Void, Never>?
+    @ObservationIgnored private var onlineGeneration = UUID()
+    @ObservationIgnored private var onlineTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var attempted: Set<UUID> = []
 
     private enum Keys {
         static let looksUpOnline = "looksUpPlayerNamesOnline"
@@ -59,9 +66,11 @@ final class PlayerNames {
         static let folder = "minecraftFolderBookmark"
     }
 
-    init(defaults: UserDefaults = .standard, mojang: MojangProfiles = MojangProfiles()) {
+    init(defaults: UserDefaults = .standard, mojang: MojangProfiles = MojangProfiles(),
+         readCaches: @escaping @Sendable (URL) async -> [UUID: String] = PlayerNames.readLocalCaches) {
         self.defaults = defaults
         self.mojang = mojang
+        self.readCaches = readCaches
         looksUpOnline = defaults.bool(forKey: Keys.looksUpOnline)
         if let saved = defaults.dictionary(forKey: Keys.online) as? [String: String] {
             online = Dictionary(uniqueKeysWithValues: saved.compactMap { key, name in UUID(uuidString: key).map { ($0, name) } })
@@ -69,25 +78,29 @@ final class PlayerNames {
         restoreFolder()
     }
 
-    func name(for uuid: UUID) -> String? {
-        local[uuid] ?? online[uuid]
+    isolated deinit {
+        localTask?.cancel()
+        onlineTasks.values.forEach { $0.cancel() }
     }
 
-    // MARK: Local caches
+    func name(for uuid: UUID) -> String? { local[uuid] ?? online[uuid] }
 
-    /// Uses `url` (from the Open panel) as the Minecraft folder and reads its name caches.
     func chooseMinecraftFolder(_ url: URL) async {
-        minecraftFolder?.stopAccessingSecurityScopedResource()
-        _ = url.startAccessingSecurityScopedResource()
+        forgetMinecraftFolder()
+        folderAccess = WorldReadAccess(url)
         minecraftFolder = url
         let data = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-                                         includingResourceValuesForKeys: nil, relativeTo: nil)
+                                        includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(data, forKey: Keys.folder)
         await reloadLocal()
     }
 
     func forgetMinecraftFolder() {
-        minecraftFolder?.stopAccessingSecurityScopedResource()
+        localGeneration = UUID()
+        localTask?.cancel()
+        localTask = nil
+        // A read already running retains its own access until it returns.
+        folderAccess = nil
         minecraftFolder = nil
         local = [:]
         defaults.removeObject(forKey: Keys.folder)
@@ -101,39 +114,72 @@ final class PlayerNames {
             defaults.removeObject(forKey: Keys.folder)
             return
         }
-        _ = url.startAccessingSecurityScopedResource()
+        folderAccess = WorldReadAccess(url)
         minecraftFolder = url
     }
 
-    /// Rereads the local caches, which change whenever someone plays.
+    /// Reads off the main actor, keeping the chosen folder's access through cancellation.
     func reloadLocal() async {
-        guard let folder = minecraftFolder else { return }
-        local = await Self.readCaches(under: folder)
+        guard let folder = minecraftFolder, let access = folderAccess else { return }
+        localTask?.cancel()
+        localGeneration = UUID()
+        let id = localGeneration, read = readCaches
+        let task = Task { [weak self] in
+            let names = await read(folder)
+            withExtendedLifetime(access) {}
+            guard !Task.isCancelled, let self, self.localGeneration == id, self.minecraftFolder == folder else { return }
+            self.local = names
+        }
+        localTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: { task.cancel() }
     }
 
     @concurrent
-    private nonisolated static func readCaches(under folder: URL) async -> [UUID: String] {
-        UserCache.names(under: folder).mapValues(\.name)
+    private nonisolated static func readLocalCaches(_ folder: URL) async -> [UUID: String] {
+        guard !Task.isCancelled else { return [:] }
+        return UserCache.names(under: folder).mapValues(\.name)
     }
 
-    // MARK: Online
-
-    /// Looks up, one at a time, the names of `uuids` not known locally or online, when the user
-    /// has turned online lookup on. Each UUID is tried at most once per launch.
+    /// Tries unknown UUIDs once per permission session. Each batch checks permission before
+    /// sending the next request and before saving its answer, including after Clear Names.
     func lookUp(_ uuids: [UUID]) async {
-        guard looksUpOnline else { return }
-        for uuid in uuids where name(for: uuid) == nil && !attempted.contains(uuid) {
-            attempted.insert(uuid)
-            guard let found = try? await mojang.name(for: uuid) else { continue }
-            online[uuid] = found
-            defaults.set(Dictionary(uniqueKeysWithValues: online.map { ($0.key.uuidString, $0.value) }), forKey: Keys.online)
+        guard looksUpOnline, !Task.isCancelled else { return }
+        let generation = onlineGeneration, id = UUID(), mojang = mojang
+        let task = Task { [weak self] in
+            defer { self?.onlineTasks[id] = nil }
+            for uuid in uuids {
+                guard !Task.isCancelled, let self, self.looksUpOnline, self.onlineGeneration == generation else { return }
+                guard self.name(for: uuid) == nil, self.attempted.insert(uuid).inserted else { continue }
+                let found = try? await mojang.name(for: uuid)
+                guard self.onlineGeneration == generation else { return }
+                guard !Task.isCancelled, self.looksUpOnline else {
+                    self.attempted.remove(uuid)
+                    return
+                }
+                if let found {
+                    self.online[uuid] = found
+                    self.defaults.set(Dictionary(uniqueKeysWithValues: self.online.map { ($0.key.uuidString, $0.value) }),
+                                      forKey: Keys.online)
+                }
+            }
         }
+        onlineTasks[id] = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: { task.cancel() }
     }
 
-    /// Forgets names fetched from Mojang.
-    func clearOnlineNames() {
-        online = [:]
+    private func cancelOnline() {
+        onlineGeneration = UUID()
+        onlineTasks.values.forEach { $0.cancel() }
         attempted = []
+    }
+
+    func clearOnlineNames() {
+        cancelOnline()
+        online = [:]
         defaults.removeObject(forKey: Keys.online)
     }
 }

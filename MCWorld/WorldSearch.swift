@@ -18,9 +18,11 @@ nonisolated struct DimensionIndex: Sendable {
     static func read(_ reader: RegionReader) async -> DimensionIndex {
         var part = DimensionIndex()
         for region in await reader.everyRegion({ await $0.contents($1) }) {
+            guard !Task.isCancelled else { return part }
             part.containers += region.value.containers
             part.signs += region.value.signs
         }
+        guard !Task.isCancelled else { return part }
         async let structures = StructureScanner.scan(reader)
         async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
         async let creatures = CreatureScanner.scan(reader)
@@ -132,6 +134,19 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
 /// titles, authors and pages, sign text, and creatures' names; or, with a `LayerFilter`, one
 /// sidebar layer's markers.
 nonisolated enum WorldSearch {
+    /// All scans and sorting for a query run on the concurrent executor, using one snapshot.
+    @concurrent
+    static func execute(_ request: SearchRequest) async -> [String: [SearchHit]] {
+        var results: [String: [SearchHit]] = [:]
+        for query in request.queries {
+            guard !Task.isCancelled else { return [:] }
+            results[query] = search(query, in: request.index, players: request.players) {
+                request.playerNames[$0.uuid] ?? $0.uuid.uuidString
+            }
+        }
+        return results
+    }
+
     static func words(in query: String) -> [String] {
         query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
     }
@@ -158,7 +173,7 @@ nonisolated enum WorldSearch {
     private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], words: [String],
                                                                      count: (Marker) -> Int = { _ in 1 },
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
-        entries.filter { contains($0.value.searchText, words: words) }.map { entry in
+        entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map { entry in
             SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value)), dimension: entry.dimension,
                       position: entry.value.position, y: nil, title: entry.value.group.name, detail: entry.value.name,
                       count: count(entry.value))
@@ -208,6 +223,7 @@ nonisolated enum WorldSearch {
         guard !words.isEmpty else { return [] }
         var hits: [SearchHit] = []
         for player in players {
+            guard !Task.isCancelled else { return [] }
             let who = name(player)
             if let found = summary(of: player.inventory + player.equipment.values, words: words) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: player.position?.dimension,
@@ -220,6 +236,7 @@ nonisolated enum WorldSearch {
             }
         }
         for entry in index.containers {
+            guard !Task.isCancelled else { return [] }
             let container = entry.value
             guard let found = summary(of: container.items, words: words) else { continue }
             let kind = ReadableName.from(container.kind)
@@ -230,6 +247,7 @@ nonisolated enum WorldSearch {
                                   title: title, detail: found.text, count: found.count))
         }
         for entry in index.signs {
+            guard !Task.isCancelled else { return [] }
             let sign = entry.value
             // Lines are matched together so a phrase can run across them, as signs are written.
             let lines = (sign.front + sign.back).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -240,6 +258,7 @@ nonisolated enum WorldSearch {
         }
         // Named creatures by name; `creature:` and `pet:` find the rest.
         for entry in index.creatures {
+            guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group)),

@@ -41,6 +41,7 @@ final class WorldSession {
     /// Searches kept in the sidebar, shared across worlds.
     let savedSearches: SavedSearches
     let heatMap: HeatMapLayer
+    let playerRecords: PlayerRecordsModel
 
     var selectedDimensionID: String? {
         didSet {
@@ -57,7 +58,9 @@ final class WorldSession {
         didSet { search.players = players }
     }
     /// What the inspector shows, if it's open.
-    var inspector: Inspector?
+    var inspector: Inspector? {
+        didSet { if inspector != oldValue { playerRecords.cancel() } }
+    }
     var selection: MapSelection?
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
@@ -72,33 +75,39 @@ final class WorldSession {
     /// One per dimension: reads each region once for the index and the heat map.
     private let readers: [String: RegionReader]
     private let views: RememberedViews
-    private let isAccessingSecurityScope: Bool
+    private let access: WorldReadAccess
+    private(set) var isClosed = false
+    @ObservationIgnored private var closingTask: Task<Void, Never>?
+    @ObservationIgnored private var retiringMaps: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
-    private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, defaults: UserDefaults,
-                 savedSearches: SavedSearches, cacheRoot: URL?, isAccessingSecurityScope: Bool) {
-        let dimensions = world.dimensions()
+    init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
+         defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+         readRegion: @escaping @Sendable (MCWorldKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
+        let url = snapshot.access.url, world = snapshot.world, dimensions = snapshot.dimensions, players = snapshot.players
         let readers = Dictionary(uniqueKeysWithValues: dimensions.map { dimension in
-            (dimension.id, RegionReader(dimension: dimension, cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot)))
+            (dimension.id, RegionReader(dimension: dimension, cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
+                                        read: readRegion))
         })
         self.url = url
         self.world = world
         self.dimensions = dimensions
-        self.details = details
+        self.details = snapshot.details
         self.names = names
         self.players = players
         self.cacheRoot = cacheRoot
         self.readers = readers
         self.views = RememberedViews(world: url, defaults: defaults)
-        self.isAccessingSecurityScope = isAccessingSecurityScope
+        self.access = snapshot.access
         self.visibility = LayerVisibility(defaults: defaults)
         self.savedSearches = savedSearches
         // Reopen in the dimension last viewed, if it still exists.
         let last = views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id }
         let selected = last ?? dimensions.first?.id
         self.search = SearchModel(readers: dimensions.compactMap { readers[$0.id] }, players: players, names: names,
-                                  singleplayerUUID: world.level.singleplayerUUID, firstDimension: selected)
+                                  singleplayerUUID: world.level.singleplayerUUID, firstDimension: selected, savedSearches: savedSearches)
         self.heatMap = HeatMapLayer(readers: readers)
+        self.playerRecords = PlayerRecordsModel(world: world)
         self.selectedDimensionID = selected
         heatMap.dimension = selectedDimensionID
         makeMapForSelection()
@@ -112,43 +121,41 @@ final class WorldSession {
     /// their own so they leave the app's alone.
     static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults = .standard,
                      cacheRoot: URL? = TileCache.root) async throws -> WorldSession {
-        let accessing = url.startAccessingSecurityScopedResource()
-        do {
-            let (world, players, details) = try await load(url)
-            return WorldSession(url: url, world: world, players: players, details: details, names: names, defaults: defaults,
-                                savedSearches: savedSearches ?? SavedSearches(defaults: defaults), cacheRoot: cacheRoot,
-                                isAccessingSecurityScope: accessing)
-        } catch {
-            if accessing { url.stopAccessingSecurityScopedResource() }
-            throw error
-        }
-    }
-
-    /// Reading `level.dat`, listing dimensions and reading player and settings files touches the
-    /// disk, so it runs off the main actor.
-    @concurrent
-    private nonisolated static func load(_ url: URL) async throws -> (World, [PlayerInfo], WorldDetails) {
-        do {
-            let world = try World(contentsOf: url)
-            return (world, world.players(), WorldDetails.read(world))
-        } catch WorldError.missingLevelDat {
-            throw WorldOpenError.notAWorld
-        } catch {
-            throw WorldOpenError.unreadable
-        }
+        let snapshot = try await WorldSnapshot.read(url)
+        return WorldSession(snapshot: snapshot, names: names, savedSearches: savedSearches ?? SavedSearches(defaults: defaults),
+                            defaults: defaults, cacheRoot: cacheRoot)
     }
 
     /// Stops rendering, watching and reading, remembers where the map was, and gives up file access.
     /// Call before replacing the session.
     func close() {
+        guard !isClosed else { return }
+        isClosed = true
         watcher?.stop()
-        refreshTask?.cancel()
+        refreshTasks.values.forEach { $0.cancel() }
         saveView()
         search.cancel()
         heatMap.cancel()
-        map?.cancel()
-        if isAccessingSecurityScope { url.stopAccessingSecurityScopedResource() }
+        playerRecords.close()
+        map?.close()
+        // Cancellation is a request, not completion. Retain access until even superseded work
+        // has returned, including a region pass shared by several scans.
+        let readers = Array(readers.values), search = search, heatMap = heatMap, playerRecords = playerRecords
+        let map = map, retiring = Array(retiringMaps.values), refresh = Array(refreshTasks.values), access = access
+        closingTask = Task {
+            await withTaskGroup(of: Void.self) { group in
+                for reader in readers { group.addTask { await reader.close() } }
+            }
+            await search.waitForTasks()
+            await heatMap.waitForReads()
+            await playerRecords.waitForReads()
+            await map?.waitForRenders()
+            for task in retiring + refresh { await task.value }
+            access.release()
+        }
     }
+
+    func waitUntilClosed() async { await closingTask?.value }
 
     // MARK: The map
 
@@ -210,7 +217,15 @@ final class WorldSession {
     }
 
     private func makeMapForSelection() {
-        map?.cancel()
+        guard !isClosed else { return }
+        if let old = map {
+            old.close()
+            let id = UUID()
+            retiringMaps[id] = Task { [weak self] in
+                await old.waitForRenders()
+                self?.retiringMaps[id] = nil
+            }
+        }
         guard let dimension = selectedDimension else {
             map = nil
             return
@@ -342,11 +357,13 @@ final class WorldSession {
     @ObservationIgnored private var pendingDimensions: Set<String> = []
     @ObservationIgnored private var pendingPlayers = false
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     /// How long to wait after the last change: an autosave writes many files over a second or two.
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
 
     /// Notes which regions, dimensions and players changed, then refreshes once saving settles.
     func worldChanged(_ files: [URL]) {
+        guard !isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
             let path = file.path
             if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
@@ -362,11 +379,15 @@ final class WorldSession {
         guard !pendingDimensions.isEmpty || pendingPlayers else { return }
         refreshTask?.cancel()
         let delay = refreshDelay
-        refreshTask = Task { [weak self] in
+        let id = UUID()
+        let task = Task { [weak self] in
+            defer { self?.refreshTasks[id] = nil }
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self?.refresh()
         }
+        refreshTask = task
+        refreshTasks[id] = task
     }
 
     /// Waits for a refresh that's waiting or running.
@@ -388,7 +409,9 @@ final class WorldSession {
         }
         if playersChanged {
             let world = world
-            players = await Self.readPlayers(world)
+            let updated = await Self.readPlayers(world)
+            guard !Task.isCancelled, !isClosed else { return }
+            players = updated
         }
     }
 
@@ -398,7 +421,7 @@ final class WorldSession {
     }
 }
 
-enum WorldOpenError: LocalizedError {
+enum WorldOpenError: LocalizedError, Equatable {
     case notAWorld
     case unreadable
 

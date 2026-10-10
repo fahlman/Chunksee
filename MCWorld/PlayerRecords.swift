@@ -1,5 +1,6 @@
 import Foundation
 import MCWorldKit
+import Observation
 import SwiftUI
 
 /// A player's statistics and advancements, read from their JSON files.
@@ -12,7 +13,9 @@ nonisolated struct PlayerRecords: Sendable {
     @concurrent
     static func load(from world: World, uuid: UUID, name: String?) async -> PlayerRecords {
         var records = PlayerRecords()
+        guard !Task.isCancelled else { return records }
         records.statistics = (try? world.statistics(for: uuid)) ?? name.flatMap { try? world.statistics(forName: $0) }
+        guard !Task.isCancelled else { return records }
         records.advancements = ((try? world.advancements(for: uuid)) ?? nil) ?? []
         return records
     }
@@ -56,6 +59,54 @@ nonisolated struct PlayerRecords: Sendable {
             let name = category == "minecraft:custom" ? String(localized: "General") : ReadableName.from(category)
             return values.map { StatisticRow(category: name, name: ReadableName.from($0.key), value: $0.value) }
         }
+    }
+}
+
+/// The inspector's current read. A result must still belong to the selected player and request.
+@Observable
+final class PlayerRecordsModel {
+    private(set) var uuid: UUID?
+    private(set) var records: PlayerRecords?
+    @ObservationIgnored private var generation = UUID()
+    @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    private let read: @Sendable (UUID, String?) async -> PlayerRecords
+    private var isClosed = false
+
+    init(world: World, read: (@Sendable (UUID, String?) async -> PlayerRecords)? = nil) {
+        self.read = read ?? { await PlayerRecords.load(from: world, uuid: $0, name: $1) }
+    }
+
+    func load(_ uuid: UUID, name: String?) async {
+        guard !isClosed, !Task.isCancelled else { return }
+        cancel()
+        self.uuid = uuid
+        let id = generation, read = read
+        let task = Task { [weak self] in
+            defer { self?.tasks[id] = nil }
+            let records = await read(uuid, name)
+            guard !Task.isCancelled, let self, self.generation == id, self.uuid == uuid else { return }
+            self.records = records
+        }
+        tasks[id] = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: { task.cancel() }
+    }
+
+    func cancel() {
+        generation = UUID()
+        tasks.values.forEach { $0.cancel() }
+        uuid = nil
+        records = nil
+    }
+
+    func waitForReads() async {
+        for task in tasks.values { await task.value }
+    }
+
+    func close() {
+        isClosed = true
+        cancel()
     }
 }
 

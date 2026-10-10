@@ -6,7 +6,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 ## Using MCWorld
 
-1. Choose **File ▸ Open World…** and select a world's folder inside your Minecraft `saves`
+1. Choose **File ▸ Open…** and select a world's folder inside your Minecraft `saves`
    folder.
 2. Pick a dimension in the sidebar.
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
@@ -32,8 +32,17 @@ It shows a top-down view of a world, the structures and places found in it, and 
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
-MCWorld only reads your world; it never changes it. Each world opens in its own window, and the worlds open when MCWorld quits reopen when it launches;
-with none, it asks for a world. **File ▸ Open Recent** lists the last ten.
+MCWorld only reads your world; it never changes it. Each world opens as a native Mac document in
+its own window. **File ▸ Open Recent** and window restoration follow your macOS settings, including
+your preference for reopening windows after quitting. You can select several world folders in
+the Open panel; opening a world again brings its existing window forward. Clearing Open Recent
+leaves your open worlds available.
+
+**View** includes zoom, World Info, Time Spent, sidebar and inspector commands. **Navigate** jumps
+to the world spawn or another dimension and saves the current search. In player details,
+**Locations** offers the last position, last death and respawn point. VoiceOver can also explore
+the individual visible map locations and center the map on them.
+
 Rendered map tiles are kept in MCWorld's cache folder, so reopening a world is nearly instant; any
 part of the world that has changed since is drawn again.
 

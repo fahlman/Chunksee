@@ -1,60 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// Scroll-wheel and trackpad-scroll input for the map.
-///
-/// AppKit is used because SwiftUI on macOS 27 has no scroll-wheel input for arbitrary views
-/// (`SpatialEventGesture` carries no scroll deltas, and scroll modifiers apply only to scroll
-/// views). A local event monitor sees scroll events in this app's windows; it handles only those
-/// over the map's frame and passes everything else through untouched.
-struct ScrollWheelInput: ViewModifier {
+/// SwiftUI has no arbitrary-view scroll-wheel gesture. This transparent AppKit view participates
+/// in its window's normal hit testing for scroll events only; other input reaches the SwiftUI map.
+struct ScrollWheelInput: NSViewRepresentable {
     enum Action: Equatable {
-        /// Move the map with the fingers (trackpad two-finger scroll), in points.
         case pan(CGSize)
-        /// Zoom by a factor around a point in the view (⌘-scroll, or a mouse wheel).
         case zoom(factor: CGFloat, anchor: CGPoint)
     }
 
     let perform: (Action) -> Void
 
-    @State private var monitor: Any?
-    @State private var frameInWindow: CGRect = .zero
-
-    func body(content: Content) -> some View {
-        content
-            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frameInWindow = $0 }
-            .onAppear { install() }
-            .onDisappear { remove() }
-    }
-
-    private func install() {
-        guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            MainActor.assumeIsolated { handle(event) } ? nil : event
-        }
-    }
-
-    private func remove() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
-    }
-
-    /// Returns true when the event was used by the map.
-    private func handle(_ event: NSEvent) -> Bool {
-        guard let window = event.window, let contentView = window.contentView else { return false }
-        // AppKit window coordinates start at the bottom left; SwiftUI's global space at the top left.
-        let p = event.locationInWindow
-        let point = CGPoint(x: p.x, y: contentView.bounds.height - p.y)
-        guard frameInWindow.contains(point) else { return false }
-        let local = CGPoint(x: point.x - frameInWindow.minX, y: point.y - frameInWindow.minY)
-
-        if let action = Self.action(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY,
-                                    isTrackpad: event.hasPreciseScrollingDeltas,
-                                    command: event.modifierFlags.contains(.command), at: local) {
-            perform(action)
-        }
-        return true
-    }
+    func makeNSView(context: Context) -> MapScrollView { MapScrollView(perform: perform) }
+    func updateNSView(_ view: MapScrollView, context: Context) { view.perform = perform }
 
     /// What a scroll does: a trackpad scroll pans with the fingers; ⌘-scroll or a mouse wheel zooms
     /// around the pointer. Trackpad deltas are in points and wheel deltas in lines, so they're scaled
@@ -69,8 +27,39 @@ struct ScrollWheelInput: ViewModifier {
     }
 }
 
+/// Native event routing distinguishes windows and respects controls layered over the map.
+final class MapScrollView: NSView {
+    var perform: (ScrollWheelInput.Action) -> Void
+    override var isFlipped: Bool { true }
+
+    init(perform: @escaping (ScrollWheelInput.Action) -> Void) {
+        self.perform = perform
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard NSApp.currentEvent?.type == .scrollWheel else { return nil }
+        return super.hitTest(point)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let window, event.window === window else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(point) else { return }
+        if let action = ScrollWheelInput.action(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY,
+                                               isTrackpad: event.hasPreciseScrollingDeltas,
+                                               command: event.modifierFlags.contains(.command), at: point) {
+            perform(action)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+}
+
 extension View {
     func scrollWheelInput(perform: @escaping (ScrollWheelInput.Action) -> Void) -> some View {
-        modifier(ScrollWheelInput(perform: perform))
+        overlay { ScrollWheelInput(perform: perform).accessibilityHidden(true) }
     }
 }

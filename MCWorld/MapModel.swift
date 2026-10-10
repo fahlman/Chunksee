@@ -59,7 +59,7 @@ final class MapModel {
     /// center first. A new request replaces the previous one, so panning away cancels work that's
     /// no longer visible.
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
-        guard size.width > 0, size.height > 0 else { return }
+        guard !isClosed, size.width > 0, size.height > 0 else { return }
         lastView = (size, displayScale)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
@@ -93,7 +93,10 @@ final class MapModel {
     /// Regions waiting to render, nearest to the view center first.
     private var queue: [RegionCoordinate] = []
     private var inFlight: [RegionCoordinate: Job] = [:]
+    /// Cancelled renders still own file reads until their tasks return.
+    @ObservationIgnored private var renders: [Int: Task<Void, Never>] = [:]
     private var nextJobID = 0
+    private var isClosed = false
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     private func startQueued() {
@@ -116,10 +119,12 @@ final class MapModel {
                 self?.finish(region, job: id, with: result)
             }
             inFlight[region] = Job(id: id, task: task)
+            renders[id] = task
         }
     }
 
     private func finish(_ region: RegionCoordinate, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
+        renders[id] = nil
         // A job cancelled because its region left the view was already removed (and may have been
         // replaced by a newer job for the same region); its result is dropped.
         guard inFlight[region]?.id == id else { return }
@@ -211,5 +216,18 @@ final class MapModel {
         inFlight = [:]
         queue = []
         updateLoadingState()
+    }
+
+    func waitForRenders() async {
+        for task in renders.values { await task.value }
+    }
+
+    func close() {
+        isClosed = true
+        cancel()
+    }
+
+    func zoom(by factor: CGFloat) {
+        viewport.scale = min(max(viewport.scale * factor, MapViewport.scaleRange.lowerBound), MapViewport.scaleRange.upperBound)
     }
 }

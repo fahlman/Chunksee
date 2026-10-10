@@ -32,7 +32,8 @@ MCWorld is a Mac app for viewing Minecraft: Java Edition worlds. Ryan approved i
     default.
 - **Data locations:**
   - The app reads only the world or saves folder the user picks with an Open panel.
-  - It remembers that folder as a read-only security-scoped bookmark in its own preferences.
+  - Worlds are native read-only folder documents. macOS owns opening, Open Recent, and window
+    restoration; each document retains access while its session reads the world.
   - It never writes to a world folder.
   - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
     Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
@@ -40,7 +41,7 @@ MCWorld is a Mac app for viewing Minecraft: Java Edition worlds. Ryan approved i
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** MCWorldKit (`https://github.com/fahlman/MCWorldKit.git`), pinned "up to next
-  minor" from `0.8.0`.
+  minor" from `0.18.0`, resolved to `0.18.1` (`376966aec6e30325480fb4664f65b6cddda6f745`).
   - MCWorldKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     MCWorldKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same MCWorldKit commit.
@@ -52,9 +53,9 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 
 | File | Owns |
 |---|---|
-| `MCWorldApp.swift` | The world window group (one window per world) and the File ▸ Open World… and Open Recent commands |
-| `AppModel.swift` | Recent worlds (read-only bookmarks), the worlds open now and reopening them at launch, and app-wide player names and saved searches |
-| `WorldSession.swift` | One open world: security-scoped access, its dimensions, the selected dimension's map, and what's drawn over it from the world index |
+| `MCWorldApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` for ordinary world folders; native opening, recents and restoration, opening metadata, document lifetime and moves |
+| `AppModel.swift` | App-wide player names and saved searches |
+| `WorldSession.swift` | One open world: its dimensions, map and overlays, and cancellation and draining of world reads before relinquishing document access |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -62,13 +63,20 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from MCWorldKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
-| `SearchModel.swift` | Building the index in the background as the world opens and after the game saves, the search bar's query and results, and saved searches |
-| `PlayerNames.swift` | Player names from local caches and, when allowed, Mojang (`MojangProfiles`) |
+| `SearchModel.swift` | Background indexing and queries, current immutable result snapshots, and shared saved searches |
+| `PlayerNames.swift` | Names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
+| `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
+| `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
+| `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from MCWorldKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
-| `ScrollWheelInput.swift` | Trackpad and scroll-wheel pan and zoom. The app's only AppKit: SwiftUI on macOS 27 has no scroll-wheel input for arbitrary views |
+| `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
+
+`SearchModel.results(for:)` reads published results for the current or a saved query. It never
+starts a synchronous scan. Query publication follows the index, players, names and saved-query
+snapshot; callers that need completion await `waitForSearch()`.
 
 ## Build and test
 
@@ -84,8 +92,10 @@ xcodebuild -project MCWorld.xcodeproj -scheme MCWorld -destination 'platform=mac
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   MCWorldKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running
-  and shows the "No World Open" window, then quit it. To check the sandboxed Open panel and
-  bookmark path, use a **Release** build. Xcode adds test-runner entitlements to Debug builds,
+  and shows the native Open panel, then cancel it and quit. Check opening several folders, opening
+  one again, clearing Open Recent while documents stay open, and quitting/relaunching with the
+  system's window restoration preference. To check document file access, use a **Release** build.
+  Xcode adds test-runner entitlements to Debug builds,
   including read-only access to `/`, so a Debug build can't show sandbox problems.
 - **Automated GitHub checks:** none, because Ryan's projects run no hosted macOS CI. This was
   recorded on 2026-10-09.

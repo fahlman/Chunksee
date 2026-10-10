@@ -174,6 +174,7 @@ import Testing
         #expect(session.spawnPoint == .zero)   // the test world has no spawn
         session.search.text = "summer"
         await session.search.waitForIndex()
+        await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["“Summer”"])
         #expect(session.search.results.first?.source == .layer(.creature(.pet)))
     }
