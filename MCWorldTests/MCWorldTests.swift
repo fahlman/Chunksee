@@ -933,6 +933,28 @@ import Testing
     }
 }
 
+@Suite struct RememberedViewTests {
+    @Test func reopensInTheLastDimensionAtTheSamePlace() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
+        first.selectedDimensionID = "minecraft:the_nether"   // leaving the Overworld remembers it
+        first.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
+        first.close()
+
+        let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        defer { second.close() }
+        #expect(second.selectedDimensionID == "minecraft:the_nether")
+        #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 7, y: 8), scale: 4))
+        second.selectedDimensionID = "minecraft:overworld"
+        #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

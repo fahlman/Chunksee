@@ -127,6 +127,11 @@ private struct WorldView: View {
                         creatures: session.visibleCreatures, selectedCreatureID: session.selectedCreature?.id,
                         onSelectCreature: { session.selectedCreature = $0 }, markers: session.markers)
                     .id(map.dimension.id)
+                    // Remember the position a second after the map stops moving.
+                    .task(id: map.viewport) {
+                        try? await Task.sleep(for: .seconds(1))
+                        if !Task.isCancelled { session.saveView() }
+                    }
                     .overlay(alignment: .topLeading) {
                         if let portal = session.selectedPortal {
                             PortalCard(session: session, portal: portal)

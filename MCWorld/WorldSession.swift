@@ -18,6 +18,7 @@ final class WorldSession {
     var selectedDimensionID: String? {
         didSet {
             guard oldValue != selectedDimensionID else { return }
+            saveView(of: oldValue)   // the map still shows the dimension being left
             if selectedPortal?.dimension != selectedDimensionID { selectedPortal = nil }
             if selectedCreature?.dimension != selectedDimensionID { selectedCreature = nil }
             if visibleInGameMap == nil { selectedInGameMapID = nil }
@@ -237,7 +238,10 @@ final class WorldSession {
         self.players = players
         self.dimensions = world.dimensions()
         self.isAccessingSecurityScope = isAccessingSecurityScope
-        self.selectedDimensionID = dimensions.first?.id
+        // Reopen in the dimension last viewed, if it still exists.
+        let saved = (defaults.dictionary(forKey: "mapView." + url.standardizedFileURL.path)?["dimension"] as? String)
+            .flatMap { id in dimensions.first { $0.id == id }?.id }
+        self.selectedDimensionID = saved ?? dimensions.first?.id
         makeMapForSelection()
         Self.maintainTileCache(forWorldAt: url)
         loadPortals()
@@ -392,9 +396,11 @@ final class WorldSession {
             map = nil
             return
         }
-        // Start at the world spawn when it's in this dimension, otherwise at the origin.
+        // Start where the map was left, or else at the world spawn when it's in this dimension,
+        // otherwise at the origin.
         map = MapModel(dimension: dimension, center: spawnPoint,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
+        if let viewport = savedViewport(for: dimension.id) { map?.viewport = viewport }
         map?.loadStructures()
         map?.loadPlaces()
         map?.loadCreatures()
@@ -402,7 +408,32 @@ final class WorldSession {
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.
+    // MARK: Remembered position
+
+    /// Where the map was left in each dimension of this world, and which dimension was showing:
+    /// `["dimension": id, "views": [id: [x, z, scale]]]`.
+    private var viewKey: String { "mapView." + url.standardizedFileURL.path }
+
+    /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is
+    /// showing: the selected one, except while switching away from it.
+    func saveView(of dimensionID: String? = nil) {
+        guard let map, let id = dimensionID ?? selectedDimensionID else { return }
+        var saved = defaults.dictionary(forKey: viewKey) ?? [:]
+        var views = saved["views"] as? [String: [Double]] ?? [:]
+        views[id] = [map.viewport.center.x, map.viewport.center.y, map.viewport.scale]
+        saved["views"] = views
+        saved["dimension"] = selectedDimensionID
+        defaults.set(saved, forKey: viewKey)
+    }
+
+    /// Where the map was left in a dimension, if it was.
+    private func savedViewport(for id: String) -> MapViewport? {
+        guard let view = (defaults.dictionary(forKey: viewKey)?["views"] as? [String: [Double]])?[id], view.count == 3 else { return nil }
+        return MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])
+    }
+
     func close() {
+        saveView()
         indexTask?.cancel()
         heatMapTasks.values.forEach { $0.cancel() }
         map?.cancel()
