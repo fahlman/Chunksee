@@ -4,6 +4,12 @@ import MCWorldKit
 import Observation
 
 /// The world the user opened, and the security-scoped access that lets the sandboxed app read it.
+/// What the inspector beside the map shows.
+enum Inspector: Equatable {
+    case world
+    case player(UUID)
+}
+
 @Observable
 final class WorldSession {
     let url: URL
@@ -20,8 +26,10 @@ final class WorldSession {
     /// Players with saved data, most recently saved first.
     let players: [PlayerInfo]
     var showsPlayers = true
-    /// The player whose details the inspector shows.
-    var inspectedPlayerID: UUID?
+    /// What the inspector shows, if it's open.
+    var inspector: Inspector?
+    /// Game rules, weather, borders and the like, read when the world opens.
+    let details: WorldDetails
     /// Structure groups shown on the map; remembered between launches.
     var shownStructureGroups: Set<StructureGroup> {
         didSet {
@@ -82,6 +90,11 @@ final class WorldSession {
         await indexTask?.value
     }
 
+    /// The selected dimension's world border, when it's closer than Minecraft's default.
+    var visibleBorder: WorldBorder? {
+        selectedDimensionID.flatMap { details.borders[$0] }.flatMap { $0.isLimited ? $0 : nil }
+    }
+
     /// Search results in the selected dimension, for map markers.
     var visibleHits: [SearchHit] {
         searchResults.filter { $0.dimension == selectedDimensionID && $0.position != nil }
@@ -104,8 +117,9 @@ final class WorldSession {
 
     private let isAccessingSecurityScope: Bool
 
-    private init(url: URL, world: World, players: [PlayerInfo], names: PlayerNames, isAccessingSecurityScope: Bool) {
+    private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, isAccessingSecurityScope: Bool) {
         self.url = url
+        self.details = details
         self.names = names
         if let saved = UserDefaults.standard.stringArray(forKey: Self.shownStructuresKey) {
             shownStructureGroups = Set(saved.compactMap(StructureGroup.init(rawValue:)))
@@ -175,21 +189,21 @@ final class WorldSession {
     static func open(_ url: URL, names: PlayerNames) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
-            let (world, players) = try await load(url)
-            return WorldSession(url: url, world: world, players: players, names: names, isAccessingSecurityScope: accessing)
+            let (world, players, details) = try await load(url)
+            return WorldSession(url: url, world: world, players: players, details: details, names: names, isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
         }
     }
 
-    /// Reading `level.dat`, listing dimensions and reading player files touches the disk, so it
-    /// runs off the main actor.
+    /// Reading `level.dat`, listing dimensions and reading player and settings files touches the
+    /// disk, so it runs off the main actor.
     @concurrent
-    private nonisolated static func load(_ url: URL) async throws -> (World, [PlayerInfo]) {
+    private nonisolated static func load(_ url: URL) async throws -> (World, [PlayerInfo], WorldDetails) {
         do {
             let world = try World(contentsOf: url)
-            return (world, world.players())
+            return (world, world.players(), WorldDetails.read(world))
         } catch WorldError.missingLevelDat {
             throw WorldOpenError.notAWorld
         } catch {

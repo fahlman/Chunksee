@@ -15,6 +15,8 @@ struct MapView: View {
     /// Item search results in this dimension, drawn as pins above everything but players.
     var hits: [SearchHit] = []
     var selectedHitID: SearchHit.ID?
+    /// The dimension's world border, drawn when it's closer than Minecraft's default.
+    var border: WorldBorder?
     /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
     var onSelectPortal: (NetherPortal?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.
@@ -45,6 +47,12 @@ struct MapView: View {
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
             }
             let bounds = CGRect(origin: .zero, size: size)
+            if let border {
+                let half = border.size / 2
+                let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
+                let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
+                context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
+            }
             for structure in structures {
                 Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
             }

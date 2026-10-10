@@ -653,6 +653,36 @@ import Testing
     }
 }
 
+@Suite struct WorldDetailsTests {
+    @Test func ruleNamesAndClock() {
+        #expect(WorldDetails.readableRule("minecraft:keep_inventory") == "Keep Inventory")
+        #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
+        #expect(WorldDetails.clockTime(ofDayTicks: 0) == (6, 0))
+        #expect(WorldDetails.clockTime(ofDayTicks: 18_000) == (0, 0))
+        #expect(WorldDetails.clockTime(ofDayTicks: 24_000 * 3 + 4_245) == (10, 14))
+    }
+
+    @Test func sessionReadsDetailsAndShowsOnlyALimitedBorder() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        func write(_ path: String, _ data: [String: NBT]) throws {
+            let url = world.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let root = NBT.compound(["DataVersion": .int(5023), "data": .compound(data)])
+            try Data(Compression.deflate(root.serialized(), gzip: true)).write(to: url)
+        }
+        try write("data/minecraft/game_rules.dat", ["minecraft:keep_inventory": .byte(1)])
+        try write("dimensions/minecraft/overworld/data/minecraft/world_border.dat", ["size": .double(2000), "center_x": .double(100), "center_z": .double(0)])
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
+        #expect(session.visibleBorder?.size == 2000)
+        session.inspector = .world
+        #expect(session.inspector == .world)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
