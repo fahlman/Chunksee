@@ -16,11 +16,14 @@ final class WorldSession {
     /// Players with saved data, most recently saved first.
     let players: [PlayerInfo]
     var showsPlayers = true
+    /// App-wide player names, shared across worlds.
+    let names: PlayerNames
 
     private let isAccessingSecurityScope: Bool
 
-    private init(url: URL, world: World, players: [PlayerInfo], isAccessingSecurityScope: Bool) {
+    private init(url: URL, world: World, players: [PlayerInfo], names: PlayerNames, isAccessingSecurityScope: Bool) {
         self.url = url
+        self.names = names
         self.world = world
         self.players = players
         self.dimensions = world.dimensions()
@@ -41,11 +44,11 @@ final class WorldSession {
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
-    static func open(_ url: URL) async throws -> WorldSession {
+    static func open(_ url: URL, names: PlayerNames) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let (world, players) = try await load(url)
-            return WorldSession(url: url, world: world, players: players, isAccessingSecurityScope: accessing)
+            return WorldSession(url: url, world: world, players: players, names: names, isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
@@ -69,8 +72,11 @@ final class WorldSession {
     var displayName: String { world.level.name ?? url.lastPathComponent }
 
     func name(of player: PlayerInfo) -> String {
-        PlayerPresentation.name(of: player, singleplayerUUID: world.level.singleplayerUUID)
+        PlayerPresentation.name(of: player, singleplayerUUID: world.level.singleplayerUUID, knownName: names.name(for: player.uuid))
     }
+
+    /// Whether any player still has no real name.
+    var hasUnnamedPlayers: Bool { players.contains { names.name(for: $0.uuid) == nil } }
 
     func isOutdated(_ player: PlayerInfo) -> Bool {
         PlayerPresentation.isOutdated(player, worldDataVersion: world.level.dataVersion)
@@ -79,8 +85,9 @@ final class WorldSession {
     /// Player, death and respawn markers for the selected dimension, when players are shown.
     var markers: [MapMarker] {
         guard showsPlayers, let id = selectedDimensionID else { return [] }
+        let names = names
         return PlayerPresentation.markers(for: players, in: id, singleplayerUUID: world.level.singleplayerUUID,
-                                          worldDataVersion: world.level.dataVersion)
+                                          worldDataVersion: world.level.dataVersion, knownName: { names.name(for: $0) })
     }
 
     /// Shows a location: switches to its dimension if needed and centers the map on it.

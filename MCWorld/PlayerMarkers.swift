@@ -20,9 +20,11 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
 
 /// Presentation of players: names, notes, and which markers belong on a dimension's map.
 nonisolated enum PlayerPresentation {
-    /// Player files hold only UUIDs, so players are named by the start of theirs; the singleplayer
-    /// player is "You".
-    static func name(of player: PlayerInfo, singleplayerUUID: UUID?) -> String {
+    /// A player's name when one is known (Minecraft's name caches or Mojang). Player files hold
+    /// only UUIDs, so otherwise the singleplayer player is "You" and others are named by the start
+    /// of their UUID.
+    static func name(of player: PlayerInfo, singleplayerUUID: UUID?, knownName: String? = nil) -> String {
+        if let knownName { return knownName }
         if player.uuid == singleplayerUUID { return String(localized: "You") }
         let short = player.uuid.uuidString.lowercased().prefix(8)
         return String(localized: "Player \(String(short))")
@@ -41,11 +43,11 @@ nonisolated enum PlayerPresentation {
     }
 
     /// Markers for one dimension: each mappable player's last position, last death and respawn point.
-    static func markers(for players: [PlayerInfo], in dimensionID: String,
-                        singleplayerUUID: UUID?, worldDataVersion: Int?) -> [MapMarker] {
+    static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,
+                        worldDataVersion: Int?, knownName: (UUID) -> String? = { _ in nil }) -> [MapMarker] {
         var markers: [MapMarker] = []
         for player in players where isMappable(player) {
-            let name = name(of: player, singleplayerUUID: singleplayerUUID)
+            let name = name(of: player, singleplayerUUID: singleplayerUUID, knownName: knownName(player.uuid))
             let outdated = isOutdated(player, worldDataVersion: worldDataVersion)
             let id = player.uuid.uuidString
             func add(_ kind: MapMarker.Kind, _ location: PlayerInfo.Location?, _ label: String) {

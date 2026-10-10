@@ -8,12 +8,14 @@ final class AppModel {
     private(set) var isOpening = false
     var errorMessage: String?
     var isShowingOpenPanel = false
+    let names: PlayerNames
 
     private let defaults: UserDefaults
     private static let bookmarkKey = "lastWorldBookmark"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.names = PlayerNames(defaults: defaults)
     }
 
     /// Reopens the world from the last launch, if its bookmark still resolves.
@@ -33,7 +35,7 @@ final class AppModel {
         isOpening = true
         defer { isOpening = false }
         do {
-            let newSession = try await WorldSession.open(url)
+            let newSession = try await WorldSession.open(url, names: names)
             session?.close()
             session = newSession
             errorMessage = nil
