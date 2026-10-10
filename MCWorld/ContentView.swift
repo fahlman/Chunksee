@@ -61,6 +61,12 @@ private struct WorldView: View {
                     .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
                     .keyboardShortcut("i")
                     .help("Show the world’s settings, time, weather and game rules")
+                    Toggle(isOn: $session.showsHeatMap) {
+                        Label("Time Spent", systemImage: "flame")
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .help("Color the map by how long players spent near each chunk")
                 }
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in
@@ -101,7 +107,7 @@ private struct WorldView: View {
             if let map = session.map {
                 MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
                         selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
-                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder,
+                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder, heatMap: session.visibleHeatMap ?? [:],
                         inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
                         inGameMapOpacity: session.inGameMapOpacity,
                         onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
@@ -112,6 +118,12 @@ private struct WorldView: View {
                                 .padding(10)
                         } else if let inGameMap = session.visibleInGameMap {
                             InGameMapCard(session: session, map: inGameMap)
+                                .padding(10)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if session.showsHeatMap {
+                            HeatMapLegend(isLoading: session.isLoadingHeatMap)
                                 .padding(10)
                         }
                     }

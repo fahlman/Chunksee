@@ -20,6 +20,7 @@ final class WorldSession {
             guard oldValue != selectedDimensionID else { return }
             if selectedPortal?.dimension != selectedDimensionID { selectedPortal = nil }
             if visibleInGameMap == nil { selectedInGameMapID = nil }
+            loadHeatMap()
             makeMapForSelection()
         }
     }
@@ -91,6 +92,42 @@ final class WorldSession {
     /// Waits for the search index, if one is being built.
     func waitForIndex() async {
         await indexTask?.value
+    }
+
+    // MARK: Time-spent heat map
+
+    /// Whether the heat map is drawn over the terrain. Turning it on reads the dimension's chunk
+    /// times the first time.
+    var showsHeatMap = false {
+        didSet { loadHeatMap() }
+    }
+    /// Heat images by dimension id, then region.
+    private(set) var heatMaps: [String: [RegionCoordinate: CGImage]] = [:]
+    @ObservationIgnored private var heatMapTasks: [String: Task<Void, Never>] = [:]
+
+    /// The selected dimension's heat map, when shown and read.
+    var visibleHeatMap: [RegionCoordinate: CGImage]? {
+        guard showsHeatMap, let id = selectedDimensionID else { return nil }
+        return heatMaps[id]
+    }
+
+    var isLoadingHeatMap: Bool {
+        showsHeatMap && selectedDimensionID.map { heatMaps[$0] == nil } ?? false
+    }
+
+    private func loadHeatMap() {
+        guard showsHeatMap, let dimension = selectedDimension, heatMaps[dimension.id] == nil,
+              heatMapTasks[dimension.id] == nil else { return }
+        heatMapTasks[dimension.id] = Task(priority: .userInitiated) { [weak self] in
+            let images = await HeatMap.images(for: dimension)
+            guard let self, !Task.isCancelled else { return }
+            self.heatMaps[dimension.id] = images
+        }
+    }
+
+    /// Waits for heat maps being read.
+    func waitForHeatMaps() async {
+        for task in heatMapTasks.values { await task.value }
     }
 
     // MARK: In-game maps
@@ -312,6 +349,7 @@ final class WorldSession {
     /// Stops rendering and gives up file access. Call before replacing the session.
     func close() {
         indexTask?.cancel()
+        heatMapTasks.values.forEach { $0.cancel() }
         map?.cancel()
         if isAccessingSecurityScope { url.stopAccessingSecurityScopedResource() }
     }

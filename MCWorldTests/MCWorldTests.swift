@@ -758,6 +758,43 @@ import Testing
     }
 }
 
+@Suite struct HeatMapTests {
+    @Test func logarithmicScaleAndColors() throws {
+        #expect(HeatMap.level(ofTicks: 1_199) == nil)
+        #expect(HeatMap.level(ofTicks: HeatMap.minimumTicks) == 0)
+        #expect(HeatMap.level(ofTicks: HeatMap.maximumTicks * 50) == 1)
+        let hour = try #require(HeatMap.level(ofTicks: 72_000))
+        #expect(hour > 0.3 && hour < 0.45)
+        #expect(HeatMap.hue(atLevel: 1) == 0)   // red
+        let red = HeatMap.rgb(hue: 0), blue = HeatMap.rgb(hue: 0.66)
+        #expect(red.0 == 1 && red.2 == 0 && blue.2 == 1)
+        var ticks = [Int](repeating: 0, count: 1024)
+        #expect(HeatMap.image(fromTicks: ticks) == nil)
+        ticks[33] = 72_000
+        let image = try #require(HeatMap.image(fromTicks: ticks))
+        #expect(image.width == 32 && image.height == 32)
+    }
+
+    @Test func sessionReadsTheSelectedDimensionWhenShown() async throws {
+        var lived = TestWorld.chunk(x: 1, z: 1, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+        var root = lived.nbt.compound!
+        root["InhabitedTime"] = .long(720_000)
+        lived.nbt = .compound(root)
+        let world = try TestWorld.make(chunks: [lived])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        #expect(session.visibleHeatMap == nil && !session.isLoadingHeatMap)
+        session.showsHeatMap = true
+        #expect(session.isLoadingHeatMap)
+        await session.waitForHeatMaps()
+        #expect(session.visibleHeatMap?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
+        session.showsHeatMap = false
+        #expect(session.visibleHeatMap == nil)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
