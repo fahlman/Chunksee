@@ -27,8 +27,8 @@ final class WorldSession {
         }
     }
     private(set) var map: MapModel?
-    /// Players with saved data, most recently saved first.
-    let players: [PlayerInfo]
+    /// Players with saved data, most recently saved first. Reread when the game saves them.
+    private(set) var players: [PlayerInfo]
     var showsPlayers = true
     /// What the inspector shows, if it's open.
     var inspector: Inspector?
@@ -86,7 +86,8 @@ final class WorldSession {
     /// search; drawing the map comes first, hence utility priority.
     private func buildIndex() {
         guard indexTask == nil else { return }
-        isIndexing = true
+        // Rebuilding after the game saved keeps showing the current results meanwhile.
+        isIndexing = searchIndex == nil
         let dimensions = dimensions, url = url
         indexTask = Task(priority: .utility) { [weak self] in
             let index = await WorldSearch.index(dimensions) { ScanCache(forWorldAt: url, dimensionID: $0.id) }
@@ -123,13 +124,16 @@ final class WorldSession {
         showsHeatMap && selectedDimensionID.map { heatMaps[$0] == nil } ?? false
     }
 
-    private func loadHeatMap() {
-        guard showsHeatMap, let dimension = selectedDimension, heatMaps[dimension.id] == nil,
+    /// Reads the selected dimension's heat map if it's shown and hasn't been read, or again with
+    /// `reread` after the game saved; the current one stays until the new one is ready.
+    private func loadHeatMap(reread: Bool = false) {
+        guard showsHeatMap, let dimension = selectedDimension, reread || heatMaps[dimension.id] == nil,
               heatMapTasks[dimension.id] == nil else { return }
         heatMapTasks[dimension.id] = Task(priority: .userInitiated) { [weak self] in
             let images = await HeatMap.images(for: dimension)
             guard let self, !Task.isCancelled else { return }
             self.heatMaps[dimension.id] = images
+            self.heatMapTasks[dimension.id] = nil
         }
     }
 
@@ -246,6 +250,73 @@ final class WorldSession {
         Self.maintainTileCache(forWorldAt: url)
         loadPortals()
         buildIndex()
+        watcher = WorldWatcher(folder: url) { [weak self] files in self?.worldChanged(files) }
+    }
+
+    // MARK: Live updates
+
+    @ObservationIgnored private var watcher: WorldWatcher?
+    /// Changes waiting for the game to finish saving.
+    @ObservationIgnored private var pendingRegions: [String: Set<RegionCoordinate>] = [:]
+    @ObservationIgnored private var pendingDimensions: Set<String> = []
+    @ObservationIgnored private var pendingPlayers = false
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// How long to wait after the last change: an autosave writes many files over a second or two.
+    @ObservationIgnored var refreshDelay: Duration = .seconds(2)
+
+    /// Notes which regions, dimensions and players changed, then refreshes once saving settles.
+    func worldChanged(_ files: [URL]) {
+        for file in files.map(\.standardizedFileURL) {
+            let path = file.path
+            if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+                pendingPlayers = true
+            } else if let dimension = dimensions.first(where: { path.hasPrefix($0.url.standardizedFileURL.path + "/") }) {
+                pendingDimensions.insert(dimension.id)
+                if file.deletingLastPathComponent().path == dimension.regionDirectory.standardizedFileURL.path,
+                   let region = RegionFile.parseCoordinates(file.lastPathComponent) {
+                    pendingRegions[dimension.id, default: []].insert(RegionCoordinate(x: region.x, z: region.z))
+                }
+            }
+        }
+        guard !pendingDimensions.isEmpty || pendingPlayers else { return }
+        refreshTask?.cancel()
+        let delay = refreshDelay
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
+        }
+    }
+
+    /// Waits for a refresh that's waiting or running.
+    func waitForRefresh() async {
+        await refreshTask?.value
+    }
+
+    private func refresh() async {
+        let regions = pendingRegions, changedDimensions = pendingDimensions, playersChanged = pendingPlayers
+        pendingRegions = [:]
+        pendingDimensions = []
+        pendingPlayers = false
+        if let id = selectedDimensionID, changedDimensions.contains(id) {
+            map?.regionsChanged(regions[id] ?? [])
+            map?.reloadMarkers()
+            loadHeatMap(reread: true)
+        }
+        if !changedDimensions.isEmpty {
+            loadPortals()
+            indexTask = nil
+            buildIndex()
+        }
+        if playersChanged {
+            let world = world
+            players = await Self.readPlayers(world)
+        }
+    }
+
+    @concurrent
+    private nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] {
+        world.players()
     }
 
     /// Reads both dimensions' portals in the background; links need the other side's portals.
@@ -433,6 +504,8 @@ final class WorldSession {
     }
 
     func close() {
+        watcher?.stop()
+        refreshTask?.cancel()
         saveView()
         indexTask?.cancel()
         heatMapTasks.values.forEach { $0.cancel() }

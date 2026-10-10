@@ -955,6 +955,76 @@ import Testing
     }
 }
 
+@Suite struct LiveMapTests {
+    static func stone(x: Int, z: Int, height: Int) -> TestWorld.ChunkSpec {
+        TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y <= height ? 1 : 0 }
+    }
+
+    @Test func changedRegionsRedrawAndNewOnesAppear() async throws {
+        let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
+        await map.waitUntilIdle()
+        let before = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)])
+
+        // The game adds a chunk to r.0.0 and creates r.-1.0.
+        let regions = dimension.regionDirectory
+        try Data(TestWorld.regionFile([Self.stone(x: 0, z: 0, height: 0), Self.stone(x: 1, z: 0, height: 3)]))
+            .write(to: regions.appendingPathComponent("r.0.0.mca"))
+        try Data(TestWorld.regionFile([Self.stone(x: -1, z: 0, height: 0)])).write(to: regions.appendingPathComponent("r.-1.0.mca"))
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: -1, z: 0)])
+        // The old image stays until the new one is drawn.
+        #expect(map.tiles[RegionCoordinate(x: 0, z: 0)] != nil)
+        await map.waitUntilIdle()
+        let after = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)])
+        #expect(after !== before)
+        #expect(map.tiles[RegionCoordinate(x: -1, z: 0)] != nil)
+    }
+
+    @Test func watcherReportsChangedFiles() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("WatcherTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (changes, continuation) = AsyncStream.makeStream(of: [URL].self)
+        let watcher = try #require(WorldWatcher(folder: folder) { continuation.yield($0) })
+        defer { watcher.stop() }
+        let file = folder.appendingPathComponent("r.0.0.mca")
+        try Data([1]).write(to: file)
+        var seen: [URL] = []
+        for await batch in changes {
+            seen += batch
+            if seen.contains(where: { $0.lastPathComponent == "r.0.0.mca" }) { break }
+        }
+        #expect(seen.contains { $0.resolvingSymlinksInPath().path == file.resolvingSymlinksInPath().path })
+    }
+
+    @Test func sessionRefreshesRegionsAndPlayers() async throws {
+        let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
+        defer { session.close() }
+        session.refreshDelay = .zero
+        #expect(session.players.isEmpty)
+
+        let regions = try #require(session.map?.dimension.regionDirectory)
+        let newRegion = regions.appendingPathComponent("r.-1.0.mca")
+        try Data(TestWorld.regionFile([Self.stone(x: -1, z: 0, height: 0)])).write(to: newRegion)
+        let players = world.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: players, withIntermediateDirectories: true)
+        let player = players.appendingPathComponent(UUID().uuidString.lowercased() + ".dat")
+        let nbt = NBT.compound(["Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)])])
+        try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: player)
+
+        session.worldChanged([newRegion, player, world.appendingPathComponent("session.lock")])
+        await session.waitForRefresh()
+        #expect(session.map?.availableRegions.contains(RegionCoordinate(x: -1, z: 0)) == true)
+        #expect(session.players.count == 1)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
