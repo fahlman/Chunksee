@@ -129,7 +129,7 @@ final class LayerVisibility {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        func saved<Group: RawRepresentable & CaseIterable>(_ key: String, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
+        func saved<Group: RawRepresentable & CaseIterable & Sendable>(_ key: String, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
             guard let names = defaults.stringArray(forKey: key) else { return Set(Group.allCases.filter(isShown)) }
             return Set(names.compactMap(Group.init(rawValue:)))
         }
