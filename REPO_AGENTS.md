@@ -54,14 +54,15 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 |---|---|
 | `MCWorldApp.swift` | The single `Window` scene and the File ▸ Open World… command |
 | `AppModel.swift` | The open world, and remembering it between launches with a read-only bookmark |
-| `WorldSession.swift` | One open world: security-scoped access, its dimensions, and the selected dimension's map |
+| `WorldSession.swift` | One open world: security-scoped access, its dimensions, the selected dimension's map, and what's drawn over it from the world index |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from MCWorldKit's `PointOfInterest` and `NetherPortal`) |
-| `ItemSearch.swift` | The container index (built on first search, per session) and item matching and results, from MCWorldKit's `ItemContainer`, `ItemStack` and `PlayerInfo` items |
+| `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
+| `SearchModel.swift` | Building the index in the background as the world opens and after the game saves, the search bar's query and results, and saved searches |
 | `PlayerNames.swift` | Player names from local caches and, when allowed, Mojang (`MojangProfiles`) |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from MCWorldKit's `PlayerInfo`) |

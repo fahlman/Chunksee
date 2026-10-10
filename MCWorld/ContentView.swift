@@ -74,21 +74,23 @@ private struct WorldView: View {
                         Label(dimension.displayName, systemImage: symbol(for: dimension.id))
                     }
                 }
-                if let map = session.map {
-                    LayerSection(title: "Structures", markers: map.structures, origin: session.spawnPoint,
-                                 shown: $visibility.structures) { session.center(on: $0.position) }
-                    LayerSection(title: "Places", markers: map.places, origin: session.spawnPoint,
-                                 shown: $visibility.places) { place in
-                        if let portal = place.portal { session.show(portal) } else { session.center(on: place.position) }
-                    }
-                    LayerSection(title: "Creatures", markers: map.creatures, origin: session.spawnPoint,
-                                 shown: $visibility.creatures) { creature in
-                        session.center(on: creature.position)
-                        session.selection = .creature(creature)
-                    }
-                    LayerSection(title: "Biomes", markers: map.biomeAreas, origin: session.spawnPoint,
-                                 shown: $visibility.biomes) { session.center(on: $0.position) }
+                if !session.savedSearches.all.isEmpty {
+                    SavedSearchesSection(session: session)
                 }
+                let index = session.selectedIndex
+                LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
+                             shown: $visibility.structures) { session.center(on: $0.position) }
+                LayerSection(title: "Places", markers: index.places, origin: session.spawnPoint,
+                             shown: $visibility.places) { place in
+                    if let portal = place.portal { session.show(portal) } else { session.center(on: place.position) }
+                }
+                LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
+                             shown: $visibility.creatures) { creature in
+                    session.center(on: creature.position)
+                    session.selection = .creature(creature)
+                }
+                LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
+                             shown: $visibility.biomes) { session.center(on: $0.position) }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
                         ForEach(session.inGameMaps, id: \.id) { map in
@@ -270,36 +272,86 @@ private struct SearchResultsSection: View {
     var body: some View {
         let search = session.search
         Section {
-            if search.isIndexing {
-                Label {
-                    Text("Searching the world…")
-                } icon: {
-                    ProgressView().controlSize(.small)
-                }
-                .foregroundStyle(.secondary)
-            } else if search.results.isEmpty {
-                Text("No matches").foregroundStyle(.secondary)
-            } else {
-                ForEach(search.results.prefix(200)) { hit in
-                    Button {
-                        session.show(hit)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(hit.detail).lineLimit(2)
-                            Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
+            HitList(session: session, hits: search.results)
+        } header: {
+            HStack {
+                Text("Search Results")
+                Spacer()
+                Button("Save Search", systemImage: "plus.circle") { session.saveSearch() }
+                    .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(hit.position == nil)
-                    .padding(.vertical, 2)
-                    .listRowBackground(hit.id == search.selectedHitID ? Color.yellow.opacity(0.25) : nil)
+                    .disabled(session.savedSearches.contains(search.text.trimmingCharacters(in: .whitespaces)))
+                    .help("Keep this search in the sidebar")
+            }
+        }
+    }
+}
+
+/// Searches kept in the sidebar. Each lists its results when expanded and pins them on the map
+/// while its eye is open.
+private struct SavedSearchesSection: View {
+    let session: WorldSession
+
+    var body: some View {
+        Section("Saved Searches") {
+            ForEach(session.savedSearches.all) { saved in
+                let hits = session.search.results(for: saved.query)
+                DisclosureGroup {
+                    HitList(session: session, hits: hits)
+                } label: {
+                    HStack {
+                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.count))", systemImage: "magnifyingglass")
+                        Spacer()
+                        VisibilityButton(isShown: Binding {
+                            saved.isShown
+                        } set: {
+                            session.savedSearches.setShown(saved.id, $0)
+                        })
+                    }
                 }
-                if search.results.count > 200 {
-                    Text("Showing the first 200 of \(search.results.count)").font(.caption).foregroundStyle(.secondary)
+                .contextMenu {
+                    Button("Search for This") { session.search.text = saved.query }
+                    Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
                 }
             }
-        } header: {
-            Text("Search Results")
+        }
+    }
+}
+
+/// A search's results; choosing one shows it on the map.
+private struct HitList: View {
+    let session: WorldSession
+    let hits: [SearchHit]
+
+    var body: some View {
+        let search = session.search
+        if search.isIndexing && hits.isEmpty {
+            Label {
+                Text("Searching the world…")
+            } icon: {
+                ProgressView().controlSize(.small)
+            }
+            .foregroundStyle(.secondary)
+        } else if hits.isEmpty {
+            Text("No matches").foregroundStyle(.secondary)
+        } else {
+            ForEach(hits.prefix(200)) { hit in
+                Button {
+                    session.show(hit)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(hit.detail).lineLimit(2)
+                        Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(hit.position == nil)
+                .padding(.vertical, 2)
+                .listRowBackground(hit.id == search.selectedHitID ? Color.yellow.opacity(0.25) : nil)
+            }
+            if hits.count > 200 {
+                Text("Showing the first 200 of \(hits.count)").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
