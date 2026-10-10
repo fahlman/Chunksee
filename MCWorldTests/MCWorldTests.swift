@@ -177,6 +177,24 @@ import Testing
         #expect(!map.isLoading)
     }
 
+    @Test func panningWithinLoadedRegionsRequestsNothingButNewRegionsLoad() async throws {
+        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: 3, z: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: CGPoint(x: 256, y: 256))
+        let size = CGSize(width: 400, height: 300)
+        map.requestTiles(visibleIn: size, displayScale: 2)
+        await map.waitUntilIdle()
+        #expect(map.tiles[RegionCoordinate(x: 0, z: 0)] != nil)
+        map.viewport.pan(by: CGSize(width: -10, height: 0))   // still inside region (0, 0)
+        map.requestTiles(visibleIn: size, displayScale: 2)
+        #expect(!map.isLoading)
+        map.viewport.center = CGPoint(x: 3 * 512 + 256, y: 256)  // over region (3, 0)
+        map.requestTiles(visibleIn: size, displayScale: 2)
+        #expect(map.isLoading)
+        await map.waitUntilIdle()
+        #expect(map.tiles[RegionCoordinate(x: 3, z: 0)] != nil)
+    }
+
     @Test func halfSizeAveragesBlocksOfFour() {
         var pixels = [UInt8](repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         // Top-left 2×2 block: two opaque white pixels, two transparent.

@@ -37,15 +37,25 @@ nonisolated struct MapViewport: Equatable, Sendable {
                       width: side * scale, height: side * scale)
     }
 
-    /// Regions that intersect the view, nearest to the center first so they load first.
-    func visibleRegions(in size: CGSize) -> [RegionCoordinate] {
+    /// The block of region coordinates that intersects the view.
+    struct RegionRange: Equatable, Sendable {
+        var xs: ClosedRange<Int>
+        var zs: ClosedRange<Int>
+
+        var regions: [RegionCoordinate] { xs.flatMap { x in zs.map { z in RegionCoordinate(x: x, z: z) } } }
+    }
+
+    func visibleRegionRange(in size: CGSize) -> RegionRange {
         let topLeft = blockPoint(at: .zero, in: size)
         let bottomRight = blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
         let side = Double(RegionCoordinate.blockSize)
-        let xs = Int((topLeft.x / side).rounded(.down))...Int((bottomRight.x / side).rounded(.down))
-        let zs = Int((topLeft.y / side).rounded(.down))...Int((bottomRight.y / side).rounded(.down))
-        let regions = xs.flatMap { x in zs.map { z in RegionCoordinate(x: x, z: z) } }
-        return regions.sorted { distanceToCenter($0) < distanceToCenter($1) }
+        return RegionRange(xs: Int((topLeft.x / side).rounded(.down))...Int((bottomRight.x / side).rounded(.down)),
+                           zs: Int((topLeft.y / side).rounded(.down))...Int((bottomRight.y / side).rounded(.down)))
+    }
+
+    /// Regions that intersect the view, nearest to the center first so they load first.
+    func visibleRegions(in size: CGSize) -> [RegionCoordinate] {
+        visibleRegionRange(in: size).regions.sorted { distanceToCenter($0) < distanceToCenter($1) }
     }
 
     func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {

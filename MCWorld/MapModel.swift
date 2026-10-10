@@ -64,6 +64,11 @@ final class MapModel {
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
         guard size.width > 0, size.height > 0 else { return }
         let full = needsFullResolution(displayScale: displayScale)
+        // Panning within the same block of regions at the same resolution needs nothing new; this
+        // runs on every frame of a pan.
+        let range = viewport.visibleRegionRange(in: size)
+        guard range != lastRequest?.range || full != lastRequest?.full else { return }
+        lastRequest = (range, full)
         let visible = viewport.visibleRegions(in: size)
         visibleRegions = Set(visible)
         wantsFullResolution = full
@@ -110,6 +115,8 @@ final class MapModel {
         }
     }
 
+    private var lastRequest: (range: MapViewport.RegionRange, full: Bool)?
+
     /// Regions in the view at the last request; never evicted.
     private var visibleRegions: Set<RegionCoordinate> = []
     /// Whether the last request needed full-resolution tiles. When it didn't, rendered full tiles
@@ -124,7 +131,10 @@ final class MapModel {
     }
 
     private func store(_ tile: RegionTileRenderer.RenderedTile?, for region: RegionCoordinate, finished: Bool) {
-        guard finished else { return }
+        guard finished else {
+            lastRequest = nil  // cancelled work must be requested again
+            return
+        }
         if let tile {
             if wantsFullResolution { tiles[region] = tile.full }
             previews[region] = tile.preview
@@ -150,6 +160,7 @@ final class MapModel {
     }
 
     func cancel() {
+        lastRequest = nil
         loadTask?.cancel()
         loadTask = nil
         pending = []

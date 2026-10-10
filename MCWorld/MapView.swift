@@ -19,7 +19,7 @@ struct MapView: View {
             // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
             let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
             let fullResolution = map.needsFullResolution(displayScale: displayScale)
-            for region in map.viewport.visibleRegions(in: size) {
+            for region in map.viewport.visibleRegionRange(in: size).regions {
                 guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
                 let rect = map.viewport.viewRect(for: region, in: size)
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
