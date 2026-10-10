@@ -120,13 +120,11 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
 nonisolated enum PlaceScanner {
     @concurrent
     static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off) async -> [PlaceMarker] {
-        let regions = dimension.pointOfInterestRegions()
         let blocks = await withTaskGroup(of: [PointOfInterest].self) { group in
-            for region in regions {
+            for file in dimension.regionFiles(.pointsOfInterest) {
                 group.addTask {
-                    let file = dimension.poiDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
-                    return cache.value("places", region: RegionCoordinate(x: region.x, z: region.z), sources: [file]) {
-                        (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []
+                    cache.value("places", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
+                        (try? dimension.pointsOfInterest(regionX: file.x, regionZ: file.z)) ?? []
                     }
                 }
             }
