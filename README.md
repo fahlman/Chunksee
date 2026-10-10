@@ -1,10 +1,10 @@
-# MCWorld
+# Chunksee
 
-A Mac app for viewing Minecraft: Java Edition worlds. It's built on [MCWorldKit](https://github.com/fahlman/MCWorldKit), the open-source engine that reads world saves.
+A Mac app for viewing Minecraft: Java Edition worlds. It's built on [ChunkseeKit](https://github.com/fahlman/ChunkseeKit), the open-source engine that reads world saves.
 
 It shows a top-down view of a world, the structures and places found in it, and where its players were last.
 
-## Using MCWorld
+## Using Chunksee
 
 1. Choose **File ▸ Open…** and select a world's folder inside your Minecraft `saves`
    folder.
@@ -29,17 +29,17 @@ It shows a top-down view of a world, the structures and places found in it, and 
    where its eye button keeps its pins on the map.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Choose a player in the sidebar to jump to them, or hide markers with the people
-   button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so MCWorld
+   button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so Chunksee
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
-MCWorld only reads your world; it never changes it. Each world opens as a native Mac document in
+Chunksee only reads your world; it never changes it. Each world opens as a native Mac document in
 its own window. **File ▸ Open Recent** and window restoration follow your macOS settings, including
 your preference for reopening windows after quitting. You can select several world folders in
 the Open panel; opening a world again brings its existing window forward. Clearing Open Recent
 leaves your open worlds available.
 
-MCWorld stays out of Finder’s **Open With** list because macOS identifies these world folders
+Chunksee stays out of Finder’s **Open With** list because macOS identifies these world folders
 as ordinary folders. **File** offers opening and closing commands; viewing a world has no save,
 rename or move commands. When updating from the previous window system, reopen your worlds once
 with **File ▸ Open…**; macOS will remember them from then on.
@@ -49,13 +49,13 @@ to the world spawn or another dimension and saves the current search. In player 
 **Locations** offers the last position, last death and respawn point. VoiceOver can also explore
 the individual visible map locations and center the map on them.
 
-Rendered map tiles are kept in MCWorld's cache folder, so reopening a world is nearly instant; any
+Rendered map tiles are kept in Chunksee's cache folder, so reopening a world is nearly instant; any
 part of the world that has changed since is drawn again.
 
 ## Building
 
-Requires Xcode 27 and macOS 27. Open `MCWorld.xcodeproj` and run the **MCWorld** scheme, or:
+Requires Xcode 27 and macOS 27. Open `Chunksee.xcodeproj` and run the **Chunksee** scheme, or:
 
 ```sh
-xcodebuild -project MCWorld.xcodeproj -scheme MCWorld -destination 'platform=macOS' build
+xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' build
 ```
