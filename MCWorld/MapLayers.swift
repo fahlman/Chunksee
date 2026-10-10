@@ -67,18 +67,28 @@ struct LayerSection<Marker: MapLayerMarker>: View {
             Label("\(group.name) (\(count))", systemImage: group.symbol)
             Spacer()
             if let shown {
-                let isShown = shown.wrappedValue.contains(group)
-                Button(isShown ? "Hide on Map" : "Show on Map", systemImage: isShown ? "eye" : "eye.slash") {
-                    if isShown { shown.wrappedValue.remove(group) } else { shown.wrappedValue.insert(group) }
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.plain)
-                .foregroundStyle(isShown ? .primary : .tertiary)
+                VisibilityButton(isShown: Binding {
+                    shown.wrappedValue.contains(group)
+                } set: {
+                    if $0 { shown.wrappedValue.insert(group) } else { shown.wrappedValue.remove(group) }
+                })
             }
         }
     }
 
     private func nearestFirst(_ markers: [Marker]) -> [Marker] {
         markers.sorted { hypot($0.position.x - origin.x, $0.position.y - origin.y) < hypot($1.position.x - origin.x, $1.position.y - origin.y) }
+    }
+}
+
+/// The eye button that shows or hides something on the map, in every sidebar layer and player row.
+struct VisibilityButton: View {
+    @Binding var isShown: Bool
+
+    var body: some View {
+        Button(isShown ? "Hide on Map" : "Show on Map", systemImage: isShown ? "eye" : "eye.slash") { isShown.toggle() }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .foregroundStyle(isShown ? .primary : .tertiary)
     }
 }

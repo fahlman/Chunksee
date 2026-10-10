@@ -1051,6 +1051,28 @@ import Testing
     }
 }
 
+@Suite struct PlayerLayerTests {
+    @Test func hiddenPlayersLoseTheirMarkersAndStayHidden() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let players = world.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: players, withIntermediateDirectories: true)
+        let uuid = UUID()
+        let nbt = NBT.compound(["DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+                                "Pos": .list([.double(1), .double(64), .double(2)])])
+        try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: players.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        #expect(!first.markers.isEmpty)
+        first.hiddenPlayers.insert(uuid)
+        #expect(first.markers.isEmpty)
+        first.close()
+        let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { second.close() }
+        #expect(second.hiddenPlayers == [uuid] && second.markers.isEmpty)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

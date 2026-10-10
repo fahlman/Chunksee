@@ -166,13 +166,6 @@ private struct WorldView: View {
                         // Capped so a wide row can't push the inspector past the window's edge.
                         .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
                     }
-                    .toolbar {
-                        ToolbarItem {
-                            Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
-                                .help("Show players, their last deaths and respawn points on the map")
-                        }
-
-                    }
                     .navigationTitle(session.displayName)
                     .navigationSubtitle(map.dimension.displayName)
             } else {
@@ -221,6 +214,11 @@ private struct PlayerRow: View {
             .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
             .help(help)
             Spacer(minLength: 0)
+            VisibilityButton(isShown: Binding {
+                !session.hiddenPlayers.contains(player.uuid)
+            } set: {
+                if $0 { session.hiddenPlayers.remove(player.uuid) } else { session.hiddenPlayers.insert(player.uuid) }
+            })
             Button("Show Details", systemImage: "info.circle") {
                 session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
             }
