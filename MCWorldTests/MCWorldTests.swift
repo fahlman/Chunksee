@@ -885,6 +885,50 @@ import Testing
     }
 }
 
+@Suite struct ScanCacheTests {
+    @Test func readsOnceAndAgainWhenASourceChanges() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ScanCacheTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let source = dir.appendingPathComponent("r.0.0.mca")
+        try Data([1, 2, 3]).write(to: source)
+        let cache = ScanCache(directory: dir.appendingPathComponent("scans"))
+        var reads = 0
+        func value() -> [String] {
+            cache.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source, dir.appendingPathComponent("missing.mca")]) {
+                reads += 1
+                return ["read \(reads)"]
+            }
+        }
+        #expect(value() == ["read 1"] && value() == ["read 1"] && reads == 1)
+        try Data([1, 2, 3, 4]).write(to: source)   // the game saved the region
+        #expect(value() == ["read 2"] && value() == ["read 2"] && reads == 2)
+        // Only the newest entry is kept.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("scans").path).count == 1)
+        var offReads = 0
+        _ = ScanCache.off.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
+        _ = ScanCache.off.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
+        #expect(offReads == 2)
+    }
+
+    @Test func scannersUseSavedResults() async throws {
+        let world = try TestWorld.make(chunks: (0..<2).flatMap { x in (0..<2).map { z in
+            TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } })
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let cache = ScanCache(directory: world.appendingPathComponent("cache"))
+        let first = await BiomeScanner.scan(dimension, cache: cache)
+        #expect(first.areas.map(\.chunkCount) == [4])
+        // Blank the region file but keep its size and date: only the saved result can still answer.
+        let region = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
+        let attributes = try FileManager.default.attributesOfItem(atPath: region.path)
+        try Data(count: (attributes[.size] as? NSNumber)?.intValue ?? 0).write(to: region)
+        try FileManager.default.setAttributes([.modificationDate: attributes[.modificationDate]!], ofItemAtPath: region.path)
+        #expect(await BiomeScanner.scan(dimension, cache: cache).areas.map(\.chunkCount) == [4])
+        #expect(await BiomeScanner.scan(dimension).areas.isEmpty)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

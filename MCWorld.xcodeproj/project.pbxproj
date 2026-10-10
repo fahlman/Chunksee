@@ -408,7 +408,7 @@
 			repositoryURL = "https://github.com/fahlman/MCWorldKit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.15.0;
+				minimumVersion = 0.16.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

@@ -86,9 +86,9 @@ final class WorldSession {
     private func buildIndex() {
         guard indexTask == nil else { return }
         isIndexing = true
-        let dimensions = dimensions
+        let dimensions = dimensions, url = url
         indexTask = Task(priority: .utility) { [weak self] in
-            let index = await WorldSearch.index(dimensions)
+            let index = await WorldSearch.index(dimensions) { ScanCache(forWorldAt: url, dimensionID: $0.id) }
             guard let self, !Task.isCancelled else { return }
             self.searchIndex = index
             self.isIndexing = false

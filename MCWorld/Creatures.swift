@@ -72,14 +72,17 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
 /// Reads every shown creature in a dimension, in parallel by region.
 nonisolated enum CreatureScanner {
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension) async -> [CreatureMarker] {
+    static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off) async -> [CreatureMarker] {
         await withTaskGroup(of: [CreatureMarker].self) { group in
             for region in dimension.regionFiles() {
                 group.addTask {
                     guard !Task.isCancelled else { return [] }
                     // Read into a local first: Swift 6.4 release builds can misread values captured
                     // next to an awaited call in task-group children (see #6).
-                    let creatures = (try? dimension.creatures(regionX: region.x, regionZ: region.z)) ?? []
+                    let file = dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+                    let creatures = cache.value("creatures", region: RegionCoordinate(x: region.x, z: region.z), sources: [file]) {
+                        (try? dimension.creatures(regionX: region.x, regionZ: region.z)) ?? []
+                    }
                     return creatures.compactMap { CreatureMarker($0, dimension: dimension.id) }
                 }
             }
