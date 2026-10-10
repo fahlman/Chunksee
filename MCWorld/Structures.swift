@@ -108,7 +108,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
 }
 
 /// One structure on the map.
-nonisolated struct StructureMarker: Identifiable, Equatable, Sendable {
+nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
     var id: String
     var structureID: String
     var group: StructureGroup
@@ -155,19 +155,23 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable {
 /// skipped), and regions are read in parallel.
 nonisolated enum StructureScanner {
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension, concurrency: Int = ProcessInfo.processInfo.activeProcessorCount) async -> [StructureMarker] {
-        let files = dimension.regionFiles().map(\.url)
+    static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off,
+                     concurrency: Int = ProcessInfo.processInfo.activeProcessorCount) async -> [StructureMarker] {
+        let files = dimension.regionFiles()
         return await withTaskGroup(of: [StructureMarker].self) { group in
             var next = files.startIndex
             func startNext() {
                 guard next < files.endIndex else { return }
-                let url = files[next]
+                let file = files[next]
                 next += 1
                 group.addTask {
-                    guard !Task.isCancelled, let region = try? RegionFile(contentsOf: url) else { return [] }
-                    return region.chunkCoordinates.flatMap { (x, z) -> [StructureMarker] in
-                        guard let nbt = try? region.chunkNBT(localX: x, localZ: z, skipping: Chunk.keysNotNeededForStructures) else { return [] }
-                        return StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
+                    guard !Task.isCancelled else { return [] }
+                    return cache.value("structures", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
+                        guard let region = try? RegionFile(contentsOf: file.url) else { return [] }
+                        return region.chunkCoordinates.flatMap { (x, z) -> [StructureMarker] in
+                            guard let nbt = try? region.chunkNBT(localX: x, localZ: z, skipping: Chunk.keysNotNeededForStructures) else { return [] }
+                            return StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
+                        }
                     }
                 }
             }

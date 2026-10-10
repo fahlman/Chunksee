@@ -118,11 +118,16 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
 /// Reads every point of interest in a dimension, in parallel by region.
 nonisolated enum PlaceScanner {
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension) async -> [PlaceMarker] {
+    static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off) async -> [PlaceMarker] {
         let regions = dimension.pointOfInterestRegions()
         let blocks = await withTaskGroup(of: [PointOfInterest].self) { group in
             for region in regions {
-                group.addTask { (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? [] }
+                group.addTask {
+                    let file = dimension.poiDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+                    return cache.value("places", region: RegionCoordinate(x: region.x, z: region.z), sources: [file]) {
+                        (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []
+                    }
+                }
             }
             var all: [PointOfInterest] = []
             for await found in group { all += found }

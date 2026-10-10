@@ -32,6 +32,8 @@ final class MapModel {
 
     private var failed: Set<RegionCoordinate> = []
     private let renderer: RegionTileRenderer
+    /// Structures, places, creatures and biome areas saved between launches.
+    private let scanCache: ScanCache
 
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
@@ -53,6 +55,7 @@ final class MapModel {
         self.regionConcurrency = max(1, regionConcurrency)
         self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
+        self.scanCache = ScanCache(directory: cacheDirectory?.appendingPathComponent("scans", isDirectory: true))
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
     }
@@ -200,9 +203,9 @@ final class MapModel {
     /// Reads the dimension's structures in the background, at a lower priority than map tiles.
     func loadStructures() {
         guard structureTask == nil else { return }
-        let dimension = dimension
+        let dimension = dimension, scanCache = scanCache
         structureTask = Task(priority: .utility) { [weak self] in
-            let found = await StructureScanner.scan(dimension)
+            let found = await StructureScanner.scan(dimension, cache: scanCache)
             guard !Task.isCancelled else { return }
             self?.structures = found
         }
@@ -211,9 +214,9 @@ final class MapModel {
     /// Reads the dimension's named creatures, pets and villagers in the background.
     func loadCreatures() {
         guard creatureTask == nil else { return }
-        let dimension = dimension
+        let dimension = dimension, scanCache = scanCache
         creatureTask = Task(priority: .utility) { [weak self] in
-            let found = await CreatureScanner.scan(dimension)
+            let found = await CreatureScanner.scan(dimension, cache: scanCache)
             guard !Task.isCancelled else { return }
             self?.creatures = found
         }
@@ -228,9 +231,9 @@ final class MapModel {
     /// Realm's Overworld); background priority, rather than utility, slowed it to over a minute.
     func loadBiomeAreas() {
         guard biomeTask == nil else { return }
-        let dimension = dimension
+        let dimension = dimension, scanCache = scanCache
         biomeTask = Task(priority: .utility) { [weak self] in
-            let found = await BiomeScanner.scan(dimension)
+            let found = await BiomeScanner.scan(dimension, cache: scanCache)
             guard !Task.isCancelled else { return }
             self?.biomeAreas = found.areas
             self?.biomes = found.biomes
@@ -245,9 +248,9 @@ final class MapModel {
     /// Reads the dimension's points of interest in the background.
     func loadPlaces() {
         guard placeTask == nil else { return }
-        let dimension = dimension
+        let dimension = dimension, scanCache = scanCache
         placeTask = Task(priority: .utility) { [weak self] in
-            let found = await PlaceScanner.scan(dimension)
+            let found = await PlaceScanner.scan(dimension, cache: scanCache)
             guard !Task.isCancelled else { return }
             self?.places = found
         }

@@ -52,13 +52,19 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
 nonisolated enum WorldSearch {
     /// Every container and sign in the given dimensions, read region by region in parallel.
     @concurrent
-    static func index(_ dimensions: [MCWorldKit.Dimension]) async -> SearchIndex {
+    static func index(_ dimensions: [MCWorldKit.Dimension], cache: @Sendable (MCWorldKit.Dimension) -> ScanCache = { _ in .off }) async -> SearchIndex {
         await withTaskGroup(of: SearchIndex.self) { group in
             for dimension in dimensions {
+                let cache = cache(dimension)
                 for region in dimension.regionFiles() {
                     group.addTask {
-                        guard !Task.isCancelled,
-                              let contents = try? dimension.contents(regionX: region.x, regionZ: region.z) else { return SearchIndex() }
+                        guard !Task.isCancelled else { return SearchIndex() }
+                        let entities = dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+                        let contents: RegionContents? = cache.value("contents", region: RegionCoordinate(x: region.x, z: region.z),
+                                                                     sources: [region.url, entities]) {
+                            try? dimension.contents(regionX: region.x, regionZ: region.z)
+                        }
+                        guard let contents else { return SearchIndex() }
                         return SearchIndex(containers: contents.containers.map { .init(dimension: dimension.id, value: $0) },
                                            signs: contents.signs.map { .init(dimension: dimension.id, value: $0) },
                                            creatures: contents.namedCreatures.map { .init(dimension: dimension.id, value: $0) })

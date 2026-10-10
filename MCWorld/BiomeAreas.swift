@@ -37,18 +37,21 @@ nonisolated enum BiomeScanner {
     static let minimumChunks = 4
 
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension) async -> BiomeScan {
+    static func scan(_ dimension: MCWorldKit.Dimension, cache: ScanCache = .off) async -> BiomeScan {
         let biomes = await withTaskGroup(of: [ChunkCoordinate: String].self) { group in
             for region in dimension.regionFiles() {
                 group.addTask {
-                    guard !Task.isCancelled, let file = try? dimension.region(x: region.x, z: region.z) else { return [:] }
-                    var found: [ChunkCoordinate: String] = [:]
-                    for (x, z) in file.chunkCoordinates {
-                        guard let nbt = try? file.chunkNBT(localX: x, localZ: z, skipping: Chunk.keysNotNeededForTerrain),
-                              let chunk = try? Chunk(nbt: nbt), let biome = surfaceBiome(of: chunk, in: dimension.id) else { continue }
-                        found[ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)] = biome
+                    guard !Task.isCancelled else { return [:] }
+                    return cache.value("biomes", region: RegionCoordinate(x: region.x, z: region.z), sources: [region.url]) {
+                        guard let file = try? dimension.region(x: region.x, z: region.z) else { return [:] }
+                        var found: [ChunkCoordinate: String] = [:]
+                        for (x, z) in file.chunkCoordinates {
+                            guard let nbt = try? file.chunkNBT(localX: x, localZ: z, skipping: Chunk.keysNotNeededForTerrain),
+                                  let chunk = try? Chunk(nbt: nbt), let biome = surfaceBiome(of: chunk, in: dimension.id) else { continue }
+                            found[ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)] = biome
+                        }
+                        return found
                     }
-                    return found
                 }
             }
             var all: [ChunkCoordinate: String] = [:]
@@ -116,7 +119,7 @@ nonisolated enum BiomeScanner {
     }
 }
 
-nonisolated struct ChunkCoordinate: Hashable, Sendable {
+nonisolated struct ChunkCoordinate: Hashable, Sendable, Codable {
     var x: Int
     var z: Int
 }
