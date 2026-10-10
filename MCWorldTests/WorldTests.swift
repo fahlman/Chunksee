@@ -217,6 +217,8 @@ import Testing
         #expect(session.visibility.biomes.isEmpty)
         session.show(hit)
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
+        // The map's own layers load separately from the search index.
+        await session.map?.waitForLayers()
         #expect(session.mapContent.biomeAreas.count == 1)
     }
 }
