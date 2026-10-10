@@ -12,6 +12,7 @@ final class AppModel {
 
     private let defaults: UserDefaults
     private static let bookmarkKey = "lastWorldBookmark"
+    private static let isHostingTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -20,6 +21,9 @@ final class AppModel {
 
     /// Reopens the world from the last launch, if its bookmark still resolves.
     func restoreLastWorld() async {
+        // Tests run inside the app; reopening the user's world there would scan it alongside the
+        // tests and starve them of threads.
+        guard !Self.isHostingTests else { return }
         guard session == nil, let data = defaults.data(forKey: Self.bookmarkKey) else { return }
         var isStale = false
         guard let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],

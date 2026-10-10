@@ -614,9 +614,11 @@ import Testing
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
-        session.searchText = "golden apple"
+        // The index is built as the world opens, before anyone searches.
         #expect(session.isIndexing)
         await session.waitForIndex()
+        #expect(!session.isIndexing)
+        session.searchText = "golden apple"
         #expect(session.searchResults.map(\.detail) == ["2 Golden Apple"])
         session.show(session.searchResults[0])
         #expect(session.selectedHitID == session.searchResults[0].id)

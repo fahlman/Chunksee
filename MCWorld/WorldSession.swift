@@ -80,12 +80,14 @@ final class WorldSession {
         }
     }
 
-    /// Reads every container and sign in every dimension in the background, once per session.
+    /// Reads every container, sign and named creature in every dimension in the background, once
+    /// per session. It starts when the world opens, so the index is usually ready before the first
+    /// search; drawing the map comes first, hence utility priority.
     private func buildIndex() {
         guard indexTask == nil else { return }
         isIndexing = true
         let dimensions = dimensions
-        indexTask = Task(priority: .userInitiated) { [weak self] in
+        indexTask = Task(priority: .utility) { [weak self] in
             let index = await WorldSearch.index(dimensions)
             guard let self, !Task.isCancelled else { return }
             self.searchIndex = index
@@ -239,6 +241,7 @@ final class WorldSession {
         makeMapForSelection()
         Self.maintainTileCache(forWorldAt: url)
         loadPortals()
+        buildIndex()
     }
 
     /// Reads both dimensions' portals in the background; links need the other side's portals.
