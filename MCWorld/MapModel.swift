@@ -14,29 +14,12 @@ final class MapModel {
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
     private(set) var previews: [RegionCoordinate: CGImage] = [:]
-    // Layers, filled in by `loadLayers()`.
-    /// Every structure in the dimension's generated chunks.
-    private(set) var structures: [StructureMarker] = []
-    /// Every point of interest (portals, bells, beds…).
-    private(set) var places: [PlaceMarker] = []
-    /// Named creatures, pets and villagers.
-    private(set) var creatures: [CreatureMarker] = []
-    private(set) var biomeAreas: [BiomeArea] = []
-    /// The surface biome of every chunk, for the hover readout.
-    private var biomes: [ChunkCoordinate: String] = [:]
-    private var layerTask: Task<Void, Never>?
-
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
     private(set) var isLoading = false
 
     private var failed: Set<RegionCoordinate> = []
     private let renderer: RegionTileRenderer
-    /// Places saved between launches.
-    private let scanCache: ScanCache
-    /// Structures, creatures and biomes, read once per region and shared with search and the heat map.
-    private let reader: RegionReader
-
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int
@@ -50,15 +33,13 @@ final class MapModel {
 
     init(dimension: MCWorldKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
-         maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil, reader: RegionReader? = nil) {
+         maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil) {
         self.dimension = dimension
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
         self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
-        self.scanCache = ScanCache(directory: cacheDirectory?.appendingPathComponent("scans", isDirectory: true))
-        self.reader = reader ?? RegionReader(dimension: dimension, cache: scanCache)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
     }
@@ -67,11 +48,6 @@ final class MapModel {
     /// more than a preview's 256 pixels, at the display's pixel density.
     func needsFullResolution(displayScale: CGFloat) -> Bool {
         viewport.scale * CGFloat(RegionCoordinate.blockSize) * displayScale > CGFloat(RegionTileRenderer.previewSide)
-    }
-
-    /// The surface biome of the chunk under a block, once the biome scan has finished.
-    func biome(at block: CGPoint) -> String? {
-        biomes[ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)]
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
@@ -229,48 +205,7 @@ final class MapModel {
         return Array(candidates.prefix(cached.count - limit))
     }
 
-    /// Reads the dimension's structures, places, creatures and biome areas in the background, at
-    /// a lower priority than map tiles. Each list appears as soon as it's read; the scans share
-    /// one read per region through `reader`.
-    func loadLayers() {
-        guard layerTask == nil else { return }
-        let reader = reader, dimension = dimension, scanCache = scanCache
-        layerTask = Task(priority: .utility) { [weak self] in
-            async let places = PlaceScanner.scan(dimension, cache: scanCache)
-            async let structures = StructureScanner.scan(reader)
-            async let creatures = CreatureScanner.scan(reader)
-            async let biomes = BiomeScanner.scan(reader)
-            let foundPlaces = await places
-            guard !Task.isCancelled else { return }
-            self?.places = foundPlaces
-            let foundStructures = await structures
-            guard !Task.isCancelled else { return }
-            self?.structures = foundStructures
-            let foundCreatures = await creatures
-            guard !Task.isCancelled else { return }
-            self?.creatures = foundCreatures
-            let foundBiomes = await biomes
-            guard !Task.isCancelled else { return }
-            self?.biomeAreas = foundBiomes.areas
-            self?.biomes = foundBiomes.biomes
-        }
-    }
-
-    /// Reads the layers again after the game saved. Regions that didn't change come from the scan
-    /// cache; the current lists stay until the new ones arrive.
-    func reloadLayers() {
-        layerTask?.cancel()
-        layerTask = nil
-        loadLayers()
-    }
-
-    /// Waits for the scan started by `loadLayers()`.
-    func waitForLayers() async {
-        await layerTask?.value
-    }
-
     func cancel() {
-        layerTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]

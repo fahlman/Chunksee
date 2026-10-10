@@ -159,8 +159,8 @@ import Testing
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        await session.map?.waitForLayers()
-        #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
+        await session.search.waitForIndex()
+        #expect(session.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
         session.visibility.creatures = [.pet]
         #expect(session.mapContent.creatures.map(\.name) == ["Summer"])
         let summer = try #require(session.mapContent.creatures.first)
@@ -204,11 +204,11 @@ import Testing
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        await session.map?.waitForLayers()
-        #expect(session.map?.biomeAreas.map(\.chunkCount) == [4])
-        #expect(session.map?.biomeAreas.first?.group.name == "Plains")
-        #expect(session.map?.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
-        #expect(session.map?.biome(at: CGPoint(x: -1, y: 0)) == nil)
+        await session.search.waitForIndex()
+        #expect(session.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
+        #expect(session.selectedIndex.biomeAreas.first?.group.name == "Plains")
+        #expect(session.mapContent.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
+        #expect(session.mapContent.biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.
         session.visibility.biomes = []
         #expect(session.mapContent.biomeAreas.isEmpty)

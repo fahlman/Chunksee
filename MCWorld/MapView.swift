@@ -8,6 +8,8 @@ struct MapContent {
     /// A map made in the game, drawn where it belongs at the given opacity.
     var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
     var biomeAreas: [BiomeArea] = []
+    /// Each chunk's surface biome, for the hover readout.
+    var biomes: [ChunkCoordinate: String] = [:]
     /// The world border, when it's closer than Minecraft's default.
     var border: WorldBorder?
     var structures: [StructureMarker] = []
@@ -20,6 +22,11 @@ struct MapContent {
     var players: [MapMarker] = []
     /// The portal or creature whose card is showing, drawn highlighted.
     var selection: MapSelection?
+
+    /// The surface biome of the chunk under a block, once the dimension has been read.
+    func biome(at block: CGPoint) -> String? {
+        biomes[ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)]
+    }
 }
 
 /// The pannable, zoomable top-down map of one dimension.
@@ -318,7 +325,7 @@ struct MapView: View {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 Text(Coordinates.text(hoverBlock))
                     .monospacedDigit()
-                if let biome = map.biome(at: hoverBlock) {
+                if let biome = content.biome(at: hoverBlock) {
                     Text(ReadableName.from(biome))
                 }
             }

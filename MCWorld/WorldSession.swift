@@ -38,6 +38,8 @@ final class WorldSession {
     let names: PlayerNames
     let visibility: LayerVisibility
     let search: SearchModel
+    /// Searches kept in the sidebar, shared across worlds.
+    let savedSearches: SavedSearches
     let heatMap: HeatMapLayer
 
     var selectedDimensionID: String? {
@@ -60,17 +62,21 @@ final class WorldSession {
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
-    private(set) var portalsByDimension: [String: [NetherPortal]] = [:]
+    var portalsByDimension: [String: [NetherPortal]] { search.portals }
+    /// The selected dimension's part of the world index: what its sidebar lists and map show.
+    var selectedIndex: DimensionIndex {
+        selectedDimensionID.flatMap { search.index.dimensions[$0] } ?? DimensionIndex()
+    }
 
     private let cacheRoot: URL?
-    /// One per dimension: reads each region once for the map's layers, search and the heat map.
+    /// One per dimension: reads each region once for the index and the heat map.
     private let readers: [String: RegionReader]
     private let views: RememberedViews
     private let isAccessingSecurityScope: Bool
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
     private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, defaults: UserDefaults,
-                 cacheRoot: URL?, isAccessingSecurityScope: Bool) {
+                 savedSearches: SavedSearches, cacheRoot: URL?, isAccessingSecurityScope: Bool) {
         let dimensions = world.dimensions()
         let readers = Dictionary(uniqueKeysWithValues: dimensions.map { dimension in
             (dimension.id, RegionReader(dimension: dimension, cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot)))
@@ -86,29 +92,32 @@ final class WorldSession {
         self.views = RememberedViews(world: url, defaults: defaults)
         self.isAccessingSecurityScope = isAccessingSecurityScope
         self.visibility = LayerVisibility(defaults: defaults)
-        self.search = SearchModel(readers: dimensions.compactMap { readers[$0.id] }, players: players, names: names,
-                                  singleplayerUUID: world.level.singleplayerUUID)
-        self.heatMap = HeatMapLayer(readers: readers)
+        self.savedSearches = savedSearches
         // Reopen in the dimension last viewed, if it still exists.
         let last = views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id }
-        self.selectedDimensionID = last ?? dimensions.first?.id
+        let selected = last ?? dimensions.first?.id
+        self.search = SearchModel(readers: dimensions.compactMap { readers[$0.id] }, players: players, names: names,
+                                  singleplayerUUID: world.level.singleplayerUUID, firstDimension: selected)
+        self.heatMap = HeatMapLayer(readers: readers)
+        self.selectedDimensionID = selected
         heatMap.dimension = selectedDimensionID
         makeMapForSelection()
         Self.maintainTileCache(forWorldAt: url, root: cacheRoot)
-        loadPortals()
         watcher = WorldWatcher(folder: url) { [weak self] files in self?.worldChanged(files) }
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
-    /// `defaults` keeps which layers are shown and where the map was; `cacheRoot` holds tiles and
-    /// scans (`nil` keeps nothing). Tests pass their own so they leave the app's alone.
-    static func open(_ url: URL, names: PlayerNames, defaults: UserDefaults = .standard,
+    /// `defaults` keeps which layers are shown and where the map was, and saved searches unless
+    /// `savedSearches` is given; `cacheRoot` holds tiles and scans (`nil` keeps nothing). Tests pass
+    /// their own so they leave the app's alone.
+    static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults = .standard,
                      cacheRoot: URL? = TileCache.root) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let (world, players, details) = try await load(url)
             return WorldSession(url: url, world: world, players: players, details: details, names: names, defaults: defaults,
-                                cacheRoot: cacheRoot, isAccessingSecurityScope: accessing)
+                                savedSearches: savedSearches ?? SavedSearches(defaults: defaults), cacheRoot: cacheRoot,
+                                isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
@@ -178,18 +187,20 @@ final class WorldSession {
 
     /// Everything drawn over the selected dimension's terrain.
     var mapContent: MapContent {
-        guard let map, let id = selectedDimensionID else { return MapContent() }
+        guard map != nil, let id = selectedDimensionID else { return MapContent() }
+        let index = selectedIndex
         var content = MapContent()
         content.heatMap = heatMap.visibleImages ?? [:]
         if case .inGameMap(let item)? = selection, let image = image(for: item) {
             content.inGameMap = (item, image, inGameMapOpacity)
         }
-        content.biomeAreas = map.biomeAreas.filter { visibility.biomes.contains($0.group) }
+        content.biomeAreas = index.biomeAreas.filter { visibility.biomes.contains($0.group) }
+        content.biomes = index.biomes
         content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
-        content.structures = map.structures.filter { visibility.structures.contains($0.group) }
-        content.places = map.places.filter { visibility.places.contains($0.group) }
-        content.creatures = map.creatures.filter { visibility.creatures.contains($0.group) }
-        content.hits = search.results.filter { $0.dimension == id && $0.position != nil }
+        content.structures = index.structures.filter { visibility.structures.contains($0.group) }
+        content.places = index.places.filter { visibility.places.contains($0.group) }
+        content.creatures = index.creatures.filter { visibility.creatures.contains($0.group) }
+        content.hits = pinnedHits.filter { $0.dimension == id && $0.position != nil }
         content.selectedHitID = search.selectedHitID
         content.players = PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
                                                      singleplayerUUID: world.level.singleplayerUUID,
@@ -207,10 +218,8 @@ final class WorldSession {
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
         map = MapModel(dimension: dimension, center: spawnPoint,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                       reader: readers[dimension.id])
+                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
-        map?.loadLayers()
     }
 
     /// A click on the map: selects the portal or creature under it. A click elsewhere closes a
@@ -254,20 +263,17 @@ final class WorldSession {
         }
     }
 
-    /// Reads both dimensions' portals in the background; links need the other side's portals.
-    private func loadPortals() {
-        let dimensions = dimensions.filter { NetherPortal.targetDimension(from: $0.id) != nil }
-        Task(priority: .utility) { [weak self] in
-            let found = await Self.readPortals(dimensions)
-            self?.portalsByDimension = found
-        }
+    /// What's pinned on the map: the search bar's results and those of the saved searches shown,
+    /// each once.
+    var pinnedHits: [SearchHit] {
+        var seen = Set<SearchHit.ID>()
+        let queries = [search.text] + savedSearches.all.filter(\.isShown).map(\.query)
+        return queries.flatMap { search.results(for: $0) }.filter { seen.insert($0.id).inserted }
     }
 
-    @concurrent
-    private nonisolated static func readPortals(_ dimensions: [MCWorldKit.Dimension]) async -> [String: [NetherPortal]] {
-        var result: [String: [NetherPortal]] = [:]
-        for dimension in dimensions { result[dimension.id] = (try? dimension.netherPortals()) ?? [] }
-        return result
+    /// Saves the search bar's query to the sidebar.
+    func saveSearch() {
+        savedSearches.add(search.text)
     }
 
     /// Where a portal leads, or `nil` until both sides' portals are loaded.
@@ -375,12 +381,10 @@ final class WorldSession {
         pendingPlayers = false
         if let id = selectedDimensionID, changedDimensions.contains(id) {
             map?.regionsChanged(regions[id] ?? [])
-            map?.reloadLayers()
             heatMap.load(reread: true)
         }
         if !changedDimensions.isEmpty {
-            loadPortals()
-            search.rebuild()
+            search.rebuild(firstDimension: selectedDimensionID)
         }
         if playersChanged {
             let world = world

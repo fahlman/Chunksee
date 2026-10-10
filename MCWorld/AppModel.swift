@@ -9,6 +9,8 @@ final class AppModel {
     var errorMessage: String?
     var isShowingOpenPanel = false
     let names: PlayerNames
+    /// Searches kept in the sidebar, shared by every world.
+    let savedSearches: SavedSearches
 
     private let defaults: UserDefaults
     private static let bookmarkKey = "lastWorldBookmark"
@@ -17,6 +19,7 @@ final class AppModel {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.names = PlayerNames(defaults: defaults)
+        self.savedSearches = SavedSearches(defaults: defaults)
     }
 
     /// Reopens the world from the last launch, if its bookmark still resolves.
@@ -39,7 +42,7 @@ final class AppModel {
         isOpening = true
         defer { isOpening = false }
         do {
-            let newSession = try await WorldSession.open(url, names: names)
+            let newSession = try await WorldSession.open(url, names: names, savedSearches: savedSearches, defaults: defaults)
             session?.close()
             session = newSession
             errorMessage = nil

@@ -2,20 +2,60 @@ import CoreGraphics
 import Foundation
 import MCWorldKit
 
-/// Everything searchable in a world's dimensions: containers with their items, signs, and every
-/// sidebar layer's markers.
+/// One dimension's part of the world index: what search, the sidebar and the map show.
+nonisolated struct DimensionIndex: Sendable {
+    var containers: [ItemContainer] = []
+    var signs: [Sign] = []
+    var structures: [StructureMarker] = []
+    var places: [PlaceMarker] = []
+    var creatures: [CreatureMarker] = []
+    var biomeAreas: [BiomeArea] = []
+    /// Each chunk's surface biome, for the hover readout.
+    var biomes: [ChunkCoordinate: String] = [:]
+
+    /// Reads a dimension from its regions, through the reader's cached parts.
+    @concurrent
+    static func read(_ reader: RegionReader) async -> DimensionIndex {
+        var part = DimensionIndex()
+        for region in await reader.everyRegion({ await $0.contents($1) }) {
+            part.containers += region.value.containers
+            part.signs += region.value.signs
+        }
+        async let structures = StructureScanner.scan(reader)
+        async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
+        async let creatures = CreatureScanner.scan(reader)
+        async let biomes = BiomeScanner.scan(reader)
+        part.structures = await structures
+        part.places = await places
+        part.creatures = await creatures
+        let biomeScan = await biomes
+        part.biomeAreas = biomeScan.areas
+        part.biomes = biomeScan.biomes
+        return part
+    }
+}
+
+/// Everything in the world that search, the sidebar and the map show, by dimension.
 nonisolated struct SearchIndex: Sendable {
     struct Placed<Value: Sendable>: Sendable {
         var dimension: String
         var value: Value
     }
 
-    var containers: [Placed<ItemContainer>] = []
-    var signs: [Placed<Sign>] = []
-    var structures: [Placed<StructureMarker>] = []
-    var places: [Placed<PlaceMarker>] = []
-    var creatures: [Placed<CreatureMarker>] = []
-    var biomeAreas: [Placed<BiomeArea>] = []
+    /// Each dimension's part, by dimension id.
+    var dimensions: [String: DimensionIndex] = [:]
+
+    /// One kind of thing from every dimension, each with its dimension.
+    func all<Value: Sendable>(_ part: KeyPath<DimensionIndex, [Value]>) -> [Placed<Value>] {
+        dimensions.flatMap { id, index in index[keyPath: part].map { Placed(dimension: id, value: $0) } }
+    }
+
+    var containers: [Placed<ItemContainer>] { all(\.containers) }
+    var signs: [Placed<Sign>] { all(\.signs) }
+    var structures: [Placed<StructureMarker>] { all(\.structures) }
+    var places: [Placed<PlaceMarker>] { all(\.places) }
+    var creatures: [Placed<CreatureMarker>] { all(\.creatures) }
+    var biomeAreas: [Placed<BiomeArea>] { all(\.biomeAreas) }
 }
 
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
@@ -92,29 +132,6 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
 /// titles, authors and pages, sign text, and creatures' names; or, with a `LayerFilter`, one
 /// sidebar layer's markers.
 nonisolated enum WorldSearch {
-    /// Every container, sign and sidebar layer marker in the readers' dimensions, region by region
-    /// in parallel.
-    @concurrent
-    static func index(_ readers: [RegionReader]) async -> SearchIndex {
-        var index = SearchIndex()
-        for reader in readers {
-            let dimension = reader.dimension.id
-            for part in await reader.everyRegion({ await $0.contents($1) }) {
-                index.containers += part.value.containers.map { .init(dimension: dimension, value: $0) }
-                index.signs += part.value.signs.map { .init(dimension: dimension, value: $0) }
-            }
-            async let structures = StructureScanner.scan(reader)
-            async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
-            async let creatures = CreatureScanner.scan(reader)
-            async let biomes = BiomeScanner.scan(reader)
-            index.structures += await structures.map { .init(dimension: dimension, value: $0) }
-            index.places += await places.map { .init(dimension: dimension, value: $0) }
-            index.creatures += await creatures.map { .init(dimension: dimension, value: $0) }
-            index.biomeAreas += await biomes.areas.map { .init(dimension: dimension, value: $0) }
-        }
-        return index
-    }
-
     static func words(in query: String) -> [String] {
         query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
     }
