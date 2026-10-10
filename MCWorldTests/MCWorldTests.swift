@@ -300,6 +300,45 @@ import Testing
     }
 }
 
+@Suite struct PlayerMarkerTests {
+    let you = UUID(uuidString: "52DFB519-DE9C-47E6-BC6C-BB053CC423E7")!
+    let friend = UUID(uuidString: "06D119DA-BC79-410F-8F7B-062CE442A86D")!
+    let bukkit = UUID(uuidString: "11C0E607-2120-4B62-A7E5-938F830B3CE7")!
+
+    func pos(_ x: Double, _ z: Double) -> NBT { .list([.double(x), .double(64), .double(z)]) }
+
+    var players: [PlayerInfo] {
+        [
+            PlayerInfo(uuid: you, nbt: .compound([
+                "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"), "Pos": pos(-2806.6, -3895.2),
+                "LastDeathLocation": .compound(["dimension": .string("minecraft:the_nether"), "pos": .intArray([10, 70, 20])]),
+                "respawn": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-2811, 48, -3918])]),
+            ])),
+            PlayerInfo(uuid: friend, nbt: .compound(["DataVersion": .int(2730), "Dimension": .string("minecraft:overworld"), "Pos": pos(99, -68)])),
+            PlayerInfo(uuid: bukkit, nbt: .compound(["Dimension": .int(0), "Pos": pos(-12, 241), "SpawnWorld": .string("laurenland")])),
+        ]
+    }
+
+    @Test func markersForTheOverworld() {
+        let markers = PlayerPresentation.markers(for: players, in: "minecraft:overworld", singleplayerUUID: you, worldDataVersion: 5023)
+        // You (position + respawn) and the friend; the death is in the Nether; the Bukkit player is left off.
+        #expect(markers.count == 3)
+        let mine = markers.first { $0.kind == .player && $0.label == "You" }
+        #expect(mine?.position == CGPoint(x: -2806.6, y: -3895.2))
+        #expect(mine?.isOutdated == false)
+        #expect(markers.contains { $0.kind == .respawn })
+        let theirs = markers.first { $0.label == "Player 06d119da" }
+        #expect(theirs?.isOutdated == true)  // file predates the world's version
+        #expect(!markers.contains { $0.position == CGPoint(x: -12, y: 241) })
+    }
+
+    @Test func deathMarkerAppearsInItsOwnDimension() {
+        let nether = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you, worldDataVersion: 5023)
+        #expect(nether.map(\.kind) == [.death])
+        #expect(nether.first?.position == CGPoint(x: 10, y: 20))
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

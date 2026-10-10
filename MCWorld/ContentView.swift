@@ -43,14 +43,31 @@ private struct WorldView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(session.dimensions, id: \.id, selection: $session.selectedDimensionID) { dimension in
-                Label(dimension.displayName, systemImage: symbol(for: dimension.id))
+            List(selection: $session.selectedDimensionID) {
+                Section("Dimensions") {
+                    ForEach(session.dimensions, id: \.id) { dimension in
+                        Label(dimension.displayName, systemImage: symbol(for: dimension.id))
+                    }
+                }
+                if !session.players.isEmpty {
+                    Section("Players") {
+                        ForEach(session.players, id: \.uuid) { player in
+                            PlayerRow(session: session, player: player)
+                        }
+                    }
+                }
             }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 190)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
             if let map = session.map {
-                MapView(map: map)
+                MapView(map: map, markers: session.markers)
                     .id(map.dimension.id)
+                    .toolbar {
+                        ToolbarItem {
+                            Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
+                                .help("Show players, their last deaths and respawn points on the map")
+                        }
+                    }
                     .navigationTitle(session.displayName)
                     .navigationSubtitle(map.dimension.displayName)
             } else {
@@ -67,5 +84,55 @@ private struct WorldView: View {
         case "minecraft:the_end": "moon.stars"
         default: "square.dashed"
         }
+    }
+}
+
+/// A player in the sidebar. Choosing one shows their last position on the map.
+private struct PlayerRow: View {
+    let session: WorldSession
+    let player: PlayerInfo
+
+    var body: some View {
+        Button {
+            if let position = player.position { session.focus(on: position) }
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.name(of: player))
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "person.fill")
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!canFocus)
+        .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
+        .help(help)
+    }
+
+    private var canFocus: Bool {
+        guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
+        return session.dimensions.contains { $0.id == position.dimension }
+    }
+
+    private var detail: String {
+        if player.isFromBukkitServer {
+            if let world = player.bukkitWorldName { return String(localized: "May be in another world, “\(world)”") }
+            return String(localized: "May be in another world")
+        }
+        guard let position = player.position else { return String(localized: "Location unknown") }
+        let dimension = session.dimensions.first { $0.id == position.dimension }?.displayName ?? position.dimension
+        return "\(dimension)  X \(Int(position.x.rounded(.down)))  Z \(Int(position.z.rounded(.down)))"
+    }
+
+    private var help: String {
+        if player.isFromBukkitServer {
+            return String(localized: "This player’s file came from a server with several worlds, so this location may not be in this world.")
+        }
+        if session.isOutdated(player) {
+            return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
+        }
+        return String(localized: "Show on the map")
     }
 }

@@ -3,6 +3,8 @@ import SwiftUI
 /// The pannable, zoomable top-down map of one dimension.
 struct MapView: View {
     @Bindable var map: MapModel
+    /// Points of interest for this dimension, drawn above the tiles.
+    var markers: [MapMarker] = []
 
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
@@ -27,6 +29,10 @@ struct MapView: View {
                 // through as seams between tiles.
                 let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+            }
+            for marker in markers {
+                Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
+                          in: context, bounds: CGRect(origin: .zero, size: size))
             }
         }
         .background(.background.secondary)
@@ -79,6 +85,33 @@ struct MapView: View {
                     .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
             }
         }
+    }
+
+    /// Markers keep a constant size at every zoom; players also get a name label.
+    private static func draw(_ marker: MapMarker, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+        guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return }
+        var context = context
+        context.opacity = marker.isOutdated ? 0.55 : 1
+        let radius: CGFloat = marker.kind == .player ? 11 : 9
+        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+        let (symbolName, color): (String, Color) = switch marker.kind {
+        case .player: ("person.fill", .blue)
+        case .death: ("xmark", .red)
+        case .respawn: ("bed.double.fill", .purple)
+        }
+        context.fill(circle, with: .color(color))
+        context.stroke(circle, with: .color(.white), lineWidth: 1.5)
+        var symbol = context.resolve(Image(systemName: symbolName))
+        symbol.shading = .color(.white)
+        let side = radius * 1.15
+        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        guard marker.kind == .player else { return }
+        let text = context.resolve(Text(marker.label).font(.caption.weight(.semibold)).foregroundStyle(.white))
+        let textSize = text.measure(in: CGSize(width: 240, height: 40))
+        let label = CGRect(x: point.x - textSize.width / 2 - 6, y: point.y + radius + 3,
+                           width: textSize.width + 12, height: textSize.height + 4)
+        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(.black.opacity(0.6)))
+        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
     }
 
     private var statusBar: some View {

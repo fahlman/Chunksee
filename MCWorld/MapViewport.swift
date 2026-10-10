@@ -29,6 +29,12 @@ nonisolated struct MapViewport: Equatable, Sendable {
                 y: center.y + (viewPoint.y - size.height / 2) / scale)
     }
 
+    /// The view point of a world block position (the inverse of `blockPoint(at:in:)`).
+    func viewPoint(for block: CGPoint, in size: CGSize) -> CGPoint {
+        CGPoint(x: (block.x - center.x) * scale + size.width / 2,
+                y: (block.y - center.y) * scale + size.height / 2)
+    }
+
     /// Where a region's tile is drawn in a view of `size`.
     func viewRect(for region: RegionCoordinate, in size: CGSize) -> CGRect {
         let side = CGFloat(RegionCoordinate.blockSize)
