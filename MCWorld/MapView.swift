@@ -9,6 +9,7 @@ struct MapView: View {
     @State private var magnifyStart: MapViewport?
     @State private var hoverBlock: CGPoint?
     @FocusState private var isFocused: Bool
+    @Environment(\.displayScale) private var displayScale
 
     /// Zoom buttons and shortcuts step by a factor of two.
     private static let zoomStep: CGFloat = 2
@@ -17,9 +18,10 @@ struct MapView: View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
             let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
-            for (region, image) in map.tiles {
+            let fullResolution = map.needsFullResolution(displayScale: displayScale)
+            for region in map.viewport.visibleRegionRange(in: size).regions {
+                guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
                 let rect = map.viewport.viewRect(for: region, in: size)
-                guard rect.intersects(CGRect(origin: .zero, size: size)) else { continue }
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
             }
         }
@@ -28,6 +30,12 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
+        .scrollWheelInput { action in
+            switch action {
+            case .pan(let delta): map.viewport.pan(by: delta)
+            case .zoom(let factor, let anchor): map.viewport.zoom(by: factor, anchor: anchor, in: size)
+            }
+        }
         .onContinuousHover { phase in
             switch phase {
             case .active(let point): hoverBlock = map.viewport.blockPoint(at: point, in: size)
@@ -48,12 +56,12 @@ struct MapView: View {
             return .handled
         }
         .onAppear { isFocused = true }
-        .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size) }
-        .onChange(of: size) { map.requestTiles(visibleIn: size) }
+        .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
+        .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement()
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y))"))
-        .accessibilityHint(Text("Use the arrow keys to move the map."))
+        .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .overlay(alignment: .bottom) { statusBar }
         .toolbar {
             ToolbarItemGroup {

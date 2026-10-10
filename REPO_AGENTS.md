@@ -47,10 +47,12 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `MCWorldApp.swift` | The single `Window` scene and the File ▸ Open World… command |
 | `AppModel.swift` | The open world, and remembering it between launches with a read-only bookmark |
 | `WorldSession.swift` | One open world: security-scoped access, its dimensions, and the selected dimension's map |
-| `MapModel.swift` | Tile cache and background rendering for one dimension, cancelled when tiles leave the view |
+| `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
+| `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
+| `ScrollWheelInput.swift` | Trackpad and scroll-wheel pan and zoom. The app's only AppKit: SwiftUI on macOS 27 has no scroll-wheel input for arbitrary views |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 
 ## Build and test
