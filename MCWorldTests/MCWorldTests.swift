@@ -66,7 +66,7 @@ import Testing
 }
 
 @Suite struct RegionTileRendererTests {
-    @Test func rendersSurfaceWaterGapsAndRelief() throws {
+    @Test func rendersSurfaceWaterGapsAndRelief() async throws {
         let world = try TestWorld.make(chunks: [
             // Chunk (0, 0): stone floor at y 0; grass at y 1 for x < 8, water at y 1 for x ≥ 8.
             TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:grass_block", "minecraft:water"]) { x, y, _ in
@@ -78,7 +78,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
 
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let pixels = try #require(try RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 0, z: 0)))
+        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 0, z: 0)))
 
         func pixel(_ x: Int, _ z: Int) -> [UInt8] { Array(pixels[((z * 512) + x) * 4 ..< ((z * 512) + x) * 4 + 4]) }
         func rgba(_ c: MapColor) -> [UInt8] { [c.red, c.green, c.blue, 255] }
@@ -91,11 +91,43 @@ import Testing
         #expect(RegionTileRenderer.makeImage(pixels)?.width == 512)
     }
 
-    @Test func missingRegionFileRendersNothing() throws {
+    @Test func parallelChunksMatchSequential() async throws {
+        let world = try TestWorld.make(chunks: (0..<4).flatMap { x in (0..<4).map { z in
+            TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone", "minecraft:grass_block", "minecraft:water"]) { bx, y, bz in
+                y < (bx + bz + x * 3 + z) % 9 ? 1 : y == (bx + bz + x * 3 + z) % 9 ? (bx % 3 == 0 ? 3 : 2) : 0
+            }
+        } })
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let region = RegionCoordinate(x: 0, z: 0)
+        let sequential = try await RegionTileRenderer(dimension: dimension, chunkConcurrency: 1).pixels(for: region)
+        let parallel = try await RegionTileRenderer(dimension: dimension, chunkConcurrency: 8).pixels(for: region)
+        #expect(sequential != nil)
+        #expect(parallel == sequential)
+    }
+
+    @Test func missingRegionFileRendersNothing() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        #expect(try RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 3, z: 3)) == nil)
+        #expect(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 3, z: 3)) == nil)
+    }
+}
+
+@Suite struct MapModelTests {
+    @Test func loadsEveryVisibleRegionThatExists() async throws {
+        let world = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 },
+        ])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let map = MapModel(dimension: dimension, center: .zero, regionConcurrency: 2, chunkConcurrency: 2)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
+        #expect(map.isLoading)
+        await map.waitUntilIdle()
+        #expect(!map.isLoading)
+        // Four regions are visible around the origin, but only r.0.0 exists.
+        #expect(Array(map.tiles.keys) == [RegionCoordinate(x: 0, z: 0)])
     }
 }
 

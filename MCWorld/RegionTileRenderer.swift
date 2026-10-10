@@ -5,30 +5,61 @@ import MCWorldKit
 /// Renders one region (512×512 blocks) of a dimension as a top-down image, one pixel per block.
 ///
 /// Rendering reads and decodes up to 1,024 chunks, so it runs off the main actor and checks for
-/// cancellation between chunks.
+/// cancellation between chunks. With `chunkConcurrency` above 1, chunks decode in parallel.
 nonisolated struct RegionTileRenderer: Sendable {
     static let side = RegionCoordinate.blockSize
 
     let dimension: MCWorldKit.Dimension
+    /// How many chunks of one region decode at the same time.
+    var chunkConcurrency = 1
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
-    func pixels(for region: RegionCoordinate) throws -> [UInt8]? {
+    func pixels(for region: RegionCoordinate) async throws -> [UInt8]? {
         guard let file = try dimension.region(x: region.x, z: region.z) else { return nil }
+        let coordinates = file.chunkCoordinates
         var canvas = Canvas()
-        for (localX, localZ) in file.chunkCoordinates {
-            try Task.checkCancellation()
-            // One damaged chunk shouldn't blank the whole region; it's left transparent instead.
-            guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
-                  let chunk = try? Chunk(nbt: nbt) else { continue }
-            Self.draw(chunk, into: &canvas, originX: localX * 16, originZ: localZ * 16)
+        if chunkConcurrency <= 1 {
+            for (localX, localZ) in coordinates {
+                try Task.checkCancellation()
+                if let columns = Self.columns(in: file, localX: localX, localZ: localZ) {
+                    canvas.set(columns, chunkX: localX, chunkZ: localZ)
+                }
+            }
+        } else {
+            try await withThrowingTaskGroup(of: (Int, Int, [Column?])?.self) { group in
+                var next = coordinates.startIndex
+                func startNext() {
+                    guard next < coordinates.endIndex else { return }
+                    let (localX, localZ) = coordinates[next]
+                    next += 1
+                    group.addTask {
+                        try Task.checkCancellation()
+                        return Self.columns(in: file, localX: localX, localZ: localZ).map { (localX, localZ, $0) }
+                    }
+                }
+                for _ in 0..<chunkConcurrency { startNext() }
+                for try await result in group {
+                    if let (localX, localZ, columns) = result { canvas.set(columns, chunkX: localX, chunkZ: localZ) }
+                    startNext()
+                }
+            }
         }
         canvas.applyRelief()
         return canvas.pixels
     }
 
-    func image(for region: RegionCoordinate) throws -> CGImage? {
-        try pixels(for: region).flatMap(Self.makeImage)
+    func image(for region: RegionCoordinate) async throws -> CGImage? {
+        try await pixels(for: region).flatMap(Self.makeImage)
+    }
+
+    /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
+    /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
+    static func columns(in file: RegionFile, localX: Int, localZ: Int) -> [Column?]? {
+        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ),
+              let chunk = try? Chunk(nbt: nbt) else { return nil }
+        let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
+        return (0..<256).map { topColumn(in: chunk, x: $0 % 16, z: $0 / 16, heightmap: heightmap) }
     }
 
     /// The highest block the map should show in a column, and how deep the water above it is.
@@ -91,6 +122,12 @@ nonisolated struct RegionTileRenderer: Sendable {
             isWater[i] = column.waterDepth > 0
         }
 
+        mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int) {
+            for (i, column) in columns.enumerated() {
+                if let column { set(x: chunkX * 16 + i % 16, z: chunkZ * 16 + i / 16, column: column) }
+            }
+        }
+
         /// Lightens land that is higher than the block to its north and darkens land that is lower.
         mutating func applyRelief() {
             for z in stride(from: side - 1, through: 1, by: -1) {
@@ -105,16 +142,6 @@ nonisolated struct RegionTileRenderer: Sendable {
                     pixels[i * 4 + 1] = shaded.green
                     pixels[i * 4 + 2] = shaded.blue
                 }
-            }
-        }
-    }
-
-    static func draw(_ chunk: Chunk, into canvas: inout Canvas, originX: Int, originZ: Int) {
-        let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
-        for z in 0..<16 {
-            for x in 0..<16 {
-                guard let column = topColumn(in: chunk, x: x, z: z, heightmap: heightmap) else { continue }
-                canvas.set(x: originX + x, z: originZ + z, column: column)
             }
         }
     }
