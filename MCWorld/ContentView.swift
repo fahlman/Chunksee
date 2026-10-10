@@ -44,6 +44,9 @@ private struct WorldView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $session.selectedDimensionID) {
+                if !session.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    SearchResultsSection(session: session)
+                }
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Label(dimension.displayName, systemImage: symbol(for: dimension.id))
@@ -76,6 +79,7 @@ private struct WorldView: View {
             if let map = session.map {
                 MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
                         selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
+                        hits: session.visibleHits, selectedHitID: session.selectedHitID,
                         onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
                     .id(map.dimension.id)
                     .overlay(alignment: .topLeading) {
@@ -109,6 +113,7 @@ private struct WorldView: View {
                                        description: Text("This world has no saved terrain yet."))
             }
         }
+        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items"))
     }
 
     private func symbol(for id: String) -> String {
@@ -265,5 +270,51 @@ private struct PortalCard: View {
 
     private func dimensionName(_ id: String) -> String {
         session.dimensions.first { $0.id == id }?.displayName ?? id
+    }
+}
+
+/// Places holding items that match the search, most items first. Choosing one shows it on the map.
+private struct SearchResultsSection: View {
+    let session: WorldSession
+
+    var body: some View {
+        Section {
+            if session.isIndexing {
+                Label {
+                    Text("Searching every container…")
+                } icon: {
+                    ProgressView().controlSize(.small)
+                }
+                .foregroundStyle(.secondary)
+            } else if session.searchResults.isEmpty {
+                Text("No matching items").foregroundStyle(.secondary)
+            } else {
+                ForEach(session.searchResults.prefix(200)) { hit in
+                    Button {
+                        session.show(hit)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(hit.detail).lineLimit(2)
+                            Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(hit.position == nil)
+                    .padding(.vertical, 2)
+                    .listRowBackground(hit.id == session.selectedHitID ? Color.yellow.opacity(0.25) : nil)
+                }
+                if session.searchResults.count > 200 {
+                    Text("Showing the first 200 of \(session.searchResults.count)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Found Items")
+        }
+    }
+
+    private func location(_ hit: ItemHit) -> String {
+        guard let dimension = hit.dimension, let position = hit.position else { return hit.title }
+        let name = session.dimensions.first { $0.id == dimension }?.displayName ?? dimension
+        return "\(hit.title) · \(name) X \(Int(position.x.rounded(.down))) Z \(Int(position.y.rounded(.down)))"
     }
 }

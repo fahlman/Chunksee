@@ -32,6 +32,66 @@ final class WorldSession {
     /// The portal whose details card is showing.
     var selectedPortal: NetherPortal?
 
+    // MARK: Item search
+
+    /// The toolbar search text. Searching builds the container index the first time.
+    var searchText = "" {
+        didSet { if searchText != oldValue { updateSearch() } }
+    }
+    private(set) var searchResults: [ItemHit] = []
+    private(set) var isIndexing = false
+    /// The result the map is centered on, highlighted among the result markers.
+    var selectedHitID: ItemHit.ID?
+    private var itemIndex: [IndexedContainer]?
+    private var indexTask: Task<Void, Never>?
+
+    private func updateSearch() {
+        selectedHitID = nil
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else {
+            searchResults = []
+            return
+        }
+        guard let index = itemIndex else {
+            buildIndex()
+            return
+        }
+        let names = names, level = world.level
+        searchResults = ItemSearch.search(searchText, containers: index, players: players) {
+            PlayerPresentation.name(of: $0, singleplayerUUID: level.singleplayerUUID, knownName: names.name(for: $0.uuid))
+        }
+    }
+
+    /// Reads every container in every dimension in the background, once per session.
+    private func buildIndex() {
+        guard indexTask == nil else { return }
+        isIndexing = true
+        let dimensions = dimensions
+        indexTask = Task(priority: .userInitiated) { [weak self] in
+            let index = await ItemSearch.index(dimensions)
+            guard let self, !Task.isCancelled else { return }
+            self.itemIndex = index
+            self.isIndexing = false
+            self.updateSearch()
+        }
+    }
+
+    /// Waits for the container index, if one is being built.
+    func waitForIndex() async {
+        await indexTask?.value
+    }
+
+    /// Search results in the selected dimension, for map markers.
+    var visibleHits: [ItemHit] {
+        searchResults.filter { $0.dimension == selectedDimensionID && $0.position != nil }
+    }
+
+    /// Centers the map on a result, switching dimension if needed.
+    func show(_ hit: ItemHit) {
+        guard let dimension = hit.dimension, let position = hit.position else { return }
+        focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y))
+        selectedHitID = hit.id
+    }
+
     /// Point-of-interest groups shown on the map; remembered between launches.
     var shownPlaceGroups: Set<PlaceGroup> {
         didSet { UserDefaults.standard.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
@@ -197,6 +257,7 @@ final class WorldSession {
 
     /// Stops rendering and gives up file access. Call before replacing the session.
     func close() {
+        indexTask?.cancel()
         map?.cancel()
         if isAccessingSecurityScope { url.stopAccessingSecurityScopedResource() }
     }
