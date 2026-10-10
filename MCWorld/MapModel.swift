@@ -14,17 +14,17 @@ final class MapModel {
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
     private(set) var previews: [RegionCoordinate: CGImage] = [:]
-    /// Every structure in the dimension's generated chunks, once the background scan finishes.
+    // Layers, filled in by `loadLayers()`.
+    /// Every structure in the dimension's generated chunks.
     private(set) var structures: [StructureMarker] = []
-    private var structureTask: Task<Void, Never>?
-    /// Every point of interest (portals, bells, beds…), once the background scan finishes.
+    /// Every point of interest (portals, bells, beds…).
     private(set) var places: [PlaceMarker] = []
+    /// Named creatures, pets and villagers.
     private(set) var creatures: [CreatureMarker] = []
     private(set) var biomeAreas: [BiomeArea] = []
+    /// The surface biome of every chunk, for the hover readout.
     private var biomes: [ChunkCoordinate: String] = [:]
-    private var placeTask: Task<Void, Never>?
-    private var creatureTask: Task<Void, Never>?
-    private var biomeTask: Task<Void, Never>?
+    private var layerTask: Task<Void, Never>?
 
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
@@ -35,7 +35,7 @@ final class MapModel {
     /// Places saved between launches.
     private let scanCache: ScanCache
     /// Structures, creatures and biomes, read once per region and shared with search and the heat map.
-    let reader: RegionReader
+    private let reader: RegionReader
 
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
@@ -69,12 +69,12 @@ final class MapModel {
         viewport.scale * CGFloat(RegionCoordinate.blockSize) * displayScale > CGFloat(RegionTileRenderer.previewSide)
     }
 
-    /// The image to draw for a region: the sharpest one cached that the view needs.
     /// The surface biome of the chunk under a block, once the biome scan has finished.
     func biome(at block: CGPoint) -> String? {
         biomes[ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)]
     }
 
+    /// The image to draw for a region: the sharpest one cached that the view needs.
     func image(for region: RegionCoordinate, fullResolution: Bool) -> CGImage? {
         fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
     }
@@ -191,20 +191,6 @@ final class MapModel {
         if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
     }
 
-    /// Reads structures, places, creatures and biomes again after the game saved. Regions that
-    /// didn't change come from the scan cache; the current markers stay until the new ones arrive.
-    func reloadMarkers() {
-        for task in [structureTask, placeTask, creatureTask, biomeTask] { task?.cancel() }
-        structureTask = nil
-        placeTask = nil
-        creatureTask = nil
-        biomeTask = nil
-        loadStructures()
-        loadPlaces()
-        loadCreatures()
-        loadBiomeAreas()
-    }
-
     /// Regions in the view at the last request; never evicted.
     private var visibleRegions: Set<RegionCoordinate> = []
     /// Whether the last request needed full-resolution tiles. When it didn't, rendered full tiles
@@ -243,77 +229,48 @@ final class MapModel {
         return Array(candidates.prefix(cached.count - limit))
     }
 
-    /// Reads the dimension's structures in the background, at a lower priority than map tiles.
-    func loadStructures() {
-        guard structureTask == nil else { return }
-        let dimension = dimension, scanCache = scanCache, reader = reader
-        structureTask = Task(priority: .utility) { [weak self] in
-            let found = await StructureScanner.scan(reader)
+    /// Reads the dimension's structures, places, creatures and biome areas in the background, at
+    /// a lower priority than map tiles. Each list appears as soon as it's read; the scans share
+    /// one read per region through `reader`.
+    func loadLayers() {
+        guard layerTask == nil else { return }
+        let reader = reader, dimension = dimension, scanCache = scanCache
+        layerTask = Task(priority: .utility) { [weak self] in
+            async let places = PlaceScanner.scan(dimension, cache: scanCache)
+            async let structures = StructureScanner.scan(reader)
+            async let creatures = CreatureScanner.scan(reader)
+            async let biomes = BiomeScanner.scan(reader)
+            let foundPlaces = await places
             guard !Task.isCancelled else { return }
-            self?.structures = found
+            self?.places = foundPlaces
+            let foundStructures = await structures
+            guard !Task.isCancelled else { return }
+            self?.structures = foundStructures
+            let foundCreatures = await creatures
+            guard !Task.isCancelled else { return }
+            self?.creatures = foundCreatures
+            let foundBiomes = await biomes
+            guard !Task.isCancelled else { return }
+            self?.biomeAreas = foundBiomes.areas
+            self?.biomes = foundBiomes.biomes
         }
     }
 
-    /// Reads the dimension's named creatures, pets and villagers in the background.
-    func loadCreatures() {
-        guard creatureTask == nil else { return }
-        let dimension = dimension, scanCache = scanCache, reader = reader
-        creatureTask = Task(priority: .utility) { [weak self] in
-            let found = await CreatureScanner.scan(reader)
-            guard !Task.isCancelled else { return }
-            self?.creatures = found
-        }
+    /// Reads the layers again after the game saved. Regions that didn't change come from the scan
+    /// cache; the current lists stay until the new ones arrive.
+    func reloadLayers() {
+        layerTask?.cancel()
+        layerTask = nil
+        loadLayers()
     }
 
-    /// Waits for the scan started by `loadCreatures()`.
-    func waitForCreatures() async {
-        await creatureTask?.value
-    }
-
-    /// Finds the dimension's biome areas in the background. It reads every chunk (3.4 s for Ryan's
-    /// Realm's Overworld); background priority, rather than utility, slowed it to over a minute.
-    func loadBiomeAreas() {
-        guard biomeTask == nil else { return }
-        let dimension = dimension, scanCache = scanCache, reader = reader
-        biomeTask = Task(priority: .utility) { [weak self] in
-            let found = await BiomeScanner.scan(reader)
-            guard !Task.isCancelled else { return }
-            self?.biomeAreas = found.areas
-            self?.biomes = found.biomes
-        }
-    }
-
-    /// Waits for the scan started by `loadBiomeAreas()`.
-    func waitForBiomeAreas() async {
-        await biomeTask?.value
-    }
-
-    /// Reads the dimension's points of interest in the background.
-    func loadPlaces() {
-        guard placeTask == nil else { return }
-        let dimension = dimension, scanCache = scanCache, reader = reader
-        placeTask = Task(priority: .utility) { [weak self] in
-            let found = await PlaceScanner.scan(dimension, cache: scanCache)
-            guard !Task.isCancelled else { return }
-            self?.places = found
-        }
-    }
-
-    /// Waits for the scan started by `loadPlaces()`.
-    func waitForPlaces() async {
-        await placeTask?.value
-    }
-
-    /// Waits for the structure scan started by `loadStructures()`.
-    func waitForStructures() async {
-        await structureTask?.value
+    /// Waits for the scan started by `loadLayers()`.
+    func waitForLayers() async {
+        await layerTask?.value
     }
 
     func cancel() {
-        structureTask?.cancel()
-        placeTask?.cancel()
-        creatureTask?.cancel()
-        biomeTask?.cancel()
+        layerTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]

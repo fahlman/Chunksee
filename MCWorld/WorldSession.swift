@@ -313,7 +313,7 @@ final class WorldSession {
         pendingPlayers = false
         if let id = selectedDimensionID, changedDimensions.contains(id) {
             map?.regionsChanged(regions[id] ?? [])
-            map?.reloadMarkers()
+            map?.reloadLayers()
             loadHeatMap(reread: true)
         }
         if !changedDimensions.isEmpty {
@@ -488,10 +488,7 @@ final class WorldSession {
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
                        reader: readers[dimension.id])
         if let viewport = savedViewport(for: dimension.id) { map?.viewport = viewport }
-        map?.loadStructures()
-        map?.loadPlaces()
-        map?.loadCreatures()
-        map?.loadBiomeAreas()
+        map?.loadLayers()
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.

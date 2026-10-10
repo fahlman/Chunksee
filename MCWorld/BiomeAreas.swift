@@ -38,17 +38,8 @@ nonisolated enum BiomeScanner {
 
     @concurrent
     static func scan(_ reader: RegionReader) async -> BiomeScan {
-        let biomes = await withTaskGroup(of: [ChunkCoordinate: String].self) { group in
-            for file in reader.dimension.regionFiles() {
-                group.addTask {
-                    guard !Task.isCancelled else { return [:] }
-                    return await reader.biomes(RegionCoordinate(x: file.x, z: file.z))
-                }
-            }
-            var all: [ChunkCoordinate: String] = [:]
-            for await found in group { all.merge(found) { $1 } }
-            return all
-        }
+        var biomes: [ChunkCoordinate: String] = [:]
+        for part in await reader.everyRegion({ await $0.biomes($1) }) { biomes.merge(part.value) { $1 } }
         return BiomeScan(areas: areas(from: biomes), biomes: biomes)
     }
 

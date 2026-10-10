@@ -53,29 +53,16 @@ nonisolated enum WorldSearch {
     /// Every container, sign and named creature in the readers' dimensions, region by region in parallel.
     @concurrent
     static func index(_ readers: [RegionReader]) async -> SearchIndex {
-        await withTaskGroup(of: SearchIndex.self) { group in
-            for reader in readers {
-                let dimension = reader.dimension.id
-                for file in reader.dimension.regionFiles() {
-                    group.addTask {
-                        guard !Task.isCancelled else { return SearchIndex() }
-                        // Read into a local first: Swift 6.4 release builds can misread values captured
-                        // next to an awaited call in task-group children (see #6).
-                        let contents = await reader.contents(RegionCoordinate(x: file.x, z: file.z))
-                        return SearchIndex(containers: contents.containers.map { .init(dimension: dimension, value: $0) },
-                                           signs: contents.signs.map { .init(dimension: dimension, value: $0) },
-                                           creatures: contents.namedCreatures.map { .init(dimension: dimension, value: $0) })
-                    }
-                }
+        var index = SearchIndex()
+        for reader in readers {
+            let dimension = reader.dimension.id
+            for part in await reader.everyRegion({ await $0.contents($1) }) {
+                index.containers += part.value.containers.map { .init(dimension: dimension, value: $0) }
+                index.signs += part.value.signs.map { .init(dimension: dimension, value: $0) }
+                index.creatures += part.value.namedCreatures.map { .init(dimension: dimension, value: $0) }
             }
-            var all = SearchIndex()
-            for await found in group {
-                all.containers += found.containers
-                all.signs += found.signs
-                all.creatures += found.creatures
-            }
-            return all
         }
+        return index
     }
 
     static func words(in query: String) -> [String] {
