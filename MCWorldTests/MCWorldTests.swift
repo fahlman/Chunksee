@@ -612,7 +612,7 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         session.searchText = "golden apple"
         #expect(session.isIndexing)
@@ -674,7 +674,7 @@ import Testing
         try write("data/minecraft/game_rules.dat", ["minecraft:keep_inventory": .byte(1)])
         try write("dimensions/minecraft/overworld/data/minecraft/world_border.dat", ["size": .double(2000), "center_x": .double(100), "center_z": .double(0)])
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
         #expect(session.visibleBorder?.size == 2000)
@@ -747,7 +747,7 @@ import Testing
         try write(5, mapNBT(dimension: .byte(15)))                                       // another Bukkit world
         try write(6, mapNBT(dimension: .string("minecraft:the_nether")))                 // dimension not in this world
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         #expect(session.inGameMaps.map(\.id) == [3])
         session.show(session.inGameMaps[0])
@@ -783,7 +783,7 @@ import Testing
         let world = try TestWorld.make(chunks: [lived])
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         #expect(session.visibleHeatMap == nil && !session.isLoadingHeatMap)
         session.showsHeatMap = true
@@ -792,37 +792,6 @@ import Testing
         #expect(session.visibleHeatMap?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
         session.showsHeatMap = false
         #expect(session.visibleHeatMap == nil)
-    }
-}
-
-@Suite struct BiomeViewTests {
-    @Test func paletteColorsAreDistinctAndReadBack() {
-        #expect(Set(BiomeColors.table.values).count == BiomeColors.table.count)
-        let plains = BiomeColors.color(for: "minecraft:plains")
-        #expect(BiomeColors.biome(red: plains.red, green: plains.green, blue: plains.blue) == "minecraft:plains")
-        #expect(BiomeColors.color(for: "mymod:glade") == BiomeColors.color(for: "mymod:glade"))
-    }
-
-    @Test func biomeTilesAreFlatAndNameTheBiomeUnderThePointer() async throws {
-        // Two heights, which terrain relief would shade differently.
-        let world = try TestWorld.make(chunks: [
-            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, z in y <= (z < 8 ? 1 : 3) ? 1 : 0 },
-        ])
-        defer { try? FileManager.default.removeItem(at: world) }
-        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let pixels = try #require(try await RegionTileRenderer(dimension: dimension, style: .biomes).pixels(for: RegionCoordinate(x: 0, z: 0)))
-        let plains = BiomeColors.color(for: "minecraft:plains")
-        for z in [0, 7, 8, 15] {
-            let i = z * RegionTileRenderer.side * 4
-            #expect(Array(pixels[i..<i + 4]) == [plains.red, plains.green, plains.blue, 255])
-        }
-        let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), style: .biomes, regionConcurrency: 1, chunkConcurrency: 1)
-        map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
-        await map.waitUntilIdle()
-        #expect(map.biome(at: CGPoint(x: 3.5, y: 9.2)) == "minecraft:plains")
-        #expect(map.biome(at: CGPoint(x: 100, y: 100)) == nil)   // ungenerated, transparent
-        let terrain = MapModel(dimension: dimension, center: .zero)
-        #expect(terrain.biome(at: .zero) == nil)
     }
 }
 
@@ -857,7 +826,7 @@ import Testing
         ])])
         try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: entities.appendingPathComponent("r.0.0.mca"))
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         await session.map?.waitForCreatures()
         #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
@@ -887,6 +856,11 @@ import Testing
         #expect(areas.allSatisfy { $0.group.id == "minecraft:plains" } && areas[0].group.name == "Plains")
         #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
         #expect(areas[0].name == "6 chunks")
+        // The outline runs around the 3×2 chunks, not between them.
+        #expect(areas[0].bounds == CGRect(x: 0, y: 0, width: 48, height: 32))
+        #expect(areas[0].outline.boundingRect == CGRect(x: 0, y: 0, width: 48, height: 32))
+        #expect(!areas[0].outline.contains(CGPoint(x: 16, y: 8)))
+        #expect(Set(BiomeColors.table.values).count == BiomeColors.table.count)   // every biome's outline differs
     }
 
     @Test func sessionFindsBiomeAreas() async throws {
@@ -894,14 +868,18 @@ import Testing
         let world = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: world) }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
-        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults)
         defer { session.close() }
         await session.map?.waitForBiomeAreas()
         #expect(session.map?.biomeAreas.map(\.chunkCount) == [4])
         #expect(session.map?.biomeAreas.first?.group.name == "Plains")
-        // A new style keeps what was found instead of scanning again.
-        session.mapStyle = .biomes
-        #expect(session.map?.style == .biomes && session.map?.biomeAreas.map(\.chunkCount) == [4])
+        #expect(session.map?.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
+        #expect(session.map?.biome(at: CGPoint(x: -1, y: 0)) == nil)
+        // Biomes start without outlines.
+        session.shownBiomeGroups = []
+        #expect(session.visibleBiomeAreas.isEmpty)
+        session.shownBiomeGroups = [BiomeGroup(id: "minecraft:plains")]
+        #expect(session.visibleBiomeAreas.count == 1)
     }
 }
 

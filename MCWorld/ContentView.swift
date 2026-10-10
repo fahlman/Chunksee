@@ -59,13 +59,6 @@ private struct WorldView: View {
                     .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
                     .keyboardShortcut("i")
                     .help("Show the world’s settings, time, weather and game rules")
-                    Picker("Map", selection: $session.mapStyle) {
-                        Text("Terrain").tag(MapStyle.terrain)
-                        Text("Biomes").tag(MapStyle.biomes)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .help("Color the map by the top block or by biome")
                     Toggle(isOn: $session.showsHeatMap) {
                         Label("Time Spent", systemImage: "flame")
                     }
@@ -90,7 +83,8 @@ private struct WorldView: View {
                         session.center(on: creature.position)
                         session.selectedCreature = creature
                     }
-                    LayerSection(title: "Biomes", markers: map.biomeAreas, origin: session.spawnPoint) { session.center(on: $0.position) }
+                    LayerSection(title: "Biomes", markers: map.biomeAreas, origin: session.spawnPoint,
+                                 shown: $session.shownBiomeGroups) { session.center(on: $0.position) }
                 }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
@@ -126,14 +120,13 @@ private struct WorldView: View {
             if let map = session.map {
                 MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
                         selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
-                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder, heatMap: session.visibleHeatMap ?? [:],
+                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder, biomeAreas: session.visibleBiomeAreas, heatMap: session.visibleHeatMap ?? [:],
                         inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
                         inGameMapOpacity: session.inGameMapOpacity,
                         onSelectPortal: { session.selectedPortal = $0 },
                         creatures: session.visibleCreatures, selectedCreatureID: session.selectedCreature?.id,
                         onSelectCreature: { session.selectedCreature = $0 }, markers: session.markers)
-                    // A new dimension or style is a new map model; a fresh view asks it for tiles.
-                    .id("\(map.dimension.id) \(map.style)")
+                    .id(map.dimension.id)
                     .overlay(alignment: .topLeading) {
                         if let portal = session.selectedPortal {
                             PortalCard(session: session, portal: portal)

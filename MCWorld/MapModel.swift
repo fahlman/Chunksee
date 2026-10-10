@@ -21,6 +21,7 @@ final class MapModel {
     private(set) var places: [PlaceMarker] = []
     private(set) var creatures: [CreatureMarker] = []
     private(set) var biomeAreas: [BiomeArea] = []
+    private var biomes: [ChunkCoordinate: String] = [:]
     private var placeTask: Task<Void, Never>?
     private var creatureTask: Task<Void, Never>?
     private var biomeTask: Task<Void, Never>?
@@ -43,17 +44,14 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    let style: MapStyle
-
-    init(dimension: MCWorldKit.Dimension, center: CGPoint, style: MapStyle = .terrain,
+    init(dimension: MCWorldKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil) {
         self.dimension = dimension
-        self.style = style
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, style: style, chunkConcurrency: max(1, chunkConcurrency),
+        self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
@@ -66,26 +64,9 @@ final class MapModel {
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
-    /// In the biome view, the biome under a block, read from the drawn tile's pixel; `nil` while
-    /// the tile isn't drawn or the pixel blends biomes (previews average 2×2 blocks).
+    /// The surface biome of the chunk under a block, once the biome scan has finished.
     func biome(at block: CGPoint) -> String? {
-        guard style == .biomes else { return nil }
-        let side = RegionCoordinate.blockSize
-        let x = Int(block.x.rounded(.down)), z = Int(block.y.rounded(.down))
-        let region = RegionCoordinate(x: x >> 9, z: z >> 9)
-        let localX = x - region.x * side, localZ = z - region.z * side
-        if let image = tiles[region] { return Self.biome(in: image, x: localX, z: localZ) }
-        if let image = previews[region] { return Self.biome(in: image, x: localX / 2, z: localZ / 2) }
-        return nil
-    }
-
-    private static func biome(in image: CGImage, x: Int, z: Int) -> String? {
-        // Tiles are made from in-memory data, so this reads it without copying.
-        guard x >= 0, z >= 0, x < image.width, z < image.height, let data = image.dataProvider?.data,
-              let bytes = CFDataGetBytePtr(data) else { return nil }
-        let offset = z * image.bytesPerRow + x * 4
-        guard offset + 3 < CFDataGetLength(data), bytes[offset + 3] == 255 else { return nil }
-        return BiomeColors.biome(red: bytes[offset], green: bytes[offset + 1], blue: bytes[offset + 2])
+        biomes[ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)]
     }
 
     func image(for region: RegionCoordinate, fullResolution: Bool) -> CGImage? {
@@ -218,7 +199,7 @@ final class MapModel {
 
     /// Reads the dimension's structures in the background, at a lower priority than map tiles.
     func loadStructures() {
-        guard structureTask == nil, structures.isEmpty else { return }
+        guard structureTask == nil else { return }
         let dimension = dimension
         structureTask = Task(priority: .utility) { [weak self] in
             let found = await StructureScanner.scan(dimension)
@@ -229,7 +210,7 @@ final class MapModel {
 
     /// Reads the dimension's named creatures, pets and villagers in the background.
     func loadCreatures() {
-        guard creatureTask == nil, creatures.isEmpty else { return }
+        guard creatureTask == nil else { return }
         let dimension = dimension
         creatureTask = Task(priority: .utility) { [weak self] in
             let found = await CreatureScanner.scan(dimension)
@@ -243,24 +224,16 @@ final class MapModel {
         await creatureTask?.value
     }
 
-    /// Takes the markers another model of this dimension already found, so a new map style
-    /// doesn't scan the world again. Scans it hadn't finished start over with the `load` calls.
-    func keepMarkers(of other: MapModel) {
-        structures = other.structures
-        places = other.places
-        creatures = other.creatures
-        biomeAreas = other.biomeAreas
-    }
-
     /// Finds the dimension's biome areas in the background. It reads every chunk (3.4 s for Ryan's
     /// Realm's Overworld); background priority, rather than utility, slowed it to over a minute.
     func loadBiomeAreas() {
-        guard biomeTask == nil, biomeAreas.isEmpty else { return }
+        guard biomeTask == nil else { return }
         let dimension = dimension
         biomeTask = Task(priority: .utility) { [weak self] in
             let found = await BiomeScanner.scan(dimension)
             guard !Task.isCancelled else { return }
-            self?.biomeAreas = found
+            self?.biomeAreas = found.areas
+            self?.biomes = found.biomes
         }
     }
 
@@ -271,7 +244,7 @@ final class MapModel {
 
     /// Reads the dimension's points of interest in the background.
     func loadPlaces() {
-        guard placeTask == nil, places.isEmpty else { return }
+        guard placeTask == nil else { return }
         let dimension = dimension
         placeTask = Task(priority: .utility) { [weak self] in
             let found = await PlaceScanner.scan(dimension)
