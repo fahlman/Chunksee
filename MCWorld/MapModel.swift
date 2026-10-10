@@ -19,7 +19,9 @@ final class MapModel {
     private var structureTask: Task<Void, Never>?
     /// Every point of interest (portals, bells, beds…), once the background scan finishes.
     private(set) var places: [PlaceMarker] = []
+    private(set) var creatures: [CreatureMarker] = []
     private var placeTask: Task<Void, Never>?
+    private var creatureTask: Task<Void, Never>?
 
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
@@ -223,6 +225,22 @@ final class MapModel {
         }
     }
 
+    /// Reads the dimension's named creatures, pets and villagers in the background.
+    func loadCreatures() {
+        guard creatureTask == nil else { return }
+        let dimension = dimension
+        creatureTask = Task(priority: .utility) { [weak self] in
+            let found = await CreatureScanner.scan(dimension)
+            guard !Task.isCancelled else { return }
+            self?.creatures = found
+        }
+    }
+
+    /// Waits for the scan started by `loadCreatures()`.
+    func waitForCreatures() async {
+        await creatureTask?.value
+    }
+
     /// Reads the dimension's points of interest in the background.
     func loadPlaces() {
         guard placeTask == nil else { return }
@@ -247,6 +265,7 @@ final class MapModel {
     func cancel() {
         structureTask?.cancel()
         placeTask?.cancel()
+        creatureTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]

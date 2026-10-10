@@ -20,6 +20,7 @@ nonisolated struct SearchIndex: Sendable {
 
     var containers: [Placed<ItemContainer>] = []
     var signs: [Placed<Sign>] = []
+    var creatures: [Placed<Creature>] = []
 }
 
 /// One place where matches were found: a container, a sign, or a player's inventory or ender chest.
@@ -27,6 +28,7 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case container(kind: String)
         case sign
+        case creature
         case inventory(UUID)
         case enderChest(UUID)
     }
@@ -46,7 +48,7 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
 }
 
 /// Builds the search index and answers searches against it: item names, custom names, book
-/// titles, authors and pages, and sign text.
+/// titles, authors and pages, sign text, and creatures' names.
 nonisolated enum WorldSearch {
     /// Every container and sign in the given dimensions, read region by region in parallel.
     @concurrent
@@ -58,7 +60,8 @@ nonisolated enum WorldSearch {
                         guard !Task.isCancelled,
                               let contents = try? dimension.contents(regionX: region.x, regionZ: region.z) else { return SearchIndex() }
                         return SearchIndex(containers: contents.containers.map { .init(dimension: dimension.id, value: $0) },
-                                           signs: contents.signs.map { .init(dimension: dimension.id, value: $0) })
+                                           signs: contents.signs.map { .init(dimension: dimension.id, value: $0) },
+                                           creatures: contents.namedCreatures.map { .init(dimension: dimension.id, value: $0) })
                     }
                 }
             }
@@ -66,6 +69,7 @@ nonisolated enum WorldSearch {
             for await found in group {
                 all.containers += found.containers
                 all.signs += found.signs
+                all.creatures += found.creatures
             }
             return all
         }
@@ -144,6 +148,13 @@ nonisolated enum WorldSearch {
             hits.append(SearchHit(id: "\(entry.dimension)@\(sign.kind)@\(sign.x),\(sign.y),\(sign.z)", source: .sign,
                                   dimension: entry.dimension, position: CGPoint(x: Double(sign.x) + 0.5, y: Double(sign.z) + 0.5),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
+        }
+        for entry in index.creatures {
+            let creature = entry.value
+            guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
+            hits.append(SearchHit(id: "\(entry.dimension)@\(creature.id)@\(creature.x),\(creature.y),\(creature.z)", source: .creature,
+                                  dimension: entry.dimension, position: CGPoint(x: creature.x, y: creature.z), y: Int(creature.y.rounded(.down)),
+                                  title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }

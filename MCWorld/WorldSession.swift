@@ -19,6 +19,7 @@ final class WorldSession {
         didSet {
             guard oldValue != selectedDimensionID else { return }
             if selectedPortal?.dimension != selectedDimensionID { selectedPortal = nil }
+            if selectedCreature?.dimension != selectedDimensionID { selectedCreature = nil }
             if visibleInGameMap == nil { selectedInGameMapID = nil }
             loadHeatMap()
             makeMapForSelection()
@@ -43,7 +44,11 @@ final class WorldSession {
     private(set) var portalsByDimension: [String: [NetherPortal]] = [:]
     /// The portal whose details card is showing.
     var selectedPortal: NetherPortal? {
-        didSet { if selectedPortal != nil { selectedInGameMapID = nil } }
+        didSet { if selectedPortal != nil { selectedInGameMapID = nil; selectedCreature = nil } }
+    }
+    /// The creature whose card is showing.
+    var selectedCreature: CreatureMarker? {
+        didSet { if selectedCreature != nil { selectedPortal = nil; selectedInGameMapID = nil } }
     }
 
     // MARK: Search
@@ -138,7 +143,7 @@ final class WorldSession {
     }
     /// The in-game map drawn over the terrain, if any.
     var selectedInGameMapID: Int? {
-        didSet { if selectedInGameMapID != nil { selectedPortal = nil } }
+        didSet { if selectedInGameMapID != nil { selectedPortal = nil; selectedCreature = nil } }
     }
     /// How opaque the in-game map is over the terrain.
     var inGameMapOpacity = 0.85
@@ -187,6 +192,11 @@ final class WorldSession {
         didSet { UserDefaults.standard.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
     }
     private static let shownPlacesKey = "shownPlaceGroups"
+    /// Creature groups shown on the map; remembered between launches.
+    var shownCreatureGroups: Set<CreatureGroup> {
+        didSet { UserDefaults.standard.set(shownCreatureGroups.map(\.rawValue).sorted(), forKey: Self.shownCreaturesKey) }
+    }
+    private static let shownCreaturesKey = "shownCreatureGroups"
     /// App-wide player names, shared across worlds.
     let names: PlayerNames
 
@@ -205,6 +215,11 @@ final class WorldSession {
             shownPlaceGroups = Set(saved.compactMap(PlaceGroup.init(rawValue:)))
         } else {
             shownPlaceGroups = Set(PlaceGroup.allCases.filter(\.isShownByDefault))
+        }
+        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownCreaturesKey) {
+            shownCreatureGroups = Set(saved.compactMap(CreatureGroup.init(rawValue:)))
+        } else {
+            shownCreatureGroups = Set(CreatureGroup.allCases.filter(\.isShownByDefault))
         }
         self.world = world
         self.players = players
@@ -292,6 +307,12 @@ final class WorldSession {
         PlayerPresentation.name(of: player, singleplayerUUID: world.level.singleplayerUUID, knownName: names.name(for: player.uuid))
     }
 
+    /// A name for a player who may not have a file in this world, such as a pet's owner.
+    func name(ofPlayerWith uuid: UUID) -> String {
+        if let player = players.first(where: { $0.uuid == uuid }) { return name(of: player) }
+        return names.name(for: uuid) ?? String(localized: "a player not in this world (\(uuid.uuidString.prefix(8).lowercased())…)")
+    }
+
     /// Whether any player still has no real name.
     var hasUnnamedPlayers: Bool { players.contains { names.name(for: $0.uuid) == nil } }
 
@@ -313,6 +334,10 @@ final class WorldSession {
     }
 
     /// Points of interest of the shown groups in the selected dimension.
+    var visibleCreatures: [CreatureMarker] {
+        (map?.creatures ?? []).filter { shownCreatureGroups.contains($0.group) }
+    }
+
     var visiblePlaces: [PlaceMarker] {
         (map?.places ?? []).filter { shownPlaceGroups.contains($0.group) }
     }
@@ -354,6 +379,7 @@ final class WorldSession {
         if let previous, previous.dimension.id == dimension.id { map?.viewport = previous.viewport }
         map?.loadStructures()
         map?.loadPlaces()
+        map?.loadCreatures()
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.
