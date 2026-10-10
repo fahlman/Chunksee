@@ -36,11 +36,7 @@ nonisolated enum HeatMap {
             pixels[index * 4 + 2] = UInt8(blue * 0.7 * 255)
             pixels[index * 4 + 3] = UInt8(0.7 * 255)
         }
-        guard any, let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(width: 32, height: 32, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 128,
-                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        return any ? CGImage.rgba(pixels, width: 32, height: 32) : nil
     }
 
     /// Full-saturation, full-brightness HSB to RGB.
@@ -66,6 +62,55 @@ nonisolated enum HeatMap {
             images[part.region] = image(fromTicks: part.value)
         }
         return images
+    }
+}
+
+/// The heat map as a layer: whether it's shown, and each dimension's images, read the first time
+/// the dimension is shown with the layer on and again after the game saves.
+@Observable
+final class HeatMapLayer {
+    var isShown = false {
+        didSet { load() }
+    }
+    /// The dimension the map is showing.
+    var dimension: String? {
+        didSet { load() }
+    }
+    private var images: [String: [RegionCoordinate: CGImage]] = [:]
+    @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
+    private let readers: [String: RegionReader]
+
+    init(readers: [String: RegionReader]) {
+        self.readers = readers
+    }
+
+    /// The shown dimension's images, when the layer is on and they've been read.
+    var visibleImages: [RegionCoordinate: CGImage]? {
+        guard isShown, let dimension else { return nil }
+        return images[dimension]
+    }
+
+    var isLoading: Bool { isShown && dimension.map { images[$0] == nil } ?? false }
+
+    /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
+    /// the current ones stay until the new ones are ready.
+    func load(reread: Bool = false) {
+        guard isShown, let dimension, reread || images[dimension] == nil, tasks[dimension] == nil,
+              let reader = readers[dimension] else { return }
+        tasks[dimension] = Task(priority: .userInitiated) { [weak self] in
+            let images = await HeatMap.images(reader)
+            guard let self, !Task.isCancelled else { return }
+            self.images[dimension] = images
+            self.tasks[dimension] = nil
+        }
+    }
+
+    func waitForReads() async {
+        for task in tasks.values { await task.value }
+    }
+
+    func cancel() {
+        tasks.values.forEach { $0.cancel() }
     }
 }
 

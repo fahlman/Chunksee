@@ -2,16 +2,8 @@ import CoreGraphics
 import Foundation
 import MCWorldKit
 
-/// Readable names from ids: `minecraft:diamond_sword` → "Diamond Sword". Minecraft's own names
-/// live in its language files, which can't be redistributed.
-nonisolated enum ReadableName {
-    static func from(_ id: String) -> String {
-        let base = id.split(separator: ":").last.map(String.init) ?? id
-        return base.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
-    }
-}
-
-/// Everything searchable in a world's dimensions: containers with their items, and signs.
+/// Everything searchable in a world's dimensions: containers with their items, signs, and named
+/// creatures.
 nonisolated struct SearchIndex: Sendable {
     struct Placed<Value: Sendable>: Sendable {
         var dimension: String
@@ -23,7 +15,8 @@ nonisolated struct SearchIndex: Sendable {
     var creatures: [Placed<Creature>] = []
 }
 
-/// One place where matches were found: a container, a sign, or a player's inventory or ender chest.
+/// One place where matches were found: a container, a sign, a named creature, or a player's
+/// inventory or ender chest.
 nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case container(kind: String)

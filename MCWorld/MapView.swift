@@ -1,38 +1,35 @@
 import MCWorldKit
 import SwiftUI
 
+/// Everything drawn over one dimension's terrain, bottom to top in this order.
+struct MapContent {
+    /// Time-spent heat images by region.
+    var heatMap: [RegionCoordinate: CGImage] = [:]
+    /// A map made in the game, drawn where it belongs at the given opacity.
+    var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
+    var biomeAreas: [BiomeArea] = []
+    /// The world border, when it's closer than Minecraft's default.
+    var border: WorldBorder?
+    var structures: [StructureMarker] = []
+    var places: [PlaceMarker] = []
+    var creatures: [CreatureMarker] = []
+    /// Search results, drawn as pins.
+    var hits: [SearchHit] = []
+    var selectedHitID: SearchHit.ID?
+    /// Players' positions, last deaths and respawn points.
+    var players: [MapMarker] = []
+    /// The portal or creature whose card is showing, drawn highlighted.
+    var selection: MapSelection?
+}
+
 /// The pannable, zoomable top-down map of one dimension.
 struct MapView: View {
     @Bindable var map: MapModel
-    /// Structures to draw, above the tiles and below player markers.
-    var structures: [StructureMarker] = []
-    /// Points of interest to draw, above structures and below player markers.
-    var places: [PlaceMarker] = []
-    /// The portal whose details are showing, drawn with a highlight ring.
-    var selectedPortal: NetherPortal?
+    var content = MapContent()
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
-    /// Item search results in this dimension, drawn as pins above everything but players.
-    var hits: [SearchHit] = []
-    var selectedHitID: SearchHit.ID?
-    /// The dimension's world border, drawn when it's closer than Minecraft's default.
-    var border: WorldBorder?
-    /// Biome areas outlined over the terrain.
-    var biomeAreas: [BiomeArea] = []
-    /// Time-spent heat images by region, drawn over the terrain.
-    var heatMap: [RegionCoordinate: CGImage] = [:]
-    /// A map made in the game, drawn over the terrain where it belongs.
-    var inGameMap: (map: MapItem, image: CGImage)?
-    var inGameMapOpacity = 0.85
-    /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
-    var onSelectPortal: (NetherPortal?) -> Void = { _ in }
-    /// Named creatures, pets and villagers, drawn above places.
-    var creatures: [CreatureMarker] = []
-    var selectedCreatureID: CreatureMarker.ID?
-    /// Called when a creature is clicked, or with `nil` when the map is clicked elsewhere.
-    var onSelectCreature: (CreatureMarker?) -> Void = { _ in }
-    /// Points of interest for this dimension, drawn above the tiles.
-    var markers: [MapMarker] = []
+    /// Called when a portal or creature is clicked, or with `nil` when the map is clicked elsewhere.
+    var onSelect: (MapSelection?) -> Void = { _ in }
 
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
@@ -59,18 +56,18 @@ struct MapView: View {
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
             }
             let bounds = CGRect(origin: .zero, size: size)
-            if !heatMap.isEmpty {
+            if !content.heatMap.isEmpty {
                 for region in map.viewport.visibleRegionRange(in: size).regions {
-                    guard let image = heatMap[region] else { continue }
+                    guard let image = content.heatMap[region] else { continue }
                     context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: map.viewport.viewRect(for: region, in: size))
                 }
             }
-            if let (item, image) = inGameMap {
+            if let (item, image, opacity) = content.inGameMap {
                 let topLeft = map.viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
                 let side = CGFloat(item.sideInBlocks) * map.viewport.scale
                 let rect = CGRect(origin: topLeft, size: CGSize(width: side, height: side))
                 var layer = context
-                layer.opacity = inGameMapOpacity
+                layer.opacity = opacity
                 layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
                 context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
             }
@@ -78,42 +75,43 @@ struct MapView: View {
             let toView = CGAffineTransform(a: map.viewport.scale, b: 0, c: 0, d: map.viewport.scale,
                                            tx: size.width / 2 - map.viewport.center.x * map.viewport.scale,
                                            ty: size.height / 2 - map.viewport.center.y * map.viewport.scale)
-            for area in biomeAreas where area.bounds.applying(toView).intersects(bounds) {
-                let mapColor = BiomeColors.color(for: area.group.id)
-                let color = Color(red: Double(mapColor.red) / 255, green: Double(mapColor.green) / 255, blue: Double(mapColor.blue) / 255)
+            for area in content.biomeAreas where area.bounds.applying(toView).intersects(bounds) {
+                let color = Color(BiomeColors.color(for: area.group.id))
                 context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
                 context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
             }
-            if let border {
+            if let border = content.border {
                 let half = border.size / 2
                 let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
                 let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
                 context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
             }
-            for structure in structures {
+            for structure in content.structures {
                 Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
             }
             // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
-            for place in places where map.viewport.scale >= 0.125 || place.group == .portal {
+            for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
                 let point = map.viewport.viewPoint(for: place.position, in: size)
                 Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds)
                 if let portal = place.portal {
-                    Self.drawPortalState(at: point, selected: portal == selectedPortal, status: portalStatus(portal), in: context)
+                    Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
                 }
             }
             // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
-            for creature in creatures where map.viewport.scale >= 0.25 || creature.id == selectedCreatureID {
-                Self.draw(creature, selected: creature.id == selectedCreatureID, at: map.viewport.viewPoint(for: creature.position, in: size),
+            for creature in content.creatures {
+                let selected = content.selection == .creature(creature)
+                guard map.viewport.scale >= 0.25 || selected else { continue }
+                Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
                           scale: map.viewport.scale, in: context, bounds: bounds)
             }
-            for hit in hits {
+            for hit in content.hits {
                 guard let position = hit.position else { continue }
-                Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == selectedHitID,
+                Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
                              in: context, bounds: bounds)
             }
-            for marker in markers {
+            for marker in content.players {
                 Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
-                          in: context, bounds: CGRect(origin: .zero, size: size))
+                          in: context, bounds: bounds)
             }
         }
         .background(.background.secondary)
@@ -121,17 +119,7 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
-        .simultaneousGesture(SpatialTapGesture().onEnded { value in
-            // A portal wins over a creature standing in it.
-            if let portal = portal(at: value.location) {
-                onSelectPortal(portal)
-            } else if let creature = creature(at: value.location) {
-                onSelectCreature(creature)
-            } else {
-                onSelectPortal(nil)
-                onSelectCreature(nil)
-            }
-        })
+        .simultaneousGesture(SpatialTapGesture().onEnded { value in onSelect(selection(at: value.location)) })
         .scrollWheelInput { action in
             switch action {
             case .pan(let delta): map.viewport.pan(by: delta)
@@ -187,9 +175,7 @@ struct MapView: View {
         let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
                                                            height: structure.bounds.height * viewport.scale))
         guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return }
-        let color = Color(red: Double((structure.group.color >> 16) & 0xFF) / 255,
-                          green: Double((structure.group.color >> 8) & 0xFF) / 255,
-                          blue: Double(structure.group.color & 0xFF) / 255)
+        let color = Color(hex: structure.group.color)
         if viewport.scale >= 0.25 {
             let path = Path(outline)
             context.fill(path, with: .color(color.opacity(0.12)))
@@ -250,24 +236,20 @@ struct MapView: View {
         context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
     }
 
-    /// The portal under a click, within 14 points of its marker.
-    /// The nearest drawn creature within reach of a click.
-    private func creature(at point: CGPoint) -> CreatureMarker? {
+    /// What a click selects: a portal within 14 points, or else a drawn creature within 12. A
+    /// portal wins over a creature standing in it.
+    private func selection(at point: CGPoint) -> MapSelection? {
+        func nearest<Item>(_ items: [(item: Item, position: CGPoint)], within reach: CGFloat) -> Item? {
+            items.map { item, position in
+                let p = map.viewport.viewPoint(for: position, in: size)
+                return (item, hypot(p.x - point.x, p.y - point.y))
+            }.filter { $0.1 <= reach }.min { $0.1 < $1.1 }?.0
+        }
+        if let portal = nearest(content.places.compactMap { place in place.portal.map { ($0, place.position) } }, within: 14) {
+            return .portal(portal)
+        }
         guard map.viewport.scale >= 0.25 else { return nil }
-        return creatures.compactMap { creature -> (CreatureMarker, CGFloat)? in
-            let p = map.viewport.viewPoint(for: creature.position, in: size)
-            let distance = hypot(p.x - point.x, p.y - point.y)
-            return distance <= 12 ? (creature, distance) : nil
-        }.min { $0.1 < $1.1 }?.0
-    }
-
-    private func portal(at point: CGPoint) -> NetherPortal? {
-        places.compactMap { place -> (NetherPortal, CGFloat)? in
-            guard let portal = place.portal else { return nil }
-            let p = map.viewport.viewPoint(for: place.position, in: size)
-            let distance = hypot(p.x - point.x, p.y - point.y)
-            return distance <= 14 ? (portal, distance) : nil
-        }.min { $0.1 < $1.1 }?.0
+        return nearest(content.creatures.map { ($0, $0.position) }, within: 12).map(MapSelection.creature)
     }
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
@@ -287,7 +269,7 @@ struct MapView: View {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
         var context = context
         context.opacity = opacity
-        let color = Color(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+        let color = Color(hex: hex)
         let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
         context.fill(circle, with: .color(color))
         context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
@@ -334,7 +316,7 @@ struct MapView: View {
         HStack(spacing: 12) {
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
-                Text("X \(Int(hoverBlock.x.rounded(.down)))  Z \(Int(hoverBlock.y.rounded(.down)))")
+                Text(Coordinates.text(hoverBlock))
                     .monospacedDigit()
                 if let biome = map.biome(at: hoverBlock) {
                     Text(ReadableName.from(biome))

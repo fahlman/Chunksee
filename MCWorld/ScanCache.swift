@@ -1,6 +1,6 @@
 import Foundation
 
-/// Scan results (search contents, structures, places, creatures, biomes) kept on disk per region,
+/// Scan results (search contents, structures, places, creatures, biomes, time spent) kept on disk per region,
 /// so reopening a world lists everything at once. Like tiles, an entry is valid only for the
 /// exact files it was read from (size and modification date), so regions the game changed are
 /// read again.

@@ -615,18 +615,18 @@ import Testing
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The index is built as the world opens, before anyone searches.
-        #expect(session.isIndexing)
-        await session.waitForIndex()
-        #expect(!session.isIndexing)
-        session.searchText = "golden apple"
-        #expect(session.searchResults.map(\.detail) == ["2 Golden Apple"])
-        session.show(session.searchResults[0])
-        #expect(session.selectedHitID == session.searchResults[0].id)
+        #expect(session.search.isIndexing)
+        await session.search.waitForIndex()
+        #expect(!session.search.isIndexing)
+        session.search.text = "golden apple"
+        #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
+        session.show(session.search.results[0])
+        #expect(session.search.selectedHitID == session.search.results[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
-        session.searchText = "orchard"
-        #expect(session.searchResults.map(\.detail) == ["Orchard"])
-        session.searchText = ""
-        #expect(session.searchResults.isEmpty)
+        session.search.text = "orchard"
+        #expect(session.search.results.map(\.detail) == ["Orchard"])
+        session.search.text = ""
+        #expect(session.search.results.isEmpty)
     }
 }
 
@@ -681,7 +681,7 @@ import Testing
         defer { session.close() }
         #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
         #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
-        #expect(session.visibleBorder?.size == 2000)
+        #expect(session.mapContent.border?.size == 2000)
         session.inspector = .world
         #expect(session.inspector == .world)
     }
@@ -755,10 +755,13 @@ import Testing
         defer { session.close() }
         #expect(session.inGameMaps.map(\.id) == [3])
         session.show(session.inGameMaps[0])
-        #expect(session.visibleInGameMap?.id == 3)
+        #expect(session.mapContent.inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
-        session.selectedInGameMapID = nil
-        #expect(session.visibleInGameMap == nil)
+        // Clicking the map elsewhere leaves an in-game map laid over the terrain.
+        session.mapClicked(nil)
+        #expect(session.mapContent.inGameMap?.map.id == 3)
+        session.selection = nil
+        #expect(session.mapContent.inGameMap == nil)
     }
 }
 
@@ -789,13 +792,13 @@ import Testing
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        #expect(session.visibleHeatMap == nil && !session.isLoadingHeatMap)
-        session.showsHeatMap = true
-        #expect(session.isLoadingHeatMap)
-        await session.waitForHeatMaps()
-        #expect(session.visibleHeatMap?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
-        session.showsHeatMap = false
-        #expect(session.visibleHeatMap == nil)
+        #expect(session.heatMap.visibleImages == nil && !session.heatMap.isLoading)
+        session.heatMap.isShown = true
+        #expect(session.heatMap.isLoading)
+        await session.heatMap.waitForReads()
+        #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
+        session.heatMap.isShown = false
+        #expect(session.heatMap.visibleImages == nil)
     }
 }
 
@@ -834,18 +837,21 @@ import Testing
         defer { session.close() }
         await session.map?.waitForLayers()
         #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
-        session.shownCreatureGroups = [.pet]
-        #expect(session.visibleCreatures.map(\.name) == ["Summer"])
-        session.selectedCreature = session.visibleCreatures.first
-        #expect(session.selectedCreature?.name == "Summer")
+        session.visibility.creatures = [.pet]
+        #expect(session.mapContent.creatures.map(\.name) == ["Summer"])
+        let summer = try #require(session.mapContent.creatures.first)
+        session.mapClicked(.creature(summer))
+        #expect(session.mapContent.selection == .creature(summer))
+        session.mapClicked(nil)
+        #expect(session.selection == nil)
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
         session.center(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
         #expect(session.spawnPoint == .zero)   // the test world has no spawn
-        session.searchText = "summer"
-        await session.waitForIndex()
-        #expect(session.searchResults.map(\.detail) == ["“Summer”"])
-        #expect(session.searchResults.first?.source == .creature)
+        session.search.text = "summer"
+        await session.search.waitForIndex()
+        #expect(session.search.results.map(\.detail) == ["“Summer”"])
+        #expect(session.search.results.first?.source == .creature)
     }
 }
 
@@ -880,10 +886,10 @@ import Testing
         #expect(session.map?.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
         #expect(session.map?.biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.
-        session.shownBiomeGroups = []
-        #expect(session.visibleBiomeAreas.isEmpty)
-        session.shownBiomeGroups = [BiomeGroup(id: "minecraft:plains")]
-        #expect(session.visibleBiomeAreas.count == 1)
+        session.visibility.biomes = []
+        #expect(session.mapContent.biomeAreas.isEmpty)
+        session.visibility.biomes = [BiomeGroup(id: "minecraft:plains")]
+        #expect(session.mapContent.biomeAreas.count == 1)
     }
 }
 
@@ -1042,7 +1048,7 @@ import Testing
         }
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
-        await session.waitForIndex()
+        await session.search.waitForIndex()
         session.close()
         let scans = try #require(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root))
             .appendingPathComponent("scans")
@@ -1065,13 +1071,13 @@ import Testing
         try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: players.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
         let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        #expect(!first.markers.isEmpty)
-        first.hiddenPlayers.insert(uuid)
-        #expect(first.markers.isEmpty)
+        #expect(!first.mapContent.players.isEmpty)
+        first.visibility.hiddenPlayers.insert(uuid)
+        #expect(first.mapContent.players.isEmpty)
         first.close()
         let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { second.close() }
-        #expect(second.hiddenPlayers == [uuid] && second.markers.isEmpty)
+        #expect(second.visibility.hiddenPlayers == [uuid] && second.mapContent.players.isEmpty)
     }
 }
 

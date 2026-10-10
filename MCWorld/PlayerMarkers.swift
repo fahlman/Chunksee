@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import MCWorldKit
 
-/// A point of interest drawn on the map.
+/// A player's position, last death or respawn point on the map.
 nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     enum Kind: Sendable {
         case player, death, respawn
