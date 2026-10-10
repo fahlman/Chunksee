@@ -32,17 +32,17 @@ final class WorldSession {
     /// The portal whose details card is showing.
     var selectedPortal: NetherPortal?
 
-    // MARK: Item search
+    // MARK: Search
 
-    /// The toolbar search text. Searching builds the container index the first time.
+    /// The toolbar search text. Searching builds the index of containers and signs the first time.
     var searchText = "" {
         didSet { if searchText != oldValue { updateSearch() } }
     }
-    private(set) var searchResults: [ItemHit] = []
+    private(set) var searchResults: [SearchHit] = []
     private(set) var isIndexing = false
     /// The result the map is centered on, highlighted among the result markers.
-    var selectedHitID: ItemHit.ID?
-    private var itemIndex: [IndexedContainer]?
+    var selectedHitID: SearchHit.ID?
+    private var searchIndex: SearchIndex?
     private var indexTask: Task<Void, Never>?
 
     private func updateSearch() {
@@ -51,42 +51,42 @@ final class WorldSession {
             searchResults = []
             return
         }
-        guard let index = itemIndex else {
+        guard let index = searchIndex else {
             buildIndex()
             return
         }
         let names = names, level = world.level
-        searchResults = ItemSearch.search(searchText, containers: index, players: players) {
+        searchResults = WorldSearch.search(searchText, in: index, players: players) {
             PlayerPresentation.name(of: $0, singleplayerUUID: level.singleplayerUUID, knownName: names.name(for: $0.uuid))
         }
     }
 
-    /// Reads every container in every dimension in the background, once per session.
+    /// Reads every container and sign in every dimension in the background, once per session.
     private func buildIndex() {
         guard indexTask == nil else { return }
         isIndexing = true
         let dimensions = dimensions
         indexTask = Task(priority: .userInitiated) { [weak self] in
-            let index = await ItemSearch.index(dimensions)
+            let index = await WorldSearch.index(dimensions)
             guard let self, !Task.isCancelled else { return }
-            self.itemIndex = index
+            self.searchIndex = index
             self.isIndexing = false
             self.updateSearch()
         }
     }
 
-    /// Waits for the container index, if one is being built.
+    /// Waits for the search index, if one is being built.
     func waitForIndex() async {
         await indexTask?.value
     }
 
     /// Search results in the selected dimension, for map markers.
-    var visibleHits: [ItemHit] {
+    var visibleHits: [SearchHit] {
         searchResults.filter { $0.dimension == selectedDimensionID && $0.position != nil }
     }
 
     /// Centers the map on a result, switching dimension if needed.
-    func show(_ hit: ItemHit) {
+    func show(_ hit: SearchHit) {
         guard let dimension = hit.dimension, let position = hit.position else { return }
         focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y))
         selectedHitID = hit.id
