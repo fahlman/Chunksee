@@ -1,0 +1,15 @@
+{
+  "originHash" : "745a340d10cb7eb65cf74335da64a574f260e0b954b0ab0dda584f4d03a51af3",
+  "pins" : [
+    {
+      "identity" : "mcworldkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/fahlman/MCWorldKit.git",
+      "state" : {
+        "revision" : "ada5aaec52f6bb3738225863b17ea7e7acc9cb46",
+        "version" : "0.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
