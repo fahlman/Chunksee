@@ -39,14 +39,17 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    init(dimension: MCWorldKit.Dimension, center: CGPoint,
+    let style: MapStyle
+
+    init(dimension: MCWorldKit.Dimension, center: CGPoint, style: MapStyle = .terrain,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil) {
         self.dimension = dimension
+        self.style = style
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
+        self.renderer = RegionTileRenderer(dimension: dimension, style: style, chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
@@ -59,6 +62,28 @@ final class MapModel {
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
+    /// In the biome view, the biome under a block, read from the drawn tile's pixel; `nil` while
+    /// the tile isn't drawn or the pixel blends biomes (previews average 2×2 blocks).
+    func biome(at block: CGPoint) -> String? {
+        guard style == .biomes else { return nil }
+        let side = RegionCoordinate.blockSize
+        let x = Int(block.x.rounded(.down)), z = Int(block.y.rounded(.down))
+        let region = RegionCoordinate(x: x >> 9, z: z >> 9)
+        let localX = x - region.x * side, localZ = z - region.z * side
+        if let image = tiles[region] { return Self.biome(in: image, x: localX, z: localZ) }
+        if let image = previews[region] { return Self.biome(in: image, x: localX / 2, z: localZ / 2) }
+        return nil
+    }
+
+    private static func biome(in image: CGImage, x: Int, z: Int) -> String? {
+        // Tiles are made from in-memory data, so this reads it without copying.
+        guard x >= 0, z >= 0, x < image.width, z < image.height, let data = image.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(data) else { return nil }
+        let offset = z * image.bytesPerRow + x * 4
+        guard offset + 3 < CFDataGetLength(data), bytes[offset + 3] == 255 else { return nil }
+        return BiomeColors.biome(red: bytes[offset], green: bytes[offset + 1], blue: bytes[offset + 2])
+    }
+
     func image(for region: RegionCoordinate, fullResolution: Bool) -> CGImage? {
         fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
     }

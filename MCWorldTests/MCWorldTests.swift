@@ -795,6 +795,37 @@ import Testing
     }
 }
 
+@Suite struct BiomeViewTests {
+    @Test func paletteColorsAreDistinctAndReadBack() {
+        #expect(Set(BiomeColors.table.values).count == BiomeColors.table.count)
+        let plains = BiomeColors.color(for: "minecraft:plains")
+        #expect(BiomeColors.biome(red: plains.red, green: plains.green, blue: plains.blue) == "minecraft:plains")
+        #expect(BiomeColors.color(for: "mymod:glade") == BiomeColors.color(for: "mymod:glade"))
+    }
+
+    @Test func biomeTilesAreFlatAndNameTheBiomeUnderThePointer() async throws {
+        // Two heights, which terrain relief would shade differently.
+        let world = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, z in y <= (z < 8 ? 1 : 3) ? 1 : 0 },
+        ])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let pixels = try #require(try await RegionTileRenderer(dimension: dimension, style: .biomes).pixels(for: RegionCoordinate(x: 0, z: 0)))
+        let plains = BiomeColors.color(for: "minecraft:plains")
+        for z in [0, 7, 8, 15] {
+            let i = z * RegionTileRenderer.side * 4
+            #expect(Array(pixels[i..<i + 4]) == [plains.red, plains.green, plains.blue, 255])
+        }
+        let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), style: .biomes, regionConcurrency: 1, chunkConcurrency: 1)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
+        await map.waitUntilIdle()
+        #expect(map.biome(at: CGPoint(x: 3.5, y: 9.2)) == "minecraft:plains")
+        #expect(map.biome(at: CGPoint(x: 100, y: 100)) == nil)   // ungenerated, transparent
+        let terrain = MapModel(dimension: dimension, center: .zero)
+        #expect(terrain.biome(at: .zero) == nil)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

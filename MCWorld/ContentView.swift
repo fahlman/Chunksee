@@ -61,6 +61,13 @@ private struct WorldView: View {
                     .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
                     .keyboardShortcut("i")
                     .help("Show the world’s settings, time, weather and game rules")
+                    Picker("Map", selection: $session.mapStyle) {
+                        Text("Terrain").tag(MapStyle.terrain)
+                        Text("Biomes").tag(MapStyle.biomes)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("Color the map by the top block or by biome")
                     Toggle(isOn: $session.showsHeatMap) {
                         Label("Time Spent", systemImage: "flame")
                     }
@@ -111,7 +118,8 @@ private struct WorldView: View {
                         inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
                         inGameMapOpacity: session.inGameMapOpacity,
                         onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
-                    .id(map.dimension.id)
+                    // A new dimension or style is a new map model; a fresh view asks it for tiles.
+                    .id("\(map.dimension.id) \(map.style)")
                     .overlay(alignment: .topLeading) {
                         if let portal = session.selectedPortal {
                             PortalCard(session: session, portal: portal)

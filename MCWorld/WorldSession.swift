@@ -329,19 +329,29 @@ final class WorldSession {
         dimensions.first { $0.id == selectedDimensionID }
     }
 
+    /// What the map colors columns by. Changing it redraws the map in place.
+    var mapStyle: MapStyle = .terrain {
+        didSet { if mapStyle != oldValue { makeMapForSelection() } }
+    }
+
     private func makeMapForSelection() {
+        let previous = map
         map?.cancel()
         guard let dimension = selectedDimension else {
             map = nil
             return
         }
-        // Start at the world spawn when it's in this dimension, otherwise at the origin.
+        // Start at the world spawn when it's in this dimension, otherwise at the origin. A new
+        // style for the same dimension keeps the view where it was.
         var center = CGPoint.zero
         if let spawn = world.level.spawnPosition, (world.level.spawnDimension ?? "minecraft:overworld") == dimension.id {
             center = CGPoint(x: spawn.x, y: spawn.z)
         }
-        map = MapModel(dimension: dimension, center: center,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
+        // Each style keeps its own tiles.
+        var cacheDirectory = TileCache.directory(forWorldAt: url, dimensionID: dimension.id)
+        if mapStyle == .biomes { cacheDirectory = cacheDirectory?.appendingPathComponent("biomes", isDirectory: true) }
+        map = MapModel(dimension: dimension, center: center, style: mapStyle, cacheDirectory: cacheDirectory)
+        if let previous, previous.dimension.id == dimension.id { map?.viewport = previous.viewport }
         map?.loadStructures()
         map?.loadPlaces()
     }
