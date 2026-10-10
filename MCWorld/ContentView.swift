@@ -47,6 +47,19 @@ private struct WorldView: View {
                 if !session.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                     SearchResultsSection(session: session)
                 }
+                Section("World") {
+                    // A sidebar row rather than a toolbar button: with the inspector open, the toolbar
+                    // has no room for another item and starts hiding them in its overflow menu.
+                    Button {
+                        session.inspector = session.inspector == .world ? nil : .world
+                    } label: {
+                        Label("World Info", systemImage: "info.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
+                    .keyboardShortcut("i")
+                    .help("Show the world’s settings, time, weather and game rules")
+                }
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Label(dimension.displayName, systemImage: symbol(for: dimension.id))
@@ -79,7 +92,7 @@ private struct WorldView: View {
             if let map = session.map {
                 MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
                         selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
-                        hits: session.visibleHits, selectedHitID: session.selectedHitID,
+                        hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder,
                         onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
                     .id(map.dimension.id)
                     .overlay(alignment: .topLeading) {
@@ -89,10 +102,20 @@ private struct WorldView: View {
                         }
                     }
                     .inspector(isPresented: inspectorShown) {
-                        if let player = session.players.first(where: { $0.uuid == session.inspectedPlayerID }) {
-                            PlayerDetailView(session: session, player: player)
-                                .inspectorColumnWidth(min: 320, ideal: 340)
+                        Group {
+                            switch session.inspector {
+                            case .world?:
+                                WorldInfoView(session: session)
+                            case .player(let id)?:
+                                if let player = session.players.first(where: { $0.uuid == id }) {
+                                    PlayerDetailView(session: session, player: player)
+                                }
+                            case nil:
+                                EmptyView()
+                            }
                         }
+                        // Capped so a wide row can't push the inspector past the window's edge.
+                        .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
                     }
                     .toolbar {
                         ToolbarItem {
@@ -111,6 +134,7 @@ private struct WorldView: View {
                             Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
                                 .help("Show players, their last deaths and respawn points on the map")
                         }
+
                     }
                     .navigationTitle(session.displayName)
                     .navigationSubtitle(map.dimension.displayName)
@@ -123,7 +147,7 @@ private struct WorldView: View {
     }
 
     private var inspectorShown: Binding<Bool> {
-        Binding { session.inspectedPlayerID != nil } set: { if !$0 { session.inspectedPlayerID = nil } }
+        Binding { session.inspector != nil } set: { if !$0 { session.inspector = nil } }
     }
 
     private func symbol(for id: String) -> String {
@@ -161,11 +185,11 @@ private struct PlayerRow: View {
             .help(help)
             Spacer(minLength: 0)
             Button("Show Details", systemImage: "info.circle") {
-                session.inspectedPlayerID = session.inspectedPlayerID == player.uuid ? nil : player.uuid
+                session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
-            .foregroundStyle(session.inspectedPlayerID == player.uuid ? Color.accentColor : .secondary)
+            .foregroundStyle(session.inspector == .player(player.uuid) ? Color.accentColor : .secondary)
             .help("Show inventory, health and experience")
         }
     }
