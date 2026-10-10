@@ -40,6 +40,8 @@ struct ContentView: View {
 
 private struct WorldView: View {
     @Bindable var session: WorldSession
+    /// Worlds can hold dozens of maps, so the list starts collapsed.
+    @State private var showsInGameMaps = false
 
     var body: some View {
         NavigationSplitView {
@@ -63,6 +65,13 @@ private struct WorldView: View {
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Label(dimension.displayName, systemImage: symbol(for: dimension.id))
+                    }
+                }
+                if !session.inGameMaps.isEmpty {
+                    Section("In-Game Maps", isExpanded: $showsInGameMaps) {
+                        ForEach(session.inGameMaps, id: \.id) { map in
+                            InGameMapRow(session: session, map: map)
+                        }
                     }
                 }
                 if !session.players.isEmpty {
@@ -93,11 +102,16 @@ private struct WorldView: View {
                 MapView(map: map, structures: session.visibleStructures, places: session.visiblePlaces,
                         selectedPortal: session.selectedPortal, portalStatus: { session.linkStatus(for: $0) },
                         hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder,
+                        inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
+                        inGameMapOpacity: session.inGameMapOpacity,
                         onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
                     .id(map.dimension.id)
                     .overlay(alignment: .topLeading) {
                         if let portal = session.selectedPortal {
                             PortalCard(session: session, portal: portal)
+                                .padding(10)
+                        } else if let inGameMap = session.visibleInGameMap {
+                            InGameMapCard(session: session, map: inGameMap)
                                 .padding(10)
                         }
                     }

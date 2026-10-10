@@ -19,6 +19,7 @@ final class WorldSession {
         didSet {
             guard oldValue != selectedDimensionID else { return }
             if selectedPortal?.dimension != selectedDimensionID { selectedPortal = nil }
+            if visibleInGameMap == nil { selectedInGameMapID = nil }
             makeMapForSelection()
         }
     }
@@ -40,7 +41,9 @@ final class WorldSession {
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
     private(set) var portalsByDimension: [String: [NetherPortal]] = [:]
     /// The portal whose details card is showing.
-    var selectedPortal: NetherPortal?
+    var selectedPortal: NetherPortal? {
+        didSet { if selectedPortal != nil { selectedInGameMapID = nil } }
+    }
 
     // MARK: Search
 
@@ -88,6 +91,41 @@ final class WorldSession {
     /// Waits for the search index, if one is being built.
     func waitForIndex() async {
         await indexTask?.value
+    }
+
+    // MARK: In-game maps
+
+    /// Drawn maps made in the game, in dimensions this world has.
+    var inGameMaps: [MapItem] {
+        details.maps.filter { map in dimensions.contains { $0.id == map.dimension } }
+    }
+    /// The in-game map drawn over the terrain, if any.
+    var selectedInGameMapID: Int? {
+        didSet { if selectedInGameMapID != nil { selectedPortal = nil } }
+    }
+    /// How opaque the in-game map is over the terrain.
+    var inGameMapOpacity = 0.85
+    @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
+
+    /// The selected in-game map, when it's in the dimension being shown.
+    var visibleInGameMap: MapItem? {
+        details.maps.first { $0.id == selectedInGameMapID && $0.dimension == selectedDimensionID }
+    }
+
+    /// A map's picture, made once and kept.
+    func image(for map: MapItem) -> CGImage? {
+        if let image = inGameMapImages[map.id] { return image }
+        let image = InGameMapImage.make(map)
+        inGameMapImages[map.id] = image
+        return image
+    }
+
+    /// Draws an in-game map over the terrain and fits it in view, switching dimension if needed.
+    func show(_ map: MapItem) {
+        guard let dimension = map.dimension else { return }
+        focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)))
+        self.map?.viewport.scale = InGameMapImage.fittingScale(for: map)
+        selectedInGameMapID = map.id
     }
 
     /// The selected dimension's world border, when it's closer than Minecraft's default.

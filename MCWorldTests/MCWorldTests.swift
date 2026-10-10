@@ -717,6 +717,47 @@ import Testing
     }
 }
 
+@Suite struct InGameMapTests {
+    func mapNBT(dimension: NBT, scale: Int8 = 0, x: Int32 = 0, z: Int32 = 0, drawn: Bool = true) -> NBT {
+        var colors = [Int8](repeating: 0, count: 128 * 128)
+        if drawn { colors[0] = 4 * 12 + 2 }   // water, top-left pixel
+        return .compound(["DataVersion": .int(5023), "data": .compound([
+            "dimension": dimension, "scale": .byte(scale), "xCenter": .int(x), "zCenter": .int(z), "colors": .byteArray(colors),
+        ])])
+    }
+
+    @Test func imageAndFittingScale() throws {
+        let map = try #require(MapItem(id: 1, nbt: mapNBT(dimension: .string("minecraft:overworld"), scale: 3)))
+        let image = try #require(InGameMapImage.make(map))
+        #expect(image.width == 128 && image.height == 128)
+        #expect(InGameMapImage.fittingScale(for: map) == 0.5)   // 1,024 blocks in about 512 points
+        #expect(InGameMapImage.fittingScale(for: try #require(MapItem(id: 2, nbt: mapNBT(dimension: .byte(0))))) == 4)
+    }
+
+    @Test func sessionListsDrawnMapsAndShowsOne() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let maps = world.appendingPathComponent("data/minecraft/maps")
+        try FileManager.default.createDirectory(at: maps, withIntermediateDirectories: true)
+        func write(_ id: Int, _ nbt: NBT) throws {
+            try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: maps.appendingPathComponent("\(id).dat"))
+        }
+        try write(3, mapNBT(dimension: .string("minecraft:overworld"), scale: 1, x: 256, z: -2432))
+        try write(4, mapNBT(dimension: .string("minecraft:overworld"), drawn: false))   // blank
+        try write(5, mapNBT(dimension: .byte(15)))                                       // another Bukkit world
+        try write(6, mapNBT(dimension: .string("minecraft:the_nether")))                 // dimension not in this world
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        #expect(session.inGameMaps.map(\.id) == [3])
+        session.show(session.inGameMaps[0])
+        #expect(session.visibleInGameMap?.id == 3)
+        #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
+        session.selectedInGameMapID = nil
+        #expect(session.visibleInGameMap == nil)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 

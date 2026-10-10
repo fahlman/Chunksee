@@ -12,6 +12,8 @@ nonisolated struct WorldDetails: Sendable {
     /// World borders by dimension id.
     var borders: [String: WorldBorder] = [:]
     var dragonFight: EnderDragonFight?
+    /// Maps made in the game that have something drawn, in a recognized dimension.
+    var maps: [MapItem] = []
 
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
@@ -24,6 +26,7 @@ nonisolated struct WorldDetails: Sendable {
             if let border = try? world.worldBorder(of: dimension) { details.borders[dimension.id] = border }
         }
         details.dragonFight = try? world.enderDragonFight()
+        details.maps = world.mapItems().filter { !$0.isBlank && $0.dimension != nil }
         return details
     }
 

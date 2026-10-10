@@ -17,6 +17,9 @@ struct MapView: View {
     var selectedHitID: SearchHit.ID?
     /// The dimension's world border, drawn when it's closer than Minecraft's default.
     var border: WorldBorder?
+    /// A map made in the game, drawn over the terrain where it belongs.
+    var inGameMap: (map: MapItem, image: CGImage)?
+    var inGameMapOpacity = 0.85
     /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
     var onSelectPortal: (NetherPortal?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.
@@ -47,6 +50,15 @@ struct MapView: View {
                 context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
             }
             let bounds = CGRect(origin: .zero, size: size)
+            if let (item, image) = inGameMap {
+                let topLeft = map.viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
+                let side = CGFloat(item.sideInBlocks) * map.viewport.scale
+                let rect = CGRect(origin: topLeft, size: CGSize(width: side, height: side))
+                var layer = context
+                layer.opacity = inGameMapOpacity
+                layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
+                context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
+            }
             if let border {
                 let half = border.size / 2
                 let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
