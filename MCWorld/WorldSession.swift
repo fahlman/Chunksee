@@ -239,11 +239,19 @@ final class WorldSession {
 
     // MARK: Search results, portals and in-game maps
 
-    /// Centers the map on a search result, switching dimension if needed.
+    /// Centers the map on a search result, switching dimension if needed, and shows its layer's
+    /// kind (a biome's outline, say) so the result is on the map.
     func show(_ hit: SearchHit) {
         guard let dimension = hit.dimension, let position = hit.position else { return }
         focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y))
         search.selectedHitID = hit.id
+        guard case .layer(let layer) = hit.source else { return }
+        switch layer {
+        case .structure(let group): visibility.structures.insert(group)
+        case .place(let group): visibility.places.insert(group)
+        case .creature(let group): visibility.creatures.insert(group)
+        case .biome(let group): visibility.biomes.insert(group)
+        }
     }
 
     /// Reads both dimensions' portals in the background; links need the other side's portals.

@@ -175,7 +175,7 @@ import Testing
         session.search.text = "summer"
         await session.search.waitForIndex()
         #expect(session.search.results.map(\.detail) == ["“Summer”"])
-        #expect(session.search.results.first?.source == .creature)
+        #expect(session.search.results.first?.source == .layer(.creature(.pet)))
     }
 }
 

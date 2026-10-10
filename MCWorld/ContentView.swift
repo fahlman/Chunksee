@@ -170,6 +170,14 @@ private struct WorldView: View {
             }
         }
         .searchable(text: $search.text, placement: .toolbar, prompt: Text("Find items, signs and pets"))
+        .searchSuggestions {
+            // Filters that search one sidebar layer, offered while the first word is typed.
+            if !search.text.contains(":") && !search.text.contains(" ") {
+                ForEach(LayerFilter.allCases.filter { $0.rawValue.hasPrefix(search.text.lowercased()) }, id: \.self) { filter in
+                    Label(filter.prompt, systemImage: filter.symbol).searchCompletion(filter.rawValue + ":")
+                }
+            }
+        }
     }
 
     private var inspectorShown: Binding<Bool> {
@@ -264,7 +272,7 @@ private struct SearchResultsSection: View {
         Section {
             if search.isIndexing {
                 Label {
-                    Text("Searching containers, signs and creatures…")
+                    Text("Searching the world…")
                 } icon: {
                     ProgressView().controlSize(.small)
                 }

@@ -143,3 +143,80 @@ import Testing
         #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
     }
 }
+
+@Suite struct LayerSearchTests {
+    @Test func filtersParseAndOtherColonsDont() {
+        #expect(LayerFilter.parse("Pet: Summer")?.filter == .pet && LayerFilter.parse("Pet: Summer")?.rest == " Summer")
+        #expect(LayerFilter.parse("structure:")?.filter == .structure)
+        #expect(LayerFilter.parse("note: diamonds") == nil)
+        #expect(LayerFilter.parse("diamond") == nil)
+    }
+
+    @Test func structuresPlacesAndCreatures() throws {
+        func start(_ id: String, _ x: Int32) -> NBT {
+            .compound(["id": .string(id), "ChunkX": .int(x), "ChunkZ": .int(0), "Children": .list([])])
+        }
+        let village = StructureMarker(try #require(StructureStart.starts(inChunk: .compound(["structures": .compound(["starts": .compound([
+            "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first))
+        let wolf = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 1, y: 64, z: 2, customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
+        let cat = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 5, y: 64, z: 5, owner: UUID()), dimension: "minecraft:overworld"))
+        let villager = try #require(Creature(.compound(["id": .string("minecraft:villager"), "Health": .float(20),
+                                                         "Pos": .list([.double(9), .double(64), .double(9)]),
+                                                         "VillagerData": .compound(["profession": .string("minecraft:farmer")])])))
+        let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
+        let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
+        let index = SearchIndex(structures: [.init(dimension: "minecraft:overworld", value: village)],
+                                places: [.init(dimension: "minecraft:overworld", value: bed)],
+                                creatures: [wolf, cat, farmer].map { .init(dimension: "minecraft:overworld", value: $0) })
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in "" } }
+        #expect(search("structure:village").map(\.detail) == ["Plains Village"])
+        #expect(search("structure:village_plains").count == 1)
+        #expect(search("structure:village").first?.source == .layer(.structure(.village)))
+        #expect(search("place:bed").map(\.detail) == ["Bed"])
+        #expect(search("pet:").map(\.detail).sorted() == ["Cat", "Summer"])
+        #expect(search("pet:wolf").map(\.detail) == ["Summer"])
+        #expect(search("creature:").count == 3)
+        #expect(search("villager:").map(\.detail) == ["Farmer"])
+        // A plain search still finds named creatures by name.
+        #expect(search("summer").map(\.detail) == ["“Summer”"])
+    }
+}
+
+@Suite struct BiomeSearchTests {
+    func index() -> SearchIndex {
+        var biomes: [ChunkCoordinate: String] = [:]
+        for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
+        for z in 5..<9 { biomes[ChunkCoordinate(x: 0, z: z)] = "minecraft:pale_garden" }                       // 4 chunks
+        for z in 5..<9 { biomes[ChunkCoordinate(x: 3, z: z)] = "minecraft:plains" }
+        return SearchIndex(biomeAreas: BiomeScanner.areas(from: biomes).map { .init(dimension: "minecraft:overworld", value: $0) })
+    }
+
+    @Test func biomePrefixSearchesBiomeAreasLargestFirst() {
+        let hits = WorldSearch.search("biome:pale garden", in: index(), players: []) { _ in "" }
+        #expect(hits.map(\.count) == [6, 4])
+        #expect(hits.allSatisfy { $0.detail == "Pale Garden" && $0.source == .layer(.biome(BiomeGroup(id: "minecraft:pale_garden"))) })
+        #expect(hits.first?.title == "6 chunks")
+        // The id works too, the prefix ignores case, and other searches don't list biomes.
+        #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in "" }.count == 2)
+        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in "" }.map(\.detail) == ["Plains"])
+        #expect(WorldSearch.search("pale garden", in: index(), players: []) { _ in "" }.isEmpty)
+        // A filter on its own lists everything of its kind.
+        #expect(WorldSearch.search("biome:", in: index(), players: []) { _ in "" }.count == 3)
+    }
+
+    @Test func choosingABiomeResultOutlinesTheBiome() async throws {
+        let chunks = (0..<2).flatMap { x in (0..<2).map { z in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } }
+        let world = try TestWorld.make(chunks: chunks)
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "biome:plains"
+        let hit = try #require(session.search.results.first)
+        #expect(session.visibility.biomes.isEmpty)
+        session.show(hit)
+        #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
+        #expect(session.mapContent.biomeAreas.count == 1)
+    }
+}

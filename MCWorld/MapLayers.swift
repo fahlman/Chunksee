@@ -1,25 +1,39 @@
+import MCWorldKit
 import SwiftUI
 
 /// A kind of map marker that the sidebar lists, and can show or hide.
-protocol MapLayerGroup: Hashable {
+nonisolated protocol MapLayerGroup: Hashable {
     var name: String { get }
     var symbol: String { get }
 }
 
 /// A marker the sidebar lists under its group.
-protocol MapLayerMarker: Identifiable where ID == String {
+nonisolated protocol MapLayerMarker: Identifiable where ID == String {
     associatedtype Group: MapLayerGroup
     var group: Group { get }
     var name: String { get }
     var position: CGPoint { get }
+    /// What a search filter such as `structure:` matches: the name and kind, plus anything else
+    /// that identifies the marker.
+    var searchText: String { get }
+}
+
+extension MapLayerMarker {
+    var searchText: String { name + " " + group.name }
 }
 
 extension StructureGroup: MapLayerGroup {}
 extension PlaceGroup: MapLayerGroup {}
 extension CreatureGroup: MapLayerGroup {}
-extension StructureMarker: MapLayerMarker {}
-extension PlaceMarker: MapLayerMarker {}
-extension CreatureMarker: MapLayerMarker {}
+extension StructureMarker: MapLayerMarker {
+    var searchText: String { name + " " + group.name + " " + structureID }
+}
+extension PlaceMarker: MapLayerMarker {
+    var searchText: String { name + " " + group.name + " " + type }
+}
+extension CreatureMarker: MapLayerMarker {
+    var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
+}
 
 /// A sidebar section for one layer (structures, places, creatures or biomes). Groups are listed
 /// by name; each expands into a list, nearest to `origin` first, and choosing an entry calls
