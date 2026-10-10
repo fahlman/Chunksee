@@ -187,6 +187,38 @@ import Testing
     }
 }
 
+@Suite struct TileCacheTests {
+    @Test func secondRenderComesFromTheCacheAndChangesInvalidateIt() async throws {
+        let world = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 },
+        ])
+        let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("MCWorldTileCache-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: world)
+            try? FileManager.default.removeItem(at: cacheDir)
+        }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let region = RegionCoordinate(x: 0, z: 0)
+        let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: cacheDir))
+        let regionFile = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
+
+        let first = try #require(try await renderer.tile(for: region))
+        let key = try #require(TileCache.key(for: region, regionFile: regionFile))
+        #expect(TileCache(directory: cacheDir).load(key) != nil)
+        let second = try #require(try await renderer.tile(for: region))
+        #expect(second.full.dataProvider?.data as Data? == first.full.dataProvider?.data as Data?)
+
+        // Touching the region file (as the game does on save) makes a new key; the old entry is replaced.
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: regionFile.path)
+        let newKey = try #require(TileCache.key(for: region, regionFile: regionFile))
+        #expect(newKey != key)
+        #expect(TileCache(directory: cacheDir).load(newKey) == nil)
+        _ = try await renderer.tile(for: region)
+        #expect(TileCache(directory: cacheDir).load(newKey) != nil)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: cacheDir.path).count == 1)
+    }
+}
+
 /// Builds minimal 26.x worlds on disk using MCWorldKit's public NBT and compression API.
 enum TestWorld {
     struct ChunkSpec {

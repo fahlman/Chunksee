@@ -36,12 +36,13 @@ final class MapModel {
 
     init(dimension: MCWorldKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
-         maxTiles: Int = 200, maxPreviews: Int = 800) {
+         maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil) {
         self.dimension = dimension
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency))
+        self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
+                                           cache: cacheDirectory.map(TileCache.init(directory:)))
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
     }
@@ -86,7 +87,11 @@ final class MapModel {
                     guard let region = queue.popFirst() else { return }
                     group.addTask {
                         do {
-                            return (region, try await renderer.tile(for: region), true)
+                            // Await into a local before building the tuple: Swift 6.4 release builds
+                            // miscompile `(region, try await …, true)` so `region` reads back as (0, 0)
+                            // after the suspension (fahlman/MCWorld#6 has a standalone reproduction).
+                            let tile = try await renderer.tile(for: region)
+                            return (region, tile, true)
                         } catch {
                             return (region, nil, !(error is CancellationError))
                         }
@@ -123,21 +128,25 @@ final class MapModel {
         if let tile {
             if wantsFullResolution { tiles[region] = tile.full }
             previews[region] = tile.preview
-            Self.evict(from: &tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport)
-            Self.evict(from: &previews, keeping: maxPreviews, visible: visibleRegions, viewport: viewport)
+            for region in Self.regionsToEvict(from: Set(tiles.keys), keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
+                tiles[region] = nil
+            }
+            for region in Self.regionsToEvict(from: Set(previews.keys), keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
+                previews[region] = nil
+            }
         } else {
             // Unreadable or empty regions aren't retried during this session.
             failed.insert(region)
         }
     }
 
-    /// Drops the cached images farthest from the view center until `limit` remain, never a visible one.
-    private static func evict(from cache: inout [RegionCoordinate: CGImage], keeping limit: Int,
-                              visible: Set<RegionCoordinate>, viewport: MapViewport) {
-        guard cache.count > limit else { return }
-        let candidates = cache.keys.filter { !visible.contains($0) }
+    /// The cached regions farthest from the view center beyond `limit`, never a visible one.
+    private static func regionsToEvict(from cached: Set<RegionCoordinate>, keeping limit: Int,
+                                       visible: Set<RegionCoordinate>, viewport: MapViewport) -> [RegionCoordinate] {
+        guard cached.count > limit else { return [] }
+        let candidates = cached.subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
-        for region in candidates.prefix(cache.count - limit) { cache[region] = nil }
+        return Array(candidates.prefix(cached.count - limit))
     }
 
     func cancel() {

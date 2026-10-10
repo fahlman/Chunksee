@@ -12,6 +12,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     let dimension: MCWorldKit.Dimension
     /// How many chunks of one region decode at the same time.
     var chunkConcurrency = 1
+    /// Rendered pixels saved between launches; `nil` renders every time.
+    var cache: TileCache?
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
@@ -62,7 +64,17 @@ nonisolated struct RegionTileRenderer: Sendable {
     static let previewSide = side / 2
 
     func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
-        guard let pixels = try await pixels(for: region),
+        // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
+        let regionFile = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile)
+        var pixels: [UInt8]?
+        if let cache, let key, let cached = cache.load(key) {
+            pixels = cached
+        } else {
+            pixels = try await self.pixels(for: region)
+            if let cache, let key, let pixels { cache.store(pixels, for: key) }
+        }
+        guard let pixels,
               let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
         return RenderedTile(full: full, preview: preview)

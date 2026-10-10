@@ -66,7 +66,8 @@ final class WorldSession {
         if let spawn = world.level.spawnPosition, (world.level.spawnDimension ?? "minecraft:overworld") == dimension.id {
             center = CGPoint(x: spawn.x, y: spawn.z)
         }
-        map = MapModel(dimension: dimension, center: center)
+        map = MapModel(dimension: dimension, center: center,
+                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.
