@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct MCWorldApp: App {
+    @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -13,6 +14,7 @@ struct MCWorldApp: App {
         }
         .defaultSize(width: 1200, height: 800)
         .commands {
+            CommandGroup(replacing: .newItem) {}
             SidebarCommands()
             InspectorCommands()
             WorldCommands()

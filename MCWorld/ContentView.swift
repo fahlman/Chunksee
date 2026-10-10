@@ -144,6 +144,7 @@ struct WorldView: View {
             .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .focusedSceneValue(\.worldSession, session)
+        .background { WorldKeyboardShortcuts(session: session) }
     }
 
     private var inspectorShown: Binding<Bool> {

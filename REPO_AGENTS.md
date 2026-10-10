@@ -68,6 +68,7 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
+| `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from MCWorldKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
@@ -75,8 +76,14 @@ All of the app's code is presentation; world-format rules live in MCWorldKit.
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
-starts a synchronous scan. Query publication follows the index, players, names and saved-query
-snapshot; callers that need completion await `waitForSearch()`.
+starts a synchronous scan. Each query retains its previous snapshot until its replacement is
+ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
+invalidate it. Callers that need completion await `waitForSearch()`.
+
+Finder cannot distinguish an unmodified world folder from another `public.folder` by its
+contents. `LSHandlerRank = None` keeps MCWorld out of Open With while retaining native opening
+and drop support. The old app-owned recent/open-world preferences are removed; users reopen
+each old world once to establish native history and restoration state.
 
 ## Build and test
 
@@ -97,6 +104,13 @@ xcodebuild -project MCWorld.xcodeproj -scheme MCWorld -destination 'platform=mac
   system's window restoration preference. To check document file access, use a **Release** build.
   Xcode adds test-runner entitlements to Debug builds,
   including read-only access to `/`, so a Debug build can't show sandbox problems.
+- **Document menu smoke check:** with a world open, confirm native Open, Open Recent, Close and
+  Close All remain and New, Save, Save As, Duplicate, Rename, Move and Revert are absent. Check
+  Zoom In and Zoom Out with and without Shift and with another world or Settings focused.
+- **Finder registration smoke check:** register a disposable Release app copy outside `/tmp`
+  (Launch Services excludes temporary-directory apps from Open With). Confirm MCWorld isn't
+  offered for plain folders or world folders, and check dropping a world onto its Dock icon.
+  Unregister and remove only that test copy afterwards.
 - **Automated GitHub checks:** none, because Ryan's projects run no hosted macOS CI. This was
   recorded on 2026-10-09.
 - **Releases:** no release or distribution process is approved. Builds are local only.

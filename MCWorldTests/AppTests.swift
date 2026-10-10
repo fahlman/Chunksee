@@ -16,6 +16,19 @@ import Testing
         }
     }
 
+    @Test func rejectedFoldersCarryTheReasonAndRecoveryForNativeAlerts() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            _ = try await WorldSnapshot.read(url.appendingPathComponent("dimensions"))
+            Issue.record("A folder without a world must be rejected")
+        } catch {
+            let presented = error as NSError
+            #expect(presented.localizedFailureReason == "That folder isn’t a Minecraft world.")
+            #expect(presented.localizedRecoverySuggestion == "Choose a world’s folder inside your saves folder.")
+        }
+    }
+
     @Test func manyOpenWorldsHaveIndependentLifetimes() async throws {
         let urls = try (0..<12).map { _ in try TestWorld.make(chunks: []) }
         defer { for url in urls { try? FileManager.default.removeItem(at: url) } }

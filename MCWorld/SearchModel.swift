@@ -33,8 +33,9 @@ final class SearchModel {
     private(set) var isIndexing = false
     private(set) var isSearching = false
     private var queryResults: [String: [SearchHit]] = [:]
+    private var displayedQuery = ""
     var isActive: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
-    var results: [SearchHit] { results(for: text) }
+    var results: [SearchHit] { isActive ? queryResults[displayedQuery] ?? [] : [] }
 
     private let readers: [RegionReader]
     private let names: PlayerNames
@@ -42,15 +43,15 @@ final class SearchModel {
     private let savedSearches: SavedSearches
     private let execute: @Sendable (SearchRequest) async -> [String: [SearchHit]]
     @ObservationIgnored private var indexTask: Task<Void, Never>?
-    @ObservationIgnored private var queryTask: Task<Void, Never>?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
-    @ObservationIgnored private var queryGeneration = UUID()
+    @ObservationIgnored private var activeQueries: [String: UUID] = [:]
+    @ObservationIgnored private var completedQueries: Set<String> = []
+    @ObservationIgnored private var sourceGeneration = UUID()
     @ObservationIgnored private var revision = 0
-    @ObservationIgnored private var inputs: Inputs?
+    @ObservationIgnored private var sources: Sources?
     @ObservationIgnored private var isClosed = false
 
-    private struct Inputs: Equatable {
-        var queries: [String]
+    private struct Sources: Equatable {
         var names: [UUID: String]
         var revision: Int
     }
@@ -69,7 +70,9 @@ final class SearchModel {
         updateQueries()
     }
 
-    func results(for query: String) -> [SearchHit] { queryResults[query] ?? [] }
+    func results(for query: String) -> [SearchHit] {
+        query == text ? results : queryResults[query] ?? []
+    }
 
     /// Shared names and saved searches can change from another window or Settings.
     private func observeSources() {
@@ -88,31 +91,55 @@ final class SearchModel {
 
     private func updateQueries() {
         guard !isClosed else { return }
-        let queries = Array(Set(([text] + savedSearches.all.map(\.query)).filter {
+        let queries = Set(([text] + savedSearches.all.map(\.query)).filter {
             !$0.trimmingCharacters(in: .whitespaces).isEmpty
-        })).sorted()
+        })
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.name(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
-        let next = Inputs(queries: queries, names: playerNames, revision: revision)
-        guard next != inputs else { return }
-        inputs = next
-        queryTask?.cancel()
-        queryGeneration = UUID()
-        queryResults = [:]
-        isSearching = !queries.isEmpty
-        guard !queries.isEmpty else { queryTask = nil; return }
-        let id = queryGeneration, execute = execute
-        let request = SearchRequest(queries: queries, index: index, players: players, playerNames: playerNames)
-        let task = Task(priority: .userInitiated) { [weak self] in
-            defer { self?.tasks[id] = nil }
-            let found = await execute(request)
-            guard !Task.isCancelled, let self, !self.isClosed, self.queryGeneration == id else { return }
-            self.queryResults = found
-            self.isSearching = false
+        let next = Sources(names: playerNames, revision: revision)
+        if next != sources {
+            sources = next
+            sourceGeneration = UUID()
+            for id in activeQueries.values { tasks[id]?.cancel() }
+            activeQueries = [:]
+            completedQueries = []
         }
-        queryTask = task
-        tasks[id] = task
+        for (query, id) in activeQueries where !queries.contains(query) {
+            tasks[id]?.cancel()
+            activeQueries[query] = nil
+        }
+        completedQueries.formIntersection(queries)
+        if !isActive { displayedQuery = "" }
+        else if completedQueries.contains(text) { displayedQuery = text }
+        pruneResults(keeping: queries)
+
+        // Editing the current query doesn't invalidate completed or pending saved searches.
+        for query in queries.sorted() where !completedQueries.contains(query) && activeQueries[query] == nil {
+            let id = UUID(), generation = sourceGeneration, execute = execute
+            let request = SearchRequest(queries: [query], index: index, players: players, playerNames: playerNames)
+            activeQueries[query] = id
+            let task = Task(priority: .userInitiated) { [weak self] in
+                defer { self?.tasks[id] = nil }
+                let found = await execute(request)
+                guard !Task.isCancelled, let self, !self.isClosed,
+                      self.sourceGeneration == generation, self.activeQueries[query] == id else { return }
+                self.activeQueries[query] = nil
+                self.completedQueries.insert(query)
+                self.queryResults[query] = found[query] ?? []
+                if query == self.text { self.displayedQuery = query }
+                self.updateQueries()
+            }
+            tasks[id] = task
+        }
+        isSearching = !activeQueries.isEmpty
+    }
+
+    private func pruneResults(keeping queries: Set<String>) {
+        let kept = queries.union(isActive ? [displayedQuery] : [])
+        for query in queryResults.keys where !kept.contains(query) {
+            queryResults[query] = nil
+        }
     }
 
     /// Reads dimensions at utility priority, replacing each in place after it finishes.
@@ -141,17 +168,17 @@ final class SearchModel {
     /// Waits for the query snapshot actually consumed by the UI, including a changed shared source.
     func waitForSearch() async {
         updateQueries()
-        while let task = queryTask {
-            let id = queryGeneration
-            await task.value
+        while !activeQueries.isEmpty {
+            let pending = activeQueries.values.compactMap { tasks[$0] }
+            for task in pending { await task.value }
             updateQueries()
-            if id == queryGeneration { return }
         }
     }
 
     func cancel() {
         isClosed = true
-        queryGeneration = UUID()
+        sourceGeneration = UUID()
+        activeQueries = [:]
         tasks.values.forEach { $0.cancel() }
         isSearching = false
         isIndexing = false

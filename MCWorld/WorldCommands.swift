@@ -62,3 +62,26 @@ struct WorldCommands: Commands {
         }
     }
 }
+
+/// Preview accepts both forms of the punctuation keys. Keep one visible menu command,
+/// with additional SwiftUI shortcuts scoped to the focused world's content.
+struct WorldKeyboardShortcuts: View {
+    let session: WorldSession
+    @FocusedValue(\.worldSession) private var focusedSession
+
+    var body: some View {
+        VStack {
+            Button("Zoom In") { session.map?.zoom(by: 2) }
+                .keyboardShortcut("=")
+                .disabled(focusedSession !== session ||
+                          (session.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
+            Button("Zoom Out") { session.map?.zoom(by: 0.5) }
+                .keyboardShortcut("_")
+                .disabled(focusedSession !== session ||
+                          (session.map?.viewport.scale ?? MapViewport.scaleRange.lowerBound) <= MapViewport.scaleRange.lowerBound)
+        }
+        .hidden()
+        .accessibilityHidden(true)
+        .frame(width: 0, height: 0)
+    }
+}

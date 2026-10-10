@@ -426,11 +426,25 @@ enum WorldOpenError: LocalizedError, Equatable {
     case unreadable
 
     var errorDescription: String? {
+        [failureReason, recoverySuggestion].compactMap { $0 }.joined(separator: " ")
+    }
+
+    // DocumentGroup supplies the alert's title and presents these bridged NSError fields.
+    var failureReason: String? {
         switch self {
         case .notAWorld:
-            String(localized: "That folder isn’t a Minecraft world. Choose a world’s folder inside your saves folder.")
+            String(localized: "That folder isn’t a Minecraft world.")
         case .unreadable:
-            String(localized: "MCWorld couldn’t read this world. It may be from a version MCWorld doesn’t support, or damaged.")
+            String(localized: "MCWorld couldn’t read this world.")
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .notAWorld:
+            String(localized: "Choose a world’s folder inside your saves folder.")
+        case .unreadable:
+            String(localized: "It may be from a version MCWorld doesn’t support, or damaged.")
         }
     }
 }
