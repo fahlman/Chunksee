@@ -16,6 +16,13 @@ final class WorldSession {
     /// Players with saved data, most recently saved first.
     let players: [PlayerInfo]
     var showsPlayers = true
+    /// Structure groups shown on the map; remembered between launches.
+    var shownStructureGroups: Set<StructureGroup> {
+        didSet {
+            UserDefaults.standard.set(shownStructureGroups.map(\.rawValue).sorted(), forKey: Self.shownStructuresKey)
+        }
+    }
+    private static let shownStructuresKey = "shownStructureGroups"
     /// App-wide player names, shared across worlds.
     let names: PlayerNames
 
@@ -24,6 +31,11 @@ final class WorldSession {
     private init(url: URL, world: World, players: [PlayerInfo], names: PlayerNames, isAccessingSecurityScope: Bool) {
         self.url = url
         self.names = names
+        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownStructuresKey) {
+            shownStructureGroups = Set(saved.compactMap(StructureGroup.init(rawValue:)))
+        } else {
+            shownStructureGroups = Set(StructureGroup.allCases.filter(\.isShownByDefault))
+        }
         self.world = world
         self.players = players
         self.dimensions = world.dimensions()
@@ -90,6 +102,11 @@ final class WorldSession {
                                           worldDataVersion: world.level.dataVersion, knownName: { names.name(for: $0) })
     }
 
+    /// Structures of the shown groups in the selected dimension.
+    var visibleStructures: [StructureMarker] {
+        (map?.structures ?? []).filter { shownStructureGroups.contains($0.group) }
+    }
+
     /// Shows a location: switches to its dimension if needed and centers the map on it.
     func focus(on location: PlayerInfo.Location) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
@@ -115,6 +132,7 @@ final class WorldSession {
         }
         map = MapModel(dimension: dimension, center: center,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
+        map?.loadStructures()
     }
 
     /// Stops rendering and gives up file access. Call before replacing the session.

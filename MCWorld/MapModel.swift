@@ -14,6 +14,10 @@ final class MapModel {
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
     private(set) var previews: [RegionCoordinate: CGImage] = [:]
+    /// Every structure in the dimension's generated chunks, once the background scan finishes.
+    private(set) var structures: [StructureMarker] = []
+    private var structureTask: Task<Void, Never>?
+
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionCoordinate>
     private(set) var isLoading = false
@@ -180,7 +184,24 @@ final class MapModel {
         return Array(candidates.prefix(cached.count - limit))
     }
 
+    /// Reads the dimension's structures in the background, at a lower priority than map tiles.
+    func loadStructures() {
+        guard structureTask == nil else { return }
+        let dimension = dimension
+        structureTask = Task(priority: .utility) { [weak self] in
+            let found = await StructureScanner.scan(dimension)
+            guard !Task.isCancelled else { return }
+            self?.structures = found
+        }
+    }
+
+    /// Waits for the structure scan started by `loadStructures()`.
+    func waitForStructures() async {
+        await structureTask?.value
+    }
+
     func cancel() {
+        structureTask?.cancel()
         lastRequest = nil
         for job in inFlight.values { job.task.cancel() }
         inFlight = [:]

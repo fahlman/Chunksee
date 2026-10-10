@@ -423,6 +423,67 @@ import Testing
     }
 }
 
+@Suite struct StructureTests {
+    /// A structure start built the way chunks store it, read through MCWorldKit's public API.
+    func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])]) -> StructureStart {
+        let nbt = NBT.compound(["structures": .compound(["starts": .compound([id: .compound([
+            "id": .string(id), "ChunkX": .int(Int32(chunk.0)), "ChunkZ": .int(Int32(chunk.1)),
+            "Children": .list(.compound, pieces.map { .compound(["id": .string($0.0), "BB": .intArray($0.1.map { Int32($0) })]) }),
+        ])])])])
+        return StructureStart.starts(inChunk: nbt)[0]
+    }
+
+    @Test func groupsNamesAndDefaults() {
+        #expect(StructureGroup.group(for: "minecraft:village_savanna") == .village)
+        #expect(StructureGroup.group(for: "minecraft:ocean_ruin_cold") == .ruins)
+        #expect(StructureGroup.group(for: "minecraft:mineshaft_mesa") == .mineshaft)
+        #expect(StructureGroup.group(for: "mydatapack:tower") == .other)
+        #expect(!StructureGroup.mineshaft.isShownByDefault && !StructureGroup.netherFossil.isShownByDefault)
+        #expect(StructureGroup.stronghold.isShownByDefault)
+        let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
+                     "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
+            StructureMarker(start($0, chunk: (0, 0), pieces: [])).name
+        }
+        #expect(names == ["Plains Village", "Cold Ocean Ruin", "Ocean Ruined Portal", "Beached Shipwreck", "Ancient City"])
+    }
+
+    @Test func boundsAndStrongholdPortalRoom() {
+        let marker = StructureMarker(start("minecraft:stronghold", chunk: (-302, -51), pieces: [
+            ("minecraft:shstart", [-4830, -19, -814, -4826, -9, -810]),
+            ("minecraft:shpr", [-4900, -40, -830, -4890, -32, -815]),
+        ]))
+        #expect(marker.bounds == CGRect(x: -4900, y: -830, width: 75, height: 21))
+        #expect(marker.portalRoom == CGPoint(x: -4894.5, y: -822))
+        // No pieces: the start chunk stands in.
+        #expect(StructureMarker(start("minecraft:igloo", chunk: (2, -3), pieces: [])).bounds == CGRect(x: 32, y: -48, width: 16, height: 16))
+    }
+
+    @Test func scannerFindsStructuresAcrossRegions() async throws {
+        func withStructure(_ spec: TestWorld.ChunkSpec, _ id: String) -> TestWorld.ChunkSpec {
+            var spec = spec
+            var root = spec.nbt.compound!
+            root["structures"] = .compound(["References": .compound([:]), "starts": .compound([id: .compound([
+                "id": .string(id), "ChunkX": .int(Int32(spec.x)), "ChunkZ": .int(Int32(spec.z)),
+                "Children": .list([.compound(["id": .string("piece"),
+                                              "BB": .intArray([Int32(spec.x * 16), 60, Int32(spec.z * 16), Int32(spec.x * 16 + 9), 70, Int32(spec.z * 16 + 9)])])]),
+            ])])])
+            spec.nbt = .compound(root)
+            return spec
+        }
+        let stone = { (x: Int, z: Int) in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } }
+        let world = try TestWorld.make(chunks: [
+            withStructure(stone(0, 0), "minecraft:village_plains"),
+            withStructure(stone(40, -1), "minecraft:stronghold"),   // region (1, -1)
+            stone(1, 0),
+        ])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let found = await StructureScanner.scan(dimension, concurrency: 2)
+        #expect(found.map(\.structureID).sorted() == ["minecraft:stronghold", "minecraft:village_plains"])
+        #expect(found.first { $0.group == .stronghold }?.bounds == CGRect(x: 640, y: -16, width: 10, height: 10))
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
