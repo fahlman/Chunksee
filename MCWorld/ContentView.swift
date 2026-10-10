@@ -2,40 +2,141 @@ import MCWorldKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct ContentView: View {
-    @Environment(AppModel.self) private var model
+/// A window: one world, or, before one is chosen, the Open panel and recent worlds.
+struct WorldWindow: View {
+    /// The world's id (its folder's path); SwiftUI restores it with the window.
+    @Binding var worldID: String?
 
     var body: some View {
-        @Bindable var model = model
+        if let worldID {
+            WorldLoader(id: worldID).id(worldID)
+        } else {
+            WelcomeView(worldID: $worldID)
+        }
+    }
+}
+
+/// Opens a window's world and closes it with the window.
+private struct WorldLoader: View {
+    let id: String
+    @Environment(AppModel.self) private var model
+    @State private var session: WorldSession?
+    @State private var errorMessage: String?
+
+    var body: some View {
         Group {
-            if let session = model.session {
+            if let session {
                 WorldView(session: session)
+            } else if let errorMessage {
+                ContentUnavailableView("Couldn’t Open World", systemImage: "exclamationmark.triangle",
+                                       description: Text(errorMessage))
+                    .navigationTitle(model.recentWorlds.first { $0.id == id }?.name ?? "MCWorld")
             } else {
-                ContentUnavailableView {
-                    Label("No World Open", systemImage: "map")
-                } description: {
-                    Text("Choose a world’s folder from your Minecraft saves folder.")
-                } actions: {
-                    Button("Open World…") { model.isShowingOpenPanel = true }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(model.isOpening)
-                }
+                ProgressView("Opening World…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationTitle(model.recentWorlds.first { $0.id == id }?.name ?? "MCWorld")
             }
         }
-        .fileImporter(isPresented: $model.isShowingOpenPanel, allowedContentTypes: [.folder]) { result in
-            guard case .success(let url) = result else { return }
-            Task { await model.open(url) }
+        .task {
+            model.windowOpened(id)
+            guard let url = model.url(for: id) else {
+                errorMessage = String(localized: "MCWorld can’t find this world. It may have been moved or deleted.")
+                return
+            }
+            do {
+                let opened = try await WorldSession.open(url, names: model.names, savedSearches: model.savedSearches)
+                // The window may have closed while the world was opening.
+                guard !Task.isCancelled else {
+                    opened.close()
+                    return
+                }
+                model.opened(id, url: url, name: opened.displayName)
+                session = opened
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        .onDisappear {
+            session?.close()
+            model.windowClosed(id)
+        }
+    }
+}
+
+/// A window without a world: the Open panel, shown at once, and the recent worlds. At launch it
+/// reopens the worlds open when the app quit instead.
+private struct WelcomeView: View {
+    @Binding var worldID: String?
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
+    @State private var isShowingOpenPanel = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("No World Open", systemImage: "map")
+        } description: {
+            Text("Choose a world’s folder from your Minecraft saves folder.")
+        } actions: {
+            Button("Open World…") { isShowingOpenPanel = true }
+                .buttonStyle(.borderedProminent)
+            ForEach(model.recentWorlds.prefix(5)) { world in
+                Button(world.name) { show(world.id) }
+                    .buttonStyle(.link)
+                    .help(world.id)
+            }
+        }
+        .navigationTitle("MCWorld")
+        // Several worlds can be chosen at once; the first opens in this window.
+        .fileImporter(isPresented: $isShowingOpenPanel, allowedContentTypes: [.folder], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            let ids = urls.compactMap(model.add)
+            if ids.count < urls.count {
+                errorMessage = String(localized: "MCWorld couldn’t keep access to that folder.")
+            }
+            for id in ids.dropFirst() { openWindow(id: WorldWindow.sceneID, value: id) }
+            if let id = ids.first { show(id) }
+        } onCancellation: {
+            // Opened from File ▸ Open World… over other worlds: nothing to leave behind. Closing
+            // waits for the panel to finish closing, which otherwise ignores it.
+            if !model.openWorldIDs.isEmpty { Task { dismiss() } }
         }
         .alert("Couldn’t Open World", isPresented: Binding(
-            get: { model.errorMessage != nil },
-            set: { if !$0 { model.errorMessage = nil } }
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(model.errorMessage ?? "")
+            Text(errorMessage ?? "")
         }
-        .task { await model.restoreLastWorld() }
+        .task {
+            guard !AppModel.isHostingTests else { return }
+            let reopen = model.worldsToReopenAtLaunch()
+            guard let first = reopen.first else {
+                isShowingOpenPanel = true
+                return
+            }
+            // This window becomes the first world rather than closing: with no window left
+            // for a moment, SwiftUI would open another empty one.
+            for id in reopen.dropFirst() { openWindow(id: WorldWindow.sceneID, value: id) }
+            worldID = first
+        }
     }
+
+    /// Shows a world in this window, or brings its window forward if it's open already.
+    private func show(_ id: String) {
+        if model.openWorldIDs.contains(id) {
+            openWindow(id: WorldWindow.sceneID, value: id)
+            dismiss()
+        } else {
+            worldID = id
+        }
+    }
+}
+
+extension WorldWindow {
+    static let sceneID = "world"
 }
 
 private struct WorldView: View {

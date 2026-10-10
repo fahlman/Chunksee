@@ -32,7 +32,8 @@ It shows a top-down view of a world, the structures and places found in it, and 
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
-MCWorld only reads your world; it never changes it. It reopens the last world when it launches.
+MCWorld only reads your world; it never changes it. Each world opens in its own window, and the worlds open when MCWorld quits reopen when it launches;
+with none, it asks for a world. **File ▸ Open Recent** lists the last ten.
 Rendered map tiles are kept in MCWorld's cache folder, so reopening a world is nearly instant; any
 part of the world that has changed since is drawn again.
 
