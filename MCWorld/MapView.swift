@@ -24,6 +24,11 @@ struct MapView: View {
     var inGameMapOpacity = 0.85
     /// Called when a portal is clicked, or with `nil` when the map is clicked elsewhere.
     var onSelectPortal: (NetherPortal?) -> Void = { _ in }
+    /// Named creatures, pets and villagers, drawn above places.
+    var creatures: [CreatureMarker] = []
+    var selectedCreatureID: CreatureMarker.ID?
+    /// Called when a creature is clicked, or with `nil` when the map is clicked elsewhere.
+    var onSelectCreature: (CreatureMarker?) -> Void = { _ in }
     /// Points of interest for this dimension, drawn above the tiles.
     var markers: [MapMarker] = []
 
@@ -84,6 +89,11 @@ struct MapView: View {
                     Self.drawPortalState(at: point, selected: portal == selectedPortal, status: portalStatus(portal), in: context)
                 }
             }
+            // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
+            for creature in creatures where map.viewport.scale >= 0.25 || creature.id == selectedCreatureID {
+                Self.draw(creature, selected: creature.id == selectedCreatureID, at: map.viewport.viewPoint(for: creature.position, in: size),
+                          scale: map.viewport.scale, in: context, bounds: bounds)
+            }
             for hit in hits {
                 guard let position = hit.position else { continue }
                 Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == selectedHitID,
@@ -99,7 +109,17 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
-        .simultaneousGesture(SpatialTapGesture().onEnded { value in onSelectPortal(portal(at: value.location)) })
+        .simultaneousGesture(SpatialTapGesture().onEnded { value in
+            // A portal wins over a creature standing in it.
+            if let portal = portal(at: value.location) {
+                onSelectPortal(portal)
+            } else if let creature = creature(at: value.location) {
+                onSelectCreature(creature)
+            } else {
+                onSelectPortal(nil)
+                onSelectCreature(nil)
+            }
+        })
         .scrollWheelInput { action in
             switch action {
             case .pan(let delta): map.viewport.pan(by: delta)
@@ -219,6 +239,16 @@ struct MapView: View {
     }
 
     /// The portal under a click, within 14 points of its marker.
+    /// The nearest drawn creature within reach of a click.
+    private func creature(at point: CGPoint) -> CreatureMarker? {
+        guard map.viewport.scale >= 0.25 else { return nil }
+        return creatures.compactMap { creature -> (CreatureMarker, CGFloat)? in
+            let p = map.viewport.viewPoint(for: creature.position, in: size)
+            let distance = hypot(p.x - point.x, p.y - point.y)
+            return distance <= 12 ? (creature, distance) : nil
+        }.min { $0.1 < $1.1 }?.0
+    }
+
     private func portal(at point: CGPoint) -> NetherPortal? {
         places.compactMap { place -> (NetherPortal, CGFloat)? in
             guard let portal = place.portal else { return nil }
@@ -230,22 +260,31 @@ struct MapView: View {
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
     private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
+        drawBadge(symbol: place.group.symbol, color: place.group.color, radius: place.group == .portal ? 8 : 6, name: place.name,
+                  showsName: scale >= 2, opacity: place.isClaimed ? 0.65 : 1, selected: false, at: point, in: context, bounds: bounds)
+    }
+
+    /// Creatures look like places; a selected one is larger and always named.
+    private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
+        drawBadge(symbol: creature.group.symbol, color: creature.group.color, radius: selected ? 9 : 6, name: creature.title,
+                  showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
+    }
+
+    private static func drawBadge(symbol: String, color hex: UInt32, radius: CGFloat, name: String, showsName: Bool, opacity: Double,
+                                  selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
         var context = context
-        context.opacity = place.isClaimed ? 0.65 : 1
-        let color = Color(red: Double((place.group.color >> 16) & 0xFF) / 255,
-                          green: Double((place.group.color >> 8) & 0xFF) / 255,
-                          blue: Double(place.group.color & 0xFF) / 255)
-        let radius: CGFloat = place.group == .portal ? 8 : 6
+        context.opacity = opacity
+        let color = Color(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
         let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
         context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(.white.opacity(0.9)), lineWidth: 1)
-        var symbol = context.resolve(Image(systemName: place.group.symbol))
-        symbol.shading = .color(.white)
+        context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
+        var image = context.resolve(Image(systemName: symbol))
+        image.shading = .color(.white)
         let side = radius * 1.2
-        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-        guard scale >= 2 else { return }
-        let text = context.resolve(Text(place.name).font(.caption2.weight(.medium)).foregroundStyle(.white))
+        context.draw(image, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        guard showsName else { return }
+        let text = context.resolve(Text(name).font(.caption2.weight(.medium)).foregroundStyle(.white))
         let size = text.measure(in: CGSize(width: 200, height: 30))
         let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + radius + 2, width: size.width + 8, height: size.height + 2)
         context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))

@@ -117,12 +117,17 @@ private struct WorldView: View {
                         hits: session.visibleHits, selectedHitID: session.selectedHitID, border: session.visibleBorder, heatMap: session.visibleHeatMap ?? [:],
                         inGameMap: session.visibleInGameMap.flatMap { map in session.image(for: map).map { (map, $0) } },
                         inGameMapOpacity: session.inGameMapOpacity,
-                        onSelectPortal: { session.selectedPortal = $0 }, markers: session.markers)
+                        onSelectPortal: { session.selectedPortal = $0 },
+                        creatures: session.visibleCreatures, selectedCreatureID: session.selectedCreature?.id,
+                        onSelectCreature: { session.selectedCreature = $0 }, markers: session.markers)
                     // A new dimension or style is a new map model; a fresh view asks it for tiles.
                     .id("\(map.dimension.id) \(map.style)")
                     .overlay(alignment: .topLeading) {
                         if let portal = session.selectedPortal {
                             PortalCard(session: session, portal: portal)
+                                .padding(10)
+                        } else if let creature = session.selectedCreature {
+                            CreatureCard(session: session, marker: creature)
                                 .padding(10)
                         } else if let inGameMap = session.visibleInGameMap {
                             InGameMapCard(session: session, map: inGameMap)
@@ -165,6 +170,12 @@ private struct WorldView: View {
                                       groups: map.places.map(\.group), shown: $session.shownPlaceGroups)
                         }
                         ToolbarItem {
+                            LayerMenu(title: "Creatures", systemImage: "pawprint",
+                                      help: "Choose which creatures (named ones, pets, villagers) appear on the map",
+                                      empty: "No named creatures, pets or villagers in this dimension",
+                                      groups: map.creatures.map(\.group), shown: $session.shownCreatureGroups)
+                        }
+                        ToolbarItem {
                             Toggle("Show Players", systemImage: "person.2", isOn: $session.showsPlayers)
                                 .help("Show players, their last deaths and respawn points on the map")
                         }
@@ -177,7 +188,7 @@ private struct WorldView: View {
                                        description: Text("This world has no saved terrain yet."))
             }
         }
-        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items, signs and books"))
+        .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Find items, signs and pets"))
     }
 
     private var inspectorShown: Binding<Bool> {
@@ -267,6 +278,7 @@ protocol MapLayerGroup: CaseIterable, Hashable {
 
 extension StructureGroup: MapLayerGroup {}
 extension PlaceGroup: MapLayerGroup {}
+extension CreatureGroup: MapLayerGroup {}
 
 /// Chooses which groups of markers the map shows. Lists only groups present, with their counts.
 private struct LayerMenu<Group: MapLayerGroup>: View where Group.AllCases: RandomAccessCollection {
@@ -359,7 +371,7 @@ private struct SearchResultsSection: View {
         Section {
             if session.isIndexing {
                 Label {
-                    Text("Searching every container and sign…")
+                    Text("Searching containers, signs and creatures…")
                 } icon: {
                     ProgressView().controlSize(.small)
                 }

@@ -826,6 +826,53 @@ import Testing
     }
 }
 
+@Suite struct CreatureTests {
+    let owner = UUID()
+
+    func entity(_ id: String, x: Double, z: Double, extra: [String: NBT] = [:]) -> NBT {
+        .compound(["id": .string(id), "Health": .float(10), "Pos": .list([.double(x), .double(64), .double(z)])].merging(extra) { $1 })
+    }
+
+    @Test func groupsAndTitles() throws {
+        let villager = try #require(Creature(entity("minecraft:villager", x: 0, z: 0, extra: [
+            "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
+        let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
+        #expect(marker.group == .villager && marker.title == "Librarian")
+        #expect(CreatureCard.levelName(5) == "Master")
+        let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
+        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.title == "Mittens")
+        #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
+    }
+
+    @Test func sessionScansShowsAndSearchesCreatures() async throws {
+        // Scans walk the terrain region files, as entities only exist where terrain does.
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let entities = world.appendingPathComponent("dimensions/minecraft/overworld/entities")
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
+        let chunk = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([
+            entity("minecraft:wolf", x: 10, z: 20, extra: ["CustomName": .string("Summer"), "Owner": .intArray([1, 2, 3, 4])]),
+            entity("minecraft:villager", x: 5, z: 5, extra: ["VillagerData": .compound(["profession": .string("minecraft:farmer")])]),
+            entity("minecraft:sheep", x: 1, z: 1),
+        ])])
+        try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: entities.appendingPathComponent("r.0.0.mca"))
+        let defaults = UserDefaults(suiteName: "MCWorldTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults))
+        defer { session.close() }
+        await session.map?.waitForCreatures()
+        #expect(session.map?.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
+        session.shownCreatureGroups = [.pet]
+        #expect(session.visibleCreatures.map(\.title) == ["Summer"])
+        session.selectedCreature = session.visibleCreatures.first
+        #expect(session.selectedCreature?.title == "Summer")
+        #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
+        session.searchText = "summer"
+        await session.waitForIndex()
+        #expect(session.searchResults.map(\.detail) == ["“Summer”"])
+        #expect(session.searchResults.first?.source == .creature)
+    }
+}
+
 @Suite struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
