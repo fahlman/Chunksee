@@ -61,24 +61,11 @@ nonisolated enum HeatMap {
     /// are left out.
     @concurrent
     static func images(_ reader: RegionReader) async -> [RegionCoordinate: CGImage] {
-        await withTaskGroup(of: (RegionCoordinate, CGImage?).self) { group in
-            for file in reader.dimension.regionFiles() {
-                group.addTask {
-                    let region = RegionCoordinate(x: file.x, z: file.z)
-                    guard !Task.isCancelled else { return (region, nil) }
-                    // Read into a local first: Swift 6.4 release builds can misread values captured
-                    // next to an awaited call in task-group children (see #6).
-                    let ticks = await reader.inhabitedTimes(region)
-                    let image = image(fromTicks: ticks)
-                    return (region, image)
-                }
-            }
-            var images: [RegionCoordinate: CGImage] = [:]
-            for await (region, image) in group {
-                if let image { images[region] = image }
-            }
-            return images
+        var images: [RegionCoordinate: CGImage] = [:]
+        for part in await reader.everyRegion({ await $0.inhabitedTimes($1) }) {
+            images[part.region] = image(fromTicks: part.value)
         }
+        return images
     }
 }
 

@@ -71,24 +71,11 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
 
 /// Reads every shown creature in a dimension, in parallel by region.
 nonisolated enum CreatureScanner {
-    /// Every named creature, pet and villager in the reader's dimension, region by region in parallel.
     @concurrent
     static func scan(_ reader: RegionReader) async -> [CreatureMarker] {
         let dimension = reader.dimension.id
-        return await withTaskGroup(of: [CreatureMarker].self) { group in
-            for file in reader.dimension.regionFiles() {
-                group.addTask {
-                    guard !Task.isCancelled else { return [] }
-                    // Read into a local first: Swift 6.4 release builds can misread values captured
-                    // next to an awaited call in task-group children (see #6).
-                    let creatures = await reader.creatures(RegionCoordinate(x: file.x, z: file.z))
-                    return creatures.compactMap { CreatureMarker($0, dimension: dimension) }
-                }
-            }
-            var all: [CreatureMarker] = []
-            for await found in group { all += found }
-            return all.sorted { $0.id < $1.id }
-        }
+        return await reader.everyRegion { await $0.creatures($1) }.flatMap(\.value)
+            .compactMap { CreatureMarker($0, dimension: dimension) }.sorted { $0.id < $1.id }
     }
 }
 

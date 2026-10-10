@@ -66,6 +66,26 @@ actor RegionReader {
         self.cache = cache
     }
 
+    /// One value per region of the dimension, read in parallel, in no particular order.
+    @concurrent
+    nonisolated func everyRegion<T: Sendable>(_ read: @escaping @Sendable (RegionReader, RegionCoordinate) async -> T)
+        async -> [(region: RegionCoordinate, value: T)] {
+        await withTaskGroup(of: (RegionCoordinate, T).self) { group in
+            for file in dimension.regionFiles() {
+                let region = RegionCoordinate(x: file.x, z: file.z)
+                group.addTask {
+                    // Await into a local before returning it with `region`: Swift 6.4 release builds
+                    // can misread values captured next to an awaited call in task-group children (#6).
+                    let value = await read(self, region)
+                    return (region, value)
+                }
+            }
+            var all: [(region: RegionCoordinate, value: T)] = []
+            for await result in group { all.append(result) }
+            return all
+        }
+    }
+
     func contents(_ region: RegionCoordinate) async -> SearchContents { await part("contents", \.contents, region) }
     func structures(_ region: RegionCoordinate) async -> [StructureMarker] { await part("structures", \.structures, region) }
     func creatures(_ region: RegionCoordinate) async -> [Creature] { await part("creatures", \.creatures, region) }
