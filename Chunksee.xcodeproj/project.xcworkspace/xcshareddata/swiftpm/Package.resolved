@@ -1,0 +1,15 @@
+{
+  "originHash" : "fa52ad1778c06692c05f13e509c59a543dc3c0f70a40ad733f2b8fe6a94bc3d7",
+  "pins" : [
+    {
+      "identity" : "chunkseekit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/fahlman/ChunkseeKit.git",
+      "state" : {
+        "revision" : "3688f99b8f1414b4153970e21a19debd8b1e38e7",
+        "version" : "0.19.0"
+      }
+    }
+  ],
+  "version" : 3
+}
