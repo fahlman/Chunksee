@@ -1,6 +1,6 @@
-import CoreGraphics
 import Foundation
 import MCWorldKit
+import SwiftUI
 
 /// A biome, as a sidebar group.
 nonisolated struct BiomeGroup: MapLayerGroup, Sendable {
@@ -16,7 +16,18 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var chunkCount: Int
     /// The center of the area's chunk nearest its middle, so it lies inside the area.
     var position: CGPoint
+    /// World X/Z rectangle around the area, for skipping areas out of view.
+    var bounds: CGRect
+    /// The area's chunks, and the chunk edges around it, in world X/Z.
+    var chunks: Path
+    var outline: Path
     var name: String { String(localized: "\(chunkCount) chunks") }
+}
+
+/// Biome areas, and every sampled chunk's biome for the hover readout.
+nonisolated struct BiomeScan: Sendable {
+    var areas: [BiomeArea] = []
+    var biomes: [ChunkCoordinate: String] = [:]
 }
 
 /// Finds biome areas by sampling one surface column per chunk and joining neighboring chunks of
@@ -26,7 +37,7 @@ nonisolated enum BiomeScanner {
     static let minimumChunks = 4
 
     @concurrent
-    static func scan(_ dimension: MCWorldKit.Dimension) async -> [BiomeArea] {
+    static func scan(_ dimension: MCWorldKit.Dimension) async -> BiomeScan {
         let biomes = await withTaskGroup(of: [ChunkCoordinate: String].self) { group in
             for region in dimension.regionFiles() {
                 group.addTask {
@@ -44,7 +55,7 @@ nonisolated enum BiomeScanner {
             for await found in group { all.merge(found) { $1 } }
             return all
         }
-        return areas(from: biomes)
+        return BiomeScan(areas: areas(from: biomes), biomes: biomes)
     }
 
     /// The biome at the middle column's surface: the heightmap's top block, or the top of the
@@ -85,8 +96,21 @@ nonisolated enum BiomeScanner {
             let middleX = Double(chunks.map(\.x).reduce(0, +)) / Double(chunks.count)
             let middleZ = Double(chunks.map(\.z).reduce(0, +)) / Double(chunks.count)
             let inside = chunks.min { hypot(Double($0.x) - middleX, Double($0.z) - middleZ) < hypot(Double($1.x) - middleX, Double($1.z) - middleZ) }!
+            // Outline the edges between this area's chunks and anything else.
+            var fill = Path(), outline = Path()
+            let members = Set(chunks)
+            for chunk in chunks {
+                let x = CGFloat(chunk.x * 16), z = CGFloat(chunk.z * 16)
+                fill.addRect(CGRect(x: x, y: z, width: 16, height: 16))
+                for (dx, dz, from, to) in [(0, -1, (0, 0), (16, 0)), (1, 0, (16, 0), (16, 16)), (0, 1, (0, 16), (16, 16)), (-1, 0, (0, 0), (0, 16))]
+                where !members.contains(ChunkCoordinate(x: chunk.x + dx, z: chunk.z + dz)) {
+                    outline.move(to: CGPoint(x: x + CGFloat(from.0), y: z + CGFloat(from.1)))
+                    outline.addLine(to: CGPoint(x: x + CGFloat(to.0), y: z + CGFloat(to.1)))
+                }
+            }
             areas.append(BiomeArea(id: "\(biome)@\(inside.x),\(inside.z)", group: BiomeGroup(id: biome), chunkCount: chunks.count,
-                                   position: CGPoint(x: inside.x * 16 + 8, y: inside.z * 16 + 8)))
+                                   position: CGPoint(x: inside.x * 16 + 8, y: inside.z * 16 + 8), bounds: fill.boundingRect,
+                                   chunks: fill, outline: outline))
         }
         return areas
     }

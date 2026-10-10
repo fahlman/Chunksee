@@ -36,7 +36,7 @@ final class WorldSession {
     /// Structure groups shown on the map; remembered between launches.
     var shownStructureGroups: Set<StructureGroup> {
         didSet {
-            UserDefaults.standard.set(shownStructureGroups.map(\.rawValue).sorted(), forKey: Self.shownStructuresKey)
+            defaults.set(shownStructureGroups.map(\.rawValue).sorted(), forKey: Self.shownStructuresKey)
         }
     }
     private static let shownStructuresKey = "shownStructureGroups"
@@ -189,38 +189,48 @@ final class WorldSession {
 
     /// Point-of-interest groups shown on the map; remembered between launches.
     var shownPlaceGroups: Set<PlaceGroup> {
-        didSet { UserDefaults.standard.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
+        didSet { defaults.set(shownPlaceGroups.map(\.rawValue).sorted(), forKey: Self.shownPlacesKey) }
     }
     private static let shownPlacesKey = "shownPlaceGroups"
     /// Creature groups shown on the map; remembered between launches.
     var shownCreatureGroups: Set<CreatureGroup> {
-        didSet { UserDefaults.standard.set(shownCreatureGroups.map(\.rawValue).sorted(), forKey: Self.shownCreaturesKey) }
+        didSet { defaults.set(shownCreatureGroups.map(\.rawValue).sorted(), forKey: Self.shownCreaturesKey) }
     }
     private static let shownCreaturesKey = "shownCreatureGroups"
+    /// Biomes outlined on the map; remembered between launches. None at first: outlining every
+    /// biome would cover the map.
+    var shownBiomeGroups: Set<BiomeGroup> {
+        didSet { defaults.set(shownBiomeGroups.map(\.id).sorted(), forKey: Self.shownBiomesKey) }
+    }
+    private static let shownBiomesKey = "shownBiomeGroups"
     /// App-wide player names, shared across worlds.
     let names: PlayerNames
 
     private let isAccessingSecurityScope: Bool
+    private let defaults: UserDefaults
 
-    private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, isAccessingSecurityScope: Bool) {
+    private init(url: URL, world: World, players: [PlayerInfo], details: WorldDetails, names: PlayerNames, defaults: UserDefaults,
+                 isAccessingSecurityScope: Bool) {
+        self.defaults = defaults
         self.url = url
         self.details = details
         self.names = names
-        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownStructuresKey) {
+        if let saved = defaults.stringArray(forKey: Self.shownStructuresKey) {
             shownStructureGroups = Set(saved.compactMap(StructureGroup.init(rawValue:)))
         } else {
             shownStructureGroups = Set(StructureGroup.allCases.filter(\.isShownByDefault))
         }
-        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownPlacesKey) {
+        if let saved = defaults.stringArray(forKey: Self.shownPlacesKey) {
             shownPlaceGroups = Set(saved.compactMap(PlaceGroup.init(rawValue:)))
         } else {
             shownPlaceGroups = Set(PlaceGroup.allCases.filter(\.isShownByDefault))
         }
-        if let saved = UserDefaults.standard.stringArray(forKey: Self.shownCreaturesKey) {
+        if let saved = defaults.stringArray(forKey: Self.shownCreaturesKey) {
             shownCreatureGroups = Set(saved.compactMap(CreatureGroup.init(rawValue:)))
         } else {
             shownCreatureGroups = Set(CreatureGroup.allCases.filter(\.isShownByDefault))
         }
+        shownBiomeGroups = Set((defaults.stringArray(forKey: Self.shownBiomesKey) ?? []).map(BiomeGroup.init(id:)))
         self.world = world
         self.players = players
         self.dimensions = world.dimensions()
@@ -276,11 +286,13 @@ final class WorldSession {
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
-    static func open(_ url: URL, names: PlayerNames) async throws -> WorldSession {
+    /// `defaults` keeps which layers are shown; tests pass their own so they leave the app's alone.
+    static func open(_ url: URL, names: PlayerNames, defaults: UserDefaults = .standard) async throws -> WorldSession {
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let (world, players, details) = try await load(url)
-            return WorldSession(url: url, world: world, players: players, details: details, names: names, isAccessingSecurityScope: accessing)
+            return WorldSession(url: url, world: world, players: players, details: details, names: names, defaults: defaults,
+                                isAccessingSecurityScope: accessing)
         } catch {
             if accessing { url.stopAccessingSecurityScopedResource() }
             throw error
@@ -338,6 +350,10 @@ final class WorldSession {
         (map?.creatures ?? []).filter { shownCreatureGroups.contains($0.group) }
     }
 
+    var visibleBiomeAreas: [BiomeArea] {
+        (map?.biomeAreas ?? []).filter { shownBiomeGroups.contains($0.group) }
+    }
+
     var visiblePlaces: [PlaceMarker] {
         (map?.places ?? []).filter { shownPlaceGroups.contains($0.group) }
     }
@@ -367,29 +383,15 @@ final class WorldSession {
         dimensions.first { $0.id == selectedDimensionID }
     }
 
-    /// What the map colors columns by. Changing it redraws the map in place.
-    var mapStyle: MapStyle = .terrain {
-        didSet { if mapStyle != oldValue { makeMapForSelection() } }
-    }
-
     private func makeMapForSelection() {
-        let previous = map
         map?.cancel()
         guard let dimension = selectedDimension else {
             map = nil
             return
         }
-        // Start at the world spawn when it's in this dimension, otherwise at the origin. A new
-        // style for the same dimension keeps the view where it was.
-        let center = spawnPoint
-        // Each style keeps its own tiles.
-        var cacheDirectory = TileCache.directory(forWorldAt: url, dimensionID: dimension.id)
-        if mapStyle == .biomes { cacheDirectory = cacheDirectory?.appendingPathComponent("biomes", isDirectory: true) }
-        map = MapModel(dimension: dimension, center: center, style: mapStyle, cacheDirectory: cacheDirectory)
-        if let previous, previous.dimension.id == dimension.id {
-            map?.viewport = previous.viewport
-            map?.keepMarkers(of: previous)
-        }
+        // Start at the world spawn when it's in this dimension, otherwise at the origin.
+        map = MapModel(dimension: dimension, center: spawnPoint,
+                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id))
         map?.loadStructures()
         map?.loadPlaces()
         map?.loadCreatures()

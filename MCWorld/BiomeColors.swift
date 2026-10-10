@@ -1,8 +1,8 @@
 import Foundation
 
-/// Map colors for biomes. Minecraft has no official biome map colors, so these are the app's own:
-/// blues for water, oranges for deserts and badlands, white for snow, reds for the Nether and
-/// purples for the End. Every color is distinct, so a pixel in the biome view names its biome.
+/// Outline colors for biomes. Minecraft has no official biome map colors, so these are the app's
+/// own: blues for water, oranges for deserts and badlands, white for snow, reds for the Nether and
+/// purples for the End.
 nonisolated enum BiomeColors {
     static let table: [String: UInt32] = [
         "minecraft:ocean": 0x000070, "minecraft:deep_ocean": 0x000030, "minecraft:warm_ocean": 0x0000AC,
@@ -36,11 +36,4 @@ nonisolated enum BiomeColors {
         for byte in biome.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
         return MapColor(hash & 0xFFFFFF)
     }
-
-    /// The biome a pixel's color stands for, for the hover readout; `nil` for colors not in the table.
-    static func biome(red: UInt8, green: UInt8, blue: UInt8) -> String? {
-        byColor[UInt32(red) << 16 | UInt32(green) << 8 | UInt32(blue)]
-    }
-
-    private static let byColor = Dictionary(uniqueKeysWithValues: table.map { ($0.value, $0.key) })
 }

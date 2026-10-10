@@ -2,14 +2,6 @@ import CoreGraphics
 import Foundation
 import MCWorldKit
 
-/// What the map colors each column by.
-nonisolated enum MapStyle: String, CaseIterable, Sendable {
-    /// The top block, shaded for relief and water depth.
-    case terrain
-    /// The biome at the top block, in flat colors so each one names its biome.
-    case biomes
-}
-
 /// Renders one region (512×512 blocks) of a dimension as a top-down image, one pixel per block.
 ///
 /// Rendering reads and decodes up to 1,024 chunks, so it runs off the main actor and checks for
@@ -18,7 +10,6 @@ nonisolated struct RegionTileRenderer: Sendable {
     static let side = RegionCoordinate.blockSize
 
     let dimension: MCWorldKit.Dimension
-    var style: MapStyle = .terrain
     /// How many chunks of one region decode at the same time.
     var chunkConcurrency = 1
     /// Rendered pixels saved between launches; `nil` renders every time.
@@ -37,7 +28,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY, style: style) {
+                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ)
                 }
             }
@@ -50,7 +41,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        return Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY, style: style).map { (localX, localZ, $0) }
+                        return Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY).map { (localX, localZ, $0) }
                     }
                 }
                 for _ in 0..<chunkConcurrency { startNext() }
@@ -60,8 +51,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         }
-        // Biome colors stay flat so each pixel's color maps back to one biome.
-        if style == .terrain { canvas.applyRelief() }
+        canvas.applyRelief()
         return canvas.pixels
     }
 
@@ -126,7 +116,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// The highest block under a dimension's roof, for dimensions that have one.
     var ceilingY: Int? { dimension.id == "minecraft:the_nether" ? 127 : nil }
 
-    static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil, style: MapStyle = .terrain) -> [Column?]? {
+    static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [Column?]? {
         // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
@@ -135,15 +125,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         // upgraded from old versions have none), every column starts at the top of the chunk.
         let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
         let topY = sections.topY
-        let columns = ceilingY.map { ceiling in sections.topColumns(underCeiling: true) { _ in ceiling } }
-            ?? sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
-        guard style == .biomes else { return columns }
-        return columns.enumerated().map { i, column in
-            guard var column, let biome = chunk.biome(x: i % 16, y: column.y, z: i / 16) else { return nil }
-            column.color = BiomeColors.color(for: biome)
-            column.waterDepth = 0
-            return column
+        if let ceilingY {
+            return sections.topColumns(underCeiling: true) { _ in ceilingY }
         }
+        return sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
     }
 
     /// The highest block the map should show in a column, and how deep the water above it is.
