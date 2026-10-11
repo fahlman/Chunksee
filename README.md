@@ -48,7 +48,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 **View** includes zoom, World Info, Time Spent, sidebar and inspector commands. **Navigate** jumps
 to coordinates, the world spawn or another dimension and saves the current search. Choose
 **Navigate ▸ Go to Coordinates…** (**⌘⇧G**) and enter X and Z to center the current dimension's
-map there. In player details,
+map there, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
 **Locations** offers the last position, last death and respawn point. VoiceOver can also explore
 the individual visible map locations and center the map on them.
 

@@ -52,13 +52,15 @@ struct WorldCommands: Commands {
             Button("Go to Coordinates…") { session?.showsCoordinateSheet = true }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(session?.map == nil)
-            Divider()
-            Button("World Spawn") {
+            // ⇧⌘H, like Finder's Go ▸ Home.
+            Button("Go to Spawn") {
                 guard let session, let spawn = session.world.level.spawnPosition else { return }
                 session.focus(on: .init(dimension: session.world.level.spawnDimension ?? "minecraft:overworld",
                                        x: Double(spawn.x), y: Double(spawn.y), z: Double(spawn.z)))
             }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
             .disabled(session?.world.level.spawnPosition == nil)
+            Divider()
             Menu("Dimension") {
                 if let session {
                     ForEach(session.dimensions, id: \.id) { dimension in
