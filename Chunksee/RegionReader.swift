@@ -9,12 +9,13 @@ nonisolated struct SearchContents: Codable, Sendable {
 }
 
 /// Everything the app's scans take from one region, read in a single pass over its chunks and its
-/// entities file: search contents, structures, creatures, surface biomes and time spent per chunk.
+/// entities file: search contents, structures, creatures, surface and cave biomes and time spent per chunk.
 nonisolated struct RegionData: Sendable {
     var contents = SearchContents()
     var structures: [StructureMarker] = []
     var creatures: [Creature] = []
     var biomes: [ChunkCoordinate: String] = [:]
+    var caveBiomes: [ChunkCoordinate: [String]] = [:]
     /// `InhabitedTime` per chunk, index `localZ * 32 + localX`.
     var inhabitedTimes = [Int](repeating: 0, count: 1024)
 
@@ -33,8 +34,11 @@ nonisolated struct RegionData: Sendable {
                 data.contents.signs += Sign.signs(inChunk: nbt)
                 data.structures += StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
                 data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
-                if let chunk = try? Chunk(nbt: nbt), let biome = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id) {
-                    data.biomes[ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)] = biome
+                if let chunk = try? Chunk(nbt: nbt) {
+                    let coordinate = ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)
+                    data.biomes[coordinate] = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id)
+                    let caves = BiomeScanner.caveBiomes(of: chunk)
+                    if !caves.isEmpty { data.caveBiomes[coordinate] = caves }
                 }
             }
         }
@@ -96,6 +100,7 @@ actor RegionReader {
     func structures(_ region: RegionCoordinate) async -> [StructureMarker] { await part("structures", \.structures, region) }
     func creatures(_ region: RegionCoordinate) async -> [Creature] { await part("creatures", \.creatures, region) }
     func biomes(_ region: RegionCoordinate) async -> [ChunkCoordinate: String] { await part("biomes", \.biomes, region) }
+    func caveBiomes(_ region: RegionCoordinate) async -> [ChunkCoordinate: [String]] { await part("caveBiomes", \.caveBiomes, region) }
     func inhabitedTimes(_ region: RegionCoordinate) async -> [Int] { await part("inhabitedTimes", \.inhabitedTimes, region) }
 
     private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionCoordinate) async -> T {
@@ -133,6 +138,7 @@ actor RegionReader {
         cache.store(data.structures, "structures", region: region, fingerprint: fingerprint)
         cache.store(data.creatures, "creatures", region: region, fingerprint: fingerprint)
         cache.store(data.biomes, "biomes", region: region, fingerprint: fingerprint)
+        cache.store(data.caveBiomes, "caveBiomes", region: region, fingerprint: fingerprint)
         cache.store(data.inhabitedTimes, "inhabitedTimes", region: region, fingerprint: fingerprint)
         return data
     }

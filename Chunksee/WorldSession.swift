@@ -203,6 +203,7 @@ final class WorldSession {
         }
         content.biomeAreas = index.biomeAreas.filter { visibility.biomes.contains($0.group) }
         content.biomes = index.biomes
+        content.caveBiomes = index.caveBiomes
         content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
         content.structures = index.structures.filter { visibility.structures.contains($0.group) }
         content.places = index.places.filter { visibility.places.contains($0.group) }

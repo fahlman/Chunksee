@@ -9,7 +9,8 @@ nonisolated struct BiomeGroup: MapLayerGroup, Sendable {
     var symbol: String { "leaf" }
 }
 
-/// A patch of neighboring chunks whose surface is the same biome.
+/// A patch of neighboring chunks with the same biome: at the surface, or for a cave biome, anywhere
+/// underground.
 nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var id: String
     var group: BiomeGroup
@@ -25,23 +26,44 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var searchText: String { group.name + " " + group.id }
 }
 
-/// Biome areas, and every sampled chunk's biome for the hover readout.
+/// Biome areas, and every sampled chunk's biomes for the hover readout.
 nonisolated struct BiomeScan: Sendable {
     var areas: [BiomeArea] = []
     var biomes: [ChunkCoordinate: String] = [:]
+    /// Cave biomes under each chunk that has any.
+    var caveBiomes: [ChunkCoordinate: [String]] = [:]
 }
 
 /// Finds biome areas by sampling one surface column per chunk and joining neighboring chunks of
-/// the same biome.
+/// the same biome. Cave biomes never reach the surface, so each chunk's sections are also checked
+/// for them, and their areas are found the same way.
 nonisolated enum BiomeScanner {
     /// Areas smaller than this are slivers along borders, not places worth visiting.
     static let minimumChunks = 4
+    /// Biomes that generate only underground.
+    static let caveBiomeIDs: Set<String> = ["minecraft:deep_dark", "minecraft:lush_caves", "minecraft:dripstone_caves"]
 
     @concurrent
     static func scan(_ reader: RegionReader) async -> BiomeScan {
-        var biomes: [ChunkCoordinate: String] = [:]
-        for part in await reader.everyRegion({ await $0.biomes($1) }) { biomes.merge(part.value) { $1 } }
-        return BiomeScan(areas: areas(from: biomes), biomes: biomes)
+        var scan = BiomeScan()
+        for part in await reader.everyRegion({ await ($0.biomes($1), $0.caveBiomes($1)) }) {
+            scan.biomes.merge(part.value.0) { $1 }
+            scan.caveBiomes.merge(part.value.1) { $1 }
+        }
+        scan.areas = areas(from: scan.biomes) + caveAreas(from: scan.caveBiomes)
+        return scan
+    }
+
+    /// The cave biomes anywhere in a chunk, from its sections' biome palettes.
+    static func caveBiomes(of chunk: Chunk) -> [String] {
+        Set(chunk.sections.flatMap { $0.biomes?.palette ?? [] }).intersection(caveBiomeIDs).sorted()
+    }
+
+    /// Areas of each cave biome; a chunk can belong to more than one.
+    static func caveAreas(from caves: [ChunkCoordinate: [String]]) -> [BiomeArea] {
+        caveBiomeIDs.sorted().flatMap { biome in
+            areas(from: caves.filter { $0.value.contains(biome) }.mapValues { _ in biome })
+        }
     }
 
     /// The biome at the middle column's surface: the heightmap's top block, or the top of the
