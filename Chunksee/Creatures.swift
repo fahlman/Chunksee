@@ -93,7 +93,7 @@ struct CreatureCard: View {
             }
             if let villager = marker.creature.villager {
                 if let job = villager.profession, job != "minecraft:none" {
-                    Text("\(ReadableName.from(job)), \(Self.levelName(villager.level))")
+                    Text("\(ReadableName.from(job)), \(TradeText.levelName(villager.level))")
                 } else if marker.creature.id == "minecraft:villager" {
                     Text("No job yet")
                 }
@@ -101,9 +101,9 @@ struct CreatureCard: View {
                     Divider()
                     ForEach(Array(villager.trades.enumerated()), id: \.offset) { _, trade in
                         HStack {
-                            Text(Self.describe(trade.buy) + (trade.buyB.map { " + " + Self.describe($0) } ?? ""))
+                            Text(TradeText.cost(of: trade))
                             Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                            Text(Self.describe(trade.sell))
+                            Text(TradeText.describe(trade.sell))
                         }
                         .font(.callout)
                         .strikethrough(trade.isSoldOut)
@@ -115,8 +115,34 @@ struct CreatureCard: View {
         }
     }
 
+}
+
+/// How villagers and their trades read, in the creature card and in trade search.
+nonisolated enum TradeText {
+    /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
     static func describe(_ item: ItemStack) -> String {
-        "\(item.count) \(ReadableName.from(item.id))"
+        let base = "\(item.count) \(ReadableName.from(item.id))"
+        let enchantments = item.enchantments.sorted { $0.key < $1.key }.map { enchantmentName($0.key, level: $0.value) }
+        return enchantments.isEmpty ? base : "\(base) (\(enchantments.joined(separator: ", ")))"
+    }
+
+    /// What the villager asks for: "24 Emerald + 1 Book".
+    static func cost(of trade: Trade) -> String {
+        describe(trade.buy) + (trade.buyB.map { " + " + describe($0) } ?? "")
+    }
+
+    /// The text trade search matches: every item's name and id, and the enchantments' names.
+    static func searchText(of trade: Trade) -> String {
+        let items = [trade.buy, trade.sell] + (trade.buyB.map { [$0] } ?? [])
+        return items.flatMap { [ReadableName.from($0.id), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
+            .joined(separator: " ")
+    }
+
+    /// "Mending", "Sharpness V": the game shows a level only when an enchantment can have more than one.
+    static func enchantmentName(_ id: String, level: Int) -> String {
+        let numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+        guard level > 1 else { return ReadableName.from(id) }
+        return ReadableName.from(id) + " " + (level <= numerals.count ? numerals[level - 1] : String(level))
     }
 
     /// The game's names for villager levels 1–5.

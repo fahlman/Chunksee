@@ -6,6 +6,7 @@ import Observation
 /// What the inspector beside the map shows.
 enum Inspector: Equatable {
     case world
+    case storage
     case player(UUID)
 }
 

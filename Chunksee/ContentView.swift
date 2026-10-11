@@ -27,6 +27,14 @@ struct WorldView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
                     .help("Show the world’s settings, time, weather and game rules")
+                    Button {
+                        session.inspector = session.inspector == .storage ? nil : .storage
+                    } label: {
+                        Label("Storage", systemImage: "shippingbox")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(session.inspector == .storage ? Color.accentColor : .primary)
+                    .help("Show totals of the items stored in this dimension’s containers")
                     Toggle(isOn: $heatMap.isShown) {
                         Label("Time Spent", systemImage: "flame")
                     }
@@ -140,6 +148,8 @@ struct WorldView: View {
                 switch session.inspector {
                 case .world?:
                     WorldInfoView(session: session)
+                case .storage?:
+                    StorageView(session: session)
                 case .player(let id)?:
                     if let player = session.players.first(where: { $0.uuid == id }) {
                         PlayerDetailView(session: session, player: player)

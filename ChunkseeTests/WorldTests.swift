@@ -39,6 +39,18 @@ import Testing
         #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in "" }.isEmpty)
     }
 
+    @Test func storageTotalsCountNestedItemsOncePerContainer() {
+        let shulker = item("minecraft:shulker_box", 1, components: ["minecraft:container": .list([.compound(["slot": .int(0), "item": item("minecraft:diamond", 64)])])])
+        let chunk = NBT.compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
+            .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:diamond", 10), item("minecraft:dirt", 64)])]),
+        ])])
+        let totals = StoredItem.totals(in: ItemContainer.containers(inChunk: chunk))
+        #expect(totals.map(\.name) == ["Diamond", "Dirt", "Shulker Box"])
+        #expect(totals.first == StoredItem(id: "minecraft:diamond", name: "Diamond", count: 77, containers: 2))
+        #expect(totals.last?.count == 1 && totals.last?.containers == 1)
+    }
+
     @Test func signsAndBooksMatchTheirText() throws {
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([
@@ -78,6 +90,7 @@ import Testing
         #expect(session.search.isIndexing)
         await session.search.waitForIndex()
         #expect(!session.search.isIndexing)
+        #expect(session.selectedIndex.storage.map(\.name) == ["Golden Apple"])
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
@@ -196,6 +209,36 @@ import Testing
         #expect(search("villager:").map(\.detail) == ["Farmer"])
         // A plain search still finds named creatures by name.
         #expect(search("summer").map(\.detail) == ["“Summer”"])
+    }
+
+    @Test func tradeSearchFindsVillagersByWhatTheySellOrBuy() throws {
+        func item(_ id: String, _ count: Int32, _ components: [String: NBT] = [:]) -> NBT {
+            .compound(["id": .string(id), "count": .int(count), "components": .compound(components)])
+        }
+        let mendingBook = item("minecraft:enchanted_book", 1, ["minecraft:stored_enchantments": .compound(["minecraft:mending": .int(1)])])
+        let librarian = try #require(Creature(.compound([
+            "id": .string("minecraft:villager"), "Health": .float(20), "Pos": .list([.double(30), .double(64), .double(-12)]),
+            "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)]),
+            "Offers": .compound(["Recipes": .list([
+                .compound(["buy": item("minecraft:emerald", 24), "buyB": item("minecraft:book", 1), "sell": mendingBook,
+                           "uses": .int(0), "maxUses": .int(12)]),
+                .compound(["buy": item("minecraft:emerald", 9), "sell": item("minecraft:bookshelf", 1),
+                           "uses": .int(12), "maxUses": .int(12)]),
+            ])]),
+        ])))
+        let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
+        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in "" } }
+        let mending = search("trade:mending")
+        #expect(mending.map(\.title) == ["Librarian, Master"])
+        #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
+        #expect(mending.first?.position == CGPoint(x: 30, y: -12))
+        #expect(mending.first?.source == .layer(.creature(.villager)))
+        // Buying counts too, and sold-out trades say so.
+        #expect(search("trade:emerald").first?.count == 2)
+        #expect(search("trade:bookshelf").first?.detail == "1 Bookshelf for 9 Emerald (sold out)")
+        #expect(search("trade:diamond").isEmpty)
+        #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
     }
 }
 
