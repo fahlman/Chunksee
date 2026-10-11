@@ -1,10 +1,13 @@
 import ChunkseeKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct WorldView: View {
     @Bindable var session: WorldSession
     /// Worlds can hold dozens of maps, so the list starts collapsed.
     @State private var showsInGameMaps = false
+    @State private var exportedImage: MapImage?
+    @State private var isExportingImage = false
 
     var body: some View {
         @Bindable var visibility = session.visibility
@@ -150,7 +153,24 @@ struct WorldView: View {
             .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .focusedSceneValue(\.worldSession, session)
+        .onChange(of: session.isMapExportRequested) {
+            guard session.isMapExportRequested else { return }
+            session.isMapExportRequested = false
+            guard let map = session.map, let shown = map.shownSize else { return }
+            exportedImage = MapImage.render(map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
+                                            size: shown.size, scale: shown.displayScale)
+            isExportingImage = exportedImage != nil
+        }
+        .fileExporter(isPresented: $isExportingImage, item: exportedImage, contentTypes: [.png],
+                      defaultFilename: exportFilename) { _ in exportedImage = nil }
         .background { WorldKeyboardShortcuts(session: session) }
+    }
+
+    /// "Ryan's Realm – Overworld – X 120, Z -45".
+    private var exportFilename: String {
+        guard let map = session.map else { return session.displayName }
+        let center = map.viewport.center
+        return "\(session.displayName) – \(map.dimension.displayName) – X \(Int(center.x)), Z \(Int(center.y))"
     }
 
     private var inspectorShown: Binding<Bool> {

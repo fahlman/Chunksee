@@ -17,6 +17,11 @@ struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
 
     var body: some Commands {
+        CommandGroup(after: .importExport) {
+            Button("Export Map Image…") { session?.isMapExportRequested = true }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(session?.map == nil)
+        }
         CommandGroup(before: .sidebar) {
             Button("Zoom In") { session?.map?.zoom(by: 2) }
                 .keyboardShortcut("+")

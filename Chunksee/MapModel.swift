@@ -153,6 +153,8 @@ final class MapModel {
     private var lastRequest: (range: MapViewport.RegionRange, full: Bool)?
     /// The view size and pixel density of the last request, to request again after the world changes.
     private var lastView: (size: CGSize, displayScale: CGFloat)?
+    /// The size and pixel density the map is shown at, once it has been laid out.
+    var shownSize: (size: CGSize, displayScale: CGFloat)? { lastView }
     /// Regions the game saved since their tiles were drawn. Their old images stay on screen until
     /// the new ones are ready, so a redraw doesn't flicker.
     private var stale: Set<RegionCoordinate> = []

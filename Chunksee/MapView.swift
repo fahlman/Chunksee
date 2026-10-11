@@ -100,77 +100,7 @@ struct MapView: View {
 
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
-            let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
-            let fullResolution = map.needsFullResolution(displayScale: displayScale)
-            for region in map.viewport.visibleRegionRange(in: size).regions {
-                guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
-                // Overlap neighbors by half a point so smoothed edges don't let the background show
-                // through as seams between tiles.
-                let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
-                context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
-            }
-            let bounds = CGRect(origin: .zero, size: size)
-            if !content.heatMap.isEmpty {
-                for region in map.viewport.visibleRegionRange(in: size).regions {
-                    guard let image = content.heatMap[region] else { continue }
-                    context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: map.viewport.viewRect(for: region, in: size))
-                }
-            }
-            if let (item, image, opacity) = content.inGameMap {
-                let topLeft = map.viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
-                let side = CGFloat(item.sideInBlocks) * map.viewport.scale
-                let rect = CGRect(origin: topLeft, size: CGSize(width: side, height: side))
-                var layer = context
-                layer.opacity = opacity
-                layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
-                context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
-            }
-            // Biome areas: a light fill and an outline along chunk edges, in the biome's color.
-            let toView = CGAffineTransform(a: map.viewport.scale, b: 0, c: 0, d: map.viewport.scale,
-                                           tx: size.width / 2 - map.viewport.center.x * map.viewport.scale,
-                                           ty: size.height / 2 - map.viewport.center.y * map.viewport.scale)
-            for area in content.biomeAreas where area.bounds.applying(toView).intersects(bounds) {
-                let color = Color(BiomeColors.color(for: area.group.id))
-                context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
-                context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
-            }
-            if content.showsGrid {
-                Self.drawGrid(MapGrid(viewport: map.viewport, size: size), in: context, size: size)
-            }
-            if let border = content.border {
-                let half = border.size / 2
-                let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
-                let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
-                context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
-            }
-            for structure in content.structures {
-                Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
-            }
-            // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
-            for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
-                let point = map.viewport.viewPoint(for: place.position, in: size)
-                Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds)
-                if let portal = place.portal {
-                    Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
-                }
-            }
-            // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
-            for creature in content.creatures {
-                let selected = content.selection == .creature(creature)
-                guard map.viewport.scale >= 0.25 || selected else { continue }
-                Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
-                          scale: map.viewport.scale, in: context, bounds: bounds)
-            }
-            for hit in content.hits {
-                guard let position = hit.position else { continue }
-                Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
-                             in: context, bounds: bounds)
-            }
-            for marker in content.players {
-                Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
-                          in: context, bounds: bounds)
-            }
+            Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
         }
         .background(.background.secondary)
         .onGeometryChange(for: CGSize.self, of: \.size) { size = $0 }
@@ -280,6 +210,83 @@ struct MapView: View {
     }
 
     /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
+    /// Draws the map: terrain tiles, then every overlay, bottom to top. The map view and image
+    /// export both draw through this, so an exported image matches the screen.
+    static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
+                        displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
+        // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
+        let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
+        let fullResolution = map.needsFullResolution(displayScale: displayScale)
+        for region in map.viewport.visibleRegionRange(in: size).regions {
+            guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
+            // Overlap neighbors by half a point so smoothed edges don't let the background show
+            // through as seams between tiles.
+            let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
+            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+        }
+        let bounds = CGRect(origin: .zero, size: size)
+        if !content.heatMap.isEmpty {
+            for region in map.viewport.visibleRegionRange(in: size).regions {
+                guard let image = content.heatMap[region] else { continue }
+                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: map.viewport.viewRect(for: region, in: size))
+            }
+        }
+        if let (item, image, opacity) = content.inGameMap {
+            let topLeft = map.viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
+            let side = CGFloat(item.sideInBlocks) * map.viewport.scale
+            let rect = CGRect(origin: topLeft, size: CGSize(width: side, height: side))
+            var layer = context
+            layer.opacity = opacity
+            layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
+            context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
+        }
+        // Biome areas: a light fill and an outline along chunk edges, in the biome's color.
+        let toView = CGAffineTransform(a: map.viewport.scale, b: 0, c: 0, d: map.viewport.scale,
+                                       tx: size.width / 2 - map.viewport.center.x * map.viewport.scale,
+                                       ty: size.height / 2 - map.viewport.center.y * map.viewport.scale)
+        for area in content.biomeAreas where area.bounds.applying(toView).intersects(bounds) {
+            let color = Color(BiomeColors.color(for: area.group.id))
+            context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
+            context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
+        }
+        if content.showsGrid {
+            Self.drawGrid(MapGrid(viewport: map.viewport, size: size), in: context, size: size)
+        }
+        if let border = content.border {
+            let half = border.size / 2
+            let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
+            let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
+            context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
+        }
+        for structure in content.structures {
+            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
+        }
+        // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
+        for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
+            let point = map.viewport.viewPoint(for: place.position, in: size)
+            Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds)
+            if let portal = place.portal {
+                Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
+            }
+        }
+        // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
+        for creature in content.creatures {
+            let selected = content.selection == .creature(creature)
+            guard map.viewport.scale >= 0.25 || selected else { continue }
+            Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
+                      scale: map.viewport.scale, in: context, bounds: bounds)
+        }
+        for hit in content.hits {
+            guard let position = hit.position else { continue }
+            Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
+                         in: context, bounds: bounds)
+        }
+        for marker in content.players {
+            Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
+                      in: context, bounds: bounds)
+        }
+    }
+
     /// Faint chunk lines, brighter region lines, and their block coordinates along the top and
     /// left edges.
     private static func drawGrid(_ grid: MapGrid, in context: GraphicsContext, size: CGSize) {
