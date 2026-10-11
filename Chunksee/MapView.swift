@@ -13,6 +13,8 @@ struct MapContent {
     var caveBiomes: [ChunkCoordinate: [String]] = [:]
     /// The world border, when it's closer than Minecraft's default.
     var border: WorldBorder?
+    /// Whether chunk and region lines are drawn.
+    var showsGrid = false
     var structures: [StructureMarker] = []
     var places: [PlaceMarker] = []
     var creatures: [CreatureMarker] = []
@@ -132,6 +134,9 @@ struct MapView: View {
                 let color = Color(BiomeColors.color(for: area.group.id))
                 context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
                 context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
+            }
+            if content.showsGrid {
+                Self.drawGrid(MapGrid(viewport: map.viewport, size: size), in: context, size: size)
             }
             if let border = content.border {
                 let half = border.size / 2
@@ -275,6 +280,28 @@ struct MapView: View {
     }
 
     /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
+    /// Faint chunk lines, brighter region lines, and their block coordinates along the top and
+    /// left edges.
+    private static func drawGrid(_ grid: MapGrid, in context: GraphicsContext, size: CGSize) {
+        for line in grid.vertical {
+            let path = Path { $0.move(to: CGPoint(x: line.position, y: 0)); $0.addLine(to: CGPoint(x: line.position, y: size.height)) }
+            context.stroke(path, with: .color(.white.opacity(line.isRegionEdge ? 0.7 : 0.3)), lineWidth: line.isRegionEdge ? 1.5 : 0.5)
+        }
+        for line in grid.horizontal {
+            let path = Path { $0.move(to: CGPoint(x: 0, y: line.position)); $0.addLine(to: CGPoint(x: size.width, y: line.position)) }
+            context.stroke(path, with: .color(.white.opacity(line.isRegionEdge ? 0.7 : 0.3)), lineWidth: line.isRegionEdge ? 1.5 : 0.5)
+        }
+        func label(_ value: Int, at point: CGPoint) {
+            let text = context.resolve(Text(value, format: .number.grouping(.never)).font(.caption2.monospacedDigit()).foregroundStyle(.white))
+            let textSize = text.measure(in: CGSize(width: 80, height: 20))
+            let box = CGRect(x: point.x + 2, y: point.y + 2, width: textSize.width + 6, height: textSize.height + 2)
+            context.fill(Path(roundedRect: box, cornerRadius: 3), with: .color(.black.opacity(0.55)))
+            context.draw(text, at: CGPoint(x: box.midX, y: box.midY))
+        }
+        for line in grid.vertical where grid.isLabeled(line) { label(line.block, at: CGPoint(x: line.position, y: 0)) }
+        for line in grid.horizontal where grid.isLabeled(line) { label(line.block, at: CGPoint(x: 0, y: line.position)) }
+    }
+
     private static func drawPortalState(at point: CGPoint, selected: Bool, status: PortalLinkStatus?, in context: GraphicsContext) {
         if selected {
             let ring = Path(ellipseIn: CGRect(x: point.x - 13, y: point.y - 13, width: 26, height: 26))

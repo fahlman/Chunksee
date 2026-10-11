@@ -205,6 +205,7 @@ final class WorldSession {
         content.biomes = index.biomes
         content.caveBiomes = index.caveBiomes
         content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
+        content.showsGrid = visibility.showsGrid
         content.structures = index.structures.filter { visibility.structures.contains($0.group) }
         content.places = index.places.filter { visibility.places.contains($0.group) }
         content.creatures = index.creatures.filter { visibility.creatures.contains($0.group) }

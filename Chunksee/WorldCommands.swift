@@ -39,6 +39,10 @@ struct WorldCommands: Commands {
                 session?.heatMap.isShown ?? false
             } set: { session?.heatMap.isShown = $0 })
             .disabled(session?.map == nil)
+            Toggle("Grid", isOn: Binding {
+                session?.visibility.showsGrid ?? false
+            } set: { session?.visibility.showsGrid = $0 })
+            .disabled(session?.map == nil)
         }
         CommandMenu("Navigate") {
             Button("World Spawn") {
