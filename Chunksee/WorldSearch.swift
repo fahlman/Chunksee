@@ -15,6 +15,8 @@ nonisolated struct DimensionIndex: Sendable {
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
     var caveBiomes: [ChunkCoordinate: [String]] = [:]
+    /// Notable blocks per chunk, for `block:` search.
+    var blocks: [ChunkDeposit] = []
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
@@ -31,6 +33,7 @@ nonisolated struct DimensionIndex: Sendable {
         async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
         async let creatures = CreatureScanner.scan(reader)
         async let biomes = BiomeScanner.scan(reader)
+        async let blocks = reader.everyRegion { await $0.blocks($1) }
         part.structures = await structures
         part.places = await places
         part.creatures = await creatures
@@ -38,6 +41,9 @@ nonisolated struct DimensionIndex: Sendable {
         part.biomeAreas = biomeScan.areas
         part.biomes = biomeScan.biomes
         part.caveBiomes = biomeScan.caveBiomes
+        part.blocks = await blocks.flatMap { region in
+            region.value.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
+        }
         return part
     }
 }
@@ -63,13 +69,14 @@ nonisolated struct SearchIndex: Sendable {
     var places: [Placed<PlaceMarker>] { all(\.places) }
     var creatures: [Placed<CreatureMarker>] { all(\.creatures) }
     var biomeAreas: [Placed<BiomeArea>] { all(\.biomeAreas) }
+    var blocks: [Placed<ChunkDeposit>] { all(\.blocks) }
 }
 
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
 /// `pet:`, `biome:pale garden`, or villagers' trades with `trade:mending`. On its own, a filter
 /// lists everything of its kind.
 nonisolated enum LayerFilter: String, CaseIterable, Sendable {
-    case structure, place, creature, pet, villager, trade, biome
+    case structure, place, creature, pet, villager, trade, biome, block
 
     /// What the filter finds, for search suggestions.
     var prompt: String {
@@ -81,6 +88,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .villager: String(localized: "villager: villagers and traders")
         case .trade: String(localized: "trade: villagers selling or buying an item")
         case .biome: String(localized: "biome: areas of a biome")
+        case .block: String(localized: "block: diamonds, ancient debris, spawners…")
         }
     }
 
@@ -93,6 +101,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .villager: CreatureGroup.villager.symbol
         case .trade: "arrow.left.arrow.right"
         case .biome: "leaf"
+        case .block: "cube"
         }
     }
 
@@ -113,6 +122,8 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
         case sign
         /// A marker from a sidebar layer, by its kind.
         case layer(Layer)
+        /// A chunk's deposit of a notable block (ore, spawner…).
+        case block(NotableBlock)
         case inventory(UUID)
         case enderChest(UUID)
     }
@@ -170,12 +181,26 @@ nonisolated enum WorldSearch {
         case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words) { .creature($0.group) }
         case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words) { .creature($0.group) }
         case .trade: hits = tradeHits(index.creatures, words: words)
+        case .block: hits = blockHits(index.blocks, words: words)
         case .biome:
             // An area is named by its size, so its biome leads the row.
             hits = layerHits(index.biomeAreas, words: words, count: \.chunkCount) { .biome($0.group) }
                 .map { var hit = $0; swap(&hit.title, &hit.detail); return hit }
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
+    }
+
+    /// Chunks holding a notable block matching every word, one hit per chunk and block, richest
+    /// first. The pin sits at the chunk's center; the detail gives the height range to dig.
+    private static func blockHits(_ entries: [SearchIndex.Placed<ChunkDeposit>], words: [String]) -> [SearchHit] {
+        entries.filter { !Task.isCancelled && contains($0.value.deposit.block.searchText, words: words) }.map { entry in
+            let chunk = entry.value.chunk, deposit = entry.value.deposit
+            return SearchHit(id: "\(entry.dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
+                             dimension: entry.dimension, position: CGPoint(x: chunk.x * 16 + 8, y: chunk.z * 16 + 8), y: deposit.minY,
+                             title: deposit.block.name,
+                             detail: String(localized: "\(deposit.count) in chunk \(chunk.x), \(chunk.z) · Y \(deposit.minY) to \(deposit.maxY)"),
+                             count: deposit.count)
+        }
     }
 
     /// Villagers and traders with a trade matching every word (in an item's name or id, or an

@@ -51,6 +51,36 @@ import Testing
         #expect(totals.last?.count == 1 && totals.last?.containers == 1)
     }
 
+    @Test func blockSearchFindsOreByChunkWithItsHeight() async throws {
+        // Chunk (1, -1): stone with 5 deepslate diamond ore and 1 spawner in section 0 (Y 0–15).
+        let palette = ["minecraft:stone", "minecraft:deepslate_diamond_ore", "minecraft:spawner"]
+        let spec = TestWorld.chunk(x: 1, z: -1, palette: palette) { x, y, z in
+            if y == 3 && z == 0 && x < 5 { return 1 }
+            return (x, y, z) == (8, 8, 8) ? 2 : 0
+        }
+        let deposits = BlockDeposit.deposits(in: try Chunk(nbt: spec.nbt))
+        #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
+
+        let world = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "block:diamond"
+        await session.search.waitForSearch()
+        let hit = try #require(session.search.results.first)
+        #expect(session.search.results.count == 1)
+        #expect(hit.title == "Diamond Ore" && hit.detail == "5 in chunk 1, -1 · Y 0 to 15" && hit.count == 5)
+        #expect(hit.position == CGPoint(x: 24, y: -8) && hit.source == .block(.diamond))
+        session.search.text = "block:spawner"
+        await session.search.waitForSearch()
+        #expect(session.search.results.map(\.title) == ["Spawner"])
+        session.search.text = "block:ancient debris"
+        await session.search.waitForSearch()
+        #expect(session.search.results.isEmpty)
+    }
+
     @Test func signsAndBooksMatchTheirText() throws {
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([
