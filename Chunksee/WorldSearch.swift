@@ -10,8 +10,9 @@ nonisolated struct DimensionIndex: Sendable {
     var places: [PlaceMarker] = []
     var creatures: [CreatureMarker] = []
     var biomeAreas: [BiomeArea] = []
-    /// Each chunk's surface biome, for the hover readout.
+    /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
+    var caveBiomes: [ChunkCoordinate: [String]] = [:]
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
@@ -33,6 +34,7 @@ nonisolated struct DimensionIndex: Sendable {
         let biomeScan = await biomes
         part.biomeAreas = biomeScan.areas
         part.biomes = biomeScan.biomes
+        part.caveBiomes = biomeScan.caveBiomes
         return part
     }
 }
