@@ -7,7 +7,8 @@ import Foundation
 nonisolated struct ScanCache: Sendable {
     /// Bump whenever what a scan saves changes, invalidating old entries.
     /// 2: one read per region fills every scan's entry (fahlman/Chunksee#53).
-    static let version = 2
+    /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
+    static let version = 3
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

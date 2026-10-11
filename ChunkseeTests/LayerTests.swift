@@ -218,14 +218,17 @@ import Testing
     }
 
     @Test func caveBiomesBelowTheSurfaceGetTheirOwnAreas() async throws {
-        // Plains at the surface (section 0) and the Deep Dark far below it (section -4).
+        // Plains at the surface (section 0), with Sulfur Caves (section -3) and the Deep Dark (section -4) below.
         let chunks = (0..<2).flatMap { x in (0..<2).map { z in
             var spec = TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
             var root = spec.nbt.compound!
             let deep = NBT.compound(["Y": .byte(-4),
                                      "block_states": .compound(["palette": .list([.string("minecraft:sculk")])]),
                                      "biomes": .compound(["palette": .list([.string("minecraft:deep_dark")])])])
-            root["sections"] = .list([deep] + (root["sections"]?.list ?? []))
+            let sulfur = NBT.compound(["Y": .byte(-3),
+                                       "block_states": .compound(["palette": .list([.string("minecraft:stone")])]),
+                                       "biomes": .compound(["palette": .list([.string("minecraft:sulfur_caves")])])])
+            root["sections"] = .list([deep, sulfur] + (root["sections"]?.list ?? []))
             spec.nbt = .compound(root)
             return spec
         } }
@@ -236,15 +239,41 @@ import Testing
         defer { session.close() }
         await session.search.waitForIndex()
         let areas = session.selectedIndex.biomeAreas
-        #expect(Set(areas.map(\.group.id)) == ["minecraft:plains", "minecraft:deep_dark"])
+        #expect(Set(areas.map(\.group.id)) == ["minecraft:plains", "minecraft:deep_dark", "minecraft:sulfur_caves"])
         #expect(areas.first { $0.group.id == "minecraft:deep_dark" }?.chunkCount == 4)
         // The surface is unchanged; the readout adds what's below.
         #expect(session.mapContent.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
-        #expect(session.mapContent.biomeDescription(at: CGPoint(x: 20.5, y: 3)) == "Plains · Deep Dark below")
+        #expect(session.mapContent.biomeDescription(at: CGPoint(x: 20.5, y: 3)) == "Plains · Deep Dark and Sulfur Caves below")
         #expect(session.mapContent.biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
         session.search.text = "biome:deep dark"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["Deep Dark"])
+    }
+
+    @Test func unfinishedChunksPlaceholderBiomesAreIgnored() async throws {
+        // Four generated chunks, and four unfinished ones beside them whose placeholder biome is
+        // desert. Only the generated chunks have a biome.
+        let generated = (0..<2).flatMap { x in (0..<2).map { z in
+            TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+        } }
+        let unfinished = (2..<4).flatMap { x in (0..<2).map { z in
+            var spec = TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+            var root = spec.nbt.compound!
+            root["Status"] = .string("minecraft:structure_starts")
+            var section = root["sections"]!.list![0].compound!
+            section["biomes"] = .compound(["palette": .list([.string("minecraft:desert")])])
+            root["sections"] = .list([.compound(section)])
+            spec.nbt = .compound(root)
+            return spec
+        } }
+        let world = try TestWorld.make(chunks: generated + unfinished)
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        #expect(session.selectedIndex.biomeAreas.map(\.group.id) == ["minecraft:plains"])
+        #expect(session.mapContent.biome(at: CGPoint(x: 40, y: 8)) == nil)   // chunk (2, 0), unfinished
     }
 }
 
