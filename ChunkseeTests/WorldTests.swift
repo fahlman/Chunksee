@@ -81,6 +81,18 @@ import Testing
         #expect(session.search.results.isEmpty)
     }
 
+    @Test func blockSearchKeepsOnlyTheRichestChunks() {
+        // More chunks with diamonds than the limit: only the richest are listed, richest first.
+        let deposits = (0..<(WorldSearch.blockResultLimit + 500)).map { i in
+            ChunkDeposit(chunk: ChunkCoordinate(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
+        }.sorted { $0.deposit.count > $1.deposit.count }
+        let index = SearchIndex.overworld(DimensionIndex(blocks: deposits))
+        let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in "" }
+        #expect(hits.count == WorldSearch.blockResultLimit)
+        #expect(hits.first?.count == WorldSearch.blockResultLimit + 500 && hits.last?.count == 501)
+        #expect(WorldSearch.search("block:emerald", in: index, players: []) { _ in "" }.isEmpty)
+    }
+
     @Test func signsAndBooksMatchTheirText() throws {
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([

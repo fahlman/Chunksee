@@ -15,7 +15,7 @@ nonisolated struct DimensionIndex: Sendable {
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
     var caveBiomes: [ChunkCoordinate: [String]] = [:]
-    /// Notable blocks per chunk, for `block:` search.
+    /// Notable blocks per chunk, for `block:` search, richest first.
     var blocks: [ChunkDeposit] = []
 
     /// Reads a dimension from its regions, through the reader's cached parts.
@@ -43,7 +43,7 @@ nonisolated struct DimensionIndex: Sendable {
         part.caveBiomes = biomeScan.caveBiomes
         part.blocks = await blocks.flatMap { region in
             region.value.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
-        }
+        }.sorted { $0.deposit.count > $1.deposit.count }
         return part
     }
 }
@@ -69,7 +69,6 @@ nonisolated struct SearchIndex: Sendable {
     var places: [Placed<PlaceMarker>] { all(\.places) }
     var creatures: [Placed<CreatureMarker>] { all(\.creatures) }
     var biomeAreas: [Placed<BiomeArea>] { all(\.biomeAreas) }
-    var blocks: [Placed<ChunkDeposit>] { all(\.blocks) }
 }
 
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
@@ -181,7 +180,7 @@ nonisolated enum WorldSearch {
         case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words) { .creature($0.group) }
         case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words) { .creature($0.group) }
         case .trade: hits = tradeHits(index.creatures, words: words)
-        case .block: hits = blockHits(index.blocks, words: words)
+        case .block: hits = blockHits(index, words: words)
         case .biome:
             // An area is named by its size, so its biome leads the row.
             hits = layerHits(index.biomeAreas, words: words, count: \.chunkCount) { .biome($0.group) }
@@ -190,13 +189,26 @@ nonisolated enum WorldSearch {
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }
 
-    /// Chunks holding a notable block matching every word, one hit per chunk and block, richest
-    /// first. The pin sits at the chunk's center; the detail gives the height range to dig.
-    private static func blockHits(_ entries: [SearchIndex.Placed<ChunkDeposit>], words: [String]) -> [SearchHit] {
-        entries.filter { !Task.isCancelled && contains($0.value.deposit.block.searchText, words: words) }.map { entry in
-            let chunk = entry.value.chunk, deposit = entry.value.deposit
-            return SearchHit(id: "\(entry.dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
-                             dimension: entry.dimension, position: CGPoint(x: chunk.x * 16 + 8, y: chunk.z * 16 + 8), y: deposit.minY,
+    /// At most this many `block:` results. Common ores are in hundreds of thousands of chunks
+    /// (diamond ore alone in about 150,000 in Ryan's Realm); listing and pinning them all made
+    /// searching take seconds and would slow every redraw of the map.
+    static let blockResultLimit = 1000
+
+    /// The richest chunks holding a notable block whose name or id matches every word, one hit per
+    /// chunk and block. The pin sits at the chunk's center; the detail gives the height range to dig.
+    private static func blockHits(_ index: SearchIndex, words: [String]) -> [SearchHit] {
+        let blocks = Set(NotableBlock.allCases.filter { contains($0.searchText, words: words) })
+        guard !blocks.isEmpty else { return [] }
+        // Each dimension's deposits are already richest first, so its first matches are its best.
+        var best: [(dimension: String, deposit: ChunkDeposit)] = []
+        for (dimension, part) in index.dimensions {
+            best += part.blocks.lazy.filter { blocks.contains($0.deposit.block) }.prefix(blockResultLimit).map { (dimension, $0) }
+        }
+        best.sort { $0.deposit.deposit.count > $1.deposit.deposit.count }
+        return best.prefix(blockResultLimit).map { dimension, entry in
+            let chunk = entry.chunk, deposit = entry.deposit
+            return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
+                             dimension: dimension, position: CGPoint(x: chunk.x * 16 + 8, y: chunk.z * 16 + 8), y: deposit.minY,
                              title: deposit.block.name,
                              detail: String(localized: "\(deposit.count) in chunk \(chunk.x), \(chunk.z) · Y \(deposit.minY) to \(deposit.maxY)"),
                              count: deposit.count)

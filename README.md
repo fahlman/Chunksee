@@ -24,7 +24,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
 8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")
    or a custom name to list every chest, barrel, shulker box, minecart and player inventory holding it,
    most items first. Choose a result to jump there; results in the current dimension show as yellow pins.
-   Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…) to search one kind
+   Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
    ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
    where its eye button keeps its pins on the map.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn
