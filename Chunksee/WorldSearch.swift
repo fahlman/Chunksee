@@ -63,9 +63,10 @@ nonisolated struct SearchIndex: Sendable {
 }
 
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
-/// `pet:`, `biome:pale garden`. On its own, a filter lists everything of its kind.
+/// `pet:`, `biome:pale garden`, or villagers' trades with `trade:mending`. On its own, a filter
+/// lists everything of its kind.
 nonisolated enum LayerFilter: String, CaseIterable, Sendable {
-    case structure, place, creature, pet, villager, biome
+    case structure, place, creature, pet, villager, trade, biome
 
     /// What the filter finds, for search suggestions.
     var prompt: String {
@@ -75,6 +76,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .creature: String(localized: "creature: named creatures, pets, villagers")
         case .pet: String(localized: "pet: tamed creatures")
         case .villager: String(localized: "villager: villagers and traders")
+        case .trade: String(localized: "trade: villagers selling or buying an item")
         case .biome: String(localized: "biome: areas of a biome")
         }
     }
@@ -86,6 +88,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .creature: CreatureGroup.named.symbol
         case .pet: CreatureGroup.pet.symbol
         case .villager: CreatureGroup.villager.symbol
+        case .trade: "arrow.left.arrow.right"
         case .biome: "leaf"
         }
     }
@@ -163,12 +166,32 @@ nonisolated enum WorldSearch {
         case .creature: hits = layerHits(index.creatures, words: words) { .creature($0.group) }
         case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words) { .creature($0.group) }
         case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words) { .creature($0.group) }
+        case .trade: hits = tradeHits(index.creatures, words: words)
         case .biome:
             // An area is named by its size, so its biome leads the row.
             hits = layerHits(index.biomeAreas, words: words, count: \.chunkCount) { .biome($0.group) }
                 .map { var hit = $0; swap(&hit.title, &hit.detail); return hit }
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
+    }
+
+    /// Villagers and traders with a trade matching every word (in an item's name or id, or an
+    /// enchantment's name), one hit per villager listing those trades, most matching trades first.
+    private static func tradeHits(_ entries: [SearchIndex.Placed<CreatureMarker>], words: [String]) -> [SearchHit] {
+        entries.compactMap { entry in
+            guard let villager = entry.value.creature.villager else { return nil }
+            let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
+            guard !matching.isEmpty else { return nil }
+            let job = villager.profession.flatMap { $0 == "minecraft:none" ? nil : ReadableName.from($0) } ?? entry.value.name
+            let title = villager.level.map { "\(job), \(TradeText.levelName($0))" } ?? job
+            let detail = matching.map { trade in
+                let offer = String(localized: "\(TradeText.describe(trade.sell)) for \(TradeText.cost(of: trade))")
+                return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
+            }.joined(separator: "; ")
+            return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group)),
+                             dimension: entry.dimension, position: entry.value.position, y: Int(entry.value.creature.y.rounded(.down)),
+                             title: title, detail: detail, count: matching.count)
+        }
     }
 
     /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
