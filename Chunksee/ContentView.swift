@@ -43,7 +43,7 @@ struct WorldView: View {
                     }
                     .toggleStyle(.switch)
                     .controlSize(.mini)
-                    .help("Show chunk and region lines with their coordinates")
+                    .help("Show block, chunk and region lines; block lines appear from 8× zoom")
                 }
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in
@@ -152,6 +152,9 @@ struct WorldView: View {
                         .searchCompletion(filter.rawValue + ":")
                 }
             }
+        }
+        .sheet(isPresented: $session.showsCoordinateSheet) {
+            GoToCoordinatesView(session: session)
         }
         .inspector(isPresented: inspectorShown) {
             Group {

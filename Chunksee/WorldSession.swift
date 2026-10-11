@@ -62,6 +62,7 @@ final class WorldSession {
     var inspector: Inspector? {
         didSet { if inspector != oldValue { playerRecords.cancel() } }
     }
+    var showsCoordinateSheet = false
     var selection: MapSelection?
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85

@@ -49,6 +49,10 @@ struct WorldCommands: Commands {
             .disabled(session?.map == nil)
         }
         CommandMenu("Navigate") {
+            Button("Go to Coordinates…") { session?.showsCoordinateSheet = true }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(session?.map == nil)
+            Divider()
             Button("World Spawn") {
                 guard let session, let spawn = session.world.level.spawnPosition else { return }
                 session.focus(on: .init(dimension: session.world.level.spawnDimension ?? "minecraft:overworld",
