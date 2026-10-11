@@ -145,7 +145,11 @@ struct WorldView: View {
             // Filters that search one sidebar layer, offered while the first word is typed.
             if !search.text.contains(":") && !search.text.contains(" ") {
                 ForEach(LayerFilter.allCases.filter { $0.rawValue.hasPrefix(search.text.lowercased()) }, id: \.self) { filter in
-                    Label(filter.prompt, systemImage: filter.symbol).searchCompletion(filter.rawValue + ":")
+                    // One line: a suggestion that wraps makes AppKit's suggestions window ask for
+                    // constraint passes until it throws, crashing the app (fahlman/Chunksee#81).
+                    Label(filter.prompt, systemImage: filter.symbol)
+                        .lineLimit(1)
+                        .searchCompletion(filter.rawValue + ":")
                 }
             }
         }
