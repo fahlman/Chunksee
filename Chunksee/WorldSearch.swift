@@ -87,7 +87,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .villager: String(localized: "villager: villagers and traders")
         case .trade: String(localized: "trade: villagers selling or buying an item")
         case .biome: String(localized: "biome: areas of a biome")
-        case .block: String(localized: "block: diamonds, ancient debris, spawners…")
+        case .block: String(localized: "block: ores and spawners")
         }
     }
 
@@ -210,7 +210,9 @@ nonisolated enum WorldSearch {
             return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
                              dimension: dimension, position: CGPoint(x: chunk.x * 16 + 8, y: chunk.z * 16 + 8), y: deposit.minY,
                              title: deposit.block.name,
-                             detail: String(localized: "\(deposit.count) in chunk \(chunk.x), \(chunk.z) · Y \(deposit.minY) to \(deposit.maxY)"),
+                             // One line: the row's second line already gives the chunk's X and Z. Hundreds of
+                             // wrapping rows appearing at once crashed the sidebar's layout (fahlman/Chunksee#81).
+                             detail: String(localized: "\(deposit.count) blocks · Y \(deposit.minY) to \(deposit.maxY)"),
                              count: deposit.count)
         }
     }

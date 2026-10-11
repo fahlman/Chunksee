@@ -71,7 +71,7 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.search.results.count == 1)
-        #expect(hit.title == "Diamond Ore" && hit.detail == "5 in chunk 1, -1 · Y 0 to 15" && hit.count == 5)
+        #expect(hit.title == "Diamond Ore" && hit.detail == "5 blocks · Y 0 to 15" && hit.count == 5)
         #expect(hit.position == CGPoint(x: 24, y: -8) && hit.source == .block(.diamond))
         session.search.text = "block:spawner"
         await session.search.waitForSearch()
