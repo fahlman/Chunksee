@@ -32,10 +32,10 @@ nonisolated struct RegionData: Sendable {
                 guard let nbt = try? file.chunkNBT(localX: x, localZ: z, skipping: keysNotNeeded) else { continue }
                 data.contents.containers += ItemContainer.containers(inChunk: nbt)
                 data.contents.signs += Sign.signs(inChunk: nbt)
-                data.structures += StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
                 data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
-                // Unfinished chunks carry a placeholder biome (plains) until they're generated.
+                // Unfinished chunks can already record planned structures and a placeholder biome.
                 if let chunk = try? Chunk(nbt: nbt), chunk.isFullyGenerated {
+                    data.structures += chunk.structureStarts.map(StructureMarker.init)
                     let coordinate = ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)
                     data.biomes[coordinate] = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id)
                     let caves = BiomeScanner.caveBiomes(of: chunk)

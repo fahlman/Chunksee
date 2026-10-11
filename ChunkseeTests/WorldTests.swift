@@ -184,7 +184,9 @@ import Testing
 
     @Test func structuresPlacesAndCreatures() throws {
         func start(_ id: String, _ x: Int32) -> NBT {
-            .compound(["id": .string(id), "ChunkX": .int(x), "ChunkZ": .int(0), "Children": .list([])])
+            .compound(["id": .string(id), "ChunkX": .int(x), "ChunkZ": .int(0),
+                       "Children": .list([.compound(["id": .string("minecraft:jigsaw"),
+                                                   "BB": .intArray([x * 16, 60, 0, x * 16 + 9, 70, 9])])])])
         }
         let village = StructureMarker(try #require(StructureStart.starts(inChunk: .compound(["structures": .compound(["starts": .compound([
             "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first))
