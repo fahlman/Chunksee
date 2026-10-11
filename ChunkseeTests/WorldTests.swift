@@ -39,6 +39,18 @@ import Testing
         #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in "" }.isEmpty)
     }
 
+    @Test func storageTotalsCountNestedItemsOncePerContainer() {
+        let shulker = item("minecraft:shulker_box", 1, components: ["minecraft:container": .list([.compound(["slot": .int(0), "item": item("minecraft:diamond", 64)])])])
+        let chunk = NBT.compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
+            .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:diamond", 10), item("minecraft:dirt", 64)])]),
+        ])])
+        let totals = StoredItem.totals(in: ItemContainer.containers(inChunk: chunk))
+        #expect(totals.map(\.name) == ["Diamond", "Dirt", "Shulker Box"])
+        #expect(totals.first == StoredItem(id: "minecraft:diamond", name: "Diamond", count: 77, containers: 2))
+        #expect(totals.last?.count == 1 && totals.last?.containers == 1)
+    }
+
     @Test func signsAndBooksMatchTheirText() throws {
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([
@@ -78,6 +90,7 @@ import Testing
         #expect(session.search.isIndexing)
         await session.search.waitForIndex()
         #expect(!session.search.isIndexing)
+        #expect(session.selectedIndex.storage.map(\.name) == ["Golden Apple"])
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
