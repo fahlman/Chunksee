@@ -138,7 +138,7 @@ import Testing
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         #expect(marker.group == .villager && marker.name == "Librarian")
-        #expect(CreatureCard.levelName(5) == "Master")
+        #expect(TradeText.levelName(5) == "Master")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
         #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)

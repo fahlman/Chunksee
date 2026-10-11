@@ -210,6 +210,36 @@ import Testing
         // A plain search still finds named creatures by name.
         #expect(search("summer").map(\.detail) == ["“Summer”"])
     }
+
+    @Test func tradeSearchFindsVillagersByWhatTheySellOrBuy() throws {
+        func item(_ id: String, _ count: Int32, _ components: [String: NBT] = [:]) -> NBT {
+            .compound(["id": .string(id), "count": .int(count), "components": .compound(components)])
+        }
+        let mendingBook = item("minecraft:enchanted_book", 1, ["minecraft:stored_enchantments": .compound(["minecraft:mending": .int(1)])])
+        let librarian = try #require(Creature(.compound([
+            "id": .string("minecraft:villager"), "Health": .float(20), "Pos": .list([.double(30), .double(64), .double(-12)]),
+            "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)]),
+            "Offers": .compound(["Recipes": .list([
+                .compound(["buy": item("minecraft:emerald", 24), "buyB": item("minecraft:book", 1), "sell": mendingBook,
+                           "uses": .int(0), "maxUses": .int(12)]),
+                .compound(["buy": item("minecraft:emerald", 9), "sell": item("minecraft:bookshelf", 1),
+                           "uses": .int(12), "maxUses": .int(12)]),
+            ])]),
+        ])))
+        let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
+        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in "" } }
+        let mending = search("trade:mending")
+        #expect(mending.map(\.title) == ["Librarian, Master"])
+        #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
+        #expect(mending.first?.position == CGPoint(x: 30, y: -12))
+        #expect(mending.first?.source == .layer(.creature(.villager)))
+        // Buying counts too, and sold-out trades say so.
+        #expect(search("trade:emerald").first?.count == 2)
+        #expect(search("trade:bookshelf").first?.detail == "1 Bookshelf for 9 Emerald (sold out)")
+        #expect(search("trade:diamond").isEmpty)
+        #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
+    }
 }
 
 @Suite struct BiomeSearchTests {

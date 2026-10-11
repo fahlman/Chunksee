@@ -53,13 +53,7 @@ nonisolated enum ItemAppearance {
         return text
     }
 
-    static func isEnchanted(_ item: ItemStack) -> Bool {
-        let enchantments = item.components?["minecraft:enchantments"]?.compound
-            ?? item.components?["minecraft:stored_enchantments"]?.compound
-        // 1.20.5–1.21.4 wrapped them in `levels`; later versions store the map directly.
-        let levels = enchantments?["levels"]?.compound ?? enchantments
-        return !(levels ?? [:]).isEmpty || !(item.components?["Enchantments"]?.list ?? []).isEmpty
-    }
+    static func isEnchanted(_ item: ItemStack) -> Bool { !item.enchantments.isEmpty }
 
     /// Items placed by slot into `count` slots starting at `first`; empty slots are `nil`.
     static func slots(_ items: [ItemStack], first: Int = 0, count: Int) -> [ItemStack?] {
