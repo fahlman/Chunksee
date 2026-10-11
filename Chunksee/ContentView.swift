@@ -125,6 +125,15 @@ struct WorldView: View {
                         }
                     }
                     .navigationTitle(session.displayName)
+                    .toolbar {
+                        ToolbarItem {
+                            ShareLink(item: SharedMapImage { [session] in session.renderMapImage() },
+                                      preview: SharePreview("Map of \(session.displayName)", image: Image(systemName: "map"))) {
+                                Label("Share Map Image", systemImage: "square.and.arrow.up")
+                            }
+                            .help("Share an image of the map as shown")
+                        }
+                    }
                     .navigationSubtitle(map.dimension.displayName)
             } else {
                 ContentUnavailableView("No Dimensions", systemImage: "questionmark.folder",

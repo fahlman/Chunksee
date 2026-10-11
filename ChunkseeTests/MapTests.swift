@@ -224,6 +224,33 @@ import Testing
         })
     }
 
+    @Test func exportedImageMatchesTheViewAtItsPixelDensity() async throws {
+        let world = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 },
+        ])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        // The one chunk fills blocks 0–15; centered on it at 1×, it covers the view's middle.
+        let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        let size = CGSize(width: 200, height: 100)
+        map.requestTiles(visibleIn: size, displayScale: 2)
+        await map.waitUntilIdle()
+        let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 2))
+        let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+        let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(decoded.width == 400 && decoded.height == 200)
+        // Read the alpha of the middle pixel (terrain) and a corner (no terrain).
+        func alpha(x: Int, y: Int) -> UInt8 {
+            var pixel = [UInt8](repeating: 0, count: 4)
+            let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(decoded, in: CGRect(x: -x, y: y - decoded.height + 1, width: decoded.width, height: decoded.height))
+            return pixel[3]
+        }
+        #expect(alpha(x: 200, y: 100) == 255)
+        #expect(alpha(x: 2, y: 2) == 0)
+    }
+
     @Test func fullResolutionOnlyWhenRegionsAreLargeOnScreen() throws {
         let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
