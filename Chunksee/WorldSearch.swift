@@ -5,6 +5,8 @@ import ChunkseeKit
 /// One dimension's part of the world index: what search, the sidebar and the map show.
 nonisolated struct DimensionIndex: Sendable {
     var containers: [ItemContainer] = []
+    /// Totals of the items in `containers`, most first.
+    var storage: [StoredItem] = []
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
     var places: [PlaceMarker] = []
@@ -24,6 +26,7 @@ nonisolated struct DimensionIndex: Sendable {
             part.signs += region.value.signs
         }
         guard !Task.isCancelled else { return part }
+        part.storage = StoredItem.totals(in: part.containers)
         async let structures = StructureScanner.scan(reader)
         async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
         async let creatures = CreatureScanner.scan(reader)
