@@ -65,6 +65,32 @@ import Testing
 }
 
 @Suite struct ScanCacheTests {
+    @Test func previousStructureCacheIsRebuiltWithoutUnplacedMarkers() async throws {
+        let world = try TestWorld.make(chunks: StructureTestWorld.chunks())
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let region = RegionCoordinate(x: -1, z: 0)
+        let cache = ScanCache(directory: world.appendingPathComponent("cache"))
+        let fingerprint = ScanCache.fingerprint([
+            dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
+            dimension.entitiesDirectory.appendingPathComponent("r.-1.0.mca"),
+        ])
+        let oldMarker = StructureMarker(StructureTests().start("minecraft:jungle_pyramid", chunk: (-17, 4), pieces: [
+            ("minecraft:tejp", [-272, 64, 64, -261, 73, 78]),
+        ]))
+        let oldFile = try #require(cache.directory).appendingPathComponent("structures.-1.0.\(fingerprint).v3")
+        try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let data = try encoder.encode([oldMarker])
+        try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        #expect(await reader.structures(region).isEmpty)
+        let saved: [StructureMarker]? = cache.load("structures", region: region, fingerprint: fingerprint)
+        #expect(saved == [])
+        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+    }
+
     @Test func readsOnceAndAgainWhenASourceChanges() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ScanCacheTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -43,7 +43,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.19.0`, resolved to `0.19.0` (`3688f99b8f1414b4153970e21a19debd8b1e38e7`).
+  minor" from `0.21.1`, resolved to `0.21.1` (`1e859e948fd72a334f325e8a2e8e646577f5ee7c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -94,9 +94,14 @@ native history and restoration state.
 Run from the repository root:
 
 ```sh
-xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' build
-xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' test
+./script/build_and_run.sh --verify
+xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' -configuration Release build
+xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' -configuration Release test ENABLE_TESTABILITY=YES
 ```
+
+Ryan requires Release for builds and launches unless he specifically requests Debug. The Codex
+Run action uses `script/build_and_run.sh`, which defaults to Release and quits through AppKit
+before rebuilding and opening the new bundle. `--debug` explicitly selects Debug.
 
 - **Scheme:** `Chunksee` is shared and tracked. It builds the app and runs `ChunkseeTests`
   (Swift Testing).

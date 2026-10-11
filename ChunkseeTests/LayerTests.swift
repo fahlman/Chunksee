@@ -7,7 +7,7 @@ import Testing
 
 @Suite struct StructureTests {
     /// A structure start built the way chunks store it, read through ChunkseeKit's public API.
-    func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])]) -> StructureStart {
+    func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])] = [("piece", [0, 60, 0, 9, 70, 9])]) -> StructureStart {
         let nbt = NBT.compound(["structures": .compound(["starts": .compound([id: .compound([
             "id": .string(id), "ChunkX": .int(Int32(chunk.0)), "ChunkZ": .int(Int32(chunk.1)),
             "Children": .list(.compound, pieces.map { .compound(["id": .string($0.0), "BB": .intArray($0.1.map { Int32($0) })]) }),
@@ -24,7 +24,7 @@ import Testing
         #expect(StructureGroup.stronghold.isShownByDefault)
         let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
-            StructureMarker(start($0, chunk: (0, 0), pieces: [])).name
+            StructureMarker(start($0, chunk: (0, 0))).name
         }
         #expect(names == ["Plains Village", "Cold Ocean Ruin", "Ocean Ruined Portal", "Beached Shipwreck", "Ancient City"])
     }
@@ -36,8 +36,6 @@ import Testing
         ]))
         #expect(marker.bounds == CGRect(x: -4900, y: -830, width: 75, height: 21))
         #expect(marker.portalRoom == CGPoint(x: -4894.5, y: -822))
-        // No pieces: the start chunk stands in.
-        #expect(StructureMarker(start("minecraft:igloo", chunk: (2, -3), pieces: [])).bounds == CGRect(x: 32, y: -48, width: 16, height: 16))
     }
 
     @Test func scannerFindsStructuresAcrossRegions() async throws {
@@ -63,6 +61,59 @@ import Testing
         let found = await StructureScanner.scan(RegionReader(dimension: dimension, cache: .off))
         #expect(found.map(\.structureID).sorted() == ["minecraft:stronghold", "minecraft:village_plains"])
         #expect(found.first { $0.group == .stronghold }?.bounds == CGRect(x: 640, y: -16, width: 10, height: 10))
+    }
+
+    @Test(arguments: ["Status", "status"])
+    func unbuiltStructuresAreAbsentFromMarkersAndSearch(_ statusKey: String) async throws {
+        let world = try TestWorld.make(chunks: StructureTestWorld.chunks(statusKey: statusKey))
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        // A placed temple remains visible even in taiga, and a stronghold has no HPos field.
+        #expect(session.selectedIndex.structures.map(\.structureID).sorted() == ["minecraft:jungle_pyramid", "minecraft:stronghold"])
+        #expect(session.mapContent.structures.count == 2)
+        #expect(!session.selectedIndex.structures.contains { $0.position == CGPoint(x: -266, y: 71.5) })
+        session.search.text = "structure: jungle pyramid"
+        await session.search.waitForSearch()
+        #expect(session.search.results.count == 1)
+        #expect(session.search.results.first?.position == CGPoint(x: 37, y: 5))
+    }
+}
+
+/// The unplaced start from the upgraded taiga chunk, alongside placed and unfinished structures.
+enum StructureTestWorld {
+    static func chunks(statusKey: String = "Status") -> [TestWorld.ChunkSpec] {
+        func chunk(_ x: Int, _ z: Int, id: String, pieces: [NBT], finished: Bool = true) -> TestWorld.ChunkSpec {
+            var spec = TestWorld.chunk(x: x, z: z, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+            var root = spec.nbt.compound!
+            root.removeValue(forKey: "Status")
+            root[statusKey] = .string(finished ? "minecraft:full" : "minecraft:structure_starts")
+            var section = root["sections"]!.list![0].compound!
+            section["biomes"] = .compound(["palette": .list([.string("minecraft:taiga")])])
+            root["sections"] = .list([.compound(section)])
+            root["structures"] = .compound(["starts": .compound([id: .compound([
+                "id": .string(id), "ChunkX": .int(Int32(x)), "ChunkZ": .int(Int32(z)), "Children": .list(pieces),
+            ])])])
+            spec.nbt = .compound(root)
+            return spec
+        }
+        func piece(_ id: String, x: Int32, z: Int32, height: Int32? = nil) -> NBT {
+            var fields: [String: NBT] = ["id": .string(id), "BB": .intArray([x, 64, z, x + 9, 73, z + 9])]
+            if let height { fields["HPos"] = .int(height) }
+            return .compound(fields)
+        }
+        return [
+            chunk(-17, 4, id: "minecraft:jungle_pyramid", pieces: [.compound([
+                "id": .string("minecraft:tejp"), "BB": .intArray([-272, 64, 64, -261, 73, 78]), "HPos": .int(-1),
+                "placedMainChest": .byte(0), "placedHiddenChest": .byte(0), "placedTrap1": .byte(0), "placedTrap2": .byte(0),
+            ])]),
+            chunk(2, 0, id: "minecraft:jungle_pyramid", pieces: [piece("minecraft:tejp", x: 32, z: 0, height: 68)]),
+            chunk(3, 0, id: "minecraft:stronghold", pieces: [piece("minecraft:shstart", x: 48, z: 0)]),
+            chunk(4, 0, id: "minecraft:village_taiga", pieces: [piece("minecraft:jigsaw", x: 64, z: 0)], finished: false),
+            chunk(5, 0, id: "minecraft:igloo", pieces: []),
+        ]
     }
 }
 
