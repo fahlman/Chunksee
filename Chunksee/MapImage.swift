@@ -1,16 +1,14 @@
+import AppKit
 import ChunkseeKit
 import CoreTransferable
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A PNG of the map as shown, for File ▸ Export Map Image….
-nonisolated struct MapImage: Transferable, Sendable {
+/// A PNG of the map as shown, to copy or share. The sandbox allows only read-only access to
+/// files the user picks, so there's no save panel (Ryan's decision, fahlman/Chunksee#89).
+nonisolated struct MapImage: Sendable {
     let data: Data
-
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .png) { $0.data }
-    }
 
     /// Renders the map's current view, with the same overlays, at `scale` pixels per point.
     /// Only regions already drawn on screen appear, so it matches what the user sees.
@@ -29,5 +27,34 @@ nonisolated struct MapImage: Transferable, Sendable {
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return MapImage(data: data as Data)
+    }
+}
+
+/// The map's current view, rendered only when it's shared.
+nonisolated struct SharedMapImage: Transferable {
+    let render: @MainActor @Sendable () -> MapImage?
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .png) { shared in
+            guard let image = await shared.render() else { throw CocoaError(.fileWriteUnknown) }
+            return image.data
+        }
+    }
+}
+
+extension WorldSession {
+    /// The selected dimension's map as currently shown, or `nil` before it's laid out.
+    func renderMapImage() -> MapImage? {
+        guard let map, let shown = map.shownSize else { return nil }
+        return MapImage.render(map, content: mapContent, portalStatus: { [weak self] in self?.linkStatus(for: $0) },
+                               size: shown.size, scale: shown.displayScale)
+    }
+
+    /// Puts the map image on the clipboard. SwiftUI on macOS 27 has no API for writing to the
+    /// pasteboard, so this is the one place it uses AppKit's.
+    func copyMapImage() {
+        guard let image = renderMapImage() else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(image.data, forType: .png)
     }
 }

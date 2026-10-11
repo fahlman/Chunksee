@@ -63,8 +63,6 @@ final class WorldSession {
         didSet { if inspector != oldValue { playerRecords.cancel() } }
     }
     var selection: MapSelection?
-    /// Set by File ▸ Export Map Image…; the world's window renders the image and asks where to save it.
-    var isMapExportRequested = false
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
