@@ -30,6 +30,12 @@ struct WorldView: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .help("Color the map by how long players spent near each chunk")
+                    Toggle(isOn: $visibility.showsGrid) {
+                        Label("Grid", systemImage: "grid")
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .help("Show chunk and region lines with their coordinates")
                 }
                 Section("Dimensions") {
                     ForEach(session.dimensions, id: \.id) { dimension in

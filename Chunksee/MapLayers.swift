@@ -116,6 +116,8 @@ final class LayerVisibility {
     /// None at first: outlining every biome would cover the map.
     var biomes: Set<BiomeGroup> { didSet { save(biomes.map(\.id), Keys.biomes) } }
     var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
+    /// Chunk and region lines; off at first.
+    var showsGrid: Bool { didSet { defaults.set(showsGrid, forKey: Keys.showsGrid) } }
 
     private let defaults: UserDefaults
 
@@ -125,6 +127,7 @@ final class LayerVisibility {
         static let creatures = "shownCreatureGroups"
         static let biomes = "shownBiomeGroups"
         static let hiddenPlayers = "hiddenPlayers"
+        static let showsGrid = "showsGrid"
     }
 
     init(defaults: UserDefaults) {
@@ -138,6 +141,7 @@ final class LayerVisibility {
         creatures = saved(Keys.creatures, default: \.isShownByDefault)
         biomes = Set((defaults.stringArray(forKey: Keys.biomes) ?? []).map(BiomeGroup.init(id:)))
         hiddenPlayers = Set((defaults.stringArray(forKey: Keys.hiddenPlayers) ?? []).compactMap(UUID.init(uuidString:)))
+        showsGrid = defaults.bool(forKey: Keys.showsGrid)
     }
 
     private func save(_ names: [String], _ key: String) {

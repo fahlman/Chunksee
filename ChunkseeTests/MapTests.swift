@@ -5,6 +5,37 @@ import SwiftUI
 import Testing
 @testable import Chunksee
 
+@Suite struct MapGridTests {
+    let size = CGSize(width: 800, height: 600)
+
+    @Test func chunkLinesWhenTheyreFarEnoughApart() {
+        // At 1 point per block, chunks are 16 points apart: lines, but too close to label.
+        let grid = MapGrid(viewport: MapViewport(center: .zero, scale: 1), size: size)
+        #expect(grid.vertical.count == 51)                       // X -400 through 400, every 16 blocks
+        #expect(grid.vertical.first?.block == -400 && grid.vertical.last?.block == 400)
+        let origin = grid.vertical.first { $0.block == 0 }
+        #expect(origin?.position == 400 && origin?.isRegionEdge == true)
+        #expect(!grid.labelsChunks && grid.labelsRegions)
+        #expect(grid.horizontal.first?.block == -288)            // Z -300 rounds up to the next chunk edge
+    }
+
+    @Test func onlyRegionLinesWhenZoomedOutAndChunkLabelsWhenZoomedIn() {
+        let far = MapGrid(viewport: MapViewport(center: .zero, scale: 0.25), size: size)
+        #expect(far.vertical.map(\.block) == [-1536, -1024, -512, 0, 512, 1024, 1536])
+        #expect(far.vertical.allSatisfy(\.isRegionEdge) && far.labelsRegions && !far.labelsChunks)
+        let near = MapGrid(viewport: MapViewport(center: CGPoint(x: 8, y: 8), scale: 4), size: size)
+        #expect(near.labelsChunks)
+        #expect(near.vertical.map(\.block) == [-80, -64, -48, -32, -16, 0, 16, 32, 48, 64, 80, 96])
+    }
+
+    @Test func theGridSettingIsRemembered() {
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        #expect(!LayerVisibility(defaults: defaults).showsGrid)
+        LayerVisibility(defaults: defaults).showsGrid = true
+        #expect(LayerVisibility(defaults: defaults).showsGrid)
+    }
+}
+
 @Suite struct MapAccessibilityTests {
     @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() {
         var content = MapContent()
