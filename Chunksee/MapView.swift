@@ -98,6 +98,10 @@ struct MapView: View {
     /// Zoom buttons and shortcuts step by a factor of two.
     private static let zoomStep: CGFloat = 2
 
+    private var zoomPercentage: String {
+        Double(map.viewport.scale).formatted(.percent.precision(.fractionLength(0...2)))
+    }
+
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
@@ -138,7 +142,7 @@ struct MapView: View {
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
-        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(Double(map.viewport.scale).formatted(.percent.precision(.fractionLength(0))))"))
+        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(zoomPercentage)"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
@@ -164,6 +168,12 @@ struct MapView: View {
                 Button("Actual Size", systemImage: "1.magnifyingglass") { map.viewport.scale = 1 }
                 Button("Zoom In", systemImage: "plus.magnifyingglass") { map.zoom(by: Self.zoomStep) }
                     .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
+                Text(zoomPercentage)
+                    .monospacedDigit()
+                    .frame(minWidth: 56)
+                    .accessibilityLabel("Zoom")
+                    .accessibilityValue(Text(zoomPercentage))
+                    .help("Current map zoom")
             }
         }
     }
@@ -287,16 +297,23 @@ struct MapView: View {
         }
     }
 
-    /// Faint chunk lines, brighter region lines, and their block coordinates along the top and
-    /// left edges.
+    /// Block lines stay subtle; chunk and region boundaries stand out. Label only the larger
+    /// boundaries so closely spaced block lines don't crowd the coordinates.
     private static func drawGrid(_ grid: MapGrid, in context: GraphicsContext, size: CGSize) {
+        func stroke(_ path: Path, line: MapGrid.Line) {
+            let width: CGFloat = line.isRegionEdge ? 1.5 : line.isChunkEdge ? 1 : 0.5
+            let opacity = line.isRegionEdge ? 0.7 : line.isChunkEdge ? 0.4 : 0.2
+            // A dark edge keeps the lines visible over snow as well as darker terrain.
+            context.stroke(path, with: .color(.black.opacity(opacity)), lineWidth: width + 0.5)
+            context.stroke(path, with: .color(.white.opacity(opacity)), lineWidth: width)
+        }
         for line in grid.vertical {
             let path = Path { $0.move(to: CGPoint(x: line.position, y: 0)); $0.addLine(to: CGPoint(x: line.position, y: size.height)) }
-            context.stroke(path, with: .color(.white.opacity(line.isRegionEdge ? 0.7 : 0.3)), lineWidth: line.isRegionEdge ? 1.5 : 0.5)
+            stroke(path, line: line)
         }
         for line in grid.horizontal {
             let path = Path { $0.move(to: CGPoint(x: 0, y: line.position)); $0.addLine(to: CGPoint(x: size.width, y: line.position)) }
-            context.stroke(path, with: .color(.white.opacity(line.isRegionEdge ? 0.7 : 0.3)), lineWidth: line.isRegionEdge ? 1.5 : 0.5)
+            stroke(path, line: line)
         }
         func label(_ value: Int, at point: CGPoint) {
             let text = context.resolve(Text(value, format: .number.grouping(.never)).font(.caption2.monospacedDigit()).foregroundStyle(.white))

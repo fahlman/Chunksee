@@ -28,6 +28,18 @@ import Testing
         #expect(near.vertical.map(\.block) == [-80, -64, -48, -32, -16, 0, 16, 32, 48, 64, 80, 96])
     }
 
+    @Test func blockLinesFromEightTimesZoomWithOnlyChunkAndRegionEdgesLabeled() {
+        // At 8 points per block, every block gets a line; chunk and region edges are marked.
+        let grid = MapGrid(viewport: MapViewport(center: CGPoint(x: 8, y: 8), scale: 8), size: size)
+        #expect(grid.vertical.map(\.block) == Array(-42...58))   // X -42 through 58 across 800 points
+        #expect(grid.vertical.filter(\.isChunkEdge).map(\.block) == [-32, -16, 0, 16, 32, 48])
+        #expect(grid.vertical.first { $0.block == 0 }?.isRegionEdge == true)
+        #expect(grid.vertical.filter { grid.isLabeled($0) }.map(\.block) == [-32, -16, 0, 16, 32, 48])
+        // Just below 8×, only chunk lines.
+        let chunks = MapGrid(viewport: MapViewport(center: CGPoint(x: 8, y: 8), scale: 7.9), size: size)
+        #expect(chunks.vertical.allSatisfy { $0.isChunkEdge })
+    }
+
     @Test func theGridSettingIsRemembered() {
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
         #expect(!LayerVisibility(defaults: defaults).showsGrid)
