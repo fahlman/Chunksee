@@ -23,6 +23,7 @@ nonisolated enum BiomeColors {
         "minecraft:grove": 0x8FB8A9, "minecraft:snowy_slopes": 0xC4C4C4, "minecraft:frozen_peaks": 0xB0B3F0,
         "minecraft:jagged_peaks": 0xDCDCC8, "minecraft:stony_peaks": 0x7B8F74, "minecraft:mushroom_fields": 0xFF00FF,
         "minecraft:dripstone_caves": 0x7B6B58, "minecraft:lush_caves": 0x3F8F3F, "minecraft:deep_dark": 0x0A1A1F,
+        "minecraft:sulfur_caves": 0xC8B43C,
         "minecraft:nether_wastes": 0xBF3B3B, "minecraft:soul_sand_valley": 0x5E3830, "minecraft:crimson_forest": 0xDD0808,
         "minecraft:warped_forest": 0x49907B, "minecraft:basalt_deltas": 0x403636, "minecraft:the_end": 0x8080FF,
         "minecraft:end_highlands": 0xB5B5E0, "minecraft:end_midlands": 0x9A9AD0, "minecraft:end_barrens": 0x7070B0,

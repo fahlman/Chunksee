@@ -34,7 +34,8 @@ nonisolated struct RegionData: Sendable {
                 data.contents.signs += Sign.signs(inChunk: nbt)
                 data.structures += StructureStart.starts(inChunk: nbt).map(StructureMarker.init)
                 data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
-                if let chunk = try? Chunk(nbt: nbt) {
+                // Unfinished chunks carry a placeholder biome (plains) until they're generated.
+                if let chunk = try? Chunk(nbt: nbt), chunk.isFullyGenerated {
                     let coordinate = ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)
                     data.biomes[coordinate] = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id)
                     let caves = BiomeScanner.caveBiomes(of: chunk)

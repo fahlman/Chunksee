@@ -41,7 +41,9 @@ nonisolated enum BiomeScanner {
     /// Areas smaller than this are slivers along borders, not places worth visiting.
     static let minimumChunks = 4
     /// Biomes that generate only underground.
-    static let caveBiomeIDs: Set<String> = ["minecraft:deep_dark", "minecraft:lush_caves", "minecraft:dripstone_caves"]
+    static let caveBiomeIDs: Set<String> = [
+        "minecraft:deep_dark", "minecraft:lush_caves", "minecraft:dripstone_caves", "minecraft:sulfur_caves",
+    ]
 
     @concurrent
     static func scan(_ reader: RegionReader) async -> BiomeScan {
