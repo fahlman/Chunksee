@@ -250,6 +250,32 @@ enum StructureTestWorld {
     }
 }
 
+@Suite struct SpawnerTests {
+    @Test func spawnersAreListedByTheirMobAndSearchable() async throws {
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        guard case .compound(var chunk) = spec.nbt else { Issue.record("not a compound"); return }
+        chunk["block_entities"] = .list([
+            .compound(["id": .string("minecraft:mob_spawner"), "x": .int(3), "y": .int(12), "z": .int(5),
+                       "SpawnData": .compound(["entity": .compound(["id": .string("minecraft:zombie")])])]),
+            .compound(["id": .string("minecraft:mob_spawner"), "x": .int(9), "y": .int(4), "z": .int(9), "SpawnData": .compound([:])]),
+        ])
+        spec.nbt = .compound(chunk)
+        let world = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let spawners = session.selectedIndex.places.filter { $0.group == .spawner }
+        #expect(spawners.map(\.name).sorted() == ["Empty Spawner", "Zombie Spawner"])
+        #expect(spawners.first { $0.mob == "minecraft:zombie" }?.position == CGPoint(x: 3.5, y: 5.5))
+        #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
+        session.search.text = "place:zombie spawner"
+        await session.search.waitForSearch()
+        #expect(session.search.results.map(\.detail) == ["Zombie Spawner"])
+    }
+}
+
 @Suite struct BiomeAreaTests {
     @Test func neighboringChunksJoinAndEveryAreaIsKept() {
         var biomes: [ChunkCoordinate: String] = [:]

@@ -6,6 +6,7 @@ import ChunkseeKit
 nonisolated struct SearchContents: Codable, Sendable {
     var containers: [ItemContainer] = []
     var signs: [Sign] = []
+    var spawners: [Spawner] = []
 }
 
 /// Everything the app's scans take from one region, read in a single pass over its chunks and its
@@ -34,6 +35,7 @@ nonisolated struct RegionData: Sendable {
                 guard let nbt = try? file.chunkNBT(localX: x, localZ: z, skipping: keysNotNeeded) else { continue }
                 data.contents.containers += ItemContainer.containers(inChunk: nbt)
                 data.contents.signs += Sign.signs(inChunk: nbt)
+                data.contents.spawners += Spawner.spawners(inChunk: nbt)
                 data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
                 // Unfinished chunks can already record planned structures and a placeholder biome.
                 if let chunk = try? Chunk(nbt: nbt), chunk.isFullyGenerated {

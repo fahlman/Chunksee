@@ -52,9 +52,12 @@ struct MapContent {
     func accessibleLocations(viewport: MapViewport, size: CGSize) -> [AccessibleMapLocation] {
         var locations: [AccessibleMapLocation] = []
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
-        func add(_ id: String, _ name: String, _ position: CGPoint, selection: MapSelection? = nil) {
+        // Ids and names are built only for locations in view: a world can have thousands of
+        // spawners and other places off screen.
+        func add(_ id: @autoclosure () -> String, _ name: @autoclosure () -> String, _ position: CGPoint,
+                 selection: @autoclosure () -> MapSelection? = nil) {
             guard bounds.contains(viewport.viewPoint(for: position, in: size)) else { return }
-            locations.append(.init(id: id, name: name, position: position, selection: selection))
+            locations.append(.init(id: id(), name: name(), position: position, selection: selection()))
         }
         for marker in structures { add("structure-" + marker.id, marker.name, marker.position) }
         for marker in places where viewport.scale >= 0.125 || marker.group == .portal {
@@ -287,10 +290,20 @@ struct MapView: View {
         for structure in content.structures {
             Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
         }
+        // Each badge's symbol is resolved once per draw rather than once per marker: thousands of
+        // spawners can be in view at once.
+        var symbols: [String: GraphicsContext.ResolvedImage] = [:]
+        func symbol(_ name: String) -> GraphicsContext.ResolvedImage {
+            if let image = symbols[name] { return image }
+            var image = context.resolve(Image(systemName: name))
+            image.shading = .color(.white)
+            symbols[name] = image
+            return image
+        }
         // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
         for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
             let point = map.viewport.viewPoint(for: place.position, in: size)
-            Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds)
+            Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
             if let portal = place.portal {
                 Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
             }
@@ -300,7 +313,7 @@ struct MapView: View {
             let selected = content.selection == .creature(creature)
             guard map.viewport.scale >= 0.25 || selected else { continue }
             Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
-                      scale: map.viewport.scale, in: context, bounds: bounds)
+                      scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
         }
         for hit in content.hits {
             guard let position = hit.position else { continue }
@@ -312,7 +325,7 @@ struct MapView: View {
                       in: context, bounds: bounds)
         }
         for place in content.savedPlaces {
-            Self.drawBadge(symbol: "mappin", color: .accentColor, radius: 8, name: place.name,
+            Self.drawBadge(symbol: symbol("mappin"), color: .accentColor, radius: 8, name: place.name,
                            showsName: map.viewport.scale >= 2, opacity: 1, selected: false,
                            at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds)
         }
@@ -392,31 +405,34 @@ struct MapView: View {
     }
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
-    private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
-        drawBadge(symbol: place.group.symbol, color: Color(hex: place.group.color), radius: place.group == .portal ? 8 : 6, name: place.name,
+    private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect,
+                             symbol: (String) -> GraphicsContext.ResolvedImage) {
+        drawBadge(symbol: symbol(place.group.symbol), color: Color(hex: place.group.color), radius: place.group == .portal ? 8 : 6, name: place.name,
                   showsName: scale >= 2, opacity: place.isClaimed ? 0.65 : 1, selected: false, at: point, in: context, bounds: bounds)
     }
 
     /// Creatures look like places; a selected one is larger and always named.
-    private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
-        drawBadge(symbol: creature.group.symbol, color: Color(hex: creature.group.color), radius: selected ? 9 : 6, name: creature.name,
+    private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext,
+                             bounds: CGRect, symbol: (String) -> GraphicsContext.ResolvedImage) {
+        drawBadge(symbol: symbol(creature.group.symbol), color: Color(hex: creature.group.color), radius: selected ? 9 : 6, name: creature.name,
                   showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
     }
 
-    private static func drawBadge(symbol: String, color: Color, radius: CGFloat, name: String, showsName: Bool, opacity: Double,
+    /// The symbol, color and name are evaluated only for a badge in view, and the name only when it's shown.
+    private static func drawBadge(symbol: @autoclosure () -> GraphicsContext.ResolvedImage, color: @autoclosure () -> Color,
+                                  radius: CGFloat, name: @autoclosure () -> String, showsName: Bool, opacity: Double,
                                   selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
+        let color = color()
         var context = context
         context.opacity = opacity
         let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
         context.fill(circle, with: .color(color))
         context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
-        var image = context.resolve(Image(systemName: symbol))
-        image.shading = .color(.white)
         let side = radius * 1.2
-        context.draw(image, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        context.draw(symbol(), in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
         guard showsName else { return }
-        let text = context.resolve(Text(name).font(.caption2.weight(.medium)).foregroundStyle(.white))
+        let text = context.resolve(Text(name()).font(.caption2.weight(.medium)).foregroundStyle(.white))
         let size = text.measure(in: CGSize(width: 200, height: 30))
         let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + radius + 2, width: size.width + 8, height: size.height + 2)
         context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
