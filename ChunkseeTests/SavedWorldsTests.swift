@@ -17,6 +17,7 @@ import Testing
         try world("saves/Survival", name: "Survival", lastPlayed: 1_700_000_000_000, in: root)
         try world("vanilla/release/saves/Ryan's Realm", name: "Ryan's Realm", lastPlayed: 1_790_000_000_000, in: root)
         try world("vanilla/aprilfools/blue/saves/blue", name: "Survival", lastPlayed: 1_750_000_000_000, in: root)
+        try world("vanilla/aprilfools/blue/saves/blue copy", name: "Survival", lastPlayed: 1_740_000_000_000, in: root)
         try world("vanilla/release/backups/Ryan's Realm-old", name: "Ryan's Realm", lastPlayed: 1_600_000_000_000, in: root)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let names = PlayerNames(defaults: defaults)
@@ -25,9 +26,10 @@ import Testing
         await names.chooseMinecraftFolder(root)
         worlds.reload()
         await worlds.waitForReload()
-        #expect(worlds.all.map(\.name) == ["Ryan's Realm", "Survival", "Survival"])
-        // Worlds sharing a name show their installation.
-        #expect(worlds.all.map(worlds.title(for:)) == ["Ryan's Realm", "Survival (vanilla/aprilfools/blue)", "Survival (Minecraft folder)"])
+        #expect(worlds.all.map(\.name) == ["Ryan's Realm", "Survival", "Survival", "Survival"])
+        // Worlds sharing a name show their installation, or their folder within the same installation.
+        #expect(worlds.all.map(worlds.title(for:)) == ["Ryan's Realm", "Survival (vanilla/aprilfools/blue/saves/blue)",
+                                                       "Survival (vanilla/aprilfools/blue/saves/blue copy)", "Survival (Minecraft folder)"])
         names.forgetMinecraftFolder()
         worlds.reload()
         #expect(worlds.all.isEmpty)
