@@ -192,6 +192,13 @@ final class WorldSession {
 
     var displayName: String { world.level.name ?? url.lastPathComponent }
 
+    /// The biome groups the selected dimension can have, once its part of the index is read; none
+    /// before then, so the sidebar doesn't list biomes as missing while it's still looking.
+    var possibleBiomes: [BiomeGroup] {
+        guard let dimension = selectedDimension, search.index.dimensions[dimension.id] != nil else { return [] }
+        return dimension.vanillaBiomes.map(BiomeGroup.init(id:))
+    }
+
     /// A dimension's name as players know it, by id.
     func dimensionName(_ id: String) -> String {
         dimensions.first { $0.id == id }?.displayName ?? id

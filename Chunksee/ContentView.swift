@@ -48,8 +48,9 @@ struct WorldView: View {
                              shown: $visibility.places) { SidebarItem.place($0.id) }
                 LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
                              shown: $visibility.creatures) { SidebarItem.creature($0.id) }
+                // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
                 LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
-                             shown: $visibility.biomes) { SidebarItem.biome($0.id) }
+                             shown: $visibility.biomes, allGroups: session.possibleBiomes) { SidebarItem.biome($0.id) }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
                         ForEach(session.inGameMaps, id: \.id) { map in

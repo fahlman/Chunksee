@@ -212,6 +212,8 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         #expect(session.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
+        // Once read, the sidebar can list every Overworld biome, found or not.
+        #expect(session.possibleBiomes.count == 56 && session.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
         #expect(session.mapContent.creatures.map(\.name) == ["Summer"])
         let summer = try #require(session.mapContent.creatures.first)

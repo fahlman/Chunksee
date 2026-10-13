@@ -38,32 +38,39 @@ extension CreatureMarker: MapLayerMarker {
 /// A sidebar section for one layer (structures, places, creatures or biomes). Groups are listed
 /// by name; each expands into a list, nearest to `origin` first, whose rows are tagged with `item`
 /// for the sidebar's selection. With `shown`, each group can be shown or hidden on the map.
+/// `allGroups` are listed even when they have no markers, with a count of 0.
 struct LayerSection<Marker: MapLayerMarker>: View {
     let title: LocalizedStringKey
     let markers: [Marker]
     let origin: CGPoint
     var shown: Binding<Set<Marker.Group>>?
+    var allGroups: [Marker.Group] = []
     let item: (Marker) -> SidebarItem
     @State private var isExpanded = true
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
-        if !byGroup.isEmpty {
+        let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name < $1.name }
+        if !groups.isEmpty {
             Section(title, isExpanded: $isExpanded) {
-                ForEach(byGroup.keys.sorted { $0.name < $1.name }, id: \.self) { group in
-                    DisclosureGroup {
-                        ForEach(nearestFirst(byGroup[group] ?? [])) { marker in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(marker.name)
-                                Text(Coordinates.text(marker.position))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                ForEach(groups, id: \.self) { group in
+                    if byGroup[group] == nil {
+                        row(group, count: 0)
+                    } else {
+                        DisclosureGroup {
+                            ForEach(nearestFirst(byGroup[group] ?? [])) { marker in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(marker.name)
+                                    Text(Coordinates.text(marker.position))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .tag(item(marker))
+                                .help("Show on the map")
                             }
-                            .tag(item(marker))
-                            .help("Show on the map")
+                        } label: {
+                            row(group, count: byGroup[group]?.count ?? 0)
                         }
-                    } label: {
-                        row(group, count: byGroup[group]?.count ?? 0)
                     }
                 }
             }
