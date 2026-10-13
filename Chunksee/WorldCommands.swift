@@ -85,7 +85,7 @@ struct WorldCommands: Commands {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Toggle(dimension.displayName, isOn: Binding {
                             session.selectedDimensionID == dimension.id
-                        } set: { if $0 { session.selectedDimensionID = dimension.id } })
+                        } set: { if $0 { session.openDimension(dimension.id) } })
                     }
                 }
             }

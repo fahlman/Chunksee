@@ -15,6 +15,17 @@ struct RememberedViews {
     /// The dimension that was showing when the world was last left.
     var lastDimension: String? { defaults.dictionary(forKey: key)?["dimension"] as? String }
 
+    func relocate(to world: URL) {
+        let destination = RememberedViews(world: world, defaults: defaults)
+        guard destination.key != key, let saved = defaults.dictionary(forKey: key) else { return }
+        var merged = defaults.dictionary(forKey: destination.key) ?? [:]
+        let views = (merged["views"] as? [String: [Double]] ?? [:]).merging(saved["views"] as? [String: [Double]] ?? [:]) { _, current in current }
+        merged.merge(saved) { _, current in current }
+        merged["views"] = views
+        defaults.set(merged, forKey: destination.key)
+        defaults.removeObject(forKey: key)
+    }
+
     func viewport(for dimension: String) -> MapViewport? {
         guard let view = (defaults.dictionary(forKey: key)?["views"] as? [String: [Double]])?[dimension], view.count == 3 else { return nil }
         return MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])

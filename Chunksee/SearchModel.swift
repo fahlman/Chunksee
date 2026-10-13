@@ -22,27 +22,21 @@ final class SearchModel {
     var players: [PlayerInfo] {
         didSet { revision += 1; updateQueries() }
     }
-    private(set) var index = SearchIndex() {
-        didSet {
-            revision += 1
-            portals = index.dimensions.mapValues { $0.places.compactMap(\.portal) }
-            updateQueries()
-        }
-    }
-    private(set) var portals: [String: [NetherPortal]] = [:]
-    private(set) var isIndexing = false
+    var index: SearchIndex { indexStore.index }
+    var portals: [String: [NetherPortal]] { indexStore.portals }
+    var isIndexing: Bool { indexStore.isIndexing }
     private(set) var isSearching = false
     private var queryResults: [String: [SearchHit]] = [:]
     private var displayedQuery = ""
     var isActive: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
     var results: [SearchHit] { isActive ? queryResults[displayedQuery] ?? [] : [] }
 
-    private let readers: [RegionReader]
+    let indexStore: WorldIndexStore
+    private let ownsIndex: Bool
     private let names: PlayerNames
     private let singleplayerUUID: UUID?
     private let savedSearches: SavedSearches
     private let execute: @Sendable (SearchRequest) async -> [String: [SearchHit]]
-    @ObservationIgnored private var indexTask: Task<Void, Never>?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var activeQueries: [String: UUID] = [:]
     @ObservationIgnored private var completedQueries: Set<String> = []
@@ -54,19 +48,21 @@ final class SearchModel {
     private struct Sources: Equatable {
         var names: [UUID: String]
         var revision: Int
+        var indexRevision: Int
     }
 
     init(readers: [RegionReader], players: [PlayerInfo], names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
-         execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute) {
-        self.readers = readers
+         execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
+         indexStore: WorldIndexStore? = nil) {
+        self.ownsIndex = indexStore == nil
+        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, firstDimension: firstDimension)
         self.players = players
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
         self.execute = execute
         observeSources()
-        rebuild(firstDimension: firstDimension)
         updateQueries()
     }
 
@@ -80,6 +76,7 @@ final class SearchModel {
             _ = names.local
             _ = names.online
             _ = savedSearches.all
+            _ = indexStore.revision
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, !self.isClosed else { return }
@@ -97,7 +94,7 @@ final class SearchModel {
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.name(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
-        let next = Sources(names: playerNames, revision: revision)
+        let next = Sources(names: playerNames, revision: revision, indexRevision: indexStore.revision)
         if next != sources {
             sources = next
             sourceGeneration = UUID()
@@ -144,26 +141,10 @@ final class SearchModel {
 
     /// Reads dimensions at utility priority, replacing each in place after it finishes.
     func rebuild(firstDimension: String?) {
-        guard !isClosed else { return }
-        indexTask?.cancel()
-        isIndexing = index.dimensions.isEmpty
-        let readers = readers.sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
-        let id = UUID()
-        let task = Task(priority: .utility) { [weak self] in
-            defer { self?.tasks[id] = nil }
-            for reader in readers {
-                guard !Task.isCancelled else { return }
-                let part = await DimensionIndex.read(reader)
-                guard let self, !Task.isCancelled, !self.isClosed else { return }
-                self.index.dimensions[reader.dimension.id] = part
-            }
-            self?.isIndexing = false
-        }
-        indexTask = task
-        tasks[id] = task
+        if !isClosed { indexStore.rebuild(firstDimension: firstDimension) }
     }
 
-    func waitForIndex() async { await indexTask?.value }
+    func waitForIndex() async { await indexStore.waitForIndex(); updateQueries() }
 
     /// Waits for the query snapshot actually consumed by the UI, including a changed shared source.
     func waitForSearch() async {
@@ -181,11 +162,12 @@ final class SearchModel {
         activeQueries = [:]
         tasks.values.forEach { $0.cancel() }
         isSearching = false
-        isIndexing = false
+        if ownsIndex { indexStore.cancel() }
     }
 
     func waitForTasks() async {
         for task in tasks.values { await task.value }
+        if ownsIndex { await indexStore.waitForTasks() }
     }
 }
 

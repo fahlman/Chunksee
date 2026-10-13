@@ -34,12 +34,18 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     default.
 - **Data locations:**
   - The app reads only the world or saves folder the user picks with an Open panel.
-  - Worlds are native read-only folder documents. macOS owns opening, Open Recent, and window
-    restoration; each document retains access while its session reads the world.
+  - Each dimension folder is a native read-only folder document (Ryan, 2026-10-13); the world
+    folder is not a document but contains one for each dimension, and opening it opens them. In
+    the older layout, the Overworld's `region` folder stands for it. macOS owns opening, Open
+    Recent, window tabs (by the user's tab preference) and restoration. Dimensions of one world
+    share its resources, which close with the last of them.
+  - Opening a world folder keeps an app-scoped, read-only bookmark to it, because the sandbox
+    grants a reopened or restored dimension document only its own folder; the world's
+    `level.dat`, players and other dimensions are read through that bookmark.
   - It never writes to a world folder.
   - Saved places are annotations in the app's local preferences, keyed by world URL; native
-    document moves migrate them. Navigation history and ruler endpoints belong to the document
-    session, and are never stored in the world.
+    document moves migrate them and remembered views. Navigation history and ruler endpoints
+    belong to each dimension view, and are never stored in the world.
   - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
     Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
@@ -58,9 +64,10 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 
 | File | Owns |
 |---|---|
-| `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` for ordinary world folders; native opening, recents and restoration, opening metadata, document lifetime and moves |
-| `AppModel.swift` | App-wide player names and saved searches |
-| `WorldSession.swift` | One open world: its dimensions, map and overlays, and cancellation and draining of world reads before relinquishing document access |
+| `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
+| `AppModel.swift` | App-wide player names and saved searches, and the resources of each world with open dimensions |
+| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher and jumps waiting for a dimension to open; closing its last dimension drains all reads before relinquishing access |
+| `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
@@ -71,7 +78,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
-| `SearchModel.swift` | Background indexing and queries, current immutable result snapshots, and shared saved searches |
+| `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
 | `PlayerNames.swift` | Names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
@@ -82,6 +89,16 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
+
+`DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
+chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
+opens the dimension folders with SwiftUI's `openDocument` and then closes itself. Navigate ▸
+Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
+to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
+The opening action captures only `openDocument`, so a view never keeps its own document alive.
+macOS names each window and Open Recent item after its folder (`overworld`, `the_nether`,
+`the_end`), so the window subtitle names the world. Each dimension's
+map position is remembered in `RememberedViews`.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
