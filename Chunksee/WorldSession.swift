@@ -502,9 +502,15 @@ final class WorldSession {
         selection = .portal(portal)
     }
 
-    /// Drawn maps made in the game in this dimension.
+    /// Drawn maps made in the game that this dimension's sidebar lists: those drawn in it, and, in
+    /// the first dimension, those from a dimension this world doesn't have, by the shared rule.
     var inGameMaps: [MapItem] {
-        details.maps.filter { $0.dimension != nil && $0.dimension == selectedDimensionID }
+        details.maps.filter { lists($0.dimension) }
+    }
+
+    /// Whether a map was drawn in a dimension this world has, so it can be shown on the map.
+    func canShow(_ map: MapItem) -> Bool {
+        dimensions.contains { $0.id == map.dimension }
     }
 
     /// A map's picture, made once and kept.
@@ -518,7 +524,9 @@ final class WorldSession {
     /// Draws an in-game map over the terrain and fits it in view (or only centers it, when
     /// `keepingZoom`), switching dimension if needed.
     func show(_ map: MapItem, keepingZoom: Bool = false) {
-        guard let dimension = map.dimension else { return }
+        // A map from a missing dimension is listed but not shown, so its coordinates are never
+        // drawn over another dimension's terrain.
+        guard canShow(map), let dimension = map.dimension else { return }
         if route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
         navigate {
             focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)),
