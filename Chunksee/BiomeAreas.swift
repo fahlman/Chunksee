@@ -38,8 +38,6 @@ nonisolated struct BiomeScan: Sendable {
 /// the same biome. Cave biomes never reach the surface, so each chunk's sections are also checked
 /// for them, and their areas are found the same way.
 nonisolated enum BiomeScanner {
-    /// Areas smaller than this are slivers along borders, not places worth visiting.
-    static let minimumChunks = 4
     /// Biomes that generate only underground.
     static let caveBiomeIDs: Set<String> = [
         "minecraft:deep_dark", "minecraft:lush_caves", "minecraft:dripstone_caves", "minecraft:sulfur_caves",
@@ -85,7 +83,9 @@ nonisolated enum BiomeScanner {
         return chunk.biome(x: 8, y: y, z: 8)
     }
 
-    /// Joins chunks of the same biome that share an edge.
+    /// Joins chunks of the same biome that share an edge. Every area is kept, down to a single
+    /// chunk, so nothing in the world is hidden (Ryan, 2026-10-13); one sample per chunk breaks
+    /// thin biomes such as rivers and beaches into many small areas.
     static func areas(from biomes: [ChunkCoordinate: String]) -> [BiomeArea] {
         var visited = Set<ChunkCoordinate>()
         var areas: [BiomeArea] = []
@@ -102,7 +102,6 @@ nonisolated enum BiomeScanner {
                     stack.append(next)
                 }
             }
-            guard chunks.count >= minimumChunks else { continue }
             let middleX = Double(chunks.map(\.x).reduce(0, +)) / Double(chunks.count)
             let middleZ = Double(chunks.map(\.z).reduce(0, +)) / Double(chunks.count)
             let inside = chunks.min { hypot(Double($0.x) - middleX, Double($0.z) - middleZ) < hypot(Double($1.x) - middleX, Double($1.z) - middleZ) }!

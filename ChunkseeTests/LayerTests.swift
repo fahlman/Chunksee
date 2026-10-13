@@ -251,14 +251,14 @@ enum StructureTestWorld {
 }
 
 @Suite struct BiomeAreaTests {
-    @Test func neighboringChunksJoinAndSliversAreLeftOut() {
+    @Test func neighboringChunksJoinAndEveryAreaIsKept() {
         var biomes: [ChunkCoordinate: String] = [:]
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
-        biomes[ChunkCoordinate(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk sliver
+        biomes[ChunkCoordinate(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk river
         for z in 5..<9 { biomes[ChunkCoordinate(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
         let areas = BiomeScanner.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
-        #expect(areas.map(\.chunkCount) == [6, 4])
-        #expect(areas.allSatisfy { $0.group.id == "minecraft:plains" } && areas[0].group.name == "Plains")
+        #expect(areas.map(\.chunkCount) == [6, 4, 1])
+        #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name == "Plains")
         #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
         #expect(areas[0].name == "6 chunks")
         // The outline runs around the 3×2 chunks, not between them.
