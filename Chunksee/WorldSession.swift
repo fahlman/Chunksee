@@ -25,8 +25,8 @@ enum MapSelection: Equatable {
     }
 }
 
-/// One dimension tab's controls, map and navigation. Shared document resources own the world,
-/// file access, index, players and live updates; closing this view leaves other tabs running.
+/// One dimension document's controls, map and navigation. The world's shared resources own its
+/// file access, index, players and live updates; closing one dimension leaves the others running.
 @Observable
 final class WorldSession {
     let viewID = UUID()
@@ -43,14 +43,9 @@ final class WorldSession {
     let search: SearchModel
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
-    /// Native dimension windows route cross-dimension jumps to the destination tab.
-    @ObservationIgnored var openDimensionTab: ((String, @escaping (WorldSession) -> Void) -> Void)?
-    @ObservationIgnored var invalidateRestorableState: (() -> Void)?
-    var isVisible = true {
-        didSet { if isVisible != oldValue { map?.setRenderingActive(isVisible) } }
-    }
-    var isKeyWindow = false
-    var hasSheet: Bool { showsCoordinateSheet || placeDraft != nil }
+    /// Brings a dimension's document to the front, opening it if needed. Each document's view
+    /// supplies this, since SwiftUI opens documents through its environment.
+    @ObservationIgnored var openDimensionDocument: ((String) -> Void)?
 
     var selectedDimensionID: String? {
         didSet {
@@ -126,7 +121,7 @@ final class WorldSession {
                             defaults: defaults, cacheRoot: cacheRoot)
     }
 
-    /// Closing a tab drains its reads; the document keeps shared reads alive for other tabs.
+    /// Closing drains this dimension's reads; the world's shared reads stay alive for the others.
     func close() {
         guard !isClosed else { return }
         isClosed = true
@@ -236,14 +231,16 @@ final class WorldSession {
 
     func openDimension(_ id: String) {
         guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
-        if let openDimensionTab { openDimensionTab(id, { _ in }) }
+        if let openDimensionDocument { openDimensionDocument(id) }
         else { selectedDimensionID = id }
     }
 
-    /// A dimension tab keeps its map; jumps to another dimension select that tab first.
+    /// Each dimension is its own document; a jump to another dimension happens in that
+    /// dimension's document, once it's open.
     private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
-        guard !isClosed, dimension != selectedDimensionID, let openDimensionTab else { return false }
-        openDimensionTab(dimension, perform)
+        guard !isClosed, dimension != selectedDimensionID, let openDimensionDocument else { return false }
+        resources.whenShowing(dimension, perform: perform)
+        openDimensionDocument(dimension)
         return true
     }
 
@@ -344,7 +341,6 @@ final class WorldSession {
         map = MapModel(dimension: dimension, center: spawnPoint,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
-        map?.setRenderingActive(isVisible)
     }
 
     /// A click on the map: selects the portal or creature under it. A click elsewhere closes a
@@ -359,7 +355,6 @@ final class WorldSession {
     func saveView(of dimensionID: String? = nil) {
         guard let map, let id = dimensionID ?? selectedDimensionID else { return }
         views.save(map.viewport, for: id, selected: resources.activeDimensionID)
-        invalidateRestorableState?()
     }
 
     // MARK: Search results, portals and in-game maps
@@ -455,7 +450,7 @@ final class WorldSession {
         PlayerPresentation.isOutdated(player, worldDataVersion: world.level.dataVersion)
     }
 
-    // MARK: Live updates shared by every dimension tab
+    // MARK: Live updates shared by every dimension
 
     var refreshDelay: Duration {
         get { resources.refreshDelay }
@@ -468,6 +463,8 @@ final class WorldSession {
 
 enum WorldOpenError: LocalizedError, Equatable {
     case notAWorld
+    case notADimension
+    case needsWorldFolder
     case unreadable
 
     var errorDescription: String? {
@@ -477,8 +474,10 @@ enum WorldOpenError: LocalizedError, Equatable {
     // Native document error presentation uses these bridged NSError fields.
     var failureReason: String? {
         switch self {
-        case .notAWorld:
+        case .notAWorld, .notADimension:
             String(localized: "That folder isn’t a Minecraft world.")
+        case .needsWorldFolder:
+            String(localized: "Chunksee can’t see the world this dimension belongs to.")
         case .unreadable:
             String(localized: "Chunksee couldn’t read this world.")
         }
@@ -486,8 +485,10 @@ enum WorldOpenError: LocalizedError, Equatable {
 
     var recoverySuggestion: String? {
         switch self {
-        case .notAWorld:
+        case .notAWorld, .notADimension:
             String(localized: "Choose a world’s folder inside your saves folder.")
+        case .needsWorldFolder:
+            String(localized: "Open the world’s folder, inside your saves folder, instead.")
         case .unreadable:
             String(localized: "It may be from a version Chunksee doesn’t support, or damaged.")
         }

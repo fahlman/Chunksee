@@ -1,7 +1,10 @@
 import AppKit
 import Foundation
 import ChunkseeKit
+import Observation
+import SwiftUI
 import Synchronization
+import UniformTypeIdentifiers
 
 /// Balanced access that can outlive a cancelled read until that read actually finishes.
 nonisolated final class WorldReadAccess: Sendable {
@@ -60,6 +63,8 @@ nonisolated struct WorldSnapshot: Sendable {
             return snapshot
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as WorldOpenError {
+            throw error
         } catch WorldError.missingLevelDat {
             throw WorldOpenError.notAWorld
         } catch {
@@ -68,174 +73,221 @@ nonisolated struct WorldSnapshot: Sendable {
     }
 }
 
-/// One native document owns every dimension window. AppKit owns opening, recents,
-/// file presentation, closing and restoration; SwiftUI supplies each window's content.
-@objc(ChunkseeWorldDocument)
-final class WorldDocument: NSDocument {
-    private(set) var resources: WorldResources?
-    private var dimensionSessions: [String: WorldSession] = [:]
-    private let tabbingIdentifier = NSWindow.TabbingIdentifier("world-" + UUID().uuidString)
-    private var moveTask: Task<Void, Never>?
-    private var isClosing = false
-    nonisolated private let pendingSnapshot = Mutex<WorldSnapshot?>(nil)
+/// The world folders the user opened. A dimension's document is a folder inside its world, and
+/// the sandbox grants a reopened document only its own folder, so access to the world itself,
+/// for `level.dat`, players and the other dimensions, is kept here as app-scoped bookmarks.
+nonisolated final class WorldFolders: Sendable {
+    // Apple documents UserDefaults as thread-safe; the lock keeps each read-modify-write whole.
+    nonisolated(unsafe) private let defaults: UserDefaults
+    private let lock = Mutex(())
+    private static let key = "worldFolderBookmarks"
 
-    override init() {
-        super.init()
-        hasUndoManager = false
-    }
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-    convenience init(resources: WorldResources) {
-        self.init()
-        self.resources = resources
-    }
-
-    nonisolated override class var autosavesInPlace: Bool { false }
-
-    nonisolated override func read(from url: URL, ofType typeName: String) throws {
-        let snapshot = try WorldSnapshot.readContents(url)
-        pendingSnapshot.withLock { $0 = snapshot }
-        Task { @MainActor [weak self] in self?.installPendingSnapshot() }
-    }
-
-    private func installPendingSnapshot() {
-        guard !isClosing else { pendingSnapshot.withLock { $0 = nil }; return }
-        if let snapshot = pendingSnapshot.withLock({ value in
-            defer { value = nil }
-            return value
-        }) { install(snapshot) }
-    }
-
-    private func install(_ snapshot: WorldSnapshot) {
-        let oldViews = dimensionSessions
-        let oldResources = resources
-        for view in oldViews.values { view.close() }
-        oldResources?.close()
-        oldResources?.savedPlaces.relocate(to: snapshot.access.url)
-        oldResources?.views.relocate(to: snapshot.access.url)
-        let model = AppModel.shared
-        resources = WorldResources(snapshot: snapshot, names: model.names, savedSearches: model.savedSearches,
-                                   documentOwnsLifetime: true)
-        dimensionSessions = [:]
-        for (id, old) in oldViews {
-            if let view = ensureView(in: id) { view.restoreView(from: old) }
-        }
-        for controller in windowControllers.compactMap({ $0 as? DimensionWindowController }) {
-            if let view = ensureView(in: controller.dimension) { controller.replaceSession(view) }
+    /// Call while the folder is accessible, as it is right after the Open panel chose it.
+    func remember(_ world: URL) {
+        guard let bookmark = try? world.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess]) else { return }
+        lock.withLock { _ in
+            let others = resolved().filter { $0.url.standardizedFileURL != world.standardizedFileURL }
+            defaults.set(others.map(\.bookmark) + [bookmark], forKey: Self.key)
         }
     }
 
-    nonisolated override var fileURL: URL? {
-        didSet {
-            guard let url = fileURL else { return }
-            Task { @MainActor [weak self] in
-                guard let self, !self.isClosing else { return }
-                self.installPendingSnapshot()
-                guard let resources = self.resources,
-                      url.resolvingSymlinksInPath() != resources.url.resolvingSymlinksInPath() else { return }
-                self.moveTask?.cancel()
-                self.moveTask = Task { [weak self] in
-                    guard let self else { return }
-                    do {
-                        let snapshot = try await WorldSnapshot.read(url, coordinator: NSFileCoordinator(filePresenter: self))
-                        try Task.checkCancellation()
-                        guard self.fileURL == url else { return }
-                        self.install(snapshot)
-                    } catch is CancellationError {}
-                    catch { self.presentError(error) }
+    /// The remembered world folder that contains `url`, wherever it has since moved.
+    func world(containing url: URL) -> URL? {
+        lock.withLock { _ in
+            let worlds = resolved()
+            defaults.set(worlds.map(\.bookmark), forKey: Self.key)
+            let path = url.resolvingSymlinksInPath().path
+            return worlds.map { $0.url.resolvingSymlinksInPath() }
+                .filter { path.hasPrefix($0.path + "/") }
+                .max { $0.path.count < $1.path.count }
+        }
+    }
+
+    /// Resolves every bookmark, dropping those whose folders are gone and refreshing stale ones.
+    private func resolved() -> [(url: URL, bookmark: Data)] {
+        (defaults.array(forKey: Self.key) as? [Data] ?? []).compactMap { data in
+            var isStale = false
+            guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, bookmarkDataIsStale: &isStale) else { return nil }
+            guard isStale else { return (url, data) }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let refreshed = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess])
+            return (url, refreshed ?? data)
+        }
+    }
+}
+
+extension ChunkseeKit.Dimension {
+    /// The folder that is this dimension's document. In the older layout the Overworld's files sit
+    /// directly in the world folder, which isn't a document, so its region folder stands in.
+    nonisolated func documentURL(inWorldAt world: URL) -> URL {
+        url.standardizedFileURL == world.standardizedFileURL ? regionDirectory : url
+    }
+}
+
+/// A dimension document's opening read: its world's metadata, read through the world's access.
+nonisolated struct DimensionSnapshot: Sendable {
+    let world: WorldSnapshot
+    let dimensionID: String
+    let documentURL: URL
+
+    @concurrent
+    static func read(_ url: URL, folders: WorldFolders) async throws -> DimensionSnapshot {
+        try readContents(url, folders: folders)
+    }
+
+    /// Outside the framework's initial read, coordinate access with the document's presenter.
+    @concurrent
+    static func read(_ url: URL, folders: WorldFolders, coordinator: sending NSFileCoordinator) async throws -> DimensionSnapshot {
+        var coordinationError: NSError?
+        var result: Result<DimensionSnapshot, any Error>?
+        coordinator.coordinate(readingItemAt: url, options: .withoutChanges, error: &coordinationError) { coordinatedURL in
+            result = Result { try readContents(coordinatedURL, folders: folders) }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw WorldOpenError.unreadable }
+        return try result.get()
+    }
+
+    private static func readContents(_ url: URL, folders: WorldFolders) throws -> DimensionSnapshot {
+        guard let worldURL = folders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
+        let world = try WorldSnapshot.readContents(worldURL)
+        let path = url.resolvingSymlinksInPath().path
+        guard let dimension = world.dimensions.first(where: {
+            $0.documentURL(inWorldAt: worldURL).resolvingSymlinksInPath().path == path
+        }) else {
+            world.access.release()
+            throw WorldOpenError.notADimension
+        }
+        return DimensionSnapshot(world: world, dimensionID: dimension.id, documentURL: url)
+    }
+}
+
+/// Each dimension folder is a read-only URL document. DocumentGroup supplies the Open panel,
+/// duplicate-open handling, recent documents, file coordination, window tabs and restoration.
+/// Dimensions of one world share its resources, which close with the last of them.
+@Observable
+final class WorldDocument: ReadableDocument {
+    nonisolated static let readableContentTypes: [UTType] = [.folder]
+    let configuration: URLDocumentConfiguration
+    private let model: AppModel
+    private(set) var session: WorldSession?
+    @ObservationIgnored private var applyGeneration = UUID()
+
+    init(configuration: URLDocumentConfiguration, model: AppModel) {
+        self.configuration = configuration
+        self.model = model
+    }
+
+    nonisolated struct Reader: DocumentReader {
+        let folders: WorldFolders
+
+        /// A world folder isn't itself a document: it holds one for each dimension. Opening it
+        /// remembers the world's access and opens those instead.
+        @concurrent
+        func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending DimensionSnapshot {
+            if let world = try? World(contentsOf: source) {
+                folders.remember(source)
+                let documents = world.dimensions().map { $0.documentURL(inWorldAt: source) }
+                Task { @MainActor in
+                    // SwiftUI's openDocument action exists only in a view's environment, so ask the
+                    // document controller DocumentGroup uses. Opened last, the first dimension is in front.
+                    for url in documents.reversed() {
+                        do { _ = try await NSDocumentController.shared.openDocument(withContentsOf: url, display: true) }
+                        catch { NSDocumentController.shared.presentError(error) }
+                    }
                 }
+                throw CocoaError(.userCancelled)
+            }
+            return try await DimensionSnapshot.read(source, folders: folders)
+        }
+    }
+
+    func reader(configuration: sending ReadConfiguration) -> sending Reader { Reader(folders: model.worldFolders) }
+
+    func apply(snapshot: sending DimensionSnapshot, previous: sending DimensionSnapshot?) async throws {
+        let generation = UUID()
+        applyGeneration = generation
+        try await replaceSession(snapshot, generation: generation)
+    }
+
+    private func replaceSession(_ snapshot: DimensionSnapshot, generation: UUID) async throws {
+        var current = snapshot
+        while let url = configuration.fileURL,
+              url.resolvingSymlinksInPath() != current.documentURL.resolvingSymlinksInPath() {
+            // A move was reported while the snapshot was being read.
+            current.world.access.release()
+            current = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
+            try Task.checkCancellation()
+            guard generation == applyGeneration else { current.world.access.release(); return }
+        }
+        guard generation == applyGeneration else { current.world.access.release(); return }
+        let oldSession = session
+        oldSession?.close()
+        await oldSession?.waitUntilClosed()
+        try Task.checkCancellation()
+        guard generation == applyGeneration else { current.world.access.release(); return }
+        let worldURL = current.world.access.url
+        if let oldSession, oldSession.url != worldURL {
+            oldSession.savedPlaces.relocate(to: worldURL)
+            oldSession.resources.views.relocate(to: worldURL)
+        }
+        let opened = WorldSession(resources: model.resources(for: current.world), dimensionID: current.dimensionID)
+        if let oldSession { opened.restoreView(from: oldSession) }
+        session = opened
+    }
+
+    /// macOS updates the document URL after a Finder move; lazy region readers need the new paths.
+    func followFileURL() async throws {
+        guard let url = configuration.fileURL, let dimension = session?.selectedDimension, let session,
+              url.resolvingSymlinksInPath() != dimension.documentURL(inWorldAt: session.url).resolvingSymlinksInPath() else { return }
+        let generation = UUID()
+        applyGeneration = generation
+        let snapshot = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
+        try Task.checkCancellation()
+        guard generation == applyGeneration else { snapshot.world.access.release(); return }
+        try await replaceSession(snapshot, generation: generation)
+    }
+
+    isolated deinit { session?.close() }
+}
+
+struct WorldDocumentView: View {
+    let document: WorldDocument
+    @Environment(\.openDocument) private var openDocument
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let session = document.session {
+                WorldView(session: session)
+                    .id(ObjectIdentifier(session))
+                    .onAppear { session.openDimensionDocument = { open($0, of: session) } }
+            } else {
+                ProgressView("Opening World…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-    }
-
-    override func makeWindowControllers() {
-        installPendingSnapshot()
-        guard windowControllers.isEmpty, let resources else { return }
-        var first: NSWindow?
-        for dimension in resources.dimensions {
-            guard let window = makeController(for: dimension.id)?.window else { continue }
-            if let first { first.addTabbedWindow(window, ordered: .above) }
-            else { first = window }
+        .task(id: document.configuration.fileURL) {
+            do { try await document.followFileURL() }
+            catch is CancellationError {}
+            catch { errorMessage = error.localizedDescription }
         }
+        .alert("Couldn’t Read World", isPresented: Binding {
+            errorMessage != nil
+        } set: { if !$0 { errorMessage = nil } }) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(errorMessage ?? "") }
     }
 
-    override func showWindows() {
-        let selected = resources?.activeDimensionID ?? resources?.defaultDimensionID
-        super.showWindows()
-        let controller = windowControllers.compactMap { $0 as? DimensionWindowController }.first { $0.dimension == selected }
-        if let window = controller?.window { window.tabGroup?.selectedWindow = window; window.makeKeyAndOrderFront(nil) }
-    }
-
-    @discardableResult
-    private func makeController(for dimension: String, identifier: NSUserInterfaceItemIdentifier? = nil) -> DimensionWindowController? {
-        if let existing = windowControllers.compactMap({ $0 as? DimensionWindowController }).first(where: { $0.dimension == dimension }) { return existing }
-        guard let view = ensureView(in: dimension) else { return nil }
-        let controller = DimensionWindowController(session: view, identifier: identifier)
-        controller.window?.tabbingIdentifier = tabbingIdentifier
-        addWindowController(controller)
-        return controller
-    }
-
-    /// Native restoration has already reopened this document and retained its file access.
-    /// Create just the requested view; AppKit restores tab groups and window placement.
-    override func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
-                                        completionHandler: @escaping (NSWindow?, (any Error)?) -> Void) {
-        installPendingSnapshot()
-        guard let dimension = DimensionWindowController.dimension(from: state),
-              let controller = makeController(for: dimension, identifier: identifier) else {
-            completionHandler(nil, nil); return
+    /// Opening a dimension that's already open brings its window to the front.
+    private func open(_ dimensionID: String, of session: WorldSession) {
+        guard let url = session.resources.documentURL(for: dimensionID) else { return }
+        Task {
+            do { try await openDocument(at: url) }
+            catch { errorMessage = error.localizedDescription }
         }
-        controller.restoreState(with: state)
-        completionHandler(controller.window, nil)
-    }
-
-    func existingView(in id: String) -> WorldSession? { dimensionSessions[id] }
-
-    @discardableResult
-    func ensureView(in id: String) -> WorldSession? {
-        if let view = dimensionSessions[id], !view.isClosed { return view }
-        guard let resources, !resources.isClosed,
-              resources.dimensions.contains(where: { $0.id == id }) else { return nil }
-        let view = WorldSession(resources: resources, dimensionID: id)
-        view.isVisible = false
-        view.openDimensionTab = { [weak self, weak view] target, perform in
-            self?.showDimension(target, from: view?.selectedDimensionID, perform: perform)
-        }
-        dimensionSessions[id] = view
-        return view
-    }
-
-    private func showDimension(_ id: String, from source: String?, perform: (WorldSession) -> Void) {
-        let existing = windowControllers.compactMap { $0 as? DimensionWindowController }.first { $0.dimension == id }
-        guard let controller = existing ?? makeController(for: id), let window = controller.window else { return }
-        if existing == nil,
-           let parent = windowControllers.compactMap({ $0 as? DimensionWindowController }).first(where: { $0.dimension == source })?.window {
-            parent.addTabbedWindow(window, ordered: .above)
-        }
-        perform(controller.session)
-        window.tabGroup?.selectedWindow = window
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    override func removeWindowController(_ windowController: NSWindowController) {
-        if let controller = windowController as? DimensionWindowController {
-            if let window = controller.window { AppModel.shared.windows.unregister(window) }
-            dimensionSessions.removeValue(forKey: controller.dimension)?.close()
-        }
-        super.removeWindowController(windowController)
-    }
-
-    override func close() {
-        isClosing = true
-        pendingSnapshot.withLock { $0 = nil }
-        moveTask?.cancel()
-        for view in dimensionSessions.values { view.close() }
-        resources?.close()
-        super.close()
-    }
-
-    isolated deinit {
-        moveTask?.cancel()
-        for view in dimensionSessions.values { view.close() }
-        resources?.close()
     }
 }

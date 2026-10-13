@@ -9,8 +9,6 @@
             <string>Minecraft World</string>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
-            <key>NSDocumentClass</key>
-            <string>ChunkseeWorldDocument</string>
             <key>LSHandlerRank</key>
             <string>None</string>
             <key>LSItemContentTypes</key>

@@ -120,7 +120,6 @@ struct WorldView: View {
                                 .padding(10)
                         }
                     }
-                    .navigationTitle(session.displayName)
                     .toolbar {
                         ToolbarItem {
                             ShareLink(item: SharedMapImage { [session] in session.renderMapImage() },
@@ -130,7 +129,8 @@ struct WorldView: View {
                             .help("Share an image of the map as shown")
                         }
                     }
-                    .navigationSubtitle(map.dimension.displayName)
+                    // The document's folder names the window, so the subtitle names the world.
+                    .navigationSubtitle(session.displayName)
             } else {
                 ContentUnavailableView("No Dimensions", systemImage: "questionmark.folder",
                                        description: Text("This world has no saved terrain yet."))

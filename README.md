@@ -8,11 +8,11 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 1. Choose **File ▸ Open…** and select a world's folder inside your Minecraft `saves`
    folder.
-2. Pick a dimension's native Mac tab. Each keeps its own map position, zoom, search,
-   navigation history and measurement. **Navigate ▸ Dimension** selects a tab or reopens one you
-   closed. **⌘W** closes the selected tab; closing the last tab closes the world. Use **Window ▸
-   Move Tab to New Window** to compare dimensions side by side. macOS restores the open tabs and
-   detached windows when reopening the app, following your system preference.
+2. Each dimension opens as its own document: the Overworld, the Nether and the End. Each keeps its
+   own map position, zoom, search, navigation history and measurement. They open as windows or
+   tabs, following your tab preference in System Settings, and **Window ▸ Merge All Windows**
+   gathers them into tabs. **Navigate ▸ Dimension** brings another dimension to the front or
+   reopens one you closed, and macOS restores open dimensions when you reopen the app.
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
@@ -58,8 +58,8 @@ map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) t
 the individual visible map locations and center the map on them.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
-previous location and zoom within the current dimension tab. A jump to another dimension selects
-that dimension's tab. Panning and zooming adjust the current view; a new jump after going back
+previous location and zoom within the current dimension. A jump to another dimension happens in
+that dimension's own window. Panning and zooming adjust the current view; a new jump after going back
 starts a new path.
 
 Choose **Navigate ▸ Save Place…** (**⌘D**) to name the location at the map's center, or right-click
@@ -71,7 +71,7 @@ Right-click or Control-click any map point and choose **Copy Coordinates** to co
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**
-exits the tool. Each dimension tab keeps its own measurement when you switch tabs.
+exits the tool. Each dimension keeps its own measurement.
 
 With **Grid** enabled, individual block lines appear at **8× zoom (800%)** and above.
 Chunk and region boundaries remain emphasized, with their coordinates along the map edges.

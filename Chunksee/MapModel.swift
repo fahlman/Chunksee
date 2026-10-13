@@ -59,7 +59,7 @@ final class MapModel {
     /// center first. A new request replaces the previous one, so panning away cancels work that's
     /// no longer visible.
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
-        guard !isClosed, isRenderingActive, size.width > 0, size.height > 0 else { return }
+        guard !isClosed, size.width > 0, size.height > 0 else { return }
         lastView = (size, displayScale)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
@@ -97,7 +97,6 @@ final class MapModel {
     @ObservationIgnored private var renders: [Int: Task<Void, Never>] = [:]
     private var nextJobID = 0
     private var isClosed = false
-    private var isRenderingActive = true
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     private func startQueued() {
@@ -219,11 +218,6 @@ final class MapModel {
         inFlight = [:]
         queue = []
         updateLoadingState()
-    }
-
-    func setRenderingActive(_ active: Bool) {
-        isRenderingActive = active
-        if !active { cancel() }
     }
 
     func waitForRenders() async {
