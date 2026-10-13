@@ -217,7 +217,11 @@ enum StructureTestWorld {
         let summer = try #require(session.mapContent.creatures.first)
         session.mapClicked(.creature(summer))
         #expect(session.mapContent.selection == .creature(summer))
+        #expect(session.inspector == .selection)   // its details show in the inspector
         session.mapClicked(nil)
+        #expect(session.selection == nil && session.inspector == nil)
+        session.mapClicked(.creature(summer))
+        session.inspector = .world                 // showing something else lets go of it
         #expect(session.selection == nil)
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
         session.center(on: CGPoint(x: 10, y: 20))
@@ -401,10 +405,12 @@ enum StructureTestWorld {
         session.show(session.inGameMaps[0])
         #expect(session.mapContent.inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
+        #expect(session.inspector == .selection)
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
         session.mapClicked(nil)
         #expect(session.mapContent.inGameMap?.map.id == 3)
-        session.selection = nil
-        #expect(session.mapContent.inGameMap == nil)
+        // Closing the inspector takes it away.
+        session.inspector = nil
+        #expect(session.selection == nil && session.mapContent.inGameMap == nil)
     }
 }

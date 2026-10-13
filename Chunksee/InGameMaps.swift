@@ -57,24 +57,31 @@ struct InGameMapRow: View {
     }
 }
 
-/// Details of the selected in-game map, with a slider to compare it with today's terrain.
-struct InGameMapCard: View {
+/// Details of the selected in-game map in the inspector, with a slider to compare it with today's terrain.
+struct InGameMapDetailView: View {
     @Bindable var session: WorldSession
     let map: MapItem
 
     var body: some View {
-        MapCard(title: Text("Map #\(map.id)"), symbol: "map", close: { session.selection = nil }) {
-            Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks around X \(map.centerX), Z \(map.centerZ), 1 pixel for every \(map.blocksPerPixel) blocks.")
-                .foregroundStyle(.secondary)
-            if map.isLocked {
-                Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
+        Form {
+            Section {
+                LabeledContent("Area", value: "\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
+                LabeledContent("Center") { Text("X \(map.centerX)  Z \(map.centerZ)").monospacedDigit() }
+                LabeledContent("Scale", value: String(localized: "1 pixel for every \(map.blocksPerPixel) blocks"))
+                if map.isLocked {
+                    Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
+                }
+            } header: {
+                Label("Map #\(map.id)", systemImage: "map").font(.headline)
             }
-            LabeledContent("Opacity") {
-                Slider(value: $session.inGameMapOpacity, in: 0...1)
+            Section {
+                LabeledContent("Opacity") {
+                    Slider(value: $session.inGameMapOpacity, in: 0...1)
+                }
+            } footer: {
+                Text("Lower the opacity to compare the map with today’s terrain.")
             }
-            Text("Lower the opacity to compare the map with today’s terrain.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
+        .formStyle(.grouped)
     }
 }

@@ -25,7 +25,7 @@ struct MapContent {
     var players: [MapMarker] = []
     var savedPlaces: [SavedPlace] = []
     var ruler = MapRuler()
-    /// The portal or creature whose card is showing, drawn highlighted.
+    /// The selected portal or creature, drawn highlighted.
     var selection: MapSelection?
 
     /// The surface biome of the chunk under a block, once the dimension has been read.

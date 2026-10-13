@@ -25,7 +25,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
 6. Places from the world's point-of-interest data appear too: Nether portals and village bells by
    default, and beds, villager workstations, bee nests and more from **Places** in the sidebar. Beds and
    workstations a villager has claimed are dimmed.
-7. Click a Nether portal to see where it leads: the matching portal in the other dimension (with a
+7. Click a Nether portal to see in the inspector where it leads: the matching portal in the other dimension (with a
    button to jump there), a warning if the link is one-way, or a warning that going through would
    make the game build a new portal. Portals that don't link both ways carry a small badge.
 8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")

@@ -106,17 +106,6 @@ struct WorldView: View {
                         try? await Task.sleep(for: .seconds(1))
                         if !Task.isCancelled { session.saveView() }
                     }
-                    .overlay(alignment: .topLeading) {
-                        Group {
-                            switch session.selection {
-                            case .portal(let portal)?: PortalCard(session: session, portal: portal)
-                            case .creature(let creature)?: CreatureCard(session: session, marker: creature)
-                            case .inGameMap(let item)?: InGameMapCard(session: session, map: item)
-                            case nil: EmptyView()
-                            }
-                        }
-                        .padding(10)
-                    }
                     .overlay(alignment: .bottomTrailing) {
                         if heatMap.isShown {
                             HeatMapLegend(isLoading: heatMap.isLoading)
@@ -160,23 +149,9 @@ struct WorldView: View {
             SavedPlaceEditor(session: session, draft: draft)
         }
         .inspector(isPresented: inspectorShown) {
-            Group {
-                switch session.inspector {
-                case .world?:
-                    WorldInfoView(session: session)
-                case .storage?:
-                    StorageView(session: session)
-                case .player(let id)?:
-                    if let player = session.players.first(where: { $0.uuid == id }) {
-                        PlayerDetailView(session: session, player: player)
-                            .id(player.uuid)
-                    }
-                case nil:
-                    EmptyView()
-                }
-            }
-            // Capped so a wide row can't push the inspector past the window's edge.
-            .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
+            WorldInspector(session: session)
+                // Capped so a wide row can't push the inspector past the window's edge.
+                .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
         .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.placeDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
@@ -268,6 +243,34 @@ private struct PlayerRow: View {
             return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
         }
         return String(localized: "Show on the map")
+    }
+}
+
+/// What the inspector beside the map shows.
+private struct WorldInspector: View {
+    let session: WorldSession
+
+    var body: some View {
+        switch session.inspector {
+        case .world?:
+            WorldInfoView(session: session)
+        case .storage?:
+            StorageView(session: session)
+        case .player(let id)?:
+            if let player = session.players.first(where: { $0.uuid == id }) {
+                PlayerDetailView(session: session, player: player)
+                    .id(player.uuid)
+            }
+        case .selection?:
+            switch session.selection {
+            case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
+            case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
+            case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)
+            case nil: EmptyView()
+            }
+        case nil:
+            EmptyView()
+        }
     }
 }
 

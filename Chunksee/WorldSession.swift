@@ -8,9 +8,11 @@ enum Inspector: Equatable {
     case world
     case storage
     case player(UUID)
+    /// The portal, creature or in-game map selected on the map.
+    case selection
 }
 
-/// The thing on the map whose card is showing; one at a time.
+/// The thing selected on the map, whose details the inspector shows; one at a time.
 enum MapSelection: Equatable {
     case portal(NetherPortal)
     case creature(CreatureMarker)
@@ -66,14 +68,25 @@ final class WorldSession {
     private(set) var map: MapModel?
     /// What the inspector shows, if it's open.
     var inspector: Inspector? {
-        didSet { if inspector != oldValue { playerRecords.cancel() } }
+        didSet {
+            guard inspector != oldValue else { return }
+            playerRecords.cancel()
+            // The inspector shows one thing; showing something else lets go of the map selection.
+            if inspector != .selection, selection != nil { selection = nil }
+        }
     }
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
     private(set) var navigation = MapNavigationHistory()
     @ObservationIgnored private var isNavigating = false
-    var selection: MapSelection?
+    var selection: MapSelection? {
+        didSet {
+            guard selection != oldValue else { return }
+            if selection != nil { inspector = .selection }
+            else if inspector == .selection { inspector = nil }
+        }
+    }
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
@@ -360,8 +373,8 @@ final class WorldSession {
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
     }
 
-    /// A click on the map: selects the portal or creature under it. A click elsewhere closes a
-    /// portal's or creature's card, but not an in-game map laid over the terrain.
+    /// A click on the map: selects the portal or creature under it. A click elsewhere clears a
+    /// selected portal or creature, but not an in-game map laid over the terrain.
     func mapClicked(_ clicked: MapSelection?) {
         if clicked == nil, case .inGameMap? = selection { return }
         selection = clicked
