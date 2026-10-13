@@ -268,6 +268,12 @@ enum StructureTestWorld {
         #expect(Set(BiomeColors.table.values).count == BiomeColors.table.count)   // every biome's outline differs
     }
 
+    @Test func aCaveBiomeAtTheSurfaceIsOneArea() {
+        let chunk = ChunkCoordinate(x: 0, z: 0)
+        let areas = BiomeScanner.areas(surface: [chunk: "minecraft:sulfur_caves"], caves: [chunk: ["minecraft:sulfur_caves"]])
+        #expect(areas.map(\.id) == ["minecraft:sulfur_caves@0,0"])
+    }
+
     @Test func sessionFindsBiomeAreas() async throws {
         let chunks = (0..<2).flatMap { x in (0..<2).map { z in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } }
         let world = try TestWorld.make(chunks: chunks)
