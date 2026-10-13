@@ -279,7 +279,7 @@ private struct SearchResultsSection: View {
     var body: some View {
         let search = session.search
         Section {
-            HitList(session: session, query: search.text, hits: search.results)
+            HitList(session: session, query: search.text, hits: session.listed(search.results))
         } header: {
             HStack {
                 Text("Search Results")
@@ -302,7 +302,7 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.search.results(for: saved.query)
+                let hits = session.listed(session.search.results(for: saved.query))
                 DisclosureGroup {
                     HitList(session: session, query: saved.query, hits: hits)
                 } label: {
@@ -359,7 +359,7 @@ private struct HitList: View {
     }
 
     private func location(_ hit: SearchHit) -> String {
-        guard let dimension = hit.dimension, let position = hit.position else { return hit.title }
-        return "\(hit.title) · \(session.dimensionName(dimension))  \(Coordinates.text(position))"
+        guard let position = hit.position else { return hit.title }
+        return "\(hit.title) · \(Coordinates.text(position))"
     }
 }

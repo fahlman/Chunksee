@@ -80,6 +80,21 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test func eachDimensionListsOnlyWhatIsInIt() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let base = try #require(nether.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: .zero))
+        #expect(nether.listedPlaces.map(\.id) == [base.id] && overworld.listedPlaces.isEmpty)
+        #expect(nether.lists("minecraft:the_nether") && !nether.lists("minecraft:overworld"))
+        // Something with no dimension in this world is listed once, with the Overworld.
+        #expect(overworld.lists(nil) && !nether.lists(nil))
+        #expect(overworld.lists("laurenland:world") && !nether.lists("laurenland:world"))
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func closingTheLastDimensionDrainsTheSharedIndex() async throws {
         let (url, resources) = try await makeResources()
         defer { try? FileManager.default.removeItem(at: url) }
