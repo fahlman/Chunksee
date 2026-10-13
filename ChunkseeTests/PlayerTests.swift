@@ -37,6 +37,15 @@ import Testing
         #expect(!markers.contains { $0.position == CGPoint(x: -12, y: 241) })
     }
 
+    @Test func eachDimensionListsThePlayersLastSeenInIt() {
+        let dimensions = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"]
+        func listed(_ id: String) -> [UUID] { PlayerPresentation.listed(players, in: id, dimensions: dimensions).map(\.uuid) }
+        // The Bukkit player's position may be in another world, so they're listed with the Overworld.
+        #expect(listed("minecraft:overworld") == [you, friend, bukkit])
+        #expect(listed("minecraft:the_nether").isEmpty)   // your last death there doesn't list you
+        #expect(listed("minecraft:the_end").isEmpty)
+    }
+
     @Test func deathMarkerAppearsInItsOwnDimension() {
         let nether = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you, worldDataVersion: 5023)
         #expect(nether.map(\.kind) == [.death])

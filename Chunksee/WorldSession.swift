@@ -540,6 +540,12 @@ final class WorldSession {
         return names.name(for: uuid) ?? String(localized: "a player not in this world (\(uuid.uuidString.prefix(8).lowercased())…)")
     }
 
+    /// The players this dimension's sidebar lists.
+    var listedPlayers: [PlayerInfo] {
+        guard let id = selectedDimensionID else { return [] }
+        return PlayerPresentation.listed(players, in: id, dimensions: dimensions.map(\.id))
+    }
+
     /// Whether any player still has no real name.
     var hasUnnamedPlayers: Bool { players.contains { names.name(for: $0.uuid) == nil } }
 

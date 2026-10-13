@@ -42,6 +42,18 @@ nonisolated enum PlayerPresentation {
         !player.isFromBukkitServer
     }
 
+    /// The players a dimension's sidebar lists: those last seen in it. Players with no usable
+    /// position in this world are listed in its first dimension, the Overworld, so each player
+    /// is listed once.
+    static func listed(_ players: [PlayerInfo], in dimensionID: String, dimensions: [String]) -> [PlayerInfo] {
+        players.filter { player in
+            if isMappable(player), let dimension = player.position?.dimension, dimensions.contains(dimension) {
+                return dimension == dimensionID
+            }
+            return dimensionID == dimensions.first
+        }
+    }
+
     /// Markers for one dimension: each mappable player's last position, last death and respawn point.
     static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,
                         worldDataVersion: Int?, knownName: (UUID) -> String? = { _ in nil }) -> [MapMarker] {

@@ -58,9 +58,9 @@ struct WorldView: View {
                         }
                     }
                 }
-                if !session.players.isEmpty {
+                if !session.listedPlayers.isEmpty {
                     Section("Players") {
-                        ForEach(session.players, id: \.uuid) { player in
+                        ForEach(session.listedPlayers, id: \.uuid) { player in
                             PlayerRow(session: session, player: player)
                         }
                         // A row rather than a section footer: sidebar lists don't show footers.
