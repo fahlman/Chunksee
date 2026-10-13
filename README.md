@@ -69,6 +69,8 @@ map; click a sidebar place to visit it, and use its context menu to rename or re
 kept per world in Chunksee's preferences and remain available when the world is reopened or moved.
 
 Right-click or Control-click any map point and choose **Copy Coordinates** to copy its X and Z.
+With the map selected, **Edit ▸ Copy** (**⌘C**) copies an image of the map as shown; the toolbar's
+Share button sends one.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**

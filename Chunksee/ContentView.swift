@@ -5,6 +5,7 @@ struct WorldView: View {
     @Bindable var session: WorldSession
     /// Worlds can hold dozens of maps, so the list starts collapsed.
     @State private var showsInGameMaps = false
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         @Bindable var visibility = session.visibility
@@ -98,6 +99,8 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: { session.mapClicked($0) })
                     .id(map.dimension.id)
+                    // Edit ▸ Copy copies the map as shown, while the map has focus.
+                    .copyable([SharedMapImage { [session] in session.renderMapImage() }])
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
                         try? await Task.sleep(for: .seconds(1))
@@ -137,6 +140,7 @@ struct WorldView: View {
             }
         }
         .searchable(text: $search.text, placement: .toolbar, prompt: Text("Find items, signs and pets"))
+        .searchFocused($isSearchFocused)
         .searchSuggestions {
             // Filters that search one sidebar layer, offered while the first word is typed.
             if !search.text.contains(":") && !search.text.contains(" ") {
@@ -175,6 +179,7 @@ struct WorldView: View {
             .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.placeDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
