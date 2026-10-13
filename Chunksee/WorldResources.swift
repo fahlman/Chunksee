@@ -34,6 +34,9 @@ final class WorldResources {
     @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
     @ObservationIgnored private var isRefreshScheduled = false
+    @ObservationIgnored private var playerReadGeneration = 0
+    /// Reads the world's player files off the main actor; tests substitute a controlled read.
+    @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo] = { await WorldResources.readPlayers($0) }
 
     private final class WeakSession {
         weak var value: WorldSession?
@@ -173,7 +176,10 @@ final class WorldResources {
         refreshTasks[id] = task
     }
 
-    func waitForRefresh() async { await refreshTask?.value }
+    /// Waits for every refresh under way, including one still reading players behind a newer one.
+    func waitForRefresh() async {
+        while let task = refreshTasks.values.first { await task.value }
+    }
 
     private func refresh() async {
         let regions = pendingRegions, changed = pendingDimensions, playersChanged = pendingPlayers
@@ -186,12 +192,16 @@ final class WorldResources {
         }
         if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID) }
         if playersChanged {
-            let updated = await Self.readPlayers(world)
-            guard !Task.isCancelled, !isClosed else { return }
+            // Refreshes can overlap while one reads players, so only the newest read is published:
+            // an older, slower read finishing later must not put old positions back.
+            playerReadGeneration += 1
+            let generation = playerReadGeneration
+            let updated = await readPlayers(world)
+            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration else { return }
             players = updated
             for session in sessions.values.compactMap(\.value) { session.search.players = updated }
         }
     }
 
-    @concurrent private nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] { world.players() }
+    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] { world.players() }
 }

@@ -53,14 +53,18 @@ final class WorldIndexStore {
         tasks[id] = task
     }
 
-    /// Waits for the running pass and any pass queued behind it.
+    /// Waits for the running pass and any pass queued behind it, or until the store closes.
     func waitForIndex() async {
-        while let task = indexTask { await task.value }
+        while !isClosed, let task = indexTask { await task.value }
     }
 
+    /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
+    /// still drains the cancelled reads.
     func cancel() {
         isClosed = true
         tasks.values.forEach { $0.cancel() }
+        indexTask = nil
+        queuedPass = nil
         isIndexing = false
     }
 
