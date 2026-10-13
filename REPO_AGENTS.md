@@ -33,7 +33,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     when the user turns that on. Ryan approved this on 2026-10-10 (fahlman/Chunksee#11), off by
     default.
 - **Data locations:**
-  - The app reads only the world or saves folder the user picks with an Open panel.
+  - The app reads only the world or saves folder the user picks with an Open panel, and the
+    Minecraft folder chosen in Settings: File ▸ Open World lists the worlds in its installations'
+    `saves` folders (Ryan, 2026-10-13, fahlman/Chunksee#108), found by ChunkseeKit's
+    `World.saved(under:)`.
   - Each dimension folder is a native read-only folder document (Ryan, 2026-10-13); the world
     folder is not a document but contains one for each dimension, and opening it opens them. In
     the older layout, the Overworld's `region` folder stands for it. macOS owns opening, Open
@@ -52,7 +55,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.21.1`, resolved to `0.21.1` (`1e859e948fd72a334f325e8a2e8e646577f5ee7c`).
+  minor" from `0.22.0`, resolved to `0.22.0` (`4b428d4348284f039a088dee51471cea7314e87f`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -79,12 +82,13 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
 | `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
-| `PlayerNames.swift` | Names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
+| `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access, also read by `SavedWorlds`; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
+| `SavedWorlds.swift` | The worlds in the Minecraft folder for File ▸ Open World, newest played first, reread when the folder changes or the app becomes active |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
