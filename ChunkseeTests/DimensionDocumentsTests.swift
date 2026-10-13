@@ -230,6 +230,25 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test func savesDuringPlayDoNotPostponeTheRefresh() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        resources.refreshDelay = .milliseconds(200)
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let file = url.appendingPathComponent("DIM-1/region/r.0.0.mca")
+        try Data(count: 8192).write(to: file)
+        // The game keeps saving more often than the delay, as it does while a player explores. The
+        // sleep paces those saves; the loop ends as soon as the map shows the new region.
+        let start = ContinuousClock.now
+        while nether.map?.availableRegions.isEmpty == true, ContinuousClock.now - start < .seconds(2) {
+            resources.worldChanged([file])
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(nether.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func movingAWorldRetainsAllDimensionViews() {
         let suite = "ChunkseeTests-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

@@ -33,6 +33,7 @@ final class WorldResources {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
+    @ObservationIgnored private var isRefreshScheduled = false
 
     private final class WeakSession {
         weak var value: WorldSession?
@@ -154,13 +155,19 @@ final class WorldResources {
             }
         }
         guard !pendingDimensions.isEmpty || pendingPlayers else { return }
-        refreshTask?.cancel()
+        // While a player explores, the game saves region files every second or so. Changes join
+        // the refresh already scheduled rather than postponing it, so the map catches up every
+        // `refreshDelay` during play instead of only once the game goes quiet.
+        guard !isRefreshScheduled else { return }
+        isRefreshScheduled = true
         let delay = refreshDelay, id = UUID()
         let task = Task { [weak self] in
             defer { self?.refreshTasks[id] = nil }
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            await self?.refresh()
+            guard !Task.isCancelled, let self else { return }
+            // Changes from here on schedule the next refresh.
+            self.isRefreshScheduled = false
+            await self.refresh()
         }
         refreshTask = task
         refreshTasks[id] = task
