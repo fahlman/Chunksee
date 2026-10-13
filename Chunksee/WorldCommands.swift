@@ -14,7 +14,11 @@ extension FocusedValues {
 
 /// Map and navigation commands always target the front document, including from its sidebar.
 struct WorldCommands: Commands {
-    @FocusedValue(\.worldSession) private var session
+    let windows: WorldWindowContext
+    private var session: WorldSession? {
+        guard let session = windows.focusedSession, !session.isClosed, !session.hasSheet else { return nil }
+        return session
+    }
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -85,7 +89,7 @@ struct WorldCommands: Commands {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Toggle(dimension.displayName, isOn: Binding {
                             session.selectedDimensionID == dimension.id
-                        } set: { if $0 { session.selectedDimensionID = dimension.id } })
+                        } set: { if $0 { session.openDimension(dimension.id) } })
                     }
                 }
             }
@@ -106,11 +110,11 @@ struct WorldKeyboardShortcuts: View {
         VStack {
             Button("Zoom In") { session.map?.zoom(by: 2) }
                 .keyboardShortcut("=")
-                .disabled(focusedSession !== session ||
+                .disabled(session.hasSheet || !(focusedSession === session || session.isKeyWindow) ||
                           (session.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
             Button("Zoom Out") { session.map?.zoom(by: 0.5) }
                 .keyboardShortcut("_")
-                .disabled(focusedSession !== session ||
+                .disabled(session.hasSheet || !(focusedSession === session || session.isKeyWindow) ||
                           (session.map?.viewport.scale ?? MapViewport.scaleRange.lowerBound) <= MapViewport.scaleRange.lowerBound)
         }
         .hidden()

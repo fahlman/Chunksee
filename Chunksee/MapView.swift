@@ -150,13 +150,14 @@ struct MapView: View {
             return .handled
         }
         .onAppear { isFocused = true }
-        .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
+        .onChange(of: map.viewport, initial: true) { requestTiles() }
+        .onChange(of: session.isVisible) { requestTiles() }
         .onChange(of: ObjectIdentifier(map)) {
             dragStart = nil
             magnifyStart = nil
-            map.requestTiles(visibleIn: size, displayScale: displayScale)
+            requestTiles()
         }
-        .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
+        .onChange(of: size) { requestTiles() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityIdentifier("world-map")
@@ -180,6 +181,10 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
         .overlay(alignment: .bottom) { statusBar }
         .toolbar { MapToolbar(session: session, map: map) }
+    }
+
+    private func requestTiles() {
+        if session.isVisible { map.requestTiles(visibleIn: size, displayScale: displayScale) }
     }
 
     private func contextActions(at point: CGPoint) -> [MapContextAction] {

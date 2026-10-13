@@ -25,29 +25,37 @@ enum MapSelection: Equatable {
     }
 }
 
-/// The world the user opened, and the security-scoped access that lets the sandboxed app read it.
-/// It coordinates the selected dimension's map with the parts that span the world: players,
-/// portals, search, the heat map and live updates as the game saves.
+/// One dimension tab's controls, map and navigation. Shared document resources own the world,
+/// file access, index, players and live updates; closing this view leaves other tabs running.
 @Observable
 final class WorldSession {
-    let url: URL
-    let world: World
-    let dimensions: [ChunkseeKit.Dimension]
-    /// Game rules, weather, borders, in-game maps and the like, read when the world opens.
-    let details: WorldDetails
-    /// App-wide player names, shared across worlds.
-    let names: PlayerNames
+    let viewID = UUID()
+    let resources: WorldResources
+    var url: URL { resources.url }
+    var world: World { resources.world }
+    var dimensions: [ChunkseeKit.Dimension] { resources.dimensions }
+    var details: WorldDetails { resources.details }
+    var names: PlayerNames { resources.names }
+    var savedSearches: SavedSearches { resources.savedSearches }
+    var savedPlaces: SavedPlaces { resources.savedPlaces }
+    var players: [PlayerInfo] { resources.players }
     let visibility: LayerVisibility
     let search: SearchModel
-    /// Searches kept in the sidebar, shared across worlds.
-    let savedSearches: SavedSearches
-    let savedPlaces: SavedPlaces
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
+    /// Native dimension windows route cross-dimension jumps to the destination tab.
+    @ObservationIgnored var openDimensionTab: ((String, @escaping (WorldSession) -> Void) -> Void)?
+    @ObservationIgnored var invalidateRestorableState: (() -> Void)?
+    var isVisible = true {
+        didSet { if isVisible != oldValue { map?.setRenderingActive(isVisible) } }
+    }
+    var isKeyWindow = false
+    var hasSheet: Bool { showsCoordinateSheet || placeDraft != nil }
 
     var selectedDimensionID: String? {
         didSet {
             guard oldValue != selectedDimensionID else { return }
+            resources.activeDimensionID = selectedDimensionID
             if !isNavigating, let oldValue, let map {
                 navigation.record(MapViewLocation(dimension: oldValue, viewport: map.viewport))
             }
@@ -59,10 +67,6 @@ final class WorldSession {
         }
     }
     private(set) var map: MapModel?
-    /// Players with saved data, most recently saved first. Reread when the game saves them.
-    private(set) var players: [PlayerInfo] {
-        didSet { search.players = players }
-    }
     /// What the inspector shows, if it's open.
     var inspector: Inspector? {
         didSet { if inspector != oldValue { playerRecords.cancel() } }
@@ -82,49 +86,33 @@ final class WorldSession {
         selectedDimensionID.flatMap { search.index.dimensions[$0] } ?? DimensionIndex()
     }
 
-    private let cacheRoot: URL?
-    /// One per dimension: reads each region once for the index and the heat map.
-    private let readers: [String: RegionReader]
-    private let views: RememberedViews
-    private let access: WorldReadAccess
+    private var cacheRoot: URL? { resources.cacheRoot }
+    private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var retiringMaps: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
-    init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
-         defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
-         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
-        let url = snapshot.access.url, world = snapshot.world, dimensions = snapshot.dimensions, players = snapshot.players
-        let readers = Dictionary(uniqueKeysWithValues: dimensions.map { dimension in
-            (dimension.id, RegionReader(dimension: dimension, cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                                        read: readRegion))
-        })
-        self.url = url
-        self.world = world
-        self.dimensions = dimensions
-        self.details = snapshot.details
-        self.names = names
-        self.players = players
-        self.cacheRoot = cacheRoot
-        self.readers = readers
-        self.views = RememberedViews(world: url, defaults: defaults)
-        self.access = snapshot.access
-        self.visibility = LayerVisibility(defaults: defaults)
-        self.savedSearches = savedSearches
-        self.savedPlaces = SavedPlaces(world: url, defaults: defaults)
-        // Reopen in the dimension last viewed, if it still exists.
-        let last = views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id }
-        let selected = last ?? dimensions.first?.id
-        self.search = SearchModel(readers: dimensions.compactMap { readers[$0.id] }, players: players, names: names,
-                                  singleplayerUUID: world.level.singleplayerUUID, firstDimension: selected, savedSearches: savedSearches)
-        self.heatMap = HeatMapLayer(readers: readers)
-        self.playerRecords = PlayerRecordsModel(world: world)
-        self.selectedDimensionID = selected
-        heatMap.dimension = selectedDimensionID
+    convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
+                     defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+                     readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
+        self.init(resources: WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
+                                           defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
+    }
+
+    init(resources: WorldResources, dimensionID: String? = nil) {
+        self.resources = resources
+        visibility = LayerVisibility(defaults: resources.defaults)
+        let selected = dimensionID ?? resources.defaultDimensionID
+        search = SearchModel(readers: [], players: resources.players, names: resources.names,
+                             singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
+                             savedSearches: resources.savedSearches, indexStore: resources.index)
+        heatMap = HeatMapLayer(readers: resources.readers)
+        playerRecords = PlayerRecordsModel(world: resources.world)
+        selectedDimensionID = selected
+        heatMap.dimension = selected
         makeMapForSelection()
-        Self.maintainTileCache(forWorldAt: url, root: cacheRoot)
-        watcher = WorldWatcher(folder: url) { [weak self] files in self?.worldChanged(files) }
+        resources.attach(self)
     }
 
     /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
@@ -138,36 +126,32 @@ final class WorldSession {
                             defaults: defaults, cacheRoot: cacheRoot)
     }
 
-    /// Stops rendering, watching and reading, remembers where the map was, and gives up file access.
-    /// Call before replacing the session.
+    /// Closing a tab drains its reads; the document keeps shared reads alive for other tabs.
     func close() {
         guard !isClosed else { return }
         isClosed = true
-        watcher?.stop()
-        refreshTasks.values.forEach { $0.cancel() }
         saveView()
         search.cancel()
         heatMap.cancel()
         playerRecords.close()
         map?.close()
-        // Cancellation is a request, not completion. Retain access until even superseded work
-        // has returned, including a region pass shared by several scans.
-        let readers = Array(readers.values), search = search, heatMap = heatMap, playerRecords = playerRecords
-        let map = map, retiring = Array(retiringMaps.values), refresh = Array(refreshTasks.values), access = access
-        closingTask = Task {
-            await withTaskGroup(of: Void.self) { group in
-                for reader in readers { group.addTask { await reader.close() } }
-            }
+        let search = search, heatMap = heatMap, playerRecords = playerRecords
+        let map = map, retiring = Array(retiringMaps.values)
+        let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
             await playerRecords.waitForReads()
             await map?.waitForRenders()
-            for task in retiring + refresh { await task.value }
-            access.release()
+            for task in retiring { await task.value }
         }
+        closingTask = task
+        resources.detach(self, draining: task)
     }
 
-    func waitUntilClosed() async { await closingTask?.value }
+    func waitUntilClosed() async {
+        await closingTask?.value
+        if resources.isClosed { await resources.waitUntilClosed() }
+    }
 
     // MARK: The map
 
@@ -193,6 +177,7 @@ final class WorldSession {
     /// to at least 2×.
     func focus(on location: PlayerInfo.Location) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
+        if route(to: location.dimension, perform: { $0.focus(on: location) }) { return }
         navigate {
             selectedDimensionID = location.dimension
             map?.viewport.center = CGPoint(x: location.x, y: location.z)
@@ -224,6 +209,7 @@ final class WorldSession {
 
     func visit(_ place: SavedPlace) {
         guard dimensions.contains(where: { $0.id == place.dimension }) else { return }
+        if route(to: place.dimension, perform: { $0.visit(place) }) { return }
         let scale = map?.viewport.scale ?? 1
         navigate {
             selectedDimensionID = place.dimension
@@ -246,6 +232,19 @@ final class WorldSession {
     private var currentView: MapViewLocation? {
         guard let map, let dimension = selectedDimensionID else { return nil }
         return MapViewLocation(dimension: dimension, viewport: map.viewport)
+    }
+
+    func openDimension(_ id: String) {
+        guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
+        if let openDimensionTab { openDimensionTab(id, { _ in }) }
+        else { selectedDimensionID = id }
+    }
+
+    /// A dimension tab keeps its map; jumps to another dimension select that tab first.
+    private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
+        guard !isClosed, dimension != selectedDimensionID, let openDimensionTab else { return false }
+        openDimensionTab(dimension, perform)
+        return true
     }
 
     /// Capture a whole jump once, even when it also switches dimensions or fits a map.
@@ -345,6 +344,7 @@ final class WorldSession {
         map = MapModel(dimension: dimension, center: spawnPoint,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
+        map?.setRenderingActive(isVisible)
     }
 
     /// A click on the map: selects the portal or creature under it. A click elsewhere closes a
@@ -358,17 +358,8 @@ final class WorldSession {
     /// showing: the selected one, except while switching away from it.
     func saveView(of dimensionID: String? = nil) {
         guard let map, let id = dimensionID ?? selectedDimensionID else { return }
-        views.save(map.viewport, for: id, selected: selectedDimensionID)
-    }
-
-    /// The tile cache is limited to about 1 GB across all worlds; the least recently opened worlds'
-    /// tiles go first, never the one being opened.
-    private static func maintainTileCache(forWorldAt url: URL, root: URL?) {
-        guard let root, let worldFolder = TileCache.worldFolder(forWorldAt: url, root: root) else { return }
-        Task.detached(priority: .background) {
-            TileCache.markUsed(worldFolder: worldFolder)
-            TileCache.prune(root: root, limit: 1 << 30, keeping: worldFolder)
-        }
+        views.save(map.viewport, for: id, selected: resources.activeDimensionID)
+        invalidateRestorableState?()
     }
 
     // MARK: Search results, portals and in-game maps
@@ -377,6 +368,7 @@ final class WorldSession {
     /// kind (a biome's outline, say) so the result is on the map.
     func show(_ hit: SearchHit) {
         guard let dimension = hit.dimension, let position = hit.position else { return }
+        if route(to: dimension, perform: { $0.show(hit) }) { return }
         focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y))
         search.selectedHitID = hit.id
         guard case .layer(let layer) = hit.source else { return }
@@ -415,6 +407,7 @@ final class WorldSession {
 
     /// Selects a portal and centers the map on it, switching dimension if needed.
     func show(_ portal: NetherPortal) {
+        if route(to: portal.dimension, perform: { $0.show(portal) }) { return }
         focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ))
         selection = .portal(portal)
     }
@@ -435,6 +428,7 @@ final class WorldSession {
     /// Draws an in-game map over the terrain and fits it in view, switching dimension if needed.
     func show(_ map: MapItem) {
         guard let dimension = map.dimension else { return }
+        if route(to: dimension, perform: { $0.show(map) }) { return }
         navigate {
             focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)))
             self.map?.viewport.scale = InGameMapImage.fittingScale(for: map)
@@ -461,76 +455,15 @@ final class WorldSession {
         PlayerPresentation.isOutdated(player, worldDataVersion: world.level.dataVersion)
     }
 
-    // MARK: Live updates
+    // MARK: Live updates shared by every dimension tab
 
-    @ObservationIgnored private var watcher: WorldWatcher?
-    /// Changes waiting for the game to finish saving.
-    @ObservationIgnored private var pendingRegions: [String: Set<RegionCoordinate>] = [:]
-    @ObservationIgnored private var pendingDimensions: Set<String> = []
-    @ObservationIgnored private var pendingPlayers = false
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
-    /// How long to wait after the last change: an autosave writes many files over a second or two.
-    @ObservationIgnored var refreshDelay: Duration = .seconds(2)
-
-    /// Notes which regions, dimensions and players changed, then refreshes once saving settles.
-    func worldChanged(_ files: [URL]) {
-        guard !isClosed else { return }
-        for file in files.map(\.standardizedFileURL) {
-            let path = file.path
-            if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
-                pendingPlayers = true
-            } else if let dimension = dimensions.first(where: { path.hasPrefix($0.url.standardizedFileURL.path + "/") }) {
-                pendingDimensions.insert(dimension.id)
-                if file.deletingLastPathComponent().path == dimension.regionDirectory.standardizedFileURL.path,
-                   let region = RegionFile.parseCoordinates(file.lastPathComponent) {
-                    pendingRegions[dimension.id, default: []].insert(RegionCoordinate(x: region.x, z: region.z))
-                }
-            }
-        }
-        guard !pendingDimensions.isEmpty || pendingPlayers else { return }
-        refreshTask?.cancel()
-        let delay = refreshDelay
-        let id = UUID()
-        let task = Task { [weak self] in
-            defer { self?.refreshTasks[id] = nil }
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            await self?.refresh()
-        }
-        refreshTask = task
-        refreshTasks[id] = task
+    var refreshDelay: Duration {
+        get { resources.refreshDelay }
+        set { resources.refreshDelay = newValue }
     }
+    func worldChanged(_ files: [URL]) { resources.worldChanged(files) }
+    func waitForRefresh() async { await resources.waitForRefresh() }
 
-    /// Waits for a refresh that's waiting or running.
-    func waitForRefresh() async {
-        await refreshTask?.value
-    }
-
-    private func refresh() async {
-        let regions = pendingRegions, changedDimensions = pendingDimensions, playersChanged = pendingPlayers
-        pendingRegions = [:]
-        pendingDimensions = []
-        pendingPlayers = false
-        if let id = selectedDimensionID, changedDimensions.contains(id) {
-            map?.regionsChanged(regions[id] ?? [])
-            heatMap.load(reread: true)
-        }
-        if !changedDimensions.isEmpty {
-            search.rebuild(firstDimension: selectedDimensionID)
-        }
-        if playersChanged {
-            let world = world
-            let updated = await Self.readPlayers(world)
-            guard !Task.isCancelled, !isClosed else { return }
-            players = updated
-        }
-    }
-
-    @concurrent
-    private nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] {
-        world.players()
-    }
 }
 
 enum WorldOpenError: LocalizedError, Equatable {
@@ -541,7 +474,7 @@ enum WorldOpenError: LocalizedError, Equatable {
         [failureReason, recoverySuggestion].compactMap { $0 }.joined(separator: " ")
     }
 
-    // DocumentGroup supplies the alert's title and presents these bridged NSError fields.
+    // Native document error presentation uses these bridged NSError fields.
     var failureReason: String? {
         switch self {
         case .notAWorld:

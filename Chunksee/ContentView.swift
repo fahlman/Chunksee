@@ -11,7 +11,7 @@ struct WorldView: View {
         @Bindable var search = session.search
         @Bindable var heatMap = session.heatMap
         NavigationSplitView {
-            List(selection: $session.selectedDimensionID) {
+            List {
                 if search.isActive {
                     SearchResultsSection(session: session)
                 }
@@ -44,11 +44,6 @@ struct WorldView: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .help("Show block, chunk and region lines; block lines appear from 8× zoom")
-                }
-                Section("Dimensions") {
-                    ForEach(session.dimensions, id: \.id) { dimension in
-                        Label(dimension.displayName, systemImage: symbol(for: dimension.id))
-                    }
                 }
                 if !session.savedSearches.all.isEmpty {
                     SavedSearchesSection(session: session)
@@ -190,14 +185,6 @@ struct WorldView: View {
         }
     }
 
-    private func symbol(for id: String) -> String {
-        switch id {
-        case "minecraft:overworld": "globe.americas"
-        case "minecraft:the_nether": "flame"
-        case "minecraft:the_end": "moon.stars"
-        default: "square.dashed"
-        }
-    }
 }
 
 /// A player in the sidebar. Choosing one shows their last position on the map.

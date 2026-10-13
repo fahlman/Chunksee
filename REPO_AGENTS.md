@@ -35,11 +35,13 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 - **Data locations:**
   - The app reads only the world or saves folder the user picks with an Open panel.
   - Worlds are native read-only folder documents. macOS owns opening, Open Recent, and window
-    restoration; each document retains access while its session reads the world.
+    restoration; each document retains access while its shared resources read the world. Each
+    dimension is a native window tab, detachable into its own window. Closing a tab leaves the
+    document's other views alive; the last tab closes the native document.
   - It never writes to a world folder.
   - Saved places are annotations in the app's local preferences, keyed by world URL; native
-    document moves migrate them. Navigation history and ruler endpoints belong to the document
-    session, and are never stored in the world.
+    document moves migrate them and remembered views. Navigation history and ruler endpoints
+    belong to each dimension view, and are never stored in the world.
   - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
     Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
@@ -58,9 +60,11 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 
 | File | Owns |
 |---|---|
-| `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` for ordinary world folders; native opening, recents and restoration, opening metadata, document lifetime and moves |
+| `ChunkseeApp.swift`, `WorldDocument.swift` | SwiftUI settings and commands, plus one native read-only `NSDocument` per world; opening metadata, dimension windows, document lifetime and moves |
 | `AppModel.swift` | App-wide player names and saved searches |
-| `WorldSession.swift` | One open world: its dimensions, map and overlays, and cancellation and draining of world reads before relinquishing document access |
+| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index and file watcher; closing the document drains all tab reads before relinquishing access |
+| `WorldSession.swift` | One dimension view's map, search controls, history, ruler, selection and inspector; cross-dimension jumps select the destination tab |
+| `DimensionWindows.swift` | Native window controllers hosting SwiftUI dimension views, per-view restoration state and active-window command routing |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
@@ -71,17 +75,25 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
-| `SearchModel.swift` | Background indexing and queries, current immutable result snapshots, and shared saved searches |
+| `SearchModel.swift` | Independent per-tab queries against the shared world index, current immutable result snapshots, and shared saved searches |
 | `PlayerNames.swift` | Names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
-| `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
+| `ReadOnlyDocumentMenus.swift`, `DocumentMenu.xib` | Native folder document controller and read-only File menu; AppKit populates the system Open Recent menu |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
 | `PlayerMarkers.swift` | Player names, outdated and Bukkit rules, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
+
+AppKit's `NSDocumentController` owns world opening, recent documents and document restoration.
+Each world is one `NSDocument` with a window controller for each open dimension. All controllers
+use `NSHostingController` for SwiftUI content and scene bridging for titles and toolbars. AppKit
+owns closing, detaching, tab groups and window placement. The document's restoration callback
+creates only the requested dimension window; controllers encode their dimension and viewport.
+Hidden tabs pause tile rendering; indexing and file access remain shared. A fresh open creates
+all dimensions, while restoration preserves the set of windows that was open at quit.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
