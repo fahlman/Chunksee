@@ -502,9 +502,15 @@ final class WorldSession {
         selection = .portal(portal)
     }
 
-    /// Drawn maps made in the game, in dimensions this world has.
+    /// Drawn maps made in the game that this dimension's sidebar lists: those drawn in it, and, in
+    /// the first dimension, those from a dimension this world doesn't have, by the shared rule.
     var inGameMaps: [MapItem] {
-        details.maps.filter { map in dimensions.contains { $0.id == map.dimension } }
+        details.maps.filter { lists($0.dimension) }
+    }
+
+    /// Whether a map was drawn in a dimension this world has, so it can be shown on the map.
+    func canShow(_ map: MapItem) -> Bool {
+        dimensions.contains { $0.id == map.dimension }
     }
 
     /// A map's picture, made once and kept.
@@ -518,7 +524,9 @@ final class WorldSession {
     /// Draws an in-game map over the terrain and fits it in view (or only centers it, when
     /// `keepingZoom`), switching dimension if needed.
     func show(_ map: MapItem, keepingZoom: Bool = false) {
-        guard let dimension = map.dimension else { return }
+        // A map from a missing dimension is listed but not shown, so its coordinates are never
+        // drawn over another dimension's terrain.
+        guard canShow(map), let dimension = map.dimension else { return }
         if route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
         navigate {
             focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)),
@@ -538,6 +546,27 @@ final class WorldSession {
     func name(ofPlayerWith uuid: UUID) -> String {
         if let player = players.first(where: { $0.uuid == uuid }) { return name(of: player) }
         return names.name(for: uuid) ?? String(localized: "a player not in this world (\(uuid.uuidString.prefix(8).lowercased())…)")
+    }
+
+    /// Whether this dimension's sidebar lists something in `dimension`. Each dimension lists only
+    /// what's in it (Ryan, 2026-10-13); something with no dimension in this world, such as an item
+    /// in a player's inventory, is listed with the first dimension, the Overworld.
+    func lists(_ dimension: String?) -> Bool {
+        guard let id = selectedDimensionID else { return false }
+        if let dimension, dimensions.contains(where: { $0.id == dimension }) { return dimension == id }
+        return id == dimensions.first?.id
+    }
+
+    /// The saved places this dimension's sidebar lists.
+    var listedPlaces: [SavedPlace] { savedPlaces.all.filter { lists($0.dimension) } }
+
+    /// A search's results that this dimension's sidebar lists.
+    func listed(_ hits: [SearchHit]) -> [SearchHit] { hits.filter { lists($0.dimension) } }
+
+    /// The players this dimension's sidebar lists.
+    var listedPlayers: [PlayerInfo] {
+        guard let id = selectedDimensionID else { return [] }
+        return PlayerPresentation.listed(players, in: id, dimensions: dimensions.map(\.id))
     }
 
     /// Whether any player still has no real name.
