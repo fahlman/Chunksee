@@ -95,12 +95,13 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
-chosen in the Open panel reaches the document reader, which remembers it and opens its dimension
-folders through `NSDocumentController.shared` instead, because SwiftUI's `openDocument` action
-exists only in a view's environment. Within a document, Navigate ▸ Dimension and cross-dimension
-jumps use `openDocument`, which also brings an already-open dimension to the front; the jump runs
-once that dimension's view exists. macOS names each window and Open Recent item after its folder
-(`overworld`, `the_nether`, `the_end`), so the window subtitle names the world. Each dimension's
+chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
+opens the dimension folders with SwiftUI's `openDocument` and then closes itself. Navigate ▸
+Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
+to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
+The opening action captures only `openDocument`, so a view never keeps its own document alive.
+macOS names each window and Open Recent item after its folder (`overworld`, `the_nether`,
+`the_end`), so the window subtitle names the world. Each dimension's
 map position is remembered in `RememberedViews`.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never

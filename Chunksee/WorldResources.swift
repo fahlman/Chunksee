@@ -23,7 +23,7 @@ final class WorldResources {
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
     /// Jumps waiting for a dimension's document to open.
-    @ObservationIgnored private var pendingActions: [String: (WorldSession) -> Void] = [:]
+    @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
     @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
@@ -78,17 +78,26 @@ final class WorldResources {
 
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
-        if let id = session.selectedDimensionID, let action = pendingActions.removeValue(forKey: id) { action(session) }
+        if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
 
     /// Performs a jump in a dimension's view now if it's open, or else once its document opens.
     /// Only the latest waits, so a dimension that failed to open doesn't replay old jumps later.
-    func whenShowing(_ dimension: String, perform action: @escaping (WorldSession) -> Void) {
+    /// Returns the waiting request's ID, or `nil` when it already ran.
+    @discardableResult
+    func whenShowing(_ dimension: String, perform action: @escaping (WorldSession) -> Void) -> UUID? {
         if let session = sessions.values.compactMap(\.value).first(where: { !$0.isClosed && $0.selectedDimensionID == dimension }) {
             action(session)
-        } else {
-            pendingActions[dimension] = action
+            return nil
         }
+        let id = UUID()
+        pendingActions[dimension] = (id, action)
+        return id
+    }
+
+    /// Drops a waiting jump whose dimension failed to open, unless a newer one replaced it.
+    func cancelPending(_ request: UUID, in dimension: String) {
+        if pendingActions[dimension]?.id == request { pendingActions[dimension] = nil }
     }
 
     func documentURL(for dimension: String) -> URL? {
