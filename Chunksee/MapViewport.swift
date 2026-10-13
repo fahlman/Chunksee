@@ -15,8 +15,10 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// View points per block.
     var scale: CGFloat
 
-    /// From 1/16 point per block (a whole region in 32 points) to 16 points per block.
-    static let scaleRange: ClosedRange<CGFloat> = 1.0 / 16 ... 16
+    /// Fit World can go below the smallest 1/16× preset for widely separated terrain.
+    static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 16
+    static let minimumManualScale: CGFloat = 1.0 / 16
+    var canZoomOut: Bool { scale > Self.minimumManualScale }
 
     init(center: CGPoint = .zero, scale: CGFloat = 1) {
         self.center = center
@@ -47,8 +49,6 @@ nonisolated struct MapViewport: Equatable, Sendable {
     struct RegionRange: Equatable, Sendable {
         var xs: ClosedRange<Int>
         var zs: ClosedRange<Int>
-
-        var regions: [RegionCoordinate] { xs.flatMap { x in zs.map { z in RegionCoordinate(x: x, z: z) } } }
     }
 
     func visibleRegionRange(in size: CGSize) -> RegionRange {
@@ -59,9 +59,24 @@ nonisolated struct MapViewport: Equatable, Sendable {
                            zs: Int((topLeft.y / side).rounded(.down))...Int((bottomRight.y / side).rounded(.down)))
     }
 
-    /// Regions that intersect the view, nearest to the center first so they load first.
-    func visibleRegions(in size: CGSize) -> [RegionCoordinate] {
-        visibleRegionRange(in: size).regions.sorted { distanceToCenter($0) < distanceToCenter($1) }
+    /// Enumerate only saved regions, so fitting distant terrain never walks the empty space.
+    func visibleRegions(in size: CGSize, among available: Set<RegionCoordinate>) -> [RegionCoordinate] {
+        let range = visibleRegionRange(in: size)
+        return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) }
+            .sorted { distanceToCenter($0) < distanceToCenter($1) }
+    }
+
+    /// Region headers locate all saved terrain without reading individual chunks.
+    static func fitting(_ regions: Set<RegionCoordinate>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
+        guard !regions.isEmpty, size.width > padding * 2, size.height > padding * 2,
+              let minX = regions.map(\.x).min(), let maxX = regions.map(\.x).max(),
+              let minZ = regions.map(\.z).min(), let maxZ = regions.map(\.z).max() else { return nil }
+        let side = CGFloat(RegionCoordinate.blockSize)
+        let left = CGFloat(minX) * side, top = CGFloat(minZ) * side
+        let width = (CGFloat(maxX) - CGFloat(minX) + 1) * side
+        let height = (CGFloat(maxZ) - CGFloat(minZ) + 1) * side
+        return MapViewport(center: CGPoint(x: left + width / 2, y: top + height / 2),
+                           scale: min((size.width - padding * 2) / width, (size.height - padding * 2) / height))
     }
 
     func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {
@@ -76,10 +91,17 @@ nonisolated struct MapViewport: Equatable, Sendable {
         center.y -= viewDelta.height / scale
     }
 
+    /// Manual zoom stops at 1/16×. Smaller fitted views can zoom in gradually, but not farther out.
+    mutating func zoom(by factor: CGFloat) {
+        scale = min(max(scale * factor, min(scale, Self.minimumManualScale)), Self.scaleRange.upperBound)
+    }
+
     /// Zooms by `factor`, keeping the block under `anchor` in place.
     mutating func zoom(by factor: CGFloat, anchor: CGPoint, in size: CGSize) {
         let fixed = blockPoint(at: anchor, in: size)
-        scale = min(max(scale * factor, Self.scaleRange.lowerBound), Self.scaleRange.upperBound)
+        let previousScale = scale
+        zoom(by: factor)
+        guard scale != previousScale else { return }
         center = CGPoint(x: fixed.x - (anchor.x - size.width / 2) / scale,
                          y: fixed.y - (anchor.y - size.height / 2) / scale)
     }

@@ -14,4 +14,12 @@ import Testing
         #expect(MapCoordinates(x: text, z: "71") == nil)
         #expect(MapCoordinates(x: "-266", z: text) == nil)
     }
+
+    @Test func aClickedMapPointUsesTheContainingBlockIncludingNegativeCoordinates() {
+        let viewport = MapViewport(center: CGPoint(x: -0.1, y: -16.1), scale: 4)
+        let block = viewport.blockPoint(at: CGPoint(x: 400, y: 300), in: CGSize(width: 800, height: 600))
+        #expect(MapCoordinates(point: block)?.position == CGPoint(x: -1, y: -17))
+        #expect(MapCoordinates(point: CGPoint(x: CGFloat.nan, y: 0)) == nil)
+        #expect(MapCoordinates(point: CGPoint(x: Double(Int32.max) + 1, y: 0)) == nil)
+    }
 }

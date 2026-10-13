@@ -53,6 +53,7 @@ struct WorldView: View {
                 if !session.savedSearches.all.isEmpty {
                     SavedSearchesSection(session: session)
                 }
+                SavedPlacesSection(session: session)
                 let index = session.selectedIndex
                 LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
                              shown: $visibility.structures) { session.center(on: $0.position) }
@@ -99,7 +100,7 @@ struct WorldView: View {
             }
         } detail: {
             if let map = session.map {
-                MapView(map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
+                MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: { session.mapClicked($0) })
                     .id(map.dimension.id)
                     // Remember the position a second after the map stops moving.
@@ -156,6 +157,9 @@ struct WorldView: View {
         .sheet(isPresented: $session.showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
+        .sheet(item: $session.placeDraft) { draft in
+            SavedPlaceEditor(session: session, draft: draft)
+        }
         .inspector(isPresented: inspectorShown) {
             Group {
                 switch session.inspector {
@@ -175,7 +179,7 @@ struct WorldView: View {
             // Capped so a wide row can't push the inspector past the window's edge.
             .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, session)
+        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
         .background { WorldKeyboardShortcuts(session: session) }
     }
 

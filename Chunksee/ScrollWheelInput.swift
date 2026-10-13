@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// SwiftUI has no arbitrary-view scroll-wheel gesture. This transparent AppKit view participates
-/// in its window's normal hit testing for scroll events only; other input reaches the SwiftUI map.
+/// in its window's hit testing for scrolling and context clicks; other input reaches the SwiftUI map.
 struct ScrollWheelInput: NSViewRepresentable {
     enum Action: Equatable {
         case pan(CGSize)
@@ -10,9 +10,13 @@ struct ScrollWheelInput: NSViewRepresentable {
     }
 
     let perform: (Action) -> Void
+    var contextActions: (CGPoint) -> [MapContextAction] = { _ in [] }
 
-    func makeNSView(context: Context) -> MapScrollView { MapScrollView(perform: perform) }
-    func updateNSView(_ view: MapScrollView, context: Context) { view.perform = perform }
+    func makeNSView(context: Context) -> MapScrollView { MapScrollView(perform: perform, contextActions: contextActions) }
+    func updateNSView(_ view: MapScrollView, context: Context) {
+        view.perform = perform
+        view.contextActions = contextActions
+    }
 
     /// What a scroll does: a trackpad scroll pans with the fingers; ⌘-scroll or a mouse wheel zooms
     /// around the pointer. Trackpad deltas are in points and wheel deltas in lines, so they're scaled
@@ -30,18 +34,35 @@ struct ScrollWheelInput: NSViewRepresentable {
 /// Native event routing distinguishes windows and respects controls layered over the map.
 final class MapScrollView: NSView {
     var perform: (ScrollWheelInput.Action) -> Void
+    var contextActions: (CGPoint) -> [MapContextAction]
     override var isFlipped: Bool { true }
 
-    init(perform: @escaping (ScrollWheelInput.Action) -> Void) {
+    init(perform: @escaping (ScrollWheelInput.Action) -> Void, contextActions: @escaping (CGPoint) -> [MapContextAction] = { _ in [] }) {
         self.perform = perform
+        self.contextActions = contextActions
         super.init(frame: .zero)
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard NSApp.currentEvent?.type == .scrollWheel else { return nil }
+        guard let event = NSApp.currentEvent,
+              event.type == .scrollWheel || event.type == .rightMouseDown || event.type == .rightMouseUp ||
+              (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) else { return nil }
         return super.hitTest(point)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { rightMouseDown(with: event) }
+        else { super.mouseDown(with: event) }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let window, event.window === window else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(point) else { return nil }
+        let actions = contextActions(point)
+        return actions.isEmpty ? nil : MapContextMenu.make(actions: actions)
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -59,7 +80,8 @@ final class MapScrollView: NSView {
 }
 
 extension View {
-    func scrollWheelInput(perform: @escaping (ScrollWheelInput.Action) -> Void) -> some View {
-        overlay { ScrollWheelInput(perform: perform).accessibilityHidden(true) }
+    func scrollWheelInput(contextActions: @escaping (CGPoint) -> [MapContextAction] = { _ in [] },
+                          perform: @escaping (ScrollWheelInput.Action) -> Void) -> some View {
+        overlay { ScrollWheelInput(perform: perform, contextActions: contextActions).accessibilityHidden(true) }
     }
 }

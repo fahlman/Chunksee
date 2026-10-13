@@ -28,11 +28,12 @@ nonisolated struct MapGrid: Equatable {
     init(viewport: MapViewport, size: CGSize) {
         let chunkSpacing = CGFloat(Self.chunk) * viewport.scale
         let regionSpacing = CGFloat(Self.region) * viewport.scale
-        let step: Int
+        var step: Int
         if viewport.scale >= Self.minimumBlockSpacing {
             step = 1
         } else {
             step = chunkSpacing >= Self.minimumLineSpacing ? Self.chunk : Self.region
+            while CGFloat(step) * viewport.scale < Self.minimumLineSpacing { step *= 2 }
         }
         labelsChunks = chunkSpacing >= Self.minimumLabelSpacing
         labelsRegions = regionSpacing >= Self.minimumLabelSpacing

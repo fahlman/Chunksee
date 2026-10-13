@@ -1,0 +1,84 @@
+import ChunkseeKit
+import SwiftUI
+
+struct SavedPlacesSection: View {
+    let session: WorldSession
+
+    var body: some View {
+        Section("Saved Places") {
+            ForEach(session.savedPlaces.all) { place in
+                Button { session.visit(place) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(place.name, systemImage: "mappin")
+                        Text("\(session.dimensionName(place.dimension)) · \(Coordinates.text(place.position))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .disabled(!session.dimensions.contains { $0.id == place.dimension })
+                .contextMenu {
+                    Button("Rename…") { session.edit(place) }
+                    Button("Copy Coordinates") { MapClipboard.copy(place.position) }
+                    Divider()
+                    Button("Remove", role: .destructive) { session.savedPlaces.remove(place.id) }
+                }
+            }
+            Button("Save Place…", systemImage: "mappin.and.ellipse") { session.savePlace() }
+                .buttonStyle(.plain)
+                .disabled(session.map == nil)
+                .help("Save the location at the center of the map")
+        }
+    }
+}
+
+/// The document owns the draft; name editing cannot move or alter the world.
+struct SavedPlaceEditor: View {
+    let session: WorldSession
+    let draft: SavedPlaceDraft
+    @State private var name: String
+    @FocusState private var nameFocused: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    init(session: WorldSession, draft: SavedPlaceDraft) {
+        self.session = session
+        self.draft = draft
+        _name = State(initialValue: draft.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(draft.existingID == nil ? "Save Place" : "Rename Place").font(.headline)
+            Text("\(session.dimensionName(draft.dimension)) · \(Coordinates.text(draft.position))")
+                .foregroundStyle(.secondary)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($nameFocused)
+                .accessibilityIdentifier("saved-place-name")
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save", action: save)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
+        .onSubmit(save)
+        .onAppear { nameFocused = true }
+    }
+
+    private func save() {
+        guard !session.isClosed else { dismiss(); return }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let id = draft.existingID {
+            session.savedPlaces.rename(id, to: name)
+        } else {
+            session.savedPlaces.add(name: name, dimension: draft.dimension, at: draft.position)
+        }
+        dismiss()
+    }
+}
