@@ -32,27 +32,22 @@ struct InGameMapRow: View {
     let map: MapItem
 
     var body: some View {
-        Button {
-            session.show(map)
-        } label: {
-            HStack {
-                if let image = session.image(for: map) {
-                    Image(decorative: image, scale: 1)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 28, height: 28)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Map #\(map.id)")
-                    Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        HStack {
+            if let image = session.image(for: map) {
+                Image(decorative: image, scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Map #\(map.id)")
+                Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.plain)
-        .listRowBackground(session.selection == .inGameMap(map) ? Color.accentColor.opacity(0.2) : nil)
+        .tag(SidebarItem.inGameMap(map.id))
         .help("Show this map where it belongs on the world map")
     }
 }

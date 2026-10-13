@@ -36,15 +36,14 @@ extension CreatureMarker: MapLayerMarker {
 }
 
 /// A sidebar section for one layer (structures, places, creatures or biomes). Groups are listed
-/// by name; each expands into a list, nearest to `origin` first, and choosing an entry calls
-/// `select`. With `shown`, each group can be shown or hidden on the map, and choosing an entry
-/// shows its group.
+/// by name; each expands into a list, nearest to `origin` first, whose rows are tagged with `item`
+/// for the sidebar's selection. With `shown`, each group can be shown or hidden on the map.
 struct LayerSection<Marker: MapLayerMarker>: View {
     let title: LocalizedStringKey
     let markers: [Marker]
     let origin: CGPoint
     var shown: Binding<Set<Marker.Group>>?
-    let select: (Marker) -> Void
+    let item: (Marker) -> SidebarItem
     @State private var isExpanded = true
 
     var body: some View {
@@ -54,18 +53,13 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                 ForEach(byGroup.keys.sorted { $0.name < $1.name }, id: \.self) { group in
                     DisclosureGroup {
                         ForEach(nearestFirst(byGroup[group] ?? [])) { marker in
-                            Button {
-                                shown?.wrappedValue.insert(group)
-                                select(marker)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(marker.name)
-                                    Text(Coordinates.text(marker.position))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(marker.name)
+                                Text(Coordinates.text(marker.position))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
+                            .tag(item(marker))
                             .help("Show on the map")
                         }
                     } label: {

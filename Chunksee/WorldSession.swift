@@ -12,6 +12,22 @@ enum Inspector: Equatable {
     case selection
 }
 
+/// A sidebar row that can be selected. Choosing it shows its item: World Info and Storage in the
+/// inspector, everything else on the map.
+enum SidebarItem: Hashable {
+    case worldInfo
+    case storage
+    case savedPlace(UUID)
+    case structure(String)
+    case place(String)
+    case creature(String)
+    case biome(String)
+    case inGameMap(Int)
+    case player(UUID)
+    /// A search result, under the query that found it: the search bar's or a saved search's.
+    case hit(query: String, id: String)
+}
+
 /// The thing selected on the map, whose details the inspector shows; one at a time.
 enum MapSelection: Equatable {
     case portal(NetherPortal)
@@ -71,10 +87,15 @@ final class WorldSession {
         didSet {
             guard inspector != oldValue else { return }
             playerRecords.cancel()
-            // The inspector shows one thing; showing something else lets go of the map selection.
+            // The inspector shows one thing; showing something else lets go of the map selection,
+            // and of World Info or Storage in the sidebar.
             if inspector != .selection, selection != nil { selection = nil }
+            if (sidebarSelection == .worldInfo && inspector != .world) || (sidebarSelection == .storage && inspector != .storage) {
+                sidebarSelection = nil
+            }
         }
     }
+    var sidebarSelection: SidebarItem?
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
@@ -371,6 +392,42 @@ final class WorldSession {
         map = MapModel(dimension: dimension, center: spawnPoint,
                        cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
+    }
+
+    /// Shows what a sidebar row stands for, making its layer visible on the map.
+    func choose(_ item: SidebarItem) {
+        let index = selectedIndex
+        switch item {
+        case .worldInfo:
+            inspector = .world
+        case .storage:
+            inspector = .storage
+        case .savedPlace(let id):
+            if let place = savedPlaces.all.first(where: { $0.id == id }) { visit(place) }
+        case .structure(let id):
+            guard let marker = index.structures.first(where: { $0.id == id }) else { return }
+            visibility.structures.insert(marker.group)
+            center(on: marker.position)
+        case .place(let id):
+            guard let marker = index.places.first(where: { $0.id == id }) else { return }
+            visibility.places.insert(marker.group)
+            if let portal = marker.portal { show(portal) } else { center(on: marker.position) }
+        case .creature(let id):
+            guard let marker = index.creatures.first(where: { $0.id == id }) else { return }
+            visibility.creatures.insert(marker.group)
+            center(on: marker.position)
+            selection = .creature(marker)
+        case .biome(let id):
+            guard let area = index.biomeAreas.first(where: { $0.id == id }) else { return }
+            visibility.biomes.insert(area.group)
+            center(on: area.position)
+        case .inGameMap(let id):
+            if let map = inGameMaps.first(where: { $0.id == id }) { show(map) }
+        case .player(let uuid):
+            if let position = players.first(where: { $0.uuid == uuid })?.position { focus(on: position) }
+        case .hit(let query, let id):
+            if let hit = search.results(for: query).first(where: { $0.id == id }) { show(hit) }
+        }
     }
 
     /// A click on the map: selects the portal or creature under it. A click elsewhere clears a
