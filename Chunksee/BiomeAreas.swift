@@ -50,8 +50,15 @@ nonisolated enum BiomeScanner {
             scan.biomes.merge(part.value.0) { $1 }
             scan.caveBiomes.merge(part.value.1) { $1 }
         }
-        scan.areas = areas(from: scan.biomes) + caveAreas(from: scan.caveBiomes)
+        scan.areas = areas(surface: scan.biomes, caves: scan.caveBiomes)
         return scan
+    }
+
+    /// Every biome's areas, each chunk counted once per biome. A cave biome sometimes reaches the
+    /// surface sample, but its underground membership already covers that chunk, so its areas come
+    /// only from there; the hover readout still names the surface biome.
+    static func areas(surface: [ChunkCoordinate: String], caves: [ChunkCoordinate: [String]]) -> [BiomeArea] {
+        areas(from: surface.filter { !caveBiomeIDs.contains($0.value) }) + caveAreas(from: caves)
     }
 
     /// The cave biomes anywhere in a chunk, from its sections' biome palettes.
