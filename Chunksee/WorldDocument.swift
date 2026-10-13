@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import ChunkseeKit
 import Observation
@@ -184,33 +183,35 @@ final class WorldDocument: ReadableDocument {
     nonisolated struct Reader: DocumentReader {
         let folders: WorldFolders
 
-        /// A world folder isn't itself a document: it holds one for each dimension. Opening it
-        /// remembers the world's access and opens those instead.
+        /// A world folder isn't itself a document: it holds one for each dimension. Reading it
+        /// remembers the world's access and lists those, for its window to open instead.
         @concurrent
-        func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending DimensionSnapshot {
+        func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending FolderSnapshot {
             if let world = try? World(contentsOf: source) {
                 folders.remember(source)
-                let documents = world.dimensions().map { $0.documentURL(inWorldAt: source) }
-                Task { @MainActor in
-                    // SwiftUI's openDocument action exists only in a view's environment, so ask the
-                    // document controller DocumentGroup uses. Opened last, the first dimension is in front.
-                    for url in documents.reversed() {
-                        do { _ = try await NSDocumentController.shared.openDocument(withContentsOf: url, display: true) }
-                        catch { NSDocumentController.shared.presentError(error) }
-                    }
-                }
-                throw CocoaError(.userCancelled)
+                return .world(dimensions: world.dimensions().map { $0.documentURL(inWorldAt: source) })
             }
-            return try await DimensionSnapshot.read(source, folders: folders)
+            return .dimension(try await DimensionSnapshot.read(source, folders: folders))
         }
     }
 
+    nonisolated enum FolderSnapshot: Sendable {
+        case dimension(DimensionSnapshot)
+        case world(dimensions: [URL])
+    }
+
+    /// The dimension documents to open in place of this one, when it's a world folder.
+    private(set) var worldDimensions: [URL]?
+
     func reader(configuration: sending ReadConfiguration) -> sending Reader { Reader(folders: model.worldFolders) }
 
-    func apply(snapshot: sending DimensionSnapshot, previous: sending DimensionSnapshot?) async throws {
+    func apply(snapshot: sending FolderSnapshot, previous: sending FolderSnapshot?) async throws {
         let generation = UUID()
         applyGeneration = generation
-        try await replaceSession(snapshot, generation: generation)
+        switch snapshot {
+        case .dimension(let dimension): try await replaceSession(dimension, generation: generation)
+        case .world(let dimensions): worldDimensions = dimensions
+        }
     }
 
     private func replaceSession(_ snapshot: DimensionSnapshot, generation: UUID) async throws {
@@ -257,14 +258,20 @@ final class WorldDocument: ReadableDocument {
 struct WorldDocumentView: View {
     let document: WorldDocument
     @Environment(\.openDocument) private var openDocument
+    @Environment(\.dismiss) private var dismiss
     @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if let session = document.session {
+            if let dimensions = document.worldDimensions {
+                ProgressView("Opening World…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task { await openInstead(dimensions) }
+            } else if let session = document.session {
                 WorldView(session: session)
                     .id(ObjectIdentifier(session))
-                    .onAppear { session.openDimensionDocument = { open($0, of: session) } }
+                    // Capture only the action: the session must not keep its own view or document alive.
+                    .onAppear { session.openDocument = { [openDocument] in try await openDocument(at: $0) } }
             } else {
                 ProgressView("Opening World…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -276,18 +283,21 @@ struct WorldDocumentView: View {
             catch { errorMessage = error.localizedDescription }
         }
         .alert("Couldn’t Read World", isPresented: Binding {
-            errorMessage != nil
-        } set: { if !$0 { errorMessage = nil } }) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(errorMessage ?? "") }
+            errorMessage != nil || document.session?.openFailure != nil
+        } set: { if !$0 { errorMessage = nil; document.session?.openFailure = nil } }) {
+            Button("OK", role: .cancel) { if document.worldDimensions != nil { dismiss() } }
+        } message: { Text(errorMessage ?? document.session?.openFailure ?? "") }
     }
 
-    /// Opening a dimension that's already open brings its window to the front.
-    private func open(_ dimensionID: String, of session: WorldSession) {
-        guard let url = session.resources.documentURL(for: dimensionID) else { return }
-        Task {
-            do { try await openDocument(at: url) }
-            catch { errorMessage = error.localizedDescription }
+    /// Opens a world folder's dimensions, then closes the folder's own window. Opened last, the
+    /// first dimension ends up in front.
+    private func openInstead(_ dimensions: [URL]) async {
+        do {
+            for url in dimensions.reversed() { try await openDocument(at: url) }
+            dismiss()
+        } catch is CancellationError {
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

@@ -43,9 +43,11 @@ final class WorldSession {
     let search: SearchModel
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
-    /// Brings a dimension's document to the front, opening it if needed. Each document's view
+    /// Opens a dimension's document, or brings it to the front if it's open. Each document's view
     /// supplies this, since SwiftUI opens documents through its environment.
-    @ObservationIgnored var openDimensionDocument: ((String) -> Void)?
+    @ObservationIgnored var openDocument: ((URL) async throws -> Void)?
+    /// Why another dimension's document couldn't open, until it's been shown.
+    var openFailure: String?
 
     var selectedDimensionID: String? {
         didSet {
@@ -231,17 +233,32 @@ final class WorldSession {
 
     func openDimension(_ id: String) {
         guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
-        if let openDimensionDocument { openDimensionDocument(id) }
+        if openDocument != nil { open(id, then: nil) }
         else { selectedDimensionID = id }
     }
 
     /// Each dimension is its own document; a jump to another dimension happens in that
     /// dimension's document, once it's open.
     private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
-        guard !isClosed, dimension != selectedDimensionID, let openDimensionDocument else { return false }
-        resources.whenShowing(dimension, perform: perform)
-        openDimensionDocument(dimension)
+        guard !isClosed, dimension != selectedDimensionID, openDocument != nil else { return false }
+        open(dimension, then: perform)
         return true
+    }
+
+    /// A jump that can't reach its dimension is dropped, so a later opening doesn't replay it.
+    private func open(_ dimension: String, then perform: ((WorldSession) -> Void)?) {
+        guard let openDocument, let url = resources.documentURL(for: dimension) else { return }
+        let request = perform.flatMap { resources.whenShowing(dimension, perform: $0) }
+        let resources = resources
+        Task { [weak self] in
+            do {
+                try await openDocument(url)
+            } catch {
+                if let request { resources.cancelPending(request, in: dimension) }
+                guard !(error is CancellationError), (error as? CocoaError)?.code != .userCancelled else { return }
+                self?.openFailure = error.localizedDescription
+            }
+        }
     }
 
     /// Capture a whole jump once, even when it also switches dimensions or fits a map.

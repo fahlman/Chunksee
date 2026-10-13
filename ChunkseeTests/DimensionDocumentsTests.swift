@@ -15,6 +15,13 @@ import Testing
         return (url, resources)
     }
 
+    /// Installs an opening action like a document view's, and returns the documents it's asked to open.
+    private func recordOpens(of session: WorldSession) -> AsyncStream<URL>.Iterator {
+        let (requests, continuation) = AsyncStream.makeStream(of: URL.self)
+        session.openDocument = { continuation.yield($0) }
+        return requests.makeAsyncIterator()
+    }
+
     @Test func dimensionsKeepIndependentViewsHistoriesRulersAndSearches() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
@@ -55,19 +62,20 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: 12, y: 24), scale: 4)
         overworld.map?.viewport = sourceView
         nether.map?.viewport = targetView
-        var selectedTab: String?
-        overworld.openDimensionDocument = { selectedTab = $0 }
+        var opened = recordOpens(of: overworld)
+        let netherDocument = resources.documentURL(for: "minecraft:the_nether")
         let place = try #require(overworld.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
         overworld.visit(place)
-        #expect(selectedTab == "minecraft:the_nether")
+        let jumpOpened = await opened.next(isolation: #isolation)
+        #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
         #expect(!overworld.navigation.canGoBack)
         #expect(nether.map?.viewport == MapViewport(center: place.position, scale: 4))
         nether.goBack()
         #expect(nether.map?.viewport == targetView)
-        selectedTab = nil
         overworld.openDimension("minecraft:the_nether")
-        #expect(selectedTab == "minecraft:the_nether" && nether.map?.viewport == targetView)
+        let menuOpened = await opened.next(isolation: #isolation)
+        #expect(menuOpened == netherDocument && nether.map?.viewport == targetView)
         resources.close()
         await resources.waitUntilClosed()
     }
@@ -88,11 +96,11 @@ import Testing
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
-        var opened: String?
-        overworld.openDimensionDocument = { opened = $0 }
+        var opened = recordOpens(of: overworld)
         let place = try #require(overworld.savedPlaces.add(name: "End City", dimension: "minecraft:the_end", at: CGPoint(x: 900, y: -400)))
         overworld.visit(place)
-        #expect(opened == "minecraft:the_end")
+        let endOpened = await opened.next(isolation: #isolation)
+        #expect(endOpened == resources.documentURL(for: "minecraft:the_end"))
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
         #expect(end.map?.viewport.center == place.position)
         // A later document for the same dimension doesn't replay the jump.
@@ -102,6 +110,34 @@ import Testing
         #expect(reopened.map?.viewport.center == .zero && !reopened.navigation.canGoBack)
         resources.close()
         await resources.waitUntilClosed()
+    }
+
+    @Test func aJumpWhoseDimensionFailsToOpenIsDropped() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        overworld.openDocument = { _ in throw CocoaError(.fileReadNoPermission) }
+        let place = try #require(overworld.savedPlaces.add(name: "End City", dimension: "minecraft:the_end", at: CGPoint(x: 900, y: -400)))
+        overworld.visit(place)
+        for await failure in Observations({ overworld.openFailure }) where failure != nil { break }
+        // Opening the End normally later keeps its own view, without the failed jump.
+        let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
+        #expect(end.map?.viewport.center != place.position && !end.navigation.canGoBack)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test func aDimensionViewWithItsOpeningActionIsReleased() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        var nether: WorldSession? = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        weak let released = nether
+        _ = recordOpens(of: try #require(nether))
+        nether?.openDimension("minecraft:overworld")
+        nether?.close()
+        await nether?.waitUntilClosed()
+        nether = nil
+        #expect(released == nil)
     }
 
     @Test func theOlderLayoutsOverworldIsItsRegionFolder() async throws {
