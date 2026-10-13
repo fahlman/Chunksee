@@ -22,10 +22,12 @@ nonisolated struct DimensionIndex: Sendable {
     @concurrent
     static func read(_ reader: RegionReader) async -> DimensionIndex {
         var part = DimensionIndex()
+        var spawners: [Spawner] = []
         for region in await reader.everyRegion({ await $0.contents($1) }) {
             guard !Task.isCancelled else { return part }
             part.containers += region.value.containers
             part.signs += region.value.signs
+            spawners += region.value.spawners
         }
         guard !Task.isCancelled else { return part }
         part.storage = StoredItem.totals(in: part.containers)
@@ -35,7 +37,7 @@ nonisolated struct DimensionIndex: Sendable {
         async let biomes = BiomeScanner.scan(reader)
         async let blocks = reader.everyRegion { await $0.blocks($1) }
         part.structures = await structures
-        part.places = await places
+        part.places = await places + spawners.map(PlaceMarker.init)
         part.creatures = await creatures
         let biomeScan = await biomes
         part.biomeAreas = biomeScan.areas

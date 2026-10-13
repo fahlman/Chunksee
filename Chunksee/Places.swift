@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Families of points of interest, shown and filtered together.
 nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
-    case portal, bell, lodestone, bed, workstation, beeNest, lightningRod, other
+    case portal, bell, lodestone, bed, workstation, beeNest, lightningRod, spawner, other
 
     var name: String {
         switch self {
@@ -16,6 +16,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .workstation: String(localized: "Villager Workstations")
         case .beeNest: String(localized: "Bee Nests and Hives")
         case .lightningRod: String(localized: "Lightning Rods")
+        case .spawner: String(localized: "Monster Spawners")
         case .other: String(localized: "Other Places")
         }
     }
@@ -29,6 +30,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .workstation: "wrench.and.screwdriver.fill"
         case .beeNest: "hexagon.fill"
         case .lightningRod: "bolt.fill"
+        case .spawner: "cube.transparent"
         case .other: "mappin"
         }
     }
@@ -43,12 +45,13 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .workstation: 0x5D4037
         case .beeNest: 0xE0A800
         case .lightningRod: 0xD35400
+        case .spawner: 0x223042
         case .other: 0x566573
         }
     }
 
-    /// Beds, workstations and bee nests number in the hundreds (558 beds in Ryan's Realm), so they
-    /// start hidden.
+    /// Beds, workstations, bee nests and spawners number in the hundreds or thousands (558 beds and
+    /// 11,296 spawners in Ryan's Realm), so they start hidden.
     var isShownByDefault: Bool { [.portal, .bell, .lodestone].contains(self) }
 
     static let professions = ["armorer", "butcher", "cartographer", "cleric", "farmer", "fisherman", "fletcher",
@@ -81,6 +84,8 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var isClaimed: Bool
     /// For Nether portals: the whole portal (its blocks), as grouped by ChunkseeKit.
     var portal: NetherPortal?
+    /// For spawners: the mob it spawns, or `nil` when it's empty.
+    var mob: String?
 
     var name: String {
         let base = type.hasPrefix("minecraft:") ? String(type.dropFirst(10)) : type
@@ -94,6 +99,9 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
             return String(localized: "\(job)’s Workstation")
         case .beeNest: return base == "beehive" ? String(localized: "Beehive") : String(localized: "Bee Nest")
         case .lightningRod: return String(localized: "Lightning Rod")
+        // Named by its mob, not its surroundings: a zombie spawner may be in a monster room or
+        // placed by a player, so the player judges from the map (Ryan, 2026-10-13).
+        case .spawner: return mob.map { String(localized: "\(ReadableName.from($0)) Spawner") } ?? String(localized: "Empty Spawner")
         case .other: return ReadableName.from(base)
         }
     }
@@ -105,6 +113,17 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         position = CGPoint(x: Double(poi.x) + 0.5, y: Double(poi.z) + 0.5)
         y = poi.y
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
+    }
+
+    /// A monster spawner, from its block entity in the terrain (spawners aren't points of interest).
+    init(_ spawner: Spawner) {
+        id = "spawner@\(spawner.x),\(spawner.y),\(spawner.z)"
+        type = "minecraft:mob_spawner"
+        group = .spawner
+        position = CGPoint(x: Double(spawner.x) + 0.5, y: Double(spawner.z) + 0.5)
+        y = spawner.y
+        isClaimed = false
+        mob = spawner.mob
     }
 
     /// One place for a whole Nether portal, at the center of its blocks.

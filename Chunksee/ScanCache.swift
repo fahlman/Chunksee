@@ -9,7 +9,8 @@ nonisolated struct ScanCache: Sendable {
     /// 2: one read per region fills every scan's entry (fahlman/Chunksee#53).
     /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
     /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
-    static let version = 4
+    /// 5: spawners in search contents (fahlman/Chunksee#121).
+    static let version = 5
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

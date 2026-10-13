@@ -29,7 +29,7 @@ extension StructureMarker: MapLayerMarker {
     var searchText: String { name + " " + group.name + " " + structureID }
 }
 extension PlaceMarker: MapLayerMarker {
-    var searchText: String { name + " " + group.name + " " + type }
+    var searchText: String { [name, group.name, type, mob ?? ""].joined(separator: " ") }
 }
 extension CreatureMarker: MapLayerMarker {
     var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
