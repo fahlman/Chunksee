@@ -15,6 +15,9 @@ final class SavedWorlds {
         /// The game folder holding the world's `saves` folder, relative to the Minecraft folder,
         /// such as `vanilla/release`; empty for the Minecraft folder's own `saves`.
         let installation: String
+        /// The world's folder relative to the Minecraft folder, such as `vanilla/release/saves/Survival 2`;
+        /// unique, unlike the world's name.
+        let path: String
         var id: URL { url }
     }
 
@@ -54,9 +57,12 @@ final class SavedWorlds {
 
     func waitForReload() async { await readTask?.value }
 
-    /// A world's menu title: its name, and its installation when another world has the same name.
+    /// A world's menu title: its name; its installation when another world has the same name; and
+    /// its folder when that world is in the same installation, since names needn't be unique.
     func title(for entry: Entry) -> String {
-        guard all.contains(where: { $0.name == entry.name && $0.url != entry.url }) else { return entry.name }
+        let sameName = all.filter { $0.name == entry.name && $0.url != entry.url }
+        guard !sameName.isEmpty else { return entry.name }
+        if sameName.contains(where: { $0.installation == entry.installation }) { return "\(entry.name) (\(entry.path))" }
         let installation = entry.installation.isEmpty ? String(localized: "Minecraft folder") : entry.installation
         return "\(entry.name) (\(installation))"
     }
@@ -67,8 +73,11 @@ final class SavedWorlds {
             guard !Task.isCancelled, let world = try? World(contentsOf: url) else { return nil }
             var installation = url.deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL.path + "/"
             installation = installation.hasPrefix(root) ? String(installation.dropFirst(root.count).dropLast()) : ""
+            let full = url.standardizedFileURL.path
+            // A saves folder chosen directly isn't under a game folder; its worlds go by folder name.
+            let path = full.hasPrefix(root) ? String(full.dropFirst(root.count)) : url.lastPathComponent
             return Entry(url: url, name: world.level.name ?? url.lastPathComponent, lastPlayed: world.level.lastPlayed,
-                         installation: installation)
+                         installation: installation, path: path)
         }
         .sorted { ($0.lastPlayed ?? .distantPast, $1.name) > ($1.lastPlayed ?? .distantPast, $0.name) }
     }

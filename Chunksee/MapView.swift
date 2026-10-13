@@ -187,9 +187,9 @@ struct MapView: View {
         guard let coordinates = MapCoordinates(point: map.viewport.blockPoint(at: point, in: size)) else { return [] }
         let position = coordinates.position, dimension = map.dimension.id
         return [
-            MapContextAction(title: "Copy Coordinates") { MapClipboard.copy(position) },
-            MapContextAction(title: "Save Place…") { session.savePlace(at: position, in: dimension) },
-            MapContextAction(title: "Measure Distance from Here") { session.beginMeasurement(at: position, in: dimension) },
+            MapContextAction(title: String(localized: "Copy Coordinates")) { MapClipboard.copy(position) },
+            MapContextAction(title: String(localized: "Save Place…")) { session.savePlace(at: position, in: dimension) },
+            MapContextAction(title: String(localized: "Measure Distance from Here")) { session.beginMeasurement(at: position, in: dimension) },
         ]
     }
 
