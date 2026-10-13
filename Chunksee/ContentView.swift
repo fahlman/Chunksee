@@ -6,6 +6,7 @@ struct WorldView: View {
     /// Worlds can hold dozens of maps, so the list starts collapsed.
     @State private var showsInGameMaps = false
     @FocusState private var isSearchFocused: Bool
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         @Bindable var visibility = session.visibility
@@ -73,8 +74,11 @@ struct WorldView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-            // Choosing a row shows it; double-clicking it or pressing Return shows it again.
+            .focused($isSidebarFocused)
+            // Choosing a row shows it; double-clicking it or pressing Return shows it again. The
+            // list keeps keyboard focus, so the arrow keys move to the next row, not the map.
             .onChange(of: session.sidebarSelection) { _, item in
+                isSidebarFocused = true
                 if let item { session.choose(item) }
             }
             .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in

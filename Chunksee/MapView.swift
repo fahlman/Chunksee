@@ -113,6 +113,7 @@ struct MapView: View {
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
         .simultaneousGesture(SpatialTapGesture().onEnded { value in
+            isFocused = true   // clicking the map gives it the arrow keys again
             if session.ruler.isEnabled {
                 session.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
             } else {
@@ -490,6 +491,7 @@ struct MapView: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
+                isFocused = true
                 let start = dragStart ?? map.viewport
                 dragStart = start
                 var viewport = start
