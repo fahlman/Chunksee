@@ -11,6 +11,9 @@ final class WorldIndexStore {
     private(set) var isIndexing = false
     private let readers: [RegionReader]
     @ObservationIgnored private var indexTask: Task<Void, Never>?
+    /// A pass asked for while one runs, with the dimension to read first. It starts when the
+    /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
+    @ObservationIgnored private var queuedPass: String??
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var isClosed = false
 
@@ -21,7 +24,10 @@ final class WorldIndexStore {
 
     func rebuild(firstDimension: String?) {
         guard !isClosed else { return }
-        indexTask?.cancel()
+        if indexTask != nil {
+            queuedPass = .some(firstDimension)
+            return
+        }
         isIndexing = index.dimensions.isEmpty
         let readers = readers.sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
         let id = UUID()
@@ -35,17 +41,30 @@ final class WorldIndexStore {
                 self.portals = self.index.dimensions.mapValues { $0.places.compactMap(\.portal) }
                 self.revision += 1
             }
-            self?.isIndexing = false
+            guard let self else { return }
+            self.isIndexing = false
+            self.indexTask = nil
+            if let next = self.queuedPass {
+                self.queuedPass = nil
+                self.rebuild(firstDimension: next)
+            }
         }
         indexTask = task
         tasks[id] = task
     }
 
-    func waitForIndex() async { await indexTask?.value }
+    /// Waits for the running pass and any pass queued behind it, or until the store closes.
+    func waitForIndex() async {
+        while !isClosed, let task = indexTask { await task.value }
+    }
 
+    /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
+    /// still drains the cancelled reads.
     func cancel() {
         isClosed = true
         tasks.values.forEach { $0.cancel() }
+        indexTask = nil
+        queuedPass = nil
         isIndexing = false
     }
 

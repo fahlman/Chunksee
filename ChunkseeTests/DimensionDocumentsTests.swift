@@ -230,6 +230,67 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test func savesDuringPlayDoNotPostponeTheRefresh() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        resources.refreshDelay = .milliseconds(200)
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let file = url.appendingPathComponent("DIM-1/region/r.0.0.mca")
+        try Data(count: 8192).write(to: file)
+        // The game keeps saving more often than the delay, as it does while a player explores. The
+        // sleep paces those saves; the loop ends as soon as the map shows the new region.
+        let start = ContinuousClock.now
+        while nether.map?.availableRegions.isEmpty == true, ContinuousClock.now - start < .seconds(2) {
+            resources.worldChanged([file])
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(nether.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func closingWhileIndexingEndsTheWaitAndDropsTheQueuedPass() async throws {
+        let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        let url = try TestWorld.make(chunks: [chunk])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let gate = AsyncReadGate<RegionData>()
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                                       readRegion: { _, _ in await gate.read("region") })
+        await gate.waitForRequest("region")
+        let waiter = Task { await resources.index.waitForIndex() }
+        resources.index.rebuild(firstDimension: nil)   // queued behind the running pass
+        resources.close()
+        await gate.finish("region", with: RegionData())
+        await waiter.value                              // ends instead of waiting forever
+        await resources.waitUntilClosed()
+        #expect(await gate.requested == ["region"])     // the queued pass never ran
+    }
+
+    @Test func anOlderPlayerReadCannotOverwriteANewerOne() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        resources.refreshDelay = .zero
+        let gate = AsyncReadGate<[PlayerInfo]>()
+        let reads = ReadCounter()
+        resources.readPlayers = { _ in await gate.read("read\(await reads.next())") }
+        let uuid = UUID()
+        func player(atX x: Double) -> PlayerInfo {
+            PlayerInfo(uuid: uuid, nbt: .compound(["DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+                                                    "Pos": .list([.double(x), .double(64), .double(0)])]))
+        }
+        let file = resources.world.playerDataDirectory.appendingPathComponent(uuid.uuidString.lowercased() + ".dat")
+        resources.worldChanged([file])
+        await gate.waitForRequest("read0")              // the first refresh is reading the older file
+        resources.worldChanged([file])
+        await gate.waitForRequest("read1")              // a second refresh reads the newer one
+        await gate.finish("read1", with: [player(atX: 200)])
+        await gate.finish("read0", with: [player(atX: 100)])
+        await resources.waitForRefresh()
+        #expect(resources.players.first?.position?.x == 200)
+    }
+
     @Test func movingAWorldRetainsAllDimensionViews() {
         let suite = "ChunkseeTests-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!
@@ -247,4 +308,10 @@ import Testing
         #expect(moved.lastDimension == "minecraft:overworld")
         #expect(views.viewport(for: "minecraft:overworld") == nil)
     }
+}
+
+/// Numbers calls in the order they arrive.
+private actor ReadCounter {
+    private var count = 0
+    func next() -> Int { defer { count += 1 }; return count }
 }
