@@ -116,12 +116,9 @@ final class WorldDocument: ReadableDocument {
         await oldSession?.waitUntilClosed()
         try Task.checkCancellation()
         guard generation == applyGeneration else { return }
+        oldSession?.savedPlaces.relocate(to: current.access.url)
         let opened = WorldSession(snapshot: current, names: model.names, savedSearches: model.savedSearches)
-        if let oldSession, let dimension = oldSession.selectedDimensionID,
-           opened.dimensions.contains(where: { $0.id == dimension }) {
-            opened.selectedDimensionID = dimension
-            if let viewport = oldSession.map?.viewport { opened.map?.viewport = viewport }
-        }
+        if let oldSession { opened.restoreView(from: oldSession) }
         session = opened
     }
 

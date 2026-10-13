@@ -23,6 +23,8 @@ struct MapContent {
     var selectedHitID: SearchHit.ID?
     /// Players' positions, last deaths and respawn points.
     var players: [MapMarker] = []
+    var savedPlaces: [SavedPlace] = []
+    var ruler = MapRuler()
     /// The portal or creature whose card is showing, drawn highlighted.
     var selection: MapSelection?
 
@@ -66,6 +68,7 @@ struct MapContent {
             if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position) }
         }
         for marker in players { add("player-" + marker.id, marker.label, marker.position) }
+        for place in savedPlaces { add("saved-" + place.id.uuidString, place.name, place.position) }
         return locations
     }
 }
@@ -79,6 +82,7 @@ struct AccessibleMapLocation: Identifiable {
 
 /// The pannable, zoomable top-down map of one dimension.
 struct MapView: View {
+    let session: WorldSession
     @Bindable var map: MapModel
     var content = MapContent()
     /// Link status per portal, for warning badges; `nil` while unknown.
@@ -95,11 +99,8 @@ struct MapView: View {
     @FocusState private var isFocused: Bool
     @Environment(\.displayScale) private var displayScale
 
-    /// Zoom buttons and shortcuts step by a factor of two.
-    private static let zoomStep: CGFloat = 2
-
     private var zoomPercentage: String {
-        Double(map.viewport.scale).formatted(.percent.precision(.fractionLength(0...2)))
+        ZoomPercentage.text(map.viewport.scale)
     }
 
     var body: some View {
@@ -111,8 +112,14 @@ struct MapView: View {
         .contentShape(Rectangle())
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
-        .simultaneousGesture(SpatialTapGesture().onEnded { value in onSelect(selection(at: value.location)) })
-        .scrollWheelInput { action in
+        .simultaneousGesture(SpatialTapGesture().onEnded { value in
+            if session.ruler.isEnabled {
+                session.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
+            } else {
+                onSelect(selection(at: value.location))
+            }
+        })
+        .scrollWheelInput(contextActions: contextActions) { action in
             switch action {
             case .pan(let delta): map.viewport.pan(by: delta)
             case .zoom(let factor, let anchor): map.viewport.zoom(by: factor, anchor: anchor, in: size)
@@ -127,6 +134,11 @@ struct MapView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
+        .onKeyPress(.escape) {
+            guard session.ruler.isEnabled else { return .ignored }
+            session.ruler.escape()
+            return .handled
+        }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
             let step = size.width / 4
             switch press.key {
@@ -139,15 +151,21 @@ struct MapView: View {
         }
         .onAppear { isFocused = true }
         .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
+        .onChange(of: ObjectIdentifier(map)) {
+            dragStart = nil
+            magnifyStart = nil
+            map.requestTiles(visibleIn: size, displayScale: displayScale)
+        }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
+        .accessibilityIdentifier("world-map")
         .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(zoomPercentage)"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                 Button(location.name) {
-                    map.viewport.center = location.position
+                    session.goToCoordinates(location.position)
                     onSelect(location.selection)
                 }
                 .accessibilityValue(Text("X \(Int(location.position.x)), Z \(Int(location.position.y))"))
@@ -161,21 +179,17 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move West")) { map.viewport.pan(by: CGSize(width: size.width / 4, height: 0)) }
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
         .overlay(alignment: .bottom) { statusBar }
-        .toolbar {
-            ToolbarItemGroup {
-                Button("Zoom Out", systemImage: "minus.magnifyingglass") { map.zoom(by: 1 / Self.zoomStep) }
-                    .disabled(map.viewport.scale <= MapViewport.scaleRange.lowerBound)
-                Button("Actual Size", systemImage: "1.magnifyingglass") { map.viewport.scale = 1 }
-                Button("Zoom In", systemImage: "plus.magnifyingglass") { map.zoom(by: Self.zoomStep) }
-                    .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
-                Text(zoomPercentage)
-                    .monospacedDigit()
-                    .frame(minWidth: 56)
-                    .accessibilityLabel("Zoom")
-                    .accessibilityValue(Text(zoomPercentage))
-                    .help("Current map zoom")
-            }
-        }
+        .toolbar { MapToolbar(session: session, map: map) }
+    }
+
+    private func contextActions(at point: CGPoint) -> [MapContextAction] {
+        guard let coordinates = MapCoordinates(point: map.viewport.blockPoint(at: point, in: size)) else { return [] }
+        let position = coordinates.position, dimension = map.dimension.id
+        return [
+            MapContextAction(title: "Copy Coordinates") { MapClipboard.copy(position) },
+            MapContextAction(title: "Save Place…") { session.savePlace(at: position, in: dimension) },
+            MapContextAction(title: "Measure Distance from Here") { session.beginMeasurement(at: position, in: dimension) },
+        ]
     }
 
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
@@ -227,7 +241,8 @@ struct MapView: View {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
-        for region in map.viewport.visibleRegionRange(in: size).regions {
+        let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
+        for region in visible {
             guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't let the background show
             // through as seams between tiles.
@@ -236,7 +251,7 @@ struct MapView: View {
         }
         let bounds = CGRect(origin: .zero, size: size)
         if !content.heatMap.isEmpty {
-            for region in map.viewport.visibleRegionRange(in: size).regions {
+            for region in visible {
                 guard let image = content.heatMap[region] else { continue }
                 context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: map.viewport.viewRect(for: region, in: size))
             }
@@ -295,6 +310,12 @@ struct MapView: View {
             Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
                       in: context, bounds: bounds)
         }
+        for place in content.savedPlaces {
+            Self.drawBadge(symbol: "mappin", color: .accentColor, radius: 8, name: place.name,
+                           showsName: map.viewport.scale >= 2, opacity: 1, selected: false,
+                           at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds)
+        }
+        content.ruler.draw(in: context, viewport: map.viewport, size: size)
     }
 
     /// Block lines stay subtle; chunk and region boundaries stand out. Label only the larger
@@ -371,22 +392,21 @@ struct MapView: View {
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
     private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
-        drawBadge(symbol: place.group.symbol, color: place.group.color, radius: place.group == .portal ? 8 : 6, name: place.name,
+        drawBadge(symbol: place.group.symbol, color: Color(hex: place.group.color), radius: place.group == .portal ? 8 : 6, name: place.name,
                   showsName: scale >= 2, opacity: place.isClaimed ? 0.65 : 1, selected: false, at: point, in: context, bounds: bounds)
     }
 
     /// Creatures look like places; a selected one is larger and always named.
     private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect) {
-        drawBadge(symbol: creature.group.symbol, color: creature.group.color, radius: selected ? 9 : 6, name: creature.name,
+        drawBadge(symbol: creature.group.symbol, color: Color(hex: creature.group.color), radius: selected ? 9 : 6, name: creature.name,
                   showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
     }
 
-    private static func drawBadge(symbol: String, color hex: UInt32, radius: CGFloat, name: String, showsName: Bool, opacity: Double,
+    private static func drawBadge(symbol: String, color: Color, radius: CGFloat, name: String, showsName: Bool, opacity: Double,
                                   selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
         var context = context
         context.opacity = opacity
-        let color = Color(hex: hex)
         let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
         context.fill(circle, with: .color(color))
         context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
@@ -431,6 +451,19 @@ struct MapView: View {
 
     private var statusBar: some View {
         HStack(spacing: 12) {
+            if session.ruler.isEnabled {
+                Image(systemName: "ruler")
+                if let distance = session.ruler.distance {
+                    Text("\(distance.formatted(.number.precision(.fractionLength(0...2)))) blocks")
+                        .monospacedDigit()
+                } else {
+                    Text(session.ruler.start == nil ? "Click the first point" : "Click the second point")
+                }
+                if session.ruler.start != nil {
+                    Button("Clear") { session.ruler.clear() }
+                        .help("Clear this measurement; Escape also clears it")
+                }
+            }
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 Text(Coordinates.text(hoverBlock))
@@ -451,7 +484,7 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty ? 0 : 1)
+        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.ruler.isEnabled ? 0 : 1)
     }
 
     private var dragGesture: some Gesture {

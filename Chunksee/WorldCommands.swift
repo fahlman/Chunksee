@@ -31,6 +31,8 @@ struct WorldCommands: Commands {
             Button("Actual Size") { session?.map?.viewport.scale = 1 }
                 .keyboardShortcut("0")
                 .disabled(session?.map == nil)
+            Button("Fit World") { session?.fitWorld() }
+                .disabled(session?.canFitWorld != true)
             Divider()
             Toggle("World Info", isOn: Binding {
                 session?.inspector == .world
@@ -47,8 +49,22 @@ struct WorldCommands: Commands {
                 session?.visibility.showsGrid ?? false
             } set: { session?.visibility.showsGrid = $0 })
             .disabled(session?.map == nil)
+            Toggle("Measure Distance", isOn: Binding {
+                session?.ruler.isEnabled ?? false
+            } set: { session?.setRulerEnabled($0) })
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(session?.map == nil)
+            Button("Clear Measurement") { session?.ruler.clear() }
+                .disabled(session?.ruler.start == nil)
         }
         CommandMenu("Navigate") {
+            Button("Back") { session?.goBack() }
+                .keyboardShortcut("[")
+                .disabled(session?.navigation.canGoBack != true)
+            Button("Forward") { session?.goForward() }
+                .keyboardShortcut("]")
+                .disabled(session?.navigation.canGoForward != true)
+            Divider()
             Button("Go to Coordinates…") { session?.showsCoordinateSheet = true }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(session?.map == nil)
@@ -60,6 +76,9 @@ struct WorldCommands: Commands {
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .disabled(session?.world.level.spawnPosition == nil)
+            Button("Save Place…") { session?.savePlace() }
+                .keyboardShortcut("d")
+                .disabled(session?.map == nil)
             Divider()
             Menu("Dimension") {
                 if let session {

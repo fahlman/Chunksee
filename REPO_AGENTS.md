@@ -37,6 +37,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
   - Worlds are native read-only folder documents. macOS owns opening, Open Recent, and window
     restoration; each document retains access while its session reads the world.
   - It never writes to a world folder.
+  - Saved places are annotations in the app's local preferences, keyed by world URL; native
+    document moves migrate them. Navigation history and ruler endpoints belong to the document
+    session, and are never stored in the world.
   - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
     Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
@@ -60,6 +63,9 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `WorldSession.swift` | One open world: its dimensions, map and overlays, and cancellation and draining of world reads before relinquishing document access |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
+| `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
+| `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
+| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |

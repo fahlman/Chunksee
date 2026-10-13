@@ -51,7 +51,7 @@ extension WorldSession {
     }
 
     /// Puts the map image on the clipboard. SwiftUI on macOS 27 has no API for writing to the
-    /// pasteboard, so this is the one place it uses AppKit's.
+    /// pasteboard, so the clipboard boundary uses AppKit's.
     func copyMapImage() {
         guard let image = renderMapImage() else { return }
         NSPasteboard.general.clearContents()

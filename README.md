@@ -12,7 +12,8 @@ It shows a top-down view of a world, the structures and places found in it, and 
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
-   appears beside the toolbar's zoom controls.
+   appears beside the toolbar's zoom controls; click it to choose a zoom level or **Fit World**,
+   which fits all saved terrain in the current dimension into the window.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.
@@ -48,9 +49,24 @@ with **File ▸ Open…**; macOS will remember them from then on.
 **View** includes zoom, World Info, Time Spent, sidebar and inspector commands. **Navigate** jumps
 to coordinates, the world spawn or another dimension and saves the current search. Choose
 **Navigate ▸ Go to Coordinates…** (**⌘⇧G**) and enter X and Z to center the current dimension's
-map there, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
+map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
 **Locations** offers the last position, last death and respawn point. VoiceOver can also explore
 the individual visible map locations and center the map on them.
+
+**Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
+previous location, dimension and zoom after a jump. Panning and zooming adjust the current view;
+a new jump after going back starts a new path.
+
+Choose **Navigate ▸ Save Place…** (**⌘D**) to name the location at the map's center, or right-click
+a map point and choose **Save Place…**. Your **Saved Places** appear in the sidebar and on the
+map; click a sidebar place to visit it, and use its context menu to rename or remove it. They are
+kept per world in Chunksee's preferences and remain available when the world is reopened or moved.
+
+Right-click or Control-click any map point and choose **Copy Coordinates** to copy its X and Z.
+To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
+click two map points. The line and distance remain attached to those blocks as you pan and zoom.
+A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**
+exits the tool. Switching dimensions clears the endpoints.
 
 With **Grid** enabled, individual block lines appear at **8× zoom (800%)** and above.
 Chunk and region boundaries remain emphasized, with their coordinates along the map edges.
@@ -63,5 +79,5 @@ part of the world that has changed since is drawn again.
 Requires Xcode 27 and macOS 27. Open `Chunksee.xcodeproj` and run the **Chunksee** scheme, or:
 
 ```sh
-xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' build
+xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' -configuration Release build
 ```

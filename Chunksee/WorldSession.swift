@@ -41,15 +41,20 @@ final class WorldSession {
     let search: SearchModel
     /// Searches kept in the sidebar, shared across worlds.
     let savedSearches: SavedSearches
+    let savedPlaces: SavedPlaces
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
 
     var selectedDimensionID: String? {
         didSet {
             guard oldValue != selectedDimensionID else { return }
+            if !isNavigating, let oldValue, let map {
+                navigation.record(MapViewLocation(dimension: oldValue, viewport: map.viewport))
+            }
             saveView(of: oldValue)   // the map still shows the dimension being left
             if let selection, selection.dimension != selectedDimensionID { self.selection = nil }
             heatMap.dimension = selectedDimensionID
+            ruler.clear()
             makeMapForSelection()
         }
     }
@@ -63,6 +68,10 @@ final class WorldSession {
         didSet { if inspector != oldValue { playerRecords.cancel() } }
     }
     var showsCoordinateSheet = false
+    var placeDraft: SavedPlaceDraft?
+    var ruler = MapRuler()
+    private(set) var navigation = MapNavigationHistory()
+    @ObservationIgnored private var isNavigating = false
     var selection: MapSelection?
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
@@ -103,6 +112,7 @@ final class WorldSession {
         self.access = snapshot.access
         self.visibility = LayerVisibility(defaults: defaults)
         self.savedSearches = savedSearches
+        self.savedPlaces = SavedPlaces(world: url, defaults: defaults)
         // Reopen in the dimension last viewed, if it still exists.
         let last = views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id }
         let selected = last ?? dimensions.first?.id
@@ -183,15 +193,109 @@ final class WorldSession {
     /// to at least 2×.
     func focus(on location: PlayerInfo.Location) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
-        selectedDimensionID = location.dimension
-        map?.viewport.center = CGPoint(x: location.x, y: location.z)
-        if let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
+        navigate {
+            selectedDimensionID = location.dimension
+            map?.viewport.center = CGPoint(x: location.x, y: location.z)
+            if let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
+        }
     }
 
     /// Centers the map on a point in the selected dimension.
     func center(on point: CGPoint) {
         guard let id = selectedDimensionID else { return }
         focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y))
+    }
+
+    /// Coordinate entry changes only the center, keeping the chosen zoom.
+    func goToCoordinates(_ point: CGPoint) {
+        navigate { map?.viewport.center = point }
+    }
+
+    func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
+        guard !isClosed, let point = point ?? map?.viewport.center,
+              let coordinates = MapCoordinates(point: point), let dimension = dimension ?? selectedDimensionID else { return }
+        placeDraft = SavedPlaceDraft(name: "", dimension: dimension, position: coordinates.position)
+    }
+
+    func edit(_ place: SavedPlace) {
+        guard !isClosed else { return }
+        placeDraft = SavedPlaceDraft(existingID: place.id, name: place.name, dimension: place.dimension, position: place.position)
+    }
+
+    func visit(_ place: SavedPlace) {
+        guard dimensions.contains(where: { $0.id == place.dimension }) else { return }
+        let scale = map?.viewport.scale ?? 1
+        navigate {
+            selectedDimensionID = place.dimension
+            map?.viewport = MapViewport(center: place.position, scale: scale)
+        }
+    }
+
+    func setRulerEnabled(_ enabled: Bool) {
+        ruler.isEnabled = enabled
+        if enabled { selection = nil }
+    }
+
+    func beginMeasurement(at point: CGPoint, in dimension: String) {
+        guard !isClosed, selectedDimensionID == dimension else { return }
+        setRulerEnabled(true)
+        ruler.clear()
+        ruler.mark(point)
+    }
+
+    private var currentView: MapViewLocation? {
+        guard let map, let dimension = selectedDimensionID else { return nil }
+        return MapViewLocation(dimension: dimension, viewport: map.viewport)
+    }
+
+    /// Capture a whole jump once, even when it also switches dimensions or fits a map.
+    private func navigate(_ change: () -> Void) {
+        guard !isClosed else { return }
+        if isNavigating { change(); return }
+        let previous = currentView
+        isNavigating = true
+        change()
+        isNavigating = false
+        if let previous, previous != currentView { navigation.record(previous) }
+    }
+
+    func goBack() {
+        guard !isClosed, let currentView, let destination = navigation.goBack(from: currentView) else { return }
+        restore(destination)
+    }
+
+    func goForward() {
+        guard !isClosed, let currentView, let destination = navigation.goForward(from: currentView) else { return }
+        restore(destination)
+    }
+
+    private func restore(_ location: MapViewLocation) {
+        isNavigating = true
+        selectedDimensionID = location.dimension
+        map?.viewport = location.viewport
+        isNavigating = false
+    }
+
+    /// A native document reread or move replaces readers, while keeping window navigation.
+    func restoreView(from previous: WorldSession) {
+        let dimensions = Set(dimensions.map(\.id))
+        navigation = previous.navigation
+        navigation.retainDimensions(dimensions)
+        if let location = previous.currentView, dimensions.contains(location.dimension) {
+            restore(location)
+            ruler = previous.ruler
+        }
+    }
+
+    var canFitWorld: Bool {
+        guard let map, let shown = map.shownSize else { return false }
+        return MapViewport.fitting(map.availableRegions, in: shown.size) != nil
+    }
+
+    func fitWorld() {
+        guard let map, let shown = map.shownSize,
+              let fitted = MapViewport.fitting(map.availableRegions, in: shown.size) else { return }
+        navigate { map.viewport = fitted }
     }
 
     /// Everything drawn over the selected dimension's terrain.
@@ -217,6 +321,8 @@ final class WorldSession {
                                                      singleplayerUUID: world.level.singleplayerUUID,
                                                      worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
         content.selection = selection
+        content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
+        content.ruler = ruler
         return content
     }
 
@@ -329,8 +435,10 @@ final class WorldSession {
     /// Draws an in-game map over the terrain and fits it in view, switching dimension if needed.
     func show(_ map: MapItem) {
         guard let dimension = map.dimension else { return }
-        focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)))
-        self.map?.viewport.scale = InGameMapImage.fittingScale(for: map)
+        navigate {
+            focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)))
+            self.map?.viewport.scale = InGameMapImage.fittingScale(for: map)
+        }
         selection = .inGameMap(map)
     }
 

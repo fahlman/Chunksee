@@ -67,7 +67,7 @@ final class MapModel {
         let range = viewport.visibleRegionRange(in: size)
         guard range != lastRequest?.range || full != lastRequest?.full else { return }
         lastRequest = (range, full)
-        let visible = viewport.visibleRegions(in: size)
+        let visible = viewport.visibleRegions(in: size, among: availableRegions)
         visibleRegions = Set(visible)
         wantsFullResolution = full
         let needed = visible.filter {

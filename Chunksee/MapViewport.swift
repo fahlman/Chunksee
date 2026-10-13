@@ -15,8 +15,8 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// View points per block.
     var scale: CGFloat
 
-    /// From 1/16 point per block (a whole region in 32 points) to 16 points per block.
-    static let scaleRange: ClosedRange<CGFloat> = 1.0 / 16 ... 16
+    /// Fit World can go below the smallest 1/16× preset for widely separated terrain.
+    static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 16
 
     init(center: CGPoint = .zero, scale: CGFloat = 1) {
         self.center = center
@@ -62,6 +62,26 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// Regions that intersect the view, nearest to the center first so they load first.
     func visibleRegions(in size: CGSize) -> [RegionCoordinate] {
         visibleRegionRange(in: size).regions.sorted { distanceToCenter($0) < distanceToCenter($1) }
+    }
+
+    /// Enumerate only saved regions, so fitting distant terrain never walks the empty space.
+    func visibleRegions(in size: CGSize, among available: Set<RegionCoordinate>) -> [RegionCoordinate] {
+        let range = visibleRegionRange(in: size)
+        return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) }
+            .sorted { distanceToCenter($0) < distanceToCenter($1) }
+    }
+
+    /// Region headers locate all saved terrain without reading individual chunks.
+    static func fitting(_ regions: Set<RegionCoordinate>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
+        guard !regions.isEmpty, size.width > padding * 2, size.height > padding * 2,
+              let minX = regions.map(\.x).min(), let maxX = regions.map(\.x).max(),
+              let minZ = regions.map(\.z).min(), let maxZ = regions.map(\.z).max() else { return nil }
+        let side = CGFloat(RegionCoordinate.blockSize)
+        let left = CGFloat(minX) * side, top = CGFloat(minZ) * side
+        let width = (CGFloat(maxX) - CGFloat(minX) + 1) * side
+        let height = (CGFloat(maxZ) - CGFloat(minZ) + 1) * side
+        return MapViewport(center: CGPoint(x: left + width / 2, y: top + height / 2),
+                           scale: min((size.width - padding * 2) / width, (size.height - padding * 2) / height))
     }
 
     func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {

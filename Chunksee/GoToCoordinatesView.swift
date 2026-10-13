@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Whole block coordinates entered by the user, including a pasted typographic minus sign.
-nonisolated struct MapCoordinates {
+nonisolated struct MapCoordinates: Equatable, Sendable {
     let x: Int32
     let z: Int32
 
@@ -11,6 +11,13 @@ nonisolated struct MapCoordinates {
                 .replacingOccurrences(of: "−", with: "-"))
         }
         guard let x = number(x), let z = number(z) else { return nil }
+        self.x = x
+        self.z = z
+    }
+
+    init?(point: CGPoint) {
+        guard let x = Int32(exactly: point.x.rounded(.down)),
+              let z = Int32(exactly: point.y.rounded(.down)) else { return nil }
         self.x = x
         self.z = z
     }
@@ -31,8 +38,8 @@ struct GoToCoordinatesView: View {
     init(session: WorldSession) {
         self.session = session
         let center = session.map?.viewport.center ?? .zero
-        _x = State(initialValue: String(Int(center.x)))
-        _z = State(initialValue: String(Int(center.y)))
+        _x = State(initialValue: String(Int(center.x.rounded(.down))))
+        _z = State(initialValue: String(Int(center.y.rounded(.down))))
     }
 
     private var destination: MapCoordinates? { MapCoordinates(x: x, z: z) }
@@ -76,7 +83,7 @@ struct GoToCoordinatesView: View {
 
     private func go() {
         guard let destination else { return }
-        session.center(on: destination.position)
+        session.goToCoordinates(destination.position)
         dismiss()
     }
 }
