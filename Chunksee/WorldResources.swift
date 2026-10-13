@@ -115,7 +115,9 @@ final class WorldResources {
             let path = file.path
             if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
                 pendingPlayers = true
-            } else if let dimension = dimensions.first(where: { path.hasPrefix($0.url.standardizedFileURL.path + "/") }) {
+            } else if let dimension = dimensions.filter({ path.hasPrefix($0.url.standardizedFileURL.path + "/") })
+                .max(by: { $0.url.path.count < $1.url.path.count }) {
+                // Nether, End and custom dimension folders can sit inside the Overworld folder.
                 pendingDimensions.insert(dimension.id)
                 if file.deletingLastPathComponent().path == dimension.regionDirectory.standardizedFileURL.path,
                    let region = RegionFile.parseCoordinates(file.lastPathComponent) {

@@ -106,6 +106,27 @@ import Testing
         #expect(resources.isClosed && controllers.allSatisfy { $0.session.isClosed })
     }
 
+    @Test func liveChangesRefreshTheMatchingDimensionViews() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        resources.refreshDelay = .zero
+        let views = resources.dimensions.map { WorldSession(resources: resources, dimensionID: $0.id) }
+        let nether = try #require(views.first { $0.selectedDimensionID == "minecraft:the_nether" })
+        let end = try #require(views.first { $0.selectedDimensionID == "minecraft:the_end" })
+        let overworld = try #require(views.first { $0.selectedDimensionID == "minecraft:overworld" })
+        let netherFile = url.appendingPathComponent("DIM-1/region/r.0.0.mca")
+        let endFile = url.appendingPathComponent("DIM1/region/r.1.-1.mca")
+        try Data(count: 8192).write(to: netherFile)
+        try Data(count: 8192).write(to: endFile)
+        resources.worldChanged([netherFile, endFile])
+        await resources.waitForRefresh()
+        #expect(nether.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        #expect(end.map?.availableRegions == [RegionCoordinate(x: 1, z: -1)])
+        #expect(overworld.map?.availableRegions.isEmpty == true)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func movingAWorldRetainsAllDimensionViews() {
         let suite = "ChunkseeTests-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!
