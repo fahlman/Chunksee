@@ -83,10 +83,11 @@ import Testing
 
     @Test func visibleRegionsAreNearestFirst() {
         let viewport = MapViewport(center: CGPoint(x: 256, y: 256), scale: 1)
-        let regions = viewport.visibleRegions(in: size)
+        let available = Set((-1...1).flatMap { x in (-1...1).map { RegionCoordinate(x: x, z: $0) } })
+        let regions = viewport.visibleRegions(in: size, among: available.union([RegionCoordinate(x: 9, z: 9)]))
         #expect(regions.first == RegionCoordinate(x: 0, z: 0))
         // The view spans blocks x -144…656 and z -44…556, which touches regions -1…1 on both axes.
-        #expect(Set(regions) == Set((-1...1).flatMap { x in (-1...1).map { RegionCoordinate(x: x, z: $0) } }))
+        #expect(Set(regions) == available)
         #expect(regions.count == 9)
     }
 
@@ -105,6 +106,24 @@ import Testing
         var viewport = MapViewport(center: .zero, scale: 2)
         viewport.pan(by: CGSize(width: 20, height: -10))
         #expect(viewport.center == CGPoint(x: -10, y: 5))
+    }
+
+    @Test func manualZoomIsBoundedWhileDistantTerrainCanStillFit() throws {
+        var viewport = MapViewport()
+        viewport.zoom(by: 0.000001)
+        #expect(viewport.scale == 1.0 / 16 && !viewport.canZoomOut)
+        let atLimit = viewport
+        viewport.zoom(by: 0.5, anchor: CGPoint(x: 600, y: 100), in: size)
+        #expect(viewport == atLimit)
+
+        let regions: Set<RegionCoordinate> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
+        var fitted = try #require(MapViewport.fitting(regions, in: size))
+        let original = fitted
+        #expect(fitted.scale < 1.0 / 16 && !fitted.canZoomOut)
+        fitted.zoom(by: 0.5, anchor: CGPoint(x: 600, y: 100), in: size)
+        #expect(fitted == original)
+        fitted.zoom(by: 2)
+        #expect(fitted.scale == original.scale * 2 && fitted.center == original.center)
     }
 }
 
