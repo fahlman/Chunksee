@@ -225,9 +225,11 @@ enum StructureTestWorld {
         #expect(session.selection == nil)
         // Choosing the creature in the sidebar shows its layer, centers on it and selects it.
         session.visibility.creatures = []
+        session.map?.viewport = MapViewport(center: .zero, scale: 0.25)
         session.choose(.creature(summer.id))
         #expect(session.visibility.creatures == [.pet] && session.selection == .creature(summer))
-        #expect(session.map?.viewport.center == summer.position)
+        // The map centers on it but keeps the zoom the user chose.
+        #expect(session.map?.viewport == MapViewport(center: summer.position, scale: 0.25))
         // World Info stays selected in the sidebar only while the inspector shows it.
         session.sidebarSelection = .worldInfo
         session.choose(.worldInfo)
