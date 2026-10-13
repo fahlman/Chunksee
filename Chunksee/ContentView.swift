@@ -78,8 +78,11 @@ struct WorldView: View {
             // Choosing a row shows it; double-clicking it or pressing Return shows it again. The
             // list keeps keyboard focus, so the arrow keys move to the next row, not the map.
             .onChange(of: session.sidebarSelection) { _, item in
+                // Only a row the user chose takes focus. Selection cleared because the inspector
+                // moved on (say, to a portal clicked on the map) leaves focus where the user put it.
+                guard let item else { return }
                 isSidebarFocused = true
-                if let item { session.choose(item) }
+                session.choose(item)
             }
             .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
                 if let item = items.first { session.choose(item) }
