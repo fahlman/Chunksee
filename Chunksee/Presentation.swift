@@ -41,31 +41,3 @@ extension CGImage {
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 }
-
-/// The card over the map's top-left corner for the selected portal, creature or in-game map: a
-/// titled panel with a close button.
-struct MapCard<Content: View>: View {
-    let title: Text
-    let symbol: String
-    var width: CGFloat = 300
-    let close: () -> Void
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label { title } icon: { Image(systemName: symbol) }
-                    .font(.headline)
-                Spacer()
-                Button("Close", systemImage: "xmark", action: close)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-            }
-            content
-        }
-        .padding(12)
-        .frame(width: width, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-    }
-}

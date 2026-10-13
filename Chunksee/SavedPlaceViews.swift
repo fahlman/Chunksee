@@ -7,17 +7,15 @@ struct SavedPlacesSection: View {
     var body: some View {
         Section("Saved Places") {
             ForEach(session.savedPlaces.all) { place in
-                Button { session.visit(place) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Label(place.name, systemImage: "mappin")
-                        Text("\(session.dimensionName(place.dimension)) · \(Coordinates.text(place.position))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(place.name, systemImage: "mappin")
+                    Text("\(session.dimensionName(place.dimension)) · \(Coordinates.text(place.position))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .disabled(!session.dimensions.contains { $0.id == place.dimension })
+                .lineLimit(1)
+                .tag(SidebarItem.savedPlace(place.id))
+                .selectionDisabled(!session.dimensions.contains { $0.id == place.dimension })
                 .contextMenu {
                     Button("Rename…") { session.edit(place) }
                     Button("Copy Coordinates") { MapClipboard.copy(place.position) }

@@ -32,49 +32,51 @@ struct InGameMapRow: View {
     let map: MapItem
 
     var body: some View {
-        Button {
-            session.show(map)
-        } label: {
-            HStack {
-                if let image = session.image(for: map) {
-                    Image(decorative: image, scale: 1)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 28, height: 28)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Map #\(map.id)")
-                    Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        HStack {
+            if let image = session.image(for: map) {
+                Image(decorative: image, scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Map #\(map.id)")
+                Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.plain)
-        .listRowBackground(session.selection == .inGameMap(map) ? Color.accentColor.opacity(0.2) : nil)
+        .tag(SidebarItem.inGameMap(map.id))
         .help("Show this map where it belongs on the world map")
     }
 }
 
-/// Details of the selected in-game map, with a slider to compare it with today's terrain.
-struct InGameMapCard: View {
+/// Details of the selected in-game map in the inspector, with a slider to compare it with today's terrain.
+struct InGameMapDetailView: View {
     @Bindable var session: WorldSession
     let map: MapItem
 
     var body: some View {
-        MapCard(title: Text("Map #\(map.id)"), symbol: "map", close: { session.selection = nil }) {
-            Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks around X \(map.centerX), Z \(map.centerZ), 1 pixel for every \(map.blocksPerPixel) blocks.")
-                .foregroundStyle(.secondary)
-            if map.isLocked {
-                Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
+        Form {
+            Section {
+                LabeledContent("Area", value: "\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
+                LabeledContent("Center") { Text("X \(map.centerX)  Z \(map.centerZ)").monospacedDigit() }
+                LabeledContent("Scale", value: String(localized: "1 pixel for every \(map.blocksPerPixel) blocks"))
+                if map.isLocked {
+                    Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
+                }
+            } header: {
+                Label("Map #\(map.id)", systemImage: "map").font(.headline)
             }
-            LabeledContent("Opacity") {
-                Slider(value: $session.inGameMapOpacity, in: 0...1)
+            Section {
+                LabeledContent("Opacity") {
+                    Slider(value: $session.inGameMapOpacity, in: 0...1)
+                }
+            } footer: {
+                Text("Lower the opacity to compare the map with today’s terrain.")
             }
-            Text("Lower the opacity to compare the map with today’s terrain.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
+        .formStyle(.grouped)
     }
 }

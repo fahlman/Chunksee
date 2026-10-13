@@ -5,21 +5,40 @@ private struct WorldSessionKey: FocusedValueKey {
     typealias Value = WorldSession
 }
 
+/// Focuses the front world's search field; the field's focus state lives in its view.
+struct SearchFocusAction {
+    let focus: () -> Void
+}
+
+private struct SearchFocusKey: FocusedValueKey {
+    typealias Value = SearchFocusAction
+}
+
 extension FocusedValues {
     var worldSession: WorldSession? {
         get { self[WorldSessionKey.self] }
         set { self[WorldSessionKey.self] = newValue }
+    }
+
+    var focusSearch: SearchFocusAction? {
+        get { self[SearchFocusKey.self] }
+        set { self[SearchFocusKey.self] = newValue }
     }
 }
 
 /// Map and navigation commands always target the front document, including from its sidebar.
 struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
+    @FocusedValue(\.focusSearch) private var focusSearch
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
-            Button("Copy Map Image") { session?.copyMapImage() }
-                .disabled(session?.map == nil)
+            Divider()
+            Menu("Find") {
+                Button("Find…") { focusSearch?.focus() }
+                    .keyboardShortcut("f")
+                    .disabled(focusSearch == nil)
+            }
         }
         CommandGroup(before: .sidebar) {
             Button("Zoom In") { session?.map?.zoom(by: 2) }

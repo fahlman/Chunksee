@@ -5,33 +5,25 @@ struct WorldView: View {
     @Bindable var session: WorldSession
     /// Worlds can hold dozens of maps, so the list starts collapsed.
     @State private var showsInGameMaps = false
+    @FocusState private var isSearchFocused: Bool
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         @Bindable var visibility = session.visibility
         @Bindable var search = session.search
         @Bindable var heatMap = session.heatMap
         NavigationSplitView {
-            List {
+            List(selection: $session.sidebarSelection) {
                 if search.isActive {
                     SearchResultsSection(session: session)
                 }
                 Section("World") {
-                    Button {
-                        session.inspector = session.inspector == .world ? nil : .world
-                    } label: {
-                        Label("World Info", systemImage: "info.circle")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(session.inspector == .world ? Color.accentColor : .primary)
-                    .help("Show the world’s settings, time, weather and game rules")
-                    Button {
-                        session.inspector = session.inspector == .storage ? nil : .storage
-                    } label: {
-                        Label("Storage", systemImage: "shippingbox")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(session.inspector == .storage ? Color.accentColor : .primary)
-                    .help("Show totals of the items stored in this dimension’s containers")
+                    Label("World Info", systemImage: "info.circle")
+                        .tag(SidebarItem.worldInfo)
+                        .help("Show the world’s settings, time, weather and game rules")
+                    Label("Storage", systemImage: "shippingbox")
+                        .tag(SidebarItem.storage)
+                        .help("Show totals of the items stored in this dimension’s containers")
                     Toggle(isOn: $heatMap.isShown) {
                         Label("Time Spent", systemImage: "flame")
                     }
@@ -51,18 +43,13 @@ struct WorldView: View {
                 SavedPlacesSection(session: session)
                 let index = session.selectedIndex
                 LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
-                             shown: $visibility.structures) { session.center(on: $0.position) }
+                             shown: $visibility.structures) { SidebarItem.structure($0.id) }
                 LayerSection(title: "Places", markers: index.places, origin: session.spawnPoint,
-                             shown: $visibility.places) { place in
-                    if let portal = place.portal { session.show(portal) } else { session.center(on: place.position) }
-                }
+                             shown: $visibility.places) { SidebarItem.place($0.id) }
                 LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
-                             shown: $visibility.creatures) { creature in
-                    session.center(on: creature.position)
-                    session.selection = .creature(creature)
-                }
+                             shown: $visibility.creatures) { SidebarItem.creature($0.id) }
                 LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
-                             shown: $visibility.biomes) { session.center(on: $0.position) }
+                             shown: $visibility.biomes) { SidebarItem.biome($0.id) }
                 if !session.inGameMaps.isEmpty {
                     Section("In-Game Maps", isExpanded: $showsInGameMaps) {
                         ForEach(session.inGameMaps, id: \.id) { map in
@@ -87,6 +74,19 @@ struct WorldView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+            .focused($isSidebarFocused)
+            // Choosing a row shows it; double-clicking it or pressing Return shows it again. The
+            // list keeps keyboard focus, so the arrow keys move to the next row, not the map.
+            .onChange(of: session.sidebarSelection) { _, item in
+                // Only a row the user chose takes focus. Selection cleared because the inspector
+                // moved on (say, to a portal clicked on the map) leaves focus where the user put it.
+                guard let item else { return }
+                isSidebarFocused = true
+                session.choose(item)
+            }
+            .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
+                if let item = items.first { session.choose(item) }
+            }
             // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
             // whenever either setting changes.
             .task(id: NameSources(folder: session.names.minecraftFolder, online: session.names.looksUpOnline)) {
@@ -98,21 +98,12 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: { session.mapClicked($0) })
                     .id(map.dimension.id)
+                    // Edit ▸ Copy copies the map as shown, while the map has focus.
+                    .copyable([SharedMapImage { [session] in session.renderMapImage() }])
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
                         try? await Task.sleep(for: .seconds(1))
                         if !Task.isCancelled { session.saveView() }
-                    }
-                    .overlay(alignment: .topLeading) {
-                        Group {
-                            switch session.selection {
-                            case .portal(let portal)?: PortalCard(session: session, portal: portal)
-                            case .creature(let creature)?: CreatureCard(session: session, marker: creature)
-                            case .inGameMap(let item)?: InGameMapCard(session: session, map: item)
-                            case nil: EmptyView()
-                            }
-                        }
-                        .padding(10)
                     }
                     .overlay(alignment: .bottomTrailing) {
                         if heatMap.isShown {
@@ -137,6 +128,7 @@ struct WorldView: View {
             }
         }
         .searchable(text: $search.text, placement: .toolbar, prompt: Text("Find items, signs and pets"))
+        .searchFocused($isSearchFocused)
         .searchSuggestions {
             // Filters that search one sidebar layer, offered while the first word is typed.
             if !search.text.contains(":") && !search.text.contains(" ") {
@@ -156,25 +148,12 @@ struct WorldView: View {
             SavedPlaceEditor(session: session, draft: draft)
         }
         .inspector(isPresented: inspectorShown) {
-            Group {
-                switch session.inspector {
-                case .world?:
-                    WorldInfoView(session: session)
-                case .storage?:
-                    StorageView(session: session)
-                case .player(let id)?:
-                    if let player = session.players.first(where: { $0.uuid == id }) {
-                        PlayerDetailView(session: session, player: player)
-                            .id(player.uuid)
-                    }
-                case nil:
-                    EmptyView()
-                }
-            }
-            // Capped so a wide row can't push the inspector past the window's edge.
-            .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
+            WorldInspector(session: session)
+                // Capped so a wide row can't push the inspector past the window's edge.
+                .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.placeDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
@@ -194,20 +173,14 @@ private struct PlayerRow: View {
 
     var body: some View {
         HStack {
-            Button {
-                if let position = player.position { session.focus(on: position) }
-            } label: {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.name(of: player))
-                        Text(detail).font(.caption).foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "person.fill")
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.name(of: player))
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
+            } icon: {
+                Image(systemName: "person.fill")
             }
-            .buttonStyle(.plain)
-            .disabled(!canFocus)
             .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
             .help(help)
             Spacer(minLength: 0)
@@ -222,6 +195,8 @@ private struct PlayerRow: View {
             .foregroundStyle(session.inspector == .player(player.uuid) ? Color.accentColor : .secondary)
             .help("Show inventory, health and experience")
         }
+        .tag(SidebarItem.player(player.uuid))
+        .selectionDisabled(!canFocus)
         .accessibilityElement(children: .combine)
         // Native sidebar rows combine their controls. Their context menu keeps each action reachable.
         .contextMenu {
@@ -266,6 +241,34 @@ private struct PlayerRow: View {
     }
 }
 
+/// What the inspector beside the map shows.
+private struct WorldInspector: View {
+    let session: WorldSession
+
+    var body: some View {
+        switch session.inspector {
+        case .world?:
+            WorldInfoView(session: session)
+        case .storage?:
+            StorageView(session: session)
+        case .player(let id)?:
+            if let player = session.players.first(where: { $0.uuid == id }) {
+                PlayerDetailView(session: session, player: player)
+                    .id(player.uuid)
+            }
+        case .selection?:
+            switch session.selection {
+            case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
+            case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
+            case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)
+            case nil: EmptyView()
+            }
+        case nil:
+            EmptyView()
+        }
+    }
+}
+
 private struct NameSources: Equatable {
     var folder: URL?
     var online: Bool
@@ -278,7 +281,7 @@ private struct SearchResultsSection: View {
     var body: some View {
         let search = session.search
         Section {
-            HitList(session: session, hits: search.results)
+            HitList(session: session, query: search.text, hits: search.results)
         } header: {
             HStack {
                 Text("Search Results")
@@ -303,7 +306,7 @@ private struct SavedSearchesSection: View {
             ForEach(session.savedSearches.all) { saved in
                 let hits = session.search.results(for: saved.query)
                 DisclosureGroup {
-                    HitList(session: session, hits: hits)
+                    HitList(session: session, query: saved.query, hits: hits)
                 } label: {
                     HStack {
                         Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.count))", systemImage: "magnifyingglass")
@@ -327,6 +330,7 @@ private struct SavedSearchesSection: View {
 /// A search's results; choosing one shows it on the map.
 private struct HitList: View {
     let session: WorldSession
+    let query: String
     let hits: [SearchHit]
 
     var body: some View {
@@ -342,18 +346,13 @@ private struct HitList: View {
             Text("No matches").foregroundStyle(.secondary)
         } else {
             ForEach(hits.prefix(200)) { hit in
-                Button {
-                    session.show(hit)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(hit.detail).lineLimit(2)
-                        Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hit.detail).lineLimit(2)
+                    Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .buttonStyle(.plain)
-                .disabled(hit.position == nil)
                 .padding(.vertical, 2)
-                .listRowBackground(hit.id == search.selectedHitID ? Color.yellow.opacity(0.25) : nil)
+                .tag(SidebarItem.hit(query: query, id: hit.id))
+                .selectionDisabled(hit.position == nil)
             }
             if hits.count > 200 {
                 Text("Showing the first 200 of \(hits.count)").font(.caption).foregroundStyle(.secondary)

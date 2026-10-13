@@ -171,36 +171,44 @@ nonisolated enum PortalLinkStatus: Equatable, Sendable {
     }
 }
 
-/// Where the selected Nether portal leads, and whether the link goes both ways.
-struct PortalCard: View {
+/// Where the selected Nether portal leads, and whether the link goes both ways, in the inspector.
+struct PortalDetailView: View {
     let session: WorldSession
     let portal: NetherPortal
 
     var body: some View {
-        MapCard(title: Text("Nether Portal"), symbol: "oval.portrait.fill", close: { session.selection = nil }) {
-            Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-            Divider()
-            switch session.link(for: portal) {
-            case .portal(let target, _)?:
-                Text("Leads to the portal in \(session.dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
-                if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
-                    Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+        Form {
+            Section {
+                LabeledContent("Position") {
+                    Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
+                        .monospacedDigit()
                 }
-                Button("Show the Other Side") { session.show(target) }
-            case .wouldCreateNewPortal(let destination)?:
-                Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            case nil:
-                ProgressView().controlSize(.small)
+            } header: {
+                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
             }
-            Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Section {
+                switch session.link(for: portal) {
+                case .portal(let target, _)?:
+                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
+                    if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
+                        Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    Button("Show the Other Side") { session.show(target) }
+                case .wouldCreateNewPortal(let destination)?:
+                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                case nil:
+                    ProgressView().controlSize(.small)
+                }
+            } header: {
+                Text("Link")
+            } footer: {
+                Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+            }
         }
+        .formStyle(.grouped)
     }
 }

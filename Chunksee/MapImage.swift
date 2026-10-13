@@ -1,4 +1,3 @@
-import AppKit
 import ChunkseeKit
 import CoreTransferable
 import ImageIO
@@ -48,13 +47,5 @@ extension WorldSession {
         guard let map, let shown = map.shownSize else { return nil }
         return MapImage.render(map, content: mapContent, portalStatus: { [weak self] in self?.linkStatus(for: $0) },
                                size: shown.size, scale: shown.displayScale)
-    }
-
-    /// Puts the map image on the clipboard. SwiftUI on macOS 27 has no API for writing to the
-    /// pasteboard, so the clipboard boundary uses AppKit's.
-    func copyMapImage() {
-        guard let image = renderMapImage() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setData(image.data, forType: .png)
     }
 }

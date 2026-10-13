@@ -79,33 +79,40 @@ nonisolated enum CreatureScanner {
     }
 }
 
-/// Details of the selected creature: kind, owner, and a villager's job and trades.
-struct CreatureCard: View {
+/// Details of the selected creature in the inspector: kind, owner, and a villager's job and trades.
+struct CreatureDetailView: View {
     let session: WorldSession
     let marker: CreatureMarker
 
     var body: some View {
-        MapCard(title: Text(marker.name), symbol: marker.group.symbol, width: 320, close: { session.selection = nil }) {
-            Text("\(ReadableName.from(marker.creature.id)) at X \(Int(marker.creature.x.rounded(.down))), Y \(Int(marker.creature.y.rounded(.down))), Z \(Int(marker.creature.z.rounded(.down)))")
-                .foregroundStyle(.secondary)
-            if let owner = marker.creature.owner {
-                Label("Tamed by \(session.name(ofPlayerWith: owner))", systemImage: "person.fill")
-            }
-            if let villager = marker.creature.villager {
-                if let job = villager.profession, job != "minecraft:none" {
-                    Text("\(ReadableName.from(job)), \(TradeText.levelName(villager.level))")
-                } else if marker.creature.id == "minecraft:villager" {
-                    Text("No job yet")
+        Form {
+            Section {
+                LabeledContent("Kind", value: ReadableName.from(marker.creature.id))
+                LabeledContent("Position") {
+                    Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
+                        .monospacedDigit()
                 }
-                if !villager.trades.isEmpty {
-                    Divider()
-                    ForEach(Array(villager.trades.enumerated()), id: \.offset) { _, trade in
+                if let owner = marker.creature.owner {
+                    LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))
+                }
+                if let villager = marker.creature.villager {
+                    if let job = villager.profession, job != "minecraft:none" {
+                        LabeledContent("Job", value: "\(ReadableName.from(job)), \(TradeText.levelName(villager.level))")
+                    } else if marker.creature.id == "minecraft:villager" {
+                        LabeledContent("Job", value: String(localized: "None yet"))
+                    }
+                }
+            } header: {
+                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
+            }
+            if let trades = marker.creature.villager?.trades, !trades.isEmpty {
+                Section("Trades") {
+                    ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
                         HStack {
                             Text(TradeText.cost(of: trade))
                             Image(systemName: "arrow.right").foregroundStyle(.secondary)
                             Text(TradeText.describe(trade.sell))
                         }
-                        .font(.callout)
                         .strikethrough(trade.isSoldOut)
                         .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
                         .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
@@ -113,11 +120,11 @@ struct CreatureCard: View {
                 }
             }
         }
+        .formStyle(.grouped)
     }
-
 }
 
-/// How villagers and their trades read, in the creature card and in trade search.
+/// How villagers and their trades read, in the creature details and in trade search.
 nonisolated enum TradeText {
     /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
     static func describe(_ item: ItemStack) -> String {

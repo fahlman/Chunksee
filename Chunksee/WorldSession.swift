@@ -8,9 +8,27 @@ enum Inspector: Equatable {
     case world
     case storage
     case player(UUID)
+    /// The portal, creature or in-game map selected on the map.
+    case selection
 }
 
-/// The thing on the map whose card is showing; one at a time.
+/// A sidebar row that can be selected. Choosing it shows its item: World Info and Storage in the
+/// inspector, everything else on the map.
+enum SidebarItem: Hashable {
+    case worldInfo
+    case storage
+    case savedPlace(UUID)
+    case structure(String)
+    case place(String)
+    case creature(String)
+    case biome(String)
+    case inGameMap(Int)
+    case player(UUID)
+    /// A search result, under the query that found it: the search bar's or a saved search's.
+    case hit(query: String, id: String)
+}
+
+/// The thing selected on the map, whose details the inspector shows; one at a time.
 enum MapSelection: Equatable {
     case portal(NetherPortal)
     case creature(CreatureMarker)
@@ -66,14 +84,30 @@ final class WorldSession {
     private(set) var map: MapModel?
     /// What the inspector shows, if it's open.
     var inspector: Inspector? {
-        didSet { if inspector != oldValue { playerRecords.cancel() } }
+        didSet {
+            guard inspector != oldValue else { return }
+            playerRecords.cancel()
+            // The inspector shows one thing; showing something else lets go of the map selection,
+            // and of World Info or Storage in the sidebar.
+            if inspector != .selection, selection != nil { selection = nil }
+            if (sidebarSelection == .worldInfo && inspector != .world) || (sidebarSelection == .storage && inspector != .storage) {
+                sidebarSelection = nil
+            }
+        }
     }
+    var sidebarSelection: SidebarItem?
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
     private(set) var navigation = MapNavigationHistory()
     @ObservationIgnored private var isNavigating = false
-    var selection: MapSelection?
+    var selection: MapSelection? {
+        didSet {
+            guard selection != oldValue else { return }
+            if selection != nil { inspector = .selection }
+            else if inspector == .selection { inspector = nil }
+        }
+    }
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
@@ -171,21 +205,21 @@ final class WorldSession {
     }
 
     /// Shows a location: switches to its dimension if needed, centers the map on it, and zooms in
-    /// to at least 2×.
-    func focus(on location: PlayerInfo.Location) {
+    /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
+    func focus(on location: PlayerInfo.Location, keepingZoom: Bool = false) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
-        if route(to: location.dimension, perform: { $0.focus(on: location) }) { return }
+        if route(to: location.dimension, perform: { $0.focus(on: location, keepingZoom: keepingZoom) }) { return }
         navigate {
             selectedDimensionID = location.dimension
             map?.viewport.center = CGPoint(x: location.x, y: location.z)
-            if let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
+            if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
         }
     }
 
     /// Centers the map on a point in the selected dimension.
-    func center(on point: CGPoint) {
+    func center(on point: CGPoint, keepingZoom: Bool = false) {
         guard let id = selectedDimensionID else { return }
-        focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y))
+        focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y), keepingZoom: keepingZoom)
     }
 
     /// Coordinate entry changes only the center, keeping the chosen zoom.
@@ -360,8 +394,44 @@ final class WorldSession {
         if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
     }
 
-    /// A click on the map: selects the portal or creature under it. A click elsewhere closes a
-    /// portal's or creature's card, but not an in-game map laid over the terrain.
+    /// Shows what a sidebar row stands for, making its layer visible on the map.
+    func choose(_ item: SidebarItem) {
+        let index = selectedIndex
+        switch item {
+        case .worldInfo:
+            inspector = .world
+        case .storage:
+            inspector = .storage
+        case .savedPlace(let id):
+            if let place = savedPlaces.all.first(where: { $0.id == id }) { visit(place) }
+        case .structure(let id):
+            guard let marker = index.structures.first(where: { $0.id == id }) else { return }
+            visibility.structures.insert(marker.group)
+            center(on: marker.position, keepingZoom: true)
+        case .place(let id):
+            guard let marker = index.places.first(where: { $0.id == id }) else { return }
+            visibility.places.insert(marker.group)
+            if let portal = marker.portal { show(portal, keepingZoom: true) } else { center(on: marker.position, keepingZoom: true) }
+        case .creature(let id):
+            guard let marker = index.creatures.first(where: { $0.id == id }) else { return }
+            visibility.creatures.insert(marker.group)
+            center(on: marker.position, keepingZoom: true)
+            selection = .creature(marker)
+        case .biome(let id):
+            guard let area = index.biomeAreas.first(where: { $0.id == id }) else { return }
+            visibility.biomes.insert(area.group)
+            center(on: area.position, keepingZoom: true)
+        case .inGameMap(let id):
+            if let map = inGameMaps.first(where: { $0.id == id }) { show(map, keepingZoom: true) }
+        case .player(let uuid):
+            if let position = players.first(where: { $0.uuid == uuid })?.position { focus(on: position, keepingZoom: true) }
+        case .hit(let query, let id):
+            if let hit = search.results(for: query).first(where: { $0.id == id }) { show(hit, keepingZoom: true) }
+        }
+    }
+
+    /// A click on the map: selects the portal or creature under it. A click elsewhere clears a
+    /// selected portal or creature, but not an in-game map laid over the terrain.
     func mapClicked(_ clicked: MapSelection?) {
         if clicked == nil, case .inGameMap? = selection { return }
         selection = clicked
@@ -378,10 +448,10 @@ final class WorldSession {
 
     /// Centers the map on a search result, switching dimension if needed, and shows its layer's
     /// kind (a biome's outline, say) so the result is on the map.
-    func show(_ hit: SearchHit) {
+    func show(_ hit: SearchHit, keepingZoom: Bool = false) {
         guard let dimension = hit.dimension, let position = hit.position else { return }
-        if route(to: dimension, perform: { $0.show(hit) }) { return }
-        focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y))
+        if route(to: dimension, perform: { $0.show(hit, keepingZoom: keepingZoom) }) { return }
+        focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: keepingZoom)
         search.selectedHitID = hit.id
         guard case .layer(let layer) = hit.source else { return }
         switch layer {
@@ -418,9 +488,10 @@ final class WorldSession {
     }
 
     /// Selects a portal and centers the map on it, switching dimension if needed.
-    func show(_ portal: NetherPortal) {
-        if route(to: portal.dimension, perform: { $0.show(portal) }) { return }
-        focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ))
+    func show(_ portal: NetherPortal, keepingZoom: Bool = false) {
+        if route(to: portal.dimension, perform: { $0.show(portal, keepingZoom: keepingZoom) }) { return }
+        focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
+              keepingZoom: keepingZoom)
         selection = .portal(portal)
     }
 
@@ -437,13 +508,15 @@ final class WorldSession {
         return image
     }
 
-    /// Draws an in-game map over the terrain and fits it in view, switching dimension if needed.
-    func show(_ map: MapItem) {
+    /// Draws an in-game map over the terrain and fits it in view (or only centers it, when
+    /// `keepingZoom`), switching dimension if needed.
+    func show(_ map: MapItem, keepingZoom: Bool = false) {
         guard let dimension = map.dimension else { return }
-        if route(to: dimension, perform: { $0.show(map) }) { return }
+        if route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
         navigate {
-            focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)))
-            self.map?.viewport.scale = InGameMapImage.fittingScale(for: map)
+            focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)),
+                  keepingZoom: keepingZoom)
+            if !keepingZoom { self.map?.viewport.scale = InGameMapImage.fittingScale(for: map) }
         }
         selection = .inGameMap(map)
     }
