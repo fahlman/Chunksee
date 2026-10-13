@@ -422,8 +422,13 @@ enum StructureTestWorld {
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        #expect(session.inGameMaps.map(\.id) == [3])
-        session.show(session.inGameMaps[0])
+        // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.
+        #expect(session.inGameMaps.map(\.id).sorted() == [3, 6])
+        let nether = try #require(session.inGameMaps.first { $0.id == 6 })
+        let before = session.map?.viewport
+        session.show(nether)
+        #expect(!session.canShow(nether) && session.selection == nil && session.map?.viewport == before)
+        session.show(try #require(session.inGameMaps.first { $0.id == 3 }))
         #expect(session.mapContent.inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
         #expect(session.inspector == .selection)
