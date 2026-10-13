@@ -230,6 +230,6 @@ final class MapModel {
     }
 
     func zoom(by factor: CGFloat) {
-        viewport.scale = min(max(viewport.scale * factor, MapViewport.scaleRange.lowerBound), MapViewport.scaleRange.upperBound)
+        viewport.zoom(by: factor)
     }
 }
