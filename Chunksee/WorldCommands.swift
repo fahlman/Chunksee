@@ -27,7 +27,7 @@ struct WorldCommands: Commands {
                 .disabled((session?.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
             Button("Zoom Out") { session?.map?.zoom(by: 0.5) }
                 .keyboardShortcut("-")
-                .disabled((session?.map?.viewport.scale ?? MapViewport.scaleRange.lowerBound) <= MapViewport.scaleRange.lowerBound)
+                .disabled(session?.map?.viewport.canZoomOut != true)
             Button("Actual Size") { session?.map?.viewport.scale = 1 }
                 .keyboardShortcut("0")
                 .disabled(session?.map == nil)
@@ -111,7 +111,7 @@ struct WorldKeyboardShortcuts: View {
             Button("Zoom Out") { session.map?.zoom(by: 0.5) }
                 .keyboardShortcut("_")
                 .disabled(focusedSession !== session ||
-                          (session.map?.viewport.scale ?? MapViewport.scaleRange.lowerBound) <= MapViewport.scaleRange.lowerBound)
+                          session.map?.viewport.canZoomOut != true)
         }
         .hidden()
         .accessibilityHidden(true)
