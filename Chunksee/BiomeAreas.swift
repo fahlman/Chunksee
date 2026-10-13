@@ -38,8 +38,6 @@ nonisolated struct BiomeScan: Sendable {
 /// the same biome. Cave biomes never reach the surface, so each chunk's sections are also checked
 /// for them, and their areas are found the same way.
 nonisolated enum BiomeScanner {
-    /// Areas smaller than this are slivers along borders, not places worth visiting.
-    static let minimumChunks = 4
     /// Biomes that generate only underground.
     static let caveBiomeIDs: Set<String> = [
         "minecraft:deep_dark", "minecraft:lush_caves", "minecraft:dripstone_caves", "minecraft:sulfur_caves",
@@ -52,8 +50,15 @@ nonisolated enum BiomeScanner {
             scan.biomes.merge(part.value.0) { $1 }
             scan.caveBiomes.merge(part.value.1) { $1 }
         }
-        scan.areas = areas(from: scan.biomes) + caveAreas(from: scan.caveBiomes)
+        scan.areas = areas(surface: scan.biomes, caves: scan.caveBiomes)
         return scan
+    }
+
+    /// Every biome's areas, each chunk counted once per biome. A cave biome sometimes reaches the
+    /// surface sample, but its underground membership already covers that chunk, so its areas come
+    /// only from there; the hover readout still names the surface biome.
+    static func areas(surface: [ChunkCoordinate: String], caves: [ChunkCoordinate: [String]]) -> [BiomeArea] {
+        areas(from: surface.filter { !caveBiomeIDs.contains($0.value) }) + caveAreas(from: caves)
     }
 
     /// The cave biomes anywhere in a chunk, from its sections' biome palettes.
@@ -85,7 +90,9 @@ nonisolated enum BiomeScanner {
         return chunk.biome(x: 8, y: y, z: 8)
     }
 
-    /// Joins chunks of the same biome that share an edge.
+    /// Joins chunks of the same biome that share an edge. Every area is kept, down to a single
+    /// chunk, so nothing in the world is hidden (Ryan, 2026-10-13); one sample per chunk breaks
+    /// thin biomes such as rivers and beaches into many small areas.
     static func areas(from biomes: [ChunkCoordinate: String]) -> [BiomeArea] {
         var visited = Set<ChunkCoordinate>()
         var areas: [BiomeArea] = []
@@ -102,7 +109,6 @@ nonisolated enum BiomeScanner {
                     stack.append(next)
                 }
             }
-            guard chunks.count >= minimumChunks else { continue }
             let middleX = Double(chunks.map(\.x).reduce(0, +)) / Double(chunks.count)
             let middleZ = Double(chunks.map(\.z).reduce(0, +)) / Double(chunks.count)
             let inside = chunks.min { hypot(Double($0.x) - middleX, Double($0.z) - middleZ) < hypot(Double($1.x) - middleX, Double($1.z) - middleZ) }!
