@@ -8,7 +8,10 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 1. Choose a world from **File ▸ Open World**, which lists the worlds in the Minecraft folder you
    choose in Settings, or choose **File ▸ Open…** and select a world's folder inside a `saves`
-   folder.
+   folder. Chunksee reads worlds saved by Minecraft 1.18 or later. For an older world, or a dimension
+   whose saved areas are all older, it says so in place of the map. To update it, select it in
+   Minecraft's world list, choose **Upgrade and Play** if offered and return to the list, then choose
+   **Edit ▸ Optimize World**.
 2. Each dimension opens as its own document: the Overworld, the Nether and the End. Each keeps its
    own map position, zoom, search, navigation history and measurement. They open as windows or
    tabs, following your tab preference in System Settings, and **Window ▸ Merge All Windows**

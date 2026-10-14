@@ -17,6 +17,8 @@ nonisolated struct DimensionIndex: Sendable {
     var caveBiomes: [ChunkCoordinate: [String]] = [:]
     /// Notable blocks per chunk, for `block:` search, richest first.
     var blocks: [ChunkDeposit] = []
+    /// Readable and pre-1.18 chunks across the dimension.
+    var formats = ChunkFormats()
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
@@ -36,6 +38,8 @@ nonisolated struct DimensionIndex: Sendable {
         async let creatures = CreatureScanner.scan(reader)
         async let biomes = BiomeScanner.scan(reader)
         async let blocks = reader.everyRegion { await $0.blocks($1) }
+        async let formats = reader.everyRegion { await $0.formats($1) }
+        part.formats = await formats.reduce(ChunkFormats()) { $0 + $1.value }
         part.structures = await structures
         part.places = await places + spawners.map(PlaceMarker.init)
         part.creatures = await creatures

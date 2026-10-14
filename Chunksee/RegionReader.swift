@@ -9,6 +9,20 @@ nonisolated struct SearchContents: Codable, Sendable {
     var spawners: [Spawner] = []
 }
 
+/// How many of a region's chunks ChunkseeKit could read, and how many it rejected as saved before
+/// Minecraft 1.18 (`ChunkError.unsupportedLegacyFormat`).
+nonisolated struct ChunkFormats: Codable, Sendable, Equatable {
+    var readable = 0
+    var legacy = 0
+
+    /// A dimension whose saved chunks are all in the old format draws nothing at all.
+    var isOnlyLegacy: Bool { legacy > 0 && readable == 0 }
+
+    static func + (a: ChunkFormats, b: ChunkFormats) -> ChunkFormats {
+        ChunkFormats(readable: a.readable + b.readable, legacy: a.legacy + b.legacy)
+    }
+}
+
 /// Everything the app's scans take from one region, read in a single pass over its chunks and its
 /// entities file: search contents, structures, creatures, surface and cave biomes, notable blocks and time
 /// spent per chunk.
@@ -21,6 +35,7 @@ nonisolated struct RegionData: Sendable {
     var blocks: [ChunkCoordinate: [BlockDeposit]] = [:]
     /// `InhabitedTime` per chunk, index `localZ * 32 + localX`.
     var inhabitedTimes = [Int](repeating: 0, count: 1024)
+    var formats = ChunkFormats()
 
     /// Chunk entries none of the scans read: ticks, light and other bookkeeping.
     static let keysNotNeeded = Chunk.keysNotNeededForTerrain.subtracting(["block_entities", "structures"])
@@ -37,8 +52,18 @@ nonisolated struct RegionData: Sendable {
                 data.contents.signs += Sign.signs(inChunk: nbt)
                 data.contents.spawners += Spawner.spawners(inChunk: nbt)
                 data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
+                let chunk: Chunk?
+                do {
+                    chunk = try Chunk(nbt: nbt)
+                    data.formats.readable += 1
+                } catch ChunkError.unsupportedLegacyFormat {
+                    chunk = nil
+                    data.formats.legacy += 1
+                } catch {
+                    chunk = nil
+                }
                 // Unfinished chunks can already record planned structures and a placeholder biome.
-                if let chunk = try? Chunk(nbt: nbt), chunk.isFullyGenerated {
+                if let chunk, chunk.isFullyGenerated {
                     data.structures += chunk.structureStarts.map(StructureMarker.init)
                     let coordinate = ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)
                     data.biomes[coordinate] = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id)
@@ -110,6 +135,7 @@ actor RegionReader {
     func caveBiomes(_ region: RegionCoordinate) async -> [ChunkCoordinate: [String]] { await part("caveBiomes", \.caveBiomes, region) }
     func blocks(_ region: RegionCoordinate) async -> [ChunkCoordinate: [BlockDeposit]] { await part("blocks", \.blocks, region) }
     func inhabitedTimes(_ region: RegionCoordinate) async -> [Int] { await part("inhabitedTimes", \.inhabitedTimes, region) }
+    func formats(_ region: RegionCoordinate) async -> ChunkFormats { await part("formats", \.formats, region) }
 
     private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionCoordinate) async -> T {
         guard !isClosed, !Task.isCancelled else { return RegionData()[keyPath: part] }
@@ -148,6 +174,7 @@ actor RegionReader {
         cache.store(data.biomes, "biomes", region: region, fingerprint: fingerprint)
         cache.store(data.caveBiomes, "caveBiomes", region: region, fingerprint: fingerprint)
         cache.store(data.blocks, "blocks", region: region, fingerprint: fingerprint)
+        cache.store(data.formats, "formats", region: region, fingerprint: fingerprint)
         cache.store(data.inhabitedTimes, "inhabitedTimes", region: region, fingerprint: fingerprint)
         return data
     }
