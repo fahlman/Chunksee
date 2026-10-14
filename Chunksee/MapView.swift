@@ -134,7 +134,9 @@ struct MapView: View {
             case .active(let point):
                 hoverPoint = point
                 loadHoveredBlock()
-            case .ended: hoverPoint = nil
+            case .ended:
+                hoverPoint = nil
+                map.endHover()
             }
         }
         .focusable()
@@ -488,15 +490,9 @@ struct MapView: View {
             }
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
-                Text(Coordinates.text(hoverBlock))
+                let block = Self.namesBlocks(at: map.viewport.scale) ? map.topBlock(at: hoverBlock) : nil
+                Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock)))
                     .monospacedDigit()
-                if Self.namesBlocks(at: map.viewport.scale), let block = map.topBlock(at: hoverBlock) {
-                    Text(Self.describe(block))
-                        .monospacedDigit()
-                }
-                if let biomes = content.biomeDescription(at: hoverBlock) {
-                    Text(biomes)
-                }
             }
             if map.isLoading {
                 ProgressView().controlSize(.small)
@@ -516,11 +512,21 @@ struct MapView: View {
     /// Blocks are named from 100% zoom, where a block is at least a point across.
     static func namesBlocks(at scale: CGFloat) -> Bool { scale >= 1 }
 
-    /// "Sand, Y 64", or for water "Water, Y 62, 5 deep".
+    /// "X 3307  Y 64  Z 938 · Sand · Desert": X, Y and Z together as Minecraft shows them, then the
+    /// block and biome (Ryan, 2026-10-13). Without a block, only X and Z are known.
+    static func readout(at point: CGPoint, block: RegionTileRenderer.TopBlock?, biomes: String?) -> String {
+        let coordinates = block.map { Coordinates.text(point, y: $0.y) } ?? Coordinates.text(point)
+        return ([coordinates] + [block.map(describe), biomes].compactMap { $0 }).joined(separator: " · ")
+    }
+
+    /// "Sand", or for water "Water, 5 deep". Water is counted only to the renderer's limit, so
+    /// deeper water reads "at least 32 deep" rather than a wrong exact depth.
     static func describe(_ block: RegionTileRenderer.TopBlock) -> String {
         let name = ReadableName.from(block.id)
-        return block.waterDepth > 0 ? String(localized: "\(name), Y \(block.y), \(block.waterDepth) deep")
-                                    : String(localized: "\(name), Y \(block.y)")
+        guard block.waterDepth > 0 else { return name }
+        return block.waterDepth >= RegionTileRenderer.maximumWaterDepth
+            ? String(localized: "\(name), at least \(block.waterDepth) deep")
+            : String(localized: "\(name), \(block.waterDepth) deep")
     }
 
     /// Reads the block under the pointer, also when the map moves beneath a still pointer.

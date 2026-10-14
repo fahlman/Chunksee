@@ -33,8 +33,11 @@ final class MapModel {
 
     init(dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
-         maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil) {
+         maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
+         readTopBlocks: @escaping @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> TopBlockRead?
+            = { await MapModel.readTopBlocks(of: $0, in: $1, ceilingY: $2, cached: $3) }) {
         self.dimension = dimension
+        self.readTopBlocksFor = readTopBlocks
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
@@ -223,26 +226,40 @@ final class MapModel {
 
     func waitForRenders() async {
         for task in renders.values { await task.value }
-        await topBlockTask?.value
+        await waitForTopBlocks()
     }
 
     func close() {
         isClosed = true
-        topBlockTask?.cancel()
+        hoverReads.values.forEach { $0.cancel() }
         cancel()
     }
 
     // MARK: The hover readout's block
+
+    typealias TopBlockRead = (file: RegionFile, blocks: [RegionTileRenderer.TopBlock?])
 
     /// The top block of each column (index `z * 16 + x`) in recently hovered chunks, read on demand.
     /// Tiles keep only colors, and naming every column of every region would cost far more than
     /// reading the one chunk under the pointer.
     private(set) var topBlocks: [ChunkCoordinate: [RegionTileRenderer.TopBlock?]] = [:]
     @ObservationIgnored private var topBlockOrder: [ChunkCoordinate] = []
-    @ObservationIgnored private var topBlockTask: Task<Void, Never>?
+    /// The chunk under the pointer, so a save of its region can be read again without the pointer moving.
+    @ObservationIgnored private var hoveredChunk: ChunkCoordinate?
+    /// The read for the hovered chunk, if one is under way.
+    @ObservationIgnored private var activeHoverRead: (chunk: ChunkCoordinate, id: UUID)?
+    /// Every hover read until it finishes, cancelled or not, so closing can drain them all before
+    /// the world's access ends, as `renders` does for tiles.
+    @ObservationIgnored private var hoverReads: [UUID: Task<Void, Never>] = [:]
+    /// Bumped when the game saves a region, so a read of the old file doesn't publish after it.
+    @ObservationIgnored private var regionGenerations: [RegionCoordinate: Int] = [:]
     /// The region file last read for the readout, reused while the pointer stays in its region.
     @ObservationIgnored private var hoverRegion: RegionFile?
+    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> TopBlockRead?
     private static let maxHoverChunks = 64
+
+    /// Hover reads not yet finished, cancelled or not.
+    var unfinishedHoverReads: Int { hoverReads.count }
 
     /// The block the map shows at a world block, once its chunk has been read.
     func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
@@ -250,44 +267,73 @@ final class MapModel {
         return topBlocks[ChunkCoordinate(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
     }
 
-    /// Reads the chunk under the pointer off the main actor, unless it's already read. Only that
-    /// chunk matters, so a read for one the pointer has left is cancelled.
+    /// Reads the chunk under the pointer off the main actor, unless it's read or being read. Only
+    /// that chunk matters, so a read for one the pointer has left is cancelled.
     func loadTopBlocks(at block: CGPoint) {
         let chunk = ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
-        guard !isClosed, topBlocks[chunk] == nil else { return }
-        topBlockTask?.cancel()
-        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion
-        topBlockTask = Task { [weak self] in
-            let read = await Self.readTopBlocks(of: chunk, in: dimension, ceilingY: ceilingY, cached: cached)
-            guard let read, !Task.isCancelled, let self, !self.isClosed else { return }
-            self.hoverRegion = read.file
-            self.topBlocks[chunk] = read.blocks
+        hoveredChunk = chunk
+        guard !isClosed, topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
+        startHoverRead(of: chunk)
+    }
+
+    /// The pointer left the map: nothing needs reading again after a save.
+    func endHover() { hoveredChunk = nil }
+
+    private func startHoverRead(of chunk: ChunkCoordinate) {
+        if let active = activeHoverRead { hoverReads[active.id]?.cancel() }
+        let region = Self.region(of: chunk), generation = regionGenerations[region, default: 0], id = UUID()
+        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion, read = readTopBlocksFor
+        hoverReads[id] = Task { [weak self] in
+            let result = await read(chunk, dimension, ceilingY, cached)
+            guard let self else { return }
+            self.hoverReads[id] = nil
+            if self.activeHoverRead?.id == id { self.activeHoverRead = nil }
+            // A read cancelled for another chunk, or of a file the game has since saved, isn't kept.
+            guard let result, !Task.isCancelled, !self.isClosed, self.regionGenerations[region, default: 0] == generation else { return }
+            self.hoverRegion = result.file
+            self.topBlocks[chunk] = result.blocks
             self.topBlockOrder.append(chunk)
             if self.topBlockOrder.count > Self.maxHoverChunks { self.topBlocks[self.topBlockOrder.removeFirst()] = nil }
         }
+        activeHoverRead = (chunk, id)
     }
 
-    func waitForTopBlocks() async { await topBlockTask?.value }
+    /// Waits for every hover read, including cancelled ones still finishing.
+    func waitForTopBlocks() async {
+        while let task = hoverReads.values.first { await task.value }
+    }
 
     @concurrent
-    private nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, ceilingY: Int?,
-                                                  cached: RegionFile?) async -> (file: RegionFile, blocks: [RegionTileRenderer.TopBlock?])? {
-        let regionX = chunk.x >> 5, regionZ = chunk.z >> 5
-        guard let file = cached.flatMap({ $0.x == regionX && $0.z == regionZ ? $0 : nil })
-                ?? (try? dimension.region(x: regionX, z: regionZ)) ?? nil,
+    nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, ceilingY: Int?,
+                                          cached: RegionFile?) async -> TopBlockRead? {
+        guard !Task.isCancelled else { return nil }   // before any file I/O
+        let region = region(of: chunk)
+        guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
+                ?? (try? dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
               let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.x & 31, localZ: chunk.z & 31, ceilingY: ceilingY)
         else { return nil }
         return (file, blocks)
     }
 
-    /// The game saved these regions, so what was read from them may be out of date.
+    nonisolated private static func region(of chunk: ChunkCoordinate) -> RegionCoordinate {
+        RegionCoordinate(x: chunk.x >> 5, z: chunk.z >> 5)
+    }
+
+    /// The game saved these regions, so what was read from them may be out of date. A read elsewhere
+    /// carries on; the hovered chunk, if it's in one of them, is read again without waiting for the
+    /// pointer to move.
     private func forgetTopBlocks(in regions: Set<RegionCoordinate>) {
-        func changed(_ chunk: ChunkCoordinate) -> Bool { regions.contains(RegionCoordinate(x: chunk.x >> 5, z: chunk.z >> 5)) }
-        topBlockTask?.cancel()
+        func changed(_ chunk: ChunkCoordinate) -> Bool { regions.contains(Self.region(of: chunk)) }
+        for region in regions { regionGenerations[region, default: 0] += 1 }
         topBlocks = topBlocks.filter { !changed($0.key) }
         topBlockOrder.removeAll(where: changed)
         if let file = hoverRegion, regions.contains(RegionCoordinate(x: file.x, z: file.z)) { hoverRegion = nil }
+        if let active = activeHoverRead, changed(active.chunk) {
+            hoverReads[active.id]?.cancel()
+            activeHoverRead = nil
+        }
+        if !isClosed, let chunk = hoveredChunk, changed(chunk) { startHoverRead(of: chunk) }
     }
 
     func zoom(by factor: CGFloat) {

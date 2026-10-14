@@ -464,8 +464,30 @@ import Testing
         #expect(blocks[2] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
         // Same scan as the map: every column's height and water depth match what was drawn.
         #expect(zip(blocks, columns).allSatisfy { block, column in block?.y == column?.y && block?.waterDepth == column?.waterDepth })
-        #expect(MapView.describe(blocks[0]!) == "Sand, Y 1" && MapView.describe(blocks[1]!) == "Water, Y 3, 3 deep")
+        #expect(MapView.describe(blocks[0]!) == "Sand" && MapView.describe(blocks[1]!) == "Water, 3 deep")
+        // X, Y and Z together, then the block and biome.
+        #expect(MapView.readout(at: CGPoint(x: 0.5, y: 0.5), block: blocks[0], biomes: "Plains") == "X 0  Y 1  Z 0 · Sand · Plains")
+        #expect(MapView.readout(at: CGPoint(x: -3.2, y: 7), block: nil, biomes: nil) == "X -4  Z 7")
         #expect(!MapView.namesBlocks(at: 0.5) && MapView.namesBlocks(at: 1))
+    }
+
+    @Test func waterDeeperThanTheCountingLimitIsNotGivenAnExactDepth() throws {
+        // Stone at Y 0 and water up to Y 63: three more sections of water above the test chunk's one.
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone", "minecraft:water"]) { _, y, _ in y == 0 ? 0 : 1 }
+        guard case .compound(var root) = spec.nbt, case .list(let type, var sections)? = root["sections"] else {
+            Issue.record("unexpected test chunk"); return
+        }
+        for y in 1...3 {
+            sections.append(.compound(["Y": .byte(Int8(y)), "block_states": .compound(["palette": .list([.string("minecraft:water")])])]))
+        }
+        root["sections"] = .list(type, sections)
+        spec.nbt = .compound(root)
+        let url = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        let block = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0])
+        #expect(block.id == "minecraft:water" && block.y == 63 && block.waterDepth == RegionTileRenderer.maximumWaterDepth)
+        #expect(MapView.describe(block) == "Water, at least 32 deep")   // 63 deep, counted to the limit
     }
 
     @Test func theMapReadsTheHoveredChunkAndForgetsItWhenSaved() async throws {
@@ -482,4 +504,86 @@ import Testing
         map.regionsChanged([RegionCoordinate(x: 0, z: 0)])                  // the game saved the region
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)
     }
+}
+
+@Suite struct HoverReadLifecycleTests {
+    private func world(top: String = "minecraft:sand") throws -> URL {
+        try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", top]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }])
+    }
+
+    private func map(_ url: URL, read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
+        return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
+    }
+
+    @Test func aSaveElsewhereKeepsTheHoveredRead() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let map = try map(url)
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        map.regionsChanged([RegionCoordinate(x: 1, z: 0)])   // another region saved before the read ran
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
+    }
+
+    @Test func aSaveUnderAStillPointerIsReadAgain() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let map = try map(url)
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
+        // The game replaces the sand with gravel and saves; the pointer doesn't move.
+        let gravel = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:gravel"]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }
+        try Data(TestWorld.regionFile([gravel])).write(to: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:gravel")
+    }
+
+    @Test func aReadOfTheFileBeforeASaveIsDropped() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        func blocks(_ id: String) -> [RegionTileRenderer.TopBlock?] { Array(repeating: .init(id: id, y: 1, waterDepth: 0), count: 256) }
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>()
+        let reads = ReadNumbers()
+        let map = try map(url) { _, _, _, _ in await gate.read("read\(await reads.next())") }
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        await gate.waitForRequest("read0")
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])   // saved while read 0 was reading the old file
+        await gate.waitForRequest("read1")                   // the still pointer's chunk is read again
+        await gate.finish("read1", with: (file, blocks("minecraft:new")))
+        await gate.finish("read0", with: (file, blocks("minecraft:old")))   // the old read finishes last
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:new")
+    }
+
+    @Test func closingDrainsEveryHoverReadIncludingCancelledOnes() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>()
+        let map = try map(url) { chunk, _, _, _ in await gate.read("\(chunk.x)") }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))       // chunk 0
+        await gate.waitForRequest("0")
+        map.loadTopBlocks(at: CGPoint(x: 16.5, y: 0.5))      // chunk 1 replaces it, cancelling chunk 0's read
+        await gate.waitForRequest("1")
+        await gate.waitForCancellation("0")
+        #expect(map.unfinishedHoverReads == 2)               // the cancelled read is still kept
+        map.close()
+        await gate.finish("1", with: nil)
+        await gate.finish("0", with: nil)
+        await map.waitForRenders()
+        #expect(map.unfinishedHoverReads == 0)
+    }
+}
+
+/// Numbers calls in the order they arrive.
+private actor ReadNumbers {
+    private var count = 0
+    func next() -> Int { defer { count += 1 }; return count }
 }

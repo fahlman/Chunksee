@@ -157,8 +157,11 @@ nonisolated struct RegionTileRenderer: Sendable {
         var palette = 0
     }
 
-    /// A column's top block by name, for the hover readout. Under water, `id` is the water and `y`
-    /// its surface.
+    /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
+    static let maximumWaterDepth = 32
+
+    /// A column's top block by name, for the hover readout. Under water, `id` is the water, `y`
+    /// its surface and `waterDepth` at most `maximumWaterDepth`.
     struct TopBlock: Equatable, Sendable {
         var id: String
         var y: Int
@@ -302,14 +305,14 @@ nonisolated struct RegionTileRenderer: Sendable {
                                 waterColor[i] = color
                                 waterBlock[i] = (s, p)
                                 depth[i] = 1
-                                if depth[i] >= 32 { finishWater(i) }
+                                if depth[i] >= RegionTileRenderer.maximumWaterDepth { finishWater(i) }
                             default:
                                 continue
                             }
                         case .water:
                             if case .water = resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
                                 depth[i] += 1
-                                if depth[i] >= 32 { finishWater(i) }
+                                if depth[i] >= RegionTileRenderer.maximumWaterDepth { finishWater(i) }
                             } else {
                                 finishWater(i)
                             }
