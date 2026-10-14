@@ -15,8 +15,9 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// View points per block.
     var scale: CGFloat
 
-    /// Fit World can go below the smallest 1/16× preset for widely separated terrain.
-    static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 16
+    /// Fit World can go below the smallest 1/16× preset for widely separated terrain. The most is 32×
+    /// (3,200%): each block's one-pixel tile color is drawn unsmoothed, so closer zoom adds no detail.
+    static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 32
     static let minimumManualScale: CGFloat = 1.0 / 16
     var canZoomOut: Bool { scale > Self.minimumManualScale }
 
