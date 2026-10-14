@@ -97,7 +97,9 @@ struct WorldInfoView: View {
             }
             if let fight = details.dragonFight {
                 Section("The End") {
-                    LabeledContent("Ender Dragon", value: fight.previouslyKilled ? String(localized: "Defeated") : String(localized: "Not defeated"))
+                    // Until the game has checked the End, its kill flags aren't real (ChunkseeKit's rule).
+                    LabeledContent("Ender Dragon", value: fight.needsStateScanning ? String(localized: "Not fought yet")
+                                   : fight.isDefeated ? String(localized: "Defeated") : String(localized: "Not defeated"))
                     LabeledContent("End Gateways", value: String(localized: "\(20 - fight.remainingGateways) of 20 open"))
                         .help("Each time the dragon is defeated, one more gateway to the outer End islands opens")
                 }
