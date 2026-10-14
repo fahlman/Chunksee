@@ -29,6 +29,27 @@ import Testing
         }
     }
 
+    @Test func aWorldSavedBeforeMinecraft118IsRecognized() async throws {
+        func session(dataVersion: Int32?) async throws -> (URL, WorldSession) {
+            let url = try TestWorld.make(chunks: [])
+            var data: [String: NBT] = ["LevelName": .string("Old")]
+            if let dataVersion { data["DataVersion"] = .int(dataVersion) }
+            try Data(Compression.deflate(NBT.compound(["Data": .compound(data)]).serialized(), gzip: true))
+                .write(to: url.appendingPathComponent("level.dat"))
+            let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+            return (url, try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil))
+        }
+        for (dataVersion, isOld) in [(nil, true), (Int32(2730), true), (Int32(2844), false), (Int32(5023), false)] as [(Int32?, Bool)] {
+            let (url, opened) = try await session(dataVersion: dataVersion)
+            #expect(opened.isSavedBeforeReadableFormat == isOld, "data version \(String(describing: dataVersion))")
+            await opened.search.waitForIndex()
+            #expect(opened.possibleBiomes.isEmpty == isOld)   // no "(0)" rows for a world that can't be read
+            opened.close()
+            await opened.waitUntilClosed()
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     @Test func manyOpenWorldsHaveIndependentLifetimes() async throws {
         let urls = try (0..<12).map { _ in try TestWorld.make(chunks: []) }
         defer { for url in urls { try? FileManager.default.removeItem(at: url) } }

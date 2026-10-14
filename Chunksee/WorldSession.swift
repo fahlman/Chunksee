@@ -192,10 +192,15 @@ final class WorldSession {
 
     var displayName: String { world.level.name ?? url.lastPathComponent }
 
+    /// Whether the world was last saved before Minecraft 1.18. Every chunk is then in the older
+    /// format ChunkseeKit doesn't read (its `DataVersion.flatChunkRoot`), so the map would be blank.
+    var isSavedBeforeReadableFormat: Bool { (world.level.dataVersion ?? 0) < DataVersion.flatChunkRoot }
+
     /// The biome groups the selected dimension can have, once its part of the index is read; none
-    /// before then, so the sidebar doesn't list biomes as missing while it's still looking.
+    /// before then, or for a world Chunksee can't read, so the sidebar doesn't list biomes as missing.
     var possibleBiomes: [BiomeGroup] {
-        guard let dimension = selectedDimension, search.index.dimensions[dimension.id] != nil else { return [] }
+        // A world saved before 1.18 can't be read, so "0" would wrongly say a biome isn't there.
+        guard !isSavedBeforeReadableFormat, let dimension = selectedDimension, search.index.dimensions[dimension.id] != nil else { return [] }
         return dimension.vanillaBiomes.map(BiomeGroup.init(id:))
     }
 

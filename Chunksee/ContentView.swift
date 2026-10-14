@@ -95,7 +95,14 @@ struct WorldView: View {
                 await session.names.lookUp(session.players.filter(PlayerPresentation.isMappable).map(\.uuid))
             }
         } detail: {
-            if let map = session.map {
+            if session.isSavedBeforeReadableFormat {
+                ContentUnavailableView {
+                    Label("Saved Before Minecraft 1.18", systemImage: "clock.arrow.circlepath")
+                } description: {
+                    Text("Chunksee can show worlds saved by Minecraft 1.18 or later. To update this world, open it in Minecraft: select it, choose Edit, then Optimize World. Then open it here again.")
+                }
+                .navigationSubtitle(session.displayName)
+            } else if let map = session.map {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: { session.mapClicked($0) })
                     .id(map.dimension.id)
