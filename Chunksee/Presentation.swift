@@ -18,6 +18,11 @@ nonisolated enum Coordinates {
     }
 
     static func text(_ point: CGPoint) -> String { text(x: point.x, z: point.y) }
+
+    /// X, Y and Z together, in Minecraft's order.
+    static func text(_ point: CGPoint, y: Int) -> String {
+        "X \(Int(point.x.rounded(.down)))  Y \(y)  Z \(Int(point.y.rounded(.down)))"
+    }
 }
 
 extension Color {
