@@ -21,7 +21,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
    appears beside the toolbar's zoom controls; click it to choose a zoom level or **Fit World**,
-   which fits all saved terrain in the current dimension into the window.
+   which fits all saved terrain in the current dimension into the window. You can zoom in to 3,200%.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.

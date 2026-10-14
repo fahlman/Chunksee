@@ -99,7 +99,7 @@ import Testing
         #expect(viewport.scale == 4)
         #expect(viewport.blockPoint(at: anchor, in: size) == before)
         viewport.zoom(by: 1000, anchor: anchor, in: size)
-        #expect(viewport.scale == MapViewport.scaleRange.upperBound)
+        #expect(viewport.scale == MapViewport.scaleRange.upperBound && viewport.scale == 32)   // 3,200%
     }
 
     @Test func dragMovesContentWithPointer() {
