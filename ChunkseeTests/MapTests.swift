@@ -483,3 +483,85 @@ import Testing
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)
     }
 }
+
+@Suite struct HoverReadLifecycleTests {
+    private func world(top: String = "minecraft:sand") throws -> URL {
+        try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", top]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }])
+    }
+
+    private func map(_ url: URL, read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
+        return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
+    }
+
+    @Test func aSaveElsewhereKeepsTheHoveredRead() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let map = try map(url)
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        map.regionsChanged([RegionCoordinate(x: 1, z: 0)])   // another region saved before the read ran
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
+    }
+
+    @Test func aSaveUnderAStillPointerIsReadAgain() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let map = try map(url)
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
+        // The game replaces the sand with gravel and saves; the pointer doesn't move.
+        let gravel = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:gravel"]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }
+        try Data(TestWorld.regionFile([gravel])).write(to: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:gravel")
+    }
+
+    @Test func aReadOfTheFileBeforeASaveIsDropped() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        func blocks(_ id: String) -> [RegionTileRenderer.TopBlock?] { Array(repeating: .init(id: id, y: 1, waterDepth: 0), count: 256) }
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>()
+        let reads = ReadNumbers()
+        let map = try map(url) { _, _, _, _ in await gate.read("read\(await reads.next())") }
+        defer { map.close() }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        await gate.waitForRequest("read0")
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])   // saved while read 0 was reading the old file
+        await gate.waitForRequest("read1")                   // the still pointer's chunk is read again
+        await gate.finish("read1", with: (file, blocks("minecraft:new")))
+        await gate.finish("read0", with: (file, blocks("minecraft:old")))   // the old read finishes last
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:new")
+    }
+
+    @Test func closingDrainsEveryHoverReadIncludingCancelledOnes() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>()
+        let map = try map(url) { chunk, _, _, _ in await gate.read("\(chunk.x)") }
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))       // chunk 0
+        await gate.waitForRequest("0")
+        map.loadTopBlocks(at: CGPoint(x: 16.5, y: 0.5))      // chunk 1 replaces it, cancelling chunk 0's read
+        await gate.waitForRequest("1")
+        await gate.waitForCancellation("0")
+        #expect(map.unfinishedHoverReads == 2)               // the cancelled read is still kept
+        map.close()
+        await gate.finish("1", with: nil)
+        await gate.finish("0", with: nil)
+        await map.waitForRenders()
+        #expect(map.unfinishedHoverReads == 0)
+    }
+}
+
+/// Numbers calls in the order they arrive.
+private actor ReadNumbers {
+    private var count = 0
+    func next() -> Int { defer { count += 1 }; return count }
+}
