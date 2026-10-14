@@ -55,7 +55,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.24.0`, resolved to `0.24.0` (`1140903ee58a24f0bd5aee3d88cc5b2b9056319a`).
+  minor" from `0.25.0`, resolved to `0.25.0` (`9f71f9b5ee51311980861e06ac721df7adad64ee`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
