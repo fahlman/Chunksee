@@ -134,7 +134,9 @@ struct MapView: View {
             case .active(let point):
                 hoverPoint = point
                 loadHoveredBlock()
-            case .ended: hoverPoint = nil
+            case .ended:
+                hoverPoint = nil
+                map.endHover()
             }
         }
         .focusable()
