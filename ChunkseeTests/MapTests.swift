@@ -464,8 +464,30 @@ import Testing
         #expect(blocks[2] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
         // Same scan as the map: every column's height and water depth match what was drawn.
         #expect(zip(blocks, columns).allSatisfy { block, column in block?.y == column?.y && block?.waterDepth == column?.waterDepth })
-        #expect(MapView.describe(blocks[0]!) == "Sand, Y 1" && MapView.describe(blocks[1]!) == "Water, Y 3, 3 deep")
+        #expect(MapView.describe(blocks[0]!) == "Sand" && MapView.describe(blocks[1]!) == "Water, 3 deep")
+        // X, Y and Z together, then the block and biome.
+        #expect(MapView.readout(at: CGPoint(x: 0.5, y: 0.5), block: blocks[0], biomes: "Plains") == "X 0  Y 1  Z 0 · Sand · Plains")
+        #expect(MapView.readout(at: CGPoint(x: -3.2, y: 7), block: nil, biomes: nil) == "X -4  Z 7")
         #expect(!MapView.namesBlocks(at: 0.5) && MapView.namesBlocks(at: 1))
+    }
+
+    @Test func waterDeeperThanTheCountingLimitIsNotGivenAnExactDepth() throws {
+        // Stone at Y 0 and water up to Y 63: three more sections of water above the test chunk's one.
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone", "minecraft:water"]) { _, y, _ in y == 0 ? 0 : 1 }
+        guard case .compound(var root) = spec.nbt, case .list(let type, var sections)? = root["sections"] else {
+            Issue.record("unexpected test chunk"); return
+        }
+        for y in 1...3 {
+            sections.append(.compound(["Y": .byte(Int8(y)), "block_states": .compound(["palette": .list([.string("minecraft:water")])])]))
+        }
+        root["sections"] = .list(type, sections)
+        spec.nbt = .compound(root)
+        let url = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        let block = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0])
+        #expect(block.id == "minecraft:water" && block.y == 63 && block.waterDepth == RegionTileRenderer.maximumWaterDepth)
+        #expect(MapView.describe(block) == "Water, at least 32 deep")   // 63 deep, counted to the limit
     }
 
     @Test func theMapReadsTheHoveredChunkAndForgetsItWhenSaved() async throws {
