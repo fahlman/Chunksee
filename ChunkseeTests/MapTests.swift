@@ -439,3 +439,47 @@ import Testing
         #expect(session.players.count == 1)
     }
 }
+
+@Suite struct HoverBlockTests {
+    /// Stone at Y 0 everywhere; sand on it at x 0, z 0; three blocks of water on it at x 1, z 0.
+    private func world() throws -> URL {
+        let palette = ["minecraft:air", "minecraft:stone", "minecraft:sand", "minecraft:water"]
+        let chunk = TestWorld.chunk(x: 0, z: 0, palette: palette) { x, y, z in
+            if y == 0 { return 1 }
+            if z == 0, x == 0, y == 1 { return 2 }
+            if z == 0, x == 1, y <= 3 { return 3 }
+            return 0
+        }
+        return try TestWorld.make(chunks: [chunk])
+    }
+
+    @Test func theReadoutNamesTheBlockTheMapDrew() throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
+        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0))
+        #expect(blocks[0] == .init(id: "minecraft:sand", y: 1, waterDepth: 0))
+        #expect(blocks[1] == .init(id: "minecraft:water", y: 3, waterDepth: 3))   // the water's surface, as drawn
+        #expect(blocks[2] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
+        // Same scan as the map: every column's height and water depth match what was drawn.
+        #expect(zip(blocks, columns).allSatisfy { block, column in block?.y == column?.y && block?.waterDepth == column?.waterDepth })
+        #expect(MapView.describe(blocks[0]!) == "Sand, Y 1" && MapView.describe(blocks[1]!) == "Water, Y 3, 3 deep")
+        #expect(!MapView.namesBlocks(at: 0.5) && MapView.namesBlocks(at: 1))
+    }
+
+    @Test func theMapReadsTheHoveredChunkAndForgetsItWhenSaved() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let map = MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
+        defer { map.close() }
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)   // not read until hovered
+        map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
+        #expect(map.topBlock(at: CGPoint(x: 1.9, y: 0.2))?.id == "minecraft:water")
+        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])                  // the game saved the region
+        #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)
+    }
+}

@@ -117,6 +117,19 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
     /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
     static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [Column?]? {
+        scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY)?.columns
+    }
+
+    /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
+    /// readout: the same scan the map is drawn with, naming what it found.
+    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [TopBlock?]? {
+        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY) else { return nil }
+        return columns.map { column in
+            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth) }
+        }
+    }
+
+    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, ceilingY: Int?) -> (sections: ColorSections, columns: [Column?])? {
         // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
@@ -125,16 +138,30 @@ nonisolated struct RegionTileRenderer: Sendable {
         // upgraded from old versions have none), every column starts at the top of the chunk.
         let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
         let topY = sections.topY
-        if let ceilingY {
-            return sections.topColumns(underCeiling: true) { _ in ceilingY }
+        let columns = if let ceilingY {
+            sections.topColumns(underCeiling: true) { _ in ceilingY }
+        } else {
+            sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
         }
-        return sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
+        return (sections, columns)
     }
 
     /// The highest block the map should show in a column, and how deep the water above it is.
     struct Column: Equatable {
         var y: Int
         var color: MapColor
+        var waterDepth: Int
+        /// Where the block is in its chunk's section palettes, so it can be named on demand without
+        /// copying a block ID for every column the map draws.
+        var section = 0
+        var palette = 0
+    }
+
+    /// A column's top block by name, for the hover readout. Under water, `id` is the water and `y`
+    /// its surface.
+    struct TopBlock: Equatable, Sendable {
+        var id: String
+        var y: Int
         var waterDepth: Int
     }
 
@@ -159,6 +186,11 @@ nonisolated struct RegionTileRenderer: Sendable {
         private var sections: [Section]
         let minY: Int
         let topY: Int
+
+        func blockID(section: Int, palette: Int) -> String {
+            guard sections.indices.contains(section), sections[section].states.palette.indices.contains(palette) else { return "" }
+            return sections[section].states.palette[palette].id
+        }
 
         init(_ chunk: Chunk) {
             sections = chunk.sections.compactMap { section in
@@ -196,6 +228,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             let start = (0..<256).map { min(startY($0), topY) }
             var waterY = [Int](repeating: 0, count: 256)
             var waterColor = [MapColor](repeating: MapColor(0), count: 256)
+            var waterBlock = [(section: Int, palette: Int)](repeating: (0, 0), count: 256)
             var depth = [Int](repeating: 0, count: 256)
             var remaining = 256
             // Under a ceiling, the first solid block below the roof's bedrock band (at most five
@@ -204,7 +237,8 @@ nonisolated struct RegionTileRenderer: Sendable {
             var ceilingFallback = [Column?](repeating: nil, count: 256)
 
             func finishWater(_ i: Int) {
-                result[i] = Column(y: waterY[i], color: waterColor[i], waterDepth: depth[i])
+                result[i] = Column(y: waterY[i], color: waterColor[i], waterDepth: depth[i],
+                                   section: waterBlock[i].section, palette: waterBlock[i].palette)
                 state[i] = .done
                 remaining -= 1
             }
@@ -243,27 +277,30 @@ nonisolated struct RegionTileRenderer: Sendable {
                             continue
                         case .ceiling:
                             guard absoluteY <= start[i] else { continue }
-                            switch resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
+                            let p = uniform ? 0 : indices[y << 8 | i]
+                            switch resolve(section: s, palette: p) {
                             case .clear:
                                 state[i] = .searching
                             case .solid(let color), .water(let color):
                                 if ceilingFallback[i] == nil, absoluteY <= start[i] - 5 {
-                                    ceilingFallback[i] = Column(y: absoluteY, color: color.shaded(0.6), waterDepth: 0)
+                                    ceilingFallback[i] = Column(y: absoluteY, color: color.shaded(0.6), waterDepth: 0, section: s, palette: p)
                                 }
                             case .unresolved:
                                 continue
                             }
                         case .searching:
                             guard absoluteY <= start[i] else { continue }
-                            switch resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
+                            let p = uniform ? 0 : indices[y << 8 | i]
+                            switch resolve(section: s, palette: p) {
                             case .solid(let color):
-                                result[i] = Column(y: absoluteY, color: color, waterDepth: 0)
+                                result[i] = Column(y: absoluteY, color: color, waterDepth: 0, section: s, palette: p)
                                 state[i] = .done
                                 remaining -= 1
                             case .water(let color):
                                 state[i] = .water
                                 waterY[i] = absoluteY
                                 waterColor[i] = color
+                                waterBlock[i] = (s, p)
                                 depth[i] = 1
                                 if depth[i] >= 32 { finishWater(i) }
                             default:

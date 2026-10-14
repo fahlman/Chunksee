@@ -169,6 +169,7 @@ final class MapModel {
             inFlight[region] = nil
         }
         failed.subtract(regions)
+        forgetTopBlocks(in: regions)
         stale.formUnion(regions.filter { tiles[$0] != nil || previews[$0] != nil })
         lastRequest = nil
         if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
@@ -222,11 +223,71 @@ final class MapModel {
 
     func waitForRenders() async {
         for task in renders.values { await task.value }
+        await topBlockTask?.value
     }
 
     func close() {
         isClosed = true
+        topBlockTask?.cancel()
         cancel()
+    }
+
+    // MARK: The hover readout's block
+
+    /// The top block of each column (index `z * 16 + x`) in recently hovered chunks, read on demand.
+    /// Tiles keep only colors, and naming every column of every region would cost far more than
+    /// reading the one chunk under the pointer.
+    private(set) var topBlocks: [ChunkCoordinate: [RegionTileRenderer.TopBlock?]] = [:]
+    @ObservationIgnored private var topBlockOrder: [ChunkCoordinate] = []
+    @ObservationIgnored private var topBlockTask: Task<Void, Never>?
+    /// The region file last read for the readout, reused while the pointer stays in its region.
+    @ObservationIgnored private var hoverRegion: RegionFile?
+    private static let maxHoverChunks = 64
+
+    /// The block the map shows at a world block, once its chunk has been read.
+    func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
+        let x = Int(block.x.rounded(.down)), z = Int(block.y.rounded(.down))
+        return topBlocks[ChunkCoordinate(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
+    }
+
+    /// Reads the chunk under the pointer off the main actor, unless it's already read. Only that
+    /// chunk matters, so a read for one the pointer has left is cancelled.
+    func loadTopBlocks(at block: CGPoint) {
+        let chunk = ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
+        guard !isClosed, topBlocks[chunk] == nil else { return }
+        topBlockTask?.cancel()
+        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion
+        topBlockTask = Task { [weak self] in
+            let read = await Self.readTopBlocks(of: chunk, in: dimension, ceilingY: ceilingY, cached: cached)
+            guard let read, !Task.isCancelled, let self, !self.isClosed else { return }
+            self.hoverRegion = read.file
+            self.topBlocks[chunk] = read.blocks
+            self.topBlockOrder.append(chunk)
+            if self.topBlockOrder.count > Self.maxHoverChunks { self.topBlocks[self.topBlockOrder.removeFirst()] = nil }
+        }
+    }
+
+    func waitForTopBlocks() async { await topBlockTask?.value }
+
+    @concurrent
+    private nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, ceilingY: Int?,
+                                                  cached: RegionFile?) async -> (file: RegionFile, blocks: [RegionTileRenderer.TopBlock?])? {
+        let regionX = chunk.x >> 5, regionZ = chunk.z >> 5
+        guard let file = cached.flatMap({ $0.x == regionX && $0.z == regionZ ? $0 : nil })
+                ?? (try? dimension.region(x: regionX, z: regionZ)) ?? nil,
+              !Task.isCancelled,
+              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.x & 31, localZ: chunk.z & 31, ceilingY: ceilingY)
+        else { return nil }
+        return (file, blocks)
+    }
+
+    /// The game saved these regions, so what was read from them may be out of date.
+    private func forgetTopBlocks(in regions: Set<RegionCoordinate>) {
+        func changed(_ chunk: ChunkCoordinate) -> Bool { regions.contains(RegionCoordinate(x: chunk.x >> 5, z: chunk.z >> 5)) }
+        topBlockTask?.cancel()
+        topBlocks = topBlocks.filter { !changed($0.key) }
+        topBlockOrder.removeAll(where: changed)
+        if let file = hoverRegion, regions.contains(RegionCoordinate(x: file.x, z: file.z)) { hoverRegion = nil }
     }
 
     func zoom(by factor: CGFloat) {

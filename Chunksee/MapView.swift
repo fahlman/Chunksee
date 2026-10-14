@@ -131,7 +131,9 @@ struct MapView: View {
         }
         .onContinuousHover { phase in
             switch phase {
-            case .active(let point): hoverPoint = point
+            case .active(let point):
+                hoverPoint = point
+                loadHoveredBlock()
             case .ended: hoverPoint = nil
             }
         }
@@ -154,7 +156,10 @@ struct MapView: View {
             return .handled
         }
         .onAppear { isFocused = true }
-        .onChange(of: map.viewport, initial: true) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
+        .onChange(of: map.viewport, initial: true) {
+            map.requestTiles(visibleIn: size, displayScale: displayScale)
+            loadHoveredBlock()
+        }
         .onChange(of: ObjectIdentifier(map)) {
             dragStart = nil
             magnifyStart = nil
@@ -485,6 +490,10 @@ struct MapView: View {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 Text(Coordinates.text(hoverBlock))
                     .monospacedDigit()
+                if Self.namesBlocks(at: map.viewport.scale), let block = map.topBlock(at: hoverBlock) {
+                    Text(Self.describe(block))
+                        .monospacedDigit()
+                }
                 if let biomes = content.biomeDescription(at: hoverBlock) {
                     Text(biomes)
                 }
@@ -502,6 +511,22 @@ struct MapView: View {
         .background(.regularMaterial, in: Capsule())
         .padding(8)
         .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.ruler.isEnabled ? 0 : 1)
+    }
+
+    /// Blocks are named from 100% zoom, where a block is at least a point across.
+    static func namesBlocks(at scale: CGFloat) -> Bool { scale >= 1 }
+
+    /// "Sand, Y 64", or for water "Water, Y 62, 5 deep".
+    static func describe(_ block: RegionTileRenderer.TopBlock) -> String {
+        let name = ReadableName.from(block.id)
+        return block.waterDepth > 0 ? String(localized: "\(name), Y \(block.y), \(block.waterDepth) deep")
+                                    : String(localized: "\(name), Y \(block.y)")
+    }
+
+    /// Reads the block under the pointer, also when the map moves beneath a still pointer.
+    private func loadHoveredBlock() {
+        guard let hoverPoint, Self.namesBlocks(at: map.viewport.scale) else { return }
+        map.loadTopBlocks(at: map.viewport.blockPoint(at: hoverPoint, in: size))
     }
 
     private var dragGesture: some Gesture {
