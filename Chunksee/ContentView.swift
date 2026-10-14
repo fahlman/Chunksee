@@ -99,7 +99,7 @@ struct WorldView: View {
                 ContentUnavailableView {
                     Label("Saved Before Minecraft 1.18", systemImage: "clock.arrow.circlepath")
                 } description: {
-                    Text("Chunksee can show worlds saved by Minecraft 1.18 or later. To update this world, open it in Minecraft: select it, choose Edit, then Optimize World. Then open it here again.")
+                    Text("Chunksee can show worlds saved by Minecraft 1.18 or later. To update this one, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again.")
                 }
                 .navigationSubtitle(session.displayName)
             } else if let map = session.map {

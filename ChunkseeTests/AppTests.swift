@@ -50,6 +50,31 @@ import Testing
         }
     }
 
+    @Test func aDimensionWhoseChunksAreAllPre118IsExplainedEvenWithCurrentLevelData() async throws {
+        // A world opened in a newer Minecraft has current level data, but chunks nobody revisited stay
+        // in the old format, wrapped in `Level`, which ChunkseeKit rejects.
+        func legacyChunk(x: Int, z: Int) -> TestWorld.ChunkSpec {
+            TestWorld.ChunkSpec(x: x, z: z, nbt: .compound(["DataVersion": .int(2730), "Level": .compound([
+                "xPos": .int(Int32(x)), "zPos": .int(Int32(z)), "Status": .string("full"),
+                "Sections": .list([.compound(["Y": .byte(0)])]),
+            ])]))
+        }
+        let readable = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        for (chunks, isUnreadable) in [([legacyChunk(x: 1, z: 0)], true),                 // only old chunks
+                                       ([readable, legacyChunk(x: 1, z: 0)], false),     // mixed: show what's readable
+                                       ([readable], false)] as [([TestWorld.ChunkSpec], Bool)] {
+            let url = try TestWorld.make(chunks: chunks)   // level data at 5023
+            defer { try? FileManager.default.removeItem(at: url) }
+            let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+            let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+            await session.search.waitForIndex()
+            #expect(session.isSavedBeforeReadableFormat == isUnreadable, "chunks: \(chunks.count)")
+            #expect(session.possibleBiomes.isEmpty == isUnreadable)
+            session.close()
+            await session.waitUntilClosed()
+        }
+    }
+
     @Test func manyOpenWorldsHaveIndependentLifetimes() async throws {
         let urls = try (0..<12).map { _ in try TestWorld.make(chunks: []) }
         defer { for url in urls { try? FileManager.default.removeItem(at: url) } }
