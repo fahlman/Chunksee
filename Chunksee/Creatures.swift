@@ -84,13 +84,26 @@ struct CreatureDetailView: View {
     let session: WorldSession
     let marker: CreatureMarker
 
+    /// A saved health change refreshes the index while the inspector remains open.
+    var currentMarker: CreatureMarker {
+        session.selectedIndex.creatures.first { $0.id == marker.id } ?? marker
+    }
+
     var body: some View {
+        let marker = currentMarker
         Form {
             Section {
                 LabeledContent("Kind", value: ReadableName.from(marker.creature.id))
                 LabeledContent("Position") {
                     Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
                         .monospacedDigit()
+                }
+                if let health = marker.creature.health, health.isFinite, health >= 0 {
+                    LabeledContent("Health") {
+                        Text("\(health / 2, format: .number.precision(.fractionLength(0...2))) hearts")
+                            .monospacedDigit()
+                    }
+                    .help("Health recorded when Minecraft last saved this creature")
                 }
                 if let owner = marker.creature.owner {
                     LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))

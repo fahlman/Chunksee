@@ -195,6 +195,49 @@ enum StructureTestWorld {
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
     }
 
+    @Test func oldCacheIsRebuiltAndSelectedPetHealthFollowsSavedChanges() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let file = dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")
+        try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
+        func save(health: Float) throws {
+            let pet = entity("minecraft:wolf", x: 4, z: 4, extra: [
+                "Health": .float(health), "CustomName": .string("Summer"), "Owner": .intArray([1, 2, 3, 4]),
+            ])
+            let chunk = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([pet])])
+            try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: file)
+        }
+        try save(health: 8)
+        let root = world.appendingPathComponent("app-cache")
+        let cache = ScanCache(forWorldAt: world, dimensionID: dimension.id, root: root)
+        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), file])
+        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v5")
+        try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let oldPet = Creature(id: "minecraft:wolf", x: 4, y: 64, z: 4, customName: "Summer", owner: owner)
+        let encoded = try PropertyListEncoder().encode([oldPet])
+        try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let pet = try #require(session.selectedIndex.creatures.first)
+        #expect(pet.creature.health == 8 && !FileManager.default.fileExists(atPath: oldFile.path))
+        let cached: [Creature]? = cache.load("creatures", region: .init(x: 0, z: 0), fingerprint: fingerprint)
+        #expect(cached?.first?.health == 8)
+        session.choose(.creature(pet.id))
+        let detail = CreatureDetailView(session: session, marker: pet)
+        #expect(detail.currentMarker.creature.health == 8)
+        try save(health: 4)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
+        session.search.rebuild(firstDimension: dimension.id)
+        await session.search.waitForIndex()
+        #expect(detail.currentMarker.creature.health == 4 && detail.marker.creature.health == 8)
+        #expect(detail.currentMarker.creature.owner == pet.creature.owner && detail.currentMarker.position == pet.position)
+        session.close()
+        await session.waitUntilClosed()
+    }
+
     @Test func sessionScansShowsAndSearchesCreatures() async throws {
         // Scans walk the terrain region files, as entities only exist where terrain does.
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
