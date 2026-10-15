@@ -3,8 +3,9 @@ import SwiftUI
 
 struct WorldView: View {
     @Bindable var session: WorldSession
-    /// Worlds can hold dozens of maps, so the list starts collapsed.
-    @State private var showsInGameMaps = false
+    @State private var sidebarDisclosure = SidebarDisclosure()
+    /// A new request also reveals a selected row again after the user scrolls away or collapses it.
+    @State private var sidebarRevealID = UUID()
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
 
@@ -13,86 +14,86 @@ struct WorldView: View {
         @Bindable var search = session.search
         @Bindable var heatMap = session.heatMap
         NavigationSplitView {
-            List(selection: $session.sidebarSelection) {
-                if search.isActive {
-                    SearchResultsSection(session: session)
-                }
-                Section("World") {
-                    Label("World Info", systemImage: "info.circle")
-                        .tag(SidebarItem.worldInfo)
-                        .help("Show the world’s settings, time, weather and game rules")
-                    Label("Storage", systemImage: "shippingbox")
-                        .tag(SidebarItem.storage)
-                        .help("Show totals of the items stored in this dimension’s containers")
-                    Toggle(isOn: $heatMap.isShown) {
-                        Label("Time Spent", systemImage: "flame")
+            ScrollViewReader { proxy in
+                List(selection: sidebarSelection) {
+                    if search.isActive {
+                        SearchResultsSection(session: session)
                     }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .help("Color the map by how long players spent near each chunk")
-                    Toggle(isOn: $visibility.showsGrid) {
-                        Label("Grid", systemImage: "grid")
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .help("Show block, chunk and region lines; block lines appear from 8× zoom")
-                }
-                if !session.savedSearches.all.isEmpty {
-                    SavedSearchesSection(session: session)
-                }
-                SavedPlacesSection(session: session)
-                let index = session.selectedIndex
-                LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
-                             shown: $visibility.structures) { SidebarItem.structure($0.id) }
-                LayerSection(title: "Places", markers: index.places, origin: session.spawnPoint,
-                             shown: $visibility.places) { SidebarItem.place($0.id) }
-                LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
-                             shown: $visibility.creatures) { SidebarItem.creature($0.id) }
-                // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
-                LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
-                             shown: $visibility.biomes, allGroups: session.possibleBiomes) { SidebarItem.biome($0.id) }
-                if !session.inGameMaps.isEmpty {
-                    Section("In-Game Maps", isExpanded: $showsInGameMaps) {
-                        ForEach(session.inGameMaps, id: \.id) { map in
-                            InGameMapRow(session: session, map: map)
+                    Section("World") {
+                        Label("World Info", systemImage: "info.circle")
+                            .tag(SidebarItem.worldInfo)
+                            .help("Show the world’s settings, time, weather and game rules")
+                        Label("Storage", systemImage: "shippingbox")
+                            .tag(SidebarItem.storage)
+                            .help("Show totals of the items stored in this dimension’s containers")
+                        Toggle(isOn: $heatMap.isShown) {
+                            Label("Time Spent", systemImage: "flame")
                         }
-                    }
-                }
-                if !session.listedPlayers.isEmpty {
-                    Section("Players") {
-                        ForEach(session.listedPlayers, id: \.uuid) { player in
-                            PlayerRow(session: session, player: player)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .help("Color the map by how long players spent near each chunk")
+                        Toggle(isOn: $visibility.showsGrid) {
+                            Label("Grid", systemImage: "grid")
                         }
-                        // A row rather than a section footer: sidebar lists don't show footers.
-                        if session.hasUnnamedPlayers {
-                            SettingsLink {
-                                Label("Find Player Names…", systemImage: "magnifyingglass")
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .help("Show block, chunk and region lines; block lines appear from 8× zoom")
+                    }
+                    if !session.savedSearches.all.isEmpty {
+                        SavedSearchesSection(session: session, expanded: $sidebarDisclosure.savedSearches)
+                    }
+                    SavedPlacesSection(session: session)
+                    let index = session.selectedIndex
+                    LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
+                                 shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
+                                 isExpanded: layerExpanded(.structures), expandedGroups: $sidebarDisclosure.structures)
+                    LayerSection(title: "Places", markers: index.places, origin: session.spawnPoint,
+                                 shown: $visibility.places, item: { SidebarItem.place($0.id) },
+                                 isExpanded: layerExpanded(.places), expandedGroups: $sidebarDisclosure.places)
+                    LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
+                                 shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
+                                 isExpanded: layerExpanded(.creatures), expandedGroups: $sidebarDisclosure.creatures)
+                    // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
+                    LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
+                                 shown: $visibility.biomes, allGroups: session.possibleBiomes, item: { SidebarItem.biome($0.id) },
+                                 isExpanded: layerExpanded(.biomes), expandedGroups: $sidebarDisclosure.biomes)
+                    if !session.inGameMaps.isEmpty {
+                        Section("In-Game Maps", isExpanded: $sidebarDisclosure.showsInGameMaps) {
+                            ForEach(session.inGameMaps, id: \.id) { map in
+                                InGameMapRow(session: session, map: map)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    if !session.listedPlayers.isEmpty {
+                        Section("Players") {
+                            ForEach(session.listedPlayers, id: \.uuid) { player in
+                                PlayerRow(session: session, player: player)
+                            }
+                            // A row rather than a section footer: sidebar lists don't show footers.
+                            if session.hasUnnamedPlayers {
+                                SettingsLink {
+                                    Label("Find Player Names…", systemImage: "magnifyingglass")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-            .focused($isSidebarFocused)
-            // Choosing a row shows it; double-clicking it or pressing Return shows it again. The
-            // list keeps keyboard focus, so the arrow keys move to the next row, not the map.
-            .onChange(of: session.sidebarSelection) { _, item in
-                // Only a row the user chose takes focus. Selection cleared because the inspector
-                // moved on (say, to a portal clicked on the map) leaves focus where the user put it.
-                guard let item else { return }
-                isSidebarFocused = true
-                session.choose(item)
-            }
-            .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
-                if let item = items.first { session.choose(item) }
-            }
-            // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
-            // whenever either setting changes.
-            .task(id: NameSources(folder: session.names.minecraftFolder, online: session.names.looksUpOnline)) {
-                await session.names.reloadLocal()
-                await session.names.lookUp(session.players.filter(PlayerPresentation.isMappable).map(\.uuid))
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+                .focused($isSidebarFocused)
+                .onChange(of: sidebarRevealID) {
+                    if let item = session.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
+                }
+                .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
+                    if let item = items.first { session.choose(item) }
+                }
+                // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
+                // whenever either setting changes.
+                .task(id: NameSources(folder: session.names.minecraftFolder, online: session.names.looksUpOnline)) {
+                    await session.names.reloadLocal()
+                    await session.names.lookUp(session.players.filter(PlayerPresentation.isMappable).map(\.uuid))
+                }
             }
         } detail: {
             if session.isSavedBeforeReadableFormat {
@@ -104,7 +105,7 @@ struct WorldView: View {
                 .navigationSubtitle(session.displayName)
             } else if let map = session.map {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
-                        onSelect: { session.mapClicked($0) })
+                        onSelect: selectOnMap)
                     .id(map.dimension.id)
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session] in session.renderMapImage() }])
@@ -165,6 +166,30 @@ struct WorldView: View {
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
+    /// Only input through the native List binding navigates and requests sidebar focus.
+    private var sidebarSelection: Binding<SidebarItem?> {
+        Binding { session.sidebarSelection } set: { item in
+            session.sidebarSelection = item
+            guard let item else { return }
+            isSidebarFocused = true
+            session.choose(item)
+        }
+    }
+
+    private func selectOnMap(_ target: MapTarget?) {
+        session.mapClicked(target)
+        guard target != nil, let item = session.sidebarSelection else { return }
+        sidebarDisclosure.reveal(item, in: session)
+        sidebarRevealID = UUID()
+    }
+
+    private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {
+        Binding { !sidebarDisclosure.collapsedLayers.contains(layer) } set: {
+            if $0 { sidebarDisclosure.collapsedLayers.remove(layer) }
+            else { sidebarDisclosure.collapsedLayers.insert(layer) }
+        }
+    }
+
     private var inspectorShown: Binding<Bool> {
         Binding { session.inspector != nil } set: {
             if !$0 { session.inspector = nil }
@@ -204,6 +229,7 @@ private struct PlayerRow: View {
             .help("Show inventory, health and experience")
         }
         .tag(SidebarItem.player(player.uuid))
+        .id(SidebarItem.player(player.uuid))
         .selectionDisabled(!canFocus)
         .accessibilityElement(children: .combine)
         // Native sidebar rows combine their controls. Their context menu keeps each action reachable.
@@ -308,12 +334,17 @@ private struct SearchResultsSection: View {
 /// while its eye is open.
 private struct SavedSearchesSection: View {
     let session: WorldSession
+    @Binding var expanded: Set<UUID>
 
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
                 let hits = session.listed(session.search.results(for: saved.query))
-                DisclosureGroup {
+                DisclosureGroup(isExpanded: Binding {
+                    expanded.contains(saved.id)
+                } set: {
+                    if $0 { expanded.insert(saved.id) } else { expanded.remove(saved.id) }
+                }) {
                     HitList(session: session, query: saved.query, hits: hits)
                 } label: {
                     HStack {
@@ -360,6 +391,7 @@ private struct HitList: View {
                 }
                 .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))
+                .id(SidebarItem.hit(query: query, id: hit.id))
                 .selectionDisabled(hit.position == nil)
             }
             if hits.count > 200 {

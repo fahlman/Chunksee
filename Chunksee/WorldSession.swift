@@ -28,6 +28,12 @@ enum SidebarItem: Hashable {
     case hit(query: String, id: String)
 }
 
+/// A drawn location identifies its sidebar row, or a search hit whose query the session resolves.
+enum MapTarget: Equatable {
+    case row(SidebarItem)
+    case searchHit(SearchHit.ID)
+}
+
 /// The thing selected on the map, whose details the inspector shows; one at a time.
 enum MapSelection: Equatable {
     case portal(NetherPortal)
@@ -447,11 +453,46 @@ final class WorldSession {
         }
     }
 
-    /// A click on the map: selects the portal or creature under it. A click elsewhere clears a
-    /// selected portal or creature, but not an in-game map laid over the terrain.
-    func mapClicked(_ clicked: MapSelection?) {
+    /// Selects a marker's row without navigating or taking focus from the map. A click elsewhere
+    /// clears it, except for an in-game map laid over the terrain.
+    func mapClicked(_ clicked: MapTarget?) {
         if clicked == nil, case .inGameMap? = selection { return }
-        selection = clicked
+        let item = clicked.flatMap(sidebarItem(for:))
+        switch item {
+        case .place(let id)?:
+            selection = selectedIndex.places.first { $0.id == id }?.portal.map(MapSelection.portal)
+        case .creature(let id)?:
+            selection = selectedIndex.creatures.first { $0.id == id }.map(MapSelection.creature)
+        default:
+            selection = nil
+        }
+        search.selectedHitID = if case .hit(_, let id)? = item { id } else { nil }
+        sidebarSelection = item
+    }
+
+    private func sidebarItem(for target: MapTarget) -> SidebarItem? {
+        switch target {
+        case .searchHit(let id):
+            let queries = (search.isActive ? [search.text] : []) + savedSearches.all.filter(\.isShown).map(\.query)
+            for query in queries where listed(search.results(for: query)).prefix(200).contains(where: { $0.id == id }) {
+                return .hit(query: query, id: id)
+            }
+            return nil
+        case .row(let item):
+            // A live update may have removed the marker since this frame was drawn. Players'
+            // death/respawn markers can also belong to somebody listed in another dimension.
+            let index = selectedIndex
+            let exists = switch item {
+            case .structure(let id): index.structures.contains { $0.id == id }
+            case .place(let id): index.places.contains { $0.id == id }
+            case .creature(let id): index.creatures.contains { $0.id == id }
+            case .biome(let id): index.biomeAreas.contains { $0.id == id }
+            case .savedPlace(let id): listedPlaces.contains { $0.id == id }
+            case .player(let id): listedPlayers.contains { $0.uuid == id && $0.position != nil && PlayerPresentation.isMappable($0) }
+            default: false
+            }
+            return exists ? item : nil
+        }
     }
 
     /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is

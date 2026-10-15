@@ -15,6 +15,7 @@ struct SavedPlacesSection: View {
                 }
                 .lineLimit(1)
                 .tag(SidebarItem.savedPlace(place.id))
+                .id(SidebarItem.savedPlace(place.id))
                 .contextMenu {
                     Button("Rename…") { session.edit(place) }
                     Button("Copy Coordinates") { MapClipboard.copy(place.position) }
