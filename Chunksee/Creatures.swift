@@ -84,13 +84,7 @@ struct CreatureDetailView: View {
     let session: WorldSession
     let marker: CreatureMarker
 
-    /// A saved health change refreshes the index while the inspector remains open.
-    var currentMarker: CreatureMarker {
-        session.selectedIndex.creatures.first { $0.id == marker.id } ?? marker
-    }
-
     var body: some View {
-        let marker = currentMarker
         Form {
             Section {
                 LabeledContent("Kind", value: ReadableName.from(marker.creature.id))

@@ -226,14 +226,19 @@ enum StructureTestWorld {
         let cached: [Creature]? = cache.load("creatures", region: .init(x: 0, z: 0), fingerprint: fingerprint)
         #expect(cached?.first?.health == 8)
         session.choose(.creature(pet.id))
-        let detail = CreatureDetailView(session: session, marker: pet)
-        #expect(detail.currentMarker.creature.health == 8)
+        #expect(session.currentSelection == .creature(pet))
         try save(health: 4)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: dimension.id)
         await session.search.waitForIndex()
-        #expect(detail.currentMarker.creature.health == 4 && detail.marker.creature.health == 8)
-        #expect(detail.currentMarker.creature.owner == pet.creature.owner && detail.currentMarker.position == pet.position)
+        let refreshed = try #require(session.selectedIndex.creatures.first)
+        #expect(refreshed.creature.health == 4 && pet.creature.health == 8)
+        #expect(session.currentSelection == .creature(refreshed) && session.mapContent.selection == .creature(refreshed))
+        #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
+        session.map?.viewport.scale = 0.125
+        let map = session.mapContent
+        let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
+        #expect(visible.contains { $0.selection == .creature(refreshed) })
         session.close()
         await session.waitUntilClosed()
     }
