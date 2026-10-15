@@ -104,6 +104,10 @@ macOS names each window and Open Recent item after its folder (`overworld`, `the
 `the_end`), so the window subtitle names the world. Each dimension's
 map position is remembered in `RememberedViews`.
 
+`ChunkseeApp.init()` registers `NSShowAppCentricOpenPanelInsteadOfUntitledFile = false` before
+document restoration. With no documents to restore, the read-only app stays running without an
+automatic Open panel or a new document. File ▸ Open and Open Recent still use the native flow.
+
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
@@ -135,7 +139,9 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running
-  and shows the native Open panel, then cancel it and quit. Check opening several folders, opening
+  without an automatic Open panel or a new document when there is nothing to restore. Check that
+  File ▸ Open shows its native panel, Cancel leaves the app running, and clicking its Dock icon
+  with no documents open does not bring the panel back. Check opening several folders, opening
   one again, clearing Open Recent while documents stay open, and quitting/relaunching with the
   system's window restoration preference. To check document file access, use a **Release** build.
   Xcode adds test-runner entitlements to Debug builds,

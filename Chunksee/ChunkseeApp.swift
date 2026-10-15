@@ -5,6 +5,13 @@ struct ChunkseeApp: App {
     @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
     @State private var model = AppModel()
 
+    init() {
+        // A read-only viewer can stay open without asking for a world.
+        UserDefaults.standard.register(defaults: [
+            "NSShowAppCentricOpenPanelInsteadOfUntitledFile": false
+        ])
+    }
+
     var body: some Scene {
         DocumentGroup { (document: WorldDocument) in
             WorldDocumentView(document: document)
