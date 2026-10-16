@@ -1,4 +1,5 @@
 import Foundation
+import ChunkseeKit
 import SwiftUI
 
 extension WorldSession {
