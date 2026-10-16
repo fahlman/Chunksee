@@ -13,6 +13,7 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     var kind: Kind
     /// World X/Z of the marker.
     var position: CGPoint
+    var y: Double?
     var label: String
     /// True when the player's file predates the world's current version: they haven't been seen
     /// since, so the position is old.
@@ -66,7 +67,7 @@ nonisolated enum PlayerPresentation {
             func add(_ kind: MapMarker.Kind, _ location: PlayerInfo.Location?, _ label: String) {
                 guard let location, location.dimension == dimensionID else { return }
                 markers.append(MapMarker(id: "\(id)-\(kind)", playerID: player.uuid, kind: kind, position: CGPoint(x: location.x, y: location.z),
-                                         label: label, isOutdated: outdated))
+                                         y: location.y, label: label, isOutdated: outdated))
             }
             add(.respawn, player.respawn, String(localized: "\(name)’s respawn point"))
             add(.death, player.lastDeath, String(localized: "Where \(name) last died"))

@@ -18,7 +18,10 @@ struct SavedPlacesSection: View {
                 .id(SidebarItem.savedPlace(place.id))
                 .contextMenu {
                     Button("Rename…") { session.edit(place) }
-                    Button("Copy Coordinates") { MapClipboard.copy(place.position) }
+                    Button("Copy Coordinates") {
+                        if let map = session.map { MapClipboard.copy(place.position, on: map) }
+                    }
+                    .disabled(session.map == nil)
                     Divider()
                     Button("Remove", role: .destructive) { session.savedPlaces.remove(place.id) }
                 }

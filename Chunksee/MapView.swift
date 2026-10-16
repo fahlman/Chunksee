@@ -78,6 +78,10 @@ struct MapContent {
     /// Hit tests only drawn markers. Match drawing order for overlapping badges, preserving a
     /// portal's priority over a creature standing in it. Names are not prepared for hit testing.
     func target(at point: CGPoint, viewport: MapViewport, size: CGSize) -> MapTarget? {
+        hit(at: point, viewport: viewport, size: size)?.target
+    }
+
+    func hit(at point: CGPoint, viewport: MapViewport, size: CGSize) -> MapHit? {
         func nearest<Item>(_ items: some Sequence<Item>, within reach: CGFloat = 12,
                            position: (Item) -> CGPoint) -> Item? {
             var best: Item?
@@ -89,23 +93,38 @@ struct MapContent {
             }
             return best
         }
-        if let place = nearest(savedPlaces, position: \.position) { return .row(.savedPlace(place.id)) }
-        if let player = nearest(players, position: { CGPoint(x: $0.position.x + 0.5, y: $0.position.y + 0.5) }) {
-            return .row(.player(player.playerID))
+        if let place = nearest(savedPlaces, position: \.position) {
+            return MapHit(target: .row(.savedPlace(place.id)), position: place.position)
         }
-        if let hit = nearest(hits.lazy.filter { $0.position != nil }, position: { $0.position! }) { return .searchHit(hit.id) }
+        if let player = nearest(players, position: { CGPoint(x: $0.position.x + 0.5, y: $0.position.y + 0.5) }) {
+            return MapHit(target: .row(.player(player.playerID)), position: player.position, y: player.y)
+        }
+        if let hit = nearest(hits.lazy.filter { $0.position != nil }, position: { $0.position! }) {
+            return MapHit(target: .searchHit(hit.id), position: hit.position!, y: hit.y.map(Double.init))
+        }
         if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: 14, position: \.position) {
-            return .row(.place(portal.id))
+            return MapHit(target: .row(.place(portal.id)), position: portal.position, y: Double(portal.y))
         }
         if let creature = nearest(creatures.lazy.filter { viewport.scale >= 0.25 || selection == .creature($0) }, position: \.position) {
-            return .row(.creature(creature.id))
+            return MapHit(target: .row(.creature(creature.id)), position: creature.position, y: creature.creature.y)
         }
-        if viewport.scale >= 0.125, let place = nearest(places, position: \.position) { return .row(.place(place.id)) }
-        if let structure = nearest(structures, position: \.position) { return .row(.structure(structure.id)) }
+        if viewport.scale >= 0.125, let place = nearest(places, position: \.position) {
+            return MapHit(target: .row(.place(place.id)), position: place.position, y: Double(place.y))
+        }
+        if let structure = nearest(structures, position: \.position) {
+            return MapHit(target: .row(.structure(structure.id)), position: structure.position, y: structure.y.map(Double.init))
+        }
         // Biomes draw areas, not badges at their representative position. They remain available
         // through the sidebar and accessibility locations without an invisible pointer target.
         return nil
     }
+}
+
+/// One drawn marker's action and coordinate snapshot, shared by selection and copying.
+struct MapHit {
+    var target: MapTarget
+    var position: CGPoint
+    var y: Double?
 }
 
 struct AccessibleMapLocation: Identifiable {
@@ -229,8 +248,10 @@ struct MapView: View {
     private func contextActions(at point: CGPoint) -> [MapContextAction] {
         guard let coordinates = MapCoordinates(point: map.viewport.blockPoint(at: point, in: size)) else { return [] }
         let position = coordinates.position, dimension = map.dimension.id
+        let hit = content.hit(at: point, viewport: map.viewport, size: size)
+        let copyPosition = hit?.position ?? position, copyY = hit?.y, map = map
         return [
-            MapContextAction(title: String(localized: "Copy Coordinates")) { MapClipboard.copy(position) },
+            MapContextAction(title: String(localized: "Copy Coordinates")) { MapClipboard.copy(copyPosition, y: copyY, on: map) },
             MapContextAction(title: String(localized: "Save Place…")) { session.savePlace(at: position, in: dimension) },
             MapContextAction(title: String(localized: "Measure Distance from Here")) { session.beginMeasurement(at: position, in: dimension) },
         ]

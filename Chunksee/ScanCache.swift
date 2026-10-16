@@ -10,7 +10,8 @@ nonisolated struct ScanCache: Sendable {
     /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
     /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
     /// 5: spawners in search contents (fahlman/Chunksee#121).
-    static let version = 5
+    /// 10: structure marker heights for Copy Coordinates (#159); 6–9 are used by pending #153/#154.
+    static let version = 10
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?
