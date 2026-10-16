@@ -15,6 +15,13 @@ struct SidebarDisclosure {
     var savedSearches: Set<UUID> = []
     var showsInGameMaps = false
 
+    /// The view and tests share this complete map-origin selection/reveal action.
+    @discardableResult mutating func selectOnMap(_ target: MapTarget?, in session: WorldSession) -> Bool {
+        guard let item = session.mapClicked(target) else { return false }
+        reveal(item, in: session)
+        return true
+    }
+
     mutating func reveal(_ item: SidebarItem, in session: WorldSession) {
         let index = session.selectedIndex
         switch item {
@@ -38,8 +45,6 @@ struct SidebarDisclosure {
             if let saved = session.savedSearches.all.first(where: { $0.query == query }) {
                 savedSearches.insert(saved.id)
             }
-        case .inGameMap:
-            showsInGameMaps = true
         default:
             break
         }

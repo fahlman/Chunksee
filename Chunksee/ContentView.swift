@@ -177,10 +177,7 @@ struct WorldView: View {
     }
 
     private func selectOnMap(_ target: MapTarget?) {
-        session.mapClicked(target)
-        guard target != nil, let item = session.sidebarSelection else { return }
-        sidebarDisclosure.reveal(item, in: session)
-        sidebarRevealID = UUID()
+        if sidebarDisclosure.selectOnMap(target, in: session) { sidebarRevealID = UUID() }
     }
 
     private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {
@@ -251,8 +248,7 @@ private struct PlayerRow: View {
     }
 
     private var canFocus: Bool {
-        guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
-        return session.dimensions.contains { $0.id == position.dimension }
+        session.canFocus(player)
     }
 
     private var detail: String {

@@ -117,8 +117,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
-The view expands the selected row's ancestors and scrolls to it
-with SwiftUI, including a repeated click after the row was collapsed or scrolled away. Search pins
+The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
+one action shared with the behavioral tests. Search pins
 select an existing result row (the active query first, then a shown saved query); the 200-row limit
 and per-dimension listing rules still apply.
 

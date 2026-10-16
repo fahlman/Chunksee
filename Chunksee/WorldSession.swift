@@ -453,21 +453,27 @@ final class WorldSession {
         }
     }
 
-    /// Selects a marker's row without navigating or taking focus from the map. A click elsewhere
-    /// clears it, except for an in-game map laid over the terrain.
-    func mapClicked(_ clicked: MapTarget?) {
-        if clicked == nil, case .inGameMap? = selection { return }
+    /// Selects a marker's row without navigating or taking focus from the map. Only a portal or
+    /// creature replaces an in-game map overlay. Empty/stale clicks preserve that overlay.
+    @discardableResult func mapClicked(_ clicked: MapTarget?) -> SidebarItem? {
         let item = clicked.flatMap(sidebarItem(for:))
+        if item == nil, case .inGameMap? = selection { return nil }
+        let detail: MapSelection?
         switch item {
         case .place(let id)?:
-            selection = selectedIndex.places.first { $0.id == id }?.portal.map(MapSelection.portal)
+            detail = selectedIndex.places.first { $0.id == id }?.portal.map(MapSelection.portal)
         case .creature(let id)?:
-            selection = selectedIndex.creatures.first { $0.id == id }.map(MapSelection.creature)
+            detail = selectedIndex.creatures.first { $0.id == id }.map(MapSelection.creature)
         default:
-            selection = nil
+            detail = nil
         }
+        if let detail { selection = detail }
+        else if case .inGameMap? = selection { /* Keep the map under non-inspectable markers. */ }
+        else { selection = nil }
         search.selectedHitID = if case .hit(_, let id)? = item { id } else { nil }
-        sidebarSelection = item
+        if let item { sidebarSelection = item }
+        else if sidebarSelection != .worldInfo && sidebarSelection != .storage { sidebarSelection = nil }
+        return item
     }
 
     private func sidebarItem(for target: MapTarget) -> SidebarItem? {
@@ -488,11 +494,17 @@ final class WorldSession {
             case .creature(let id): index.creatures.contains { $0.id == id }
             case .biome(let id): index.biomeAreas.contains { $0.id == id }
             case .savedPlace(let id): listedPlaces.contains { $0.id == id }
-            case .player(let id): listedPlayers.contains { $0.uuid == id && $0.position != nil && PlayerPresentation.isMappable($0) }
+            case .player(let id): listedPlayers.contains { $0.uuid == id && canFocus($0) }
             default: false
             }
             return exists ? item : nil
         }
+    }
+
+    /// The same focus rule is used by native player rows and map-origin row selection.
+    func canFocus(_ player: PlayerInfo) -> Bool {
+        guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
+        return dimensions.contains { $0.id == position.dimension }
     }
 
     /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is

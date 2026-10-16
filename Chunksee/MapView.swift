@@ -102,7 +102,8 @@ struct MapContent {
         }
         if viewport.scale >= 0.125, let place = nearest(places, position: \.position) { return .row(.place(place.id)) }
         if let structure = nearest(structures, position: \.position) { return .row(.structure(structure.id)) }
-        if let area = nearest(biomeAreas, position: \.position) { return .row(.biome(area.id)) }
+        // Biomes draw areas, not badges at their representative position. They remain available
+        // through the sidebar and accessibility locations without an invisible pointer target.
         return nil
     }
 }

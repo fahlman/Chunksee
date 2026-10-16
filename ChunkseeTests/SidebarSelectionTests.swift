@@ -5,6 +5,8 @@ import Testing
 @testable import Chunksee
 
 @Suite struct SidebarSelectionTests {
+    let playerID = UUID(uuidString: "00000001-0000-0002-0000-000300000004")!
+    let missingDimensionPlayerID = UUID(uuidString: "00000005-0000-0006-0000-000700000008")!
     @Test func mapClicksSelectAndRevealRowsWithoutNavigating() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -28,25 +30,29 @@ import Testing
         let cases: [(CGPoint, SidebarItem)] = [
             (structure.position, .structure(structure.id)), (spawner.position, .place(spawner.id)),
             (portal.position, .place(portal.id)), (creature.position, .creature(creature.id)),
-            (biome.position, .biome(biome.id)), (place.position, .savedPlace(place.id)),
+            (place.position, .savedPlace(place.id)),
         ]
         for (position, row) in cases {
             let target = session.mapContent.target(at: viewport.viewPoint(for: position, in: CGSize(width: 800, height: 600)),
                                                    viewport: viewport, size: CGSize(width: 800, height: 600))
             #expect(target == .row(row))
-            session.mapClicked(target)
-            disclosure.reveal(row, in: session)
+            disclosure.selectOnMap(target, in: session)
             #expect(session.sidebarSelection == row)
             #expect(session.map?.viewport == viewport && !session.navigation.canGoBack)
         }
+        // Biomes expose an accessibility location, without an undrawn pointer badge at its center.
+        let location = try #require(session.mapContent.accessibleLocations(viewport: viewport, size: CGSize(width: 800, height: 600))
+            .first { $0.target == .row(.biome(biome.id)) })
+        #expect(session.mapContent.target(at: viewport.viewPoint(for: biome.position, in: CGSize(width: 800, height: 600)),
+                                         viewport: viewport, size: CGSize(width: 800, height: 600)) == nil)
+        disclosure.selectOnMap(location.target, in: session)
         #expect(disclosure.collapsedLayers.isEmpty)
         #expect(disclosure.structures == [structure.group] && disclosure.places == [.portal, .spawner])
         #expect(disclosure.creatures == [creature.group] && disclosure.biomes == [biome.group])
         // Repeating the same map choice reopens its ancestors after a manual collapse.
         disclosure.collapsedLayers.insert(.places)
         disclosure.places.remove(.spawner)
-        session.mapClicked(.row(.place(spawner.id)))
-        disclosure.reveal(.place(spawner.id), in: session)
+        disclosure.selectOnMap(.row(.place(spawner.id)), in: session)
         #expect(!disclosure.collapsedLayers.contains(.places) && disclosure.places.contains(.spawner))
         session.sidebarSelection = .worldInfo
         session.choose(.worldInfo)
@@ -72,22 +78,85 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         let viewport = session.map?.viewport
-        session.mapClicked(.searchHit(hit.id))
+        var disclosure = SidebarDisclosure()
+        disclosure.selectOnMap(.searchHit(hit.id), in: session)
         #expect(session.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
         #expect(session.search.selectedHitID == hit.id && session.map?.viewport == viewport)
         session.saveSearch()
         session.search.text = ""
         await session.search.waitForSearch()
-        session.mapClicked(.searchHit(hit.id))
+        disclosure.selectOnMap(.searchHit(hit.id), in: session)
         let row = SidebarItem.hit(query: "place:spawner", id: hit.id)
         #expect(session.sidebarSelection == row)
-        var disclosure = SidebarDisclosure()
-        disclosure.reveal(row, in: session)
         #expect(disclosure.savedSearches == Set(session.savedSearches.all.map(\.id)))
         session.mapClicked(nil)
         #expect(session.search.selectedHitID == nil && session.sidebarSelection == nil)
         session.close()
         await session.waitUntilClosed()
+    }
+
+    @Test func mapOverlaySurvivesOtherMarkersAndStaleTargets() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "place:spawner"
+        await session.search.waitForSearch()
+        let index = session.selectedIndex
+        let structure = try #require(index.structures.first), biome = try #require(index.biomeAreas.first)
+        let spawner = try #require(index.places.first { $0.group == .spawner })
+        let portal = try #require(index.places.first { $0.group == .portal })
+        let creature = try #require(index.creatures.first), map = try #require(session.inGameMaps.first { $0.id == 3 })
+        let place = try #require(session.savedPlaces.add(name: "Base", dimension: "minecraft:overworld", at: CGPoint(x: -35, y: 20)))
+        let hit = try #require(session.search.results.first)
+        session.show(map)
+        let viewport = session.map?.viewport
+        let targets: [MapTarget?] = [.row(.structure(structure.id)), .row(.place(spawner.id)), .row(.biome(biome.id)),
+            .row(.player(playerID)), .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
+            .row(.structure("gone")), .row(.place("gone")), .row(.creature("gone")),
+            .row(.player(missingDimensionPlayerID)), .searchHit("gone")]
+        var disclosure = SidebarDisclosure()
+        for target in targets {
+            disclosure.selectOnMap(target, in: session)
+            #expect(session.mapContent.inGameMap?.map.id == map.id && session.selection == .inGameMap(map))
+            #expect(session.inspector == .selection && session.map?.viewport == viewport)
+        }
+        for target in [MapTarget.row(.place(portal.id)), .row(.creature(creature.id))] {
+            session.show(map)
+            disclosure.selectOnMap(target, in: session)
+            #expect(session.mapContent.inGameMap == nil && session.inspector == .selection)
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func emptyMapKeepsWorldInfoAndStorageRowsSelected() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        for row in [SidebarItem.worldInfo, .storage] {
+            session.sidebarSelection = row; session.choose(row)
+            let inspector = session.inspector
+            session.mapClicked(nil)
+            #expect(session.sidebarSelection == row && session.inspector == inspector)
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func mapCannotSelectADisabledPlayerInAMissingDimension() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
+        #expect(!session.canFocus(unavailable))
+        session.mapClicked(.row(.player(unavailable.uuid)))
+        #expect(session.sidebarSelection == nil)
+        session.close(); await session.waitUntilClosed()
     }
 
     @Test func hitTestingMatchesVisibleBadgesAndPlayerDrawingCoordinates() throws {
@@ -147,6 +216,17 @@ import Testing
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: data)])).write(to: directory.appendingPathComponent("r.0.0.mca"))
         }
+        let players = url.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: players, withIntermediateDirectories: true)
+        for (id, dimensionID) in [(playerID, "minecraft:overworld"), (missingDimensionPlayerID, "minecraft:the_nether")] {
+            let player = NBT.compound(["DataVersion": .int(5023), "Dimension": .string(dimensionID),
+                                      "Pos": .list([.double(-10), .double(64), .double(-20)])])
+            try Data(Compression.deflate(player.serialized(), gzip: true)).write(to: players.appendingPathComponent("\(id.uuidString).dat"))
+        }
+        let maps = url.appendingPathComponent("data/minecraft/maps")
+        try FileManager.default.createDirectory(at: maps, withIntermediateDirectories: true)
+        let map = InGameMapTests().mapNBT(dimension: .string("minecraft:overworld"))
+        try Data(Compression.deflate(map.serialized(), gzip: true)).write(to: maps.appendingPathComponent("3.dat"))
         return url
     }
 }
