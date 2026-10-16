@@ -6,9 +6,10 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 ## Using Chunksee
 
-1. Choose a world from **File ▸ Open World**, which lists the worlds in the Minecraft folder you
-   choose in Settings, or choose **File ▸ Open…** and select a world's folder inside a `saves`
-   folder. Chunksee reads worlds saved by Minecraft 1.18 or later. For an older world, or a dimension
+1. Choose **File ▸ Open…** and select a world's folder inside a `saves` folder in your Minecraft
+   folder (usually Library ▸ Application Support ▸ minecraft in your home folder). Library is
+   hidden, so in the Open panel press Shift-Command-G and enter
+   `~/Library/Application Support/minecraft`. Chunksee reads worlds saved by Minecraft 1.18 or later. For an older world, or a dimension
    whose saved areas are all older, it says so in place of the map. To update it, select it in
    Minecraft's world list, choose **Upgrade and Play** if offered and return to the list, then choose
    **Edit ▸ Optimize World**.

@@ -137,29 +137,3 @@ struct WorldKeyboardShortcuts: View {
         .frame(width: 0, height: 0)
     }
 }
-
-/// File ▸ Open World: every world in the Minecraft folder. A world folder opens as its dimensions.
-struct OpenWorldMenu: View {
-    let worlds: SavedWorlds
-    @Environment(\.openDocument) private var openDocument
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        Menu("Open World") {
-            if !worlds.hasMinecraftFolder {
-                Button("Choose Minecraft Folder…") { openSettings() }
-            } else if worlds.all.isEmpty {
-                Button("No Worlds Found") {}
-                    .disabled(true)
-            } else {
-                ForEach(worlds.all) { entry in
-                    Button(worlds.title(for: entry)) {
-                        // The document system reports a world it can't open; opening a world
-                        // folder itself ends by opening its dimensions instead.
-                        Task { try? await openDocument(at: entry.url) }
-                    }
-                }
-            }
-        }
-    }
-}
