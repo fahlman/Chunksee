@@ -55,7 +55,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.25.0`, resolved to `0.25.0` (`9f71f9b5ee51311980861e06ac721df7adad64ee`).
+  minor" from `0.26.0`, resolved to `0.26.0` (`f887abb88991a0420e8a25b16e7203821692007c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -95,6 +95,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `PlayerEquipment.swift`, `LinkedPets.swift` | Native player inspector, saved effect duration/equipment presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
+| `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -106,9 +107,13 @@ macOS names each window and Open Recent item after its folder (`overworld`, `the
 `the_end`), so the window subtitle names the world. Each dimension's
 map position is remembered in `RememberedViews`.
 
-`ChunkseeApp.init()` registers `NSShowAppCentricOpenPanelInsteadOfUntitledFile = false` before
-document restoration. With no documents to restore, the read-only app stays running without an
-automatic Open panel or a new document. File ▸ Open and Open Recent still use the native flow.
+The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
+documents to restore, the app stays running without an automatic Open panel or a new document.
+File ▸ Open and Open Recent still use the native flow.
+
+`ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
+changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
+menu backing indexes. The pass disables hidden key equivalents before hiding editing items.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
@@ -126,6 +131,14 @@ index and open/select in the destination dimension document. No owner is inferre
 Player health shows the actual saved maximum when available; active effects show saved duration,
 not a live countdown. Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
+
+Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
+input through the List selection binding calls `choose` and requests sidebar focus. Pointer
+selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
+The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
+one action shared with the behavioral tests. Search pins
+select an existing result row (the active query first, then a shown saved query); the 200-row limit
+and per-dimension listing rules still apply.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening

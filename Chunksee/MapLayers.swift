@@ -46,7 +46,8 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     var shown: Binding<Set<Marker.Group>>?
     var allGroups: [Marker.Group] = []
     let item: (Marker) -> SidebarItem
-    @State private var isExpanded = true
+    @Binding var isExpanded: Bool
+    @Binding var expandedGroups: Set<Marker.Group>
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
@@ -57,7 +58,11 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                     if byGroup[group] == nil {
                         row(group, count: 0)
                     } else {
-                        DisclosureGroup {
+                        DisclosureGroup(isExpanded: Binding {
+                            expandedGroups.contains(group)
+                        } set: {
+                            if $0 { expandedGroups.insert(group) } else { expandedGroups.remove(group) }
+                        }) {
                             ForEach(nearestFirst(byGroup[group] ?? [])) { marker in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(marker.name)
@@ -66,6 +71,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .tag(item(marker))
+                                .id(item(marker))
                                 .help("Show on the map")
                             }
                         } label: {

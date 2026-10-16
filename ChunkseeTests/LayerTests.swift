@@ -277,12 +277,13 @@ enum StructureTestWorld {
         session.visibility.creatures = [.pet]
         #expect(session.mapContent.creatures.map(\.name) == ["Summer"])
         let summer = try #require(session.mapContent.creatures.first)
-        session.mapClicked(.creature(summer))
+        session.mapClicked(.row(.creature(summer.id)))
         #expect(session.mapContent.selection == .creature(summer))
+        #expect(session.sidebarSelection == .creature(summer.id))
         #expect(session.inspector == .selection)   // its details show in the inspector
         session.mapClicked(nil)
-        #expect(session.selection == nil && session.inspector == nil)
-        session.mapClicked(.creature(summer))
+        #expect(session.selection == nil && session.inspector == nil && session.sidebarSelection == nil)
+        session.mapClicked(.row(.creature(summer.id)))
         session.inspector = .world                 // showing something else lets go of it
         #expect(session.selection == nil)
         // Choosing the creature in the sidebar shows its layer, centers on it and selects it.
