@@ -248,7 +248,10 @@ enum StructureTestWorld {
         session.map?.viewport.scale = 0.125
         let map = session.mapContent
         let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
-        #expect(visible.contains { $0.selection == .creature(refreshed) })
+        let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
+        var disclosure = SidebarDisclosure()
+        disclosure.selectOnMap(location.target, in: session)
+        #expect(session.sidebarSelection == .creature(refreshed.id) && session.currentSelection == .creature(refreshed))
         session.close()
         await session.waitUntilClosed()
     }
