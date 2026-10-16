@@ -411,6 +411,7 @@ final class WorldSession {
                                                      singleplayerUUID: world.level.singleplayerUUID,
                                                      worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
         content.selection = currentSelection
+        content.selectedPlayerID = if case .player(let uuid)? = inspector { uuid } else { nil }
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
         content.ruler = ruler
         return content
@@ -467,14 +468,18 @@ final class WorldSession {
         case .inGameMap(let id):
             if let map = inGameMaps.first(where: { $0.id == id }) { show(map, keepingZoom: true) }
         case .player(let uuid):
-            if let position = players.first(where: { $0.uuid == uuid })?.position { focus(on: position, keepingZoom: true) }
+            guard let player = players.first(where: { $0.uuid == uuid }) else { return }
+            // A player without a mappable position still has details to show.
+            if canFocus(player), let position = player.position { focus(on: position, keepingZoom: true) }
+            inspector = .player(uuid)
         case .hit(let query, let id):
             if let hit = search.results(for: query).first(where: { $0.id == id }) { show(hit, keepingZoom: true) }
         }
     }
 
-    /// Selects a marker's row without navigating or taking focus from the map. Only a portal or
-    /// creature replaces an in-game map overlay. Empty/stale clicks preserve that overlay.
+    /// Selects a marker's row without navigating or taking focus from the map. A portal, creature
+    /// or player shows its details, replacing an in-game map overlay. Other markers and empty or
+    /// stale clicks keep that overlay, and otherwise close the details, as for a pet (Ryan, 2026-10-16).
     @discardableResult func mapClicked(_ clicked: MapTarget?) -> SidebarItem? {
         let item = clicked.flatMap(sidebarItem(for:))
         if item == nil, case .inGameMap? = selection { return nil }
@@ -488,8 +493,12 @@ final class WorldSession {
             detail = nil
         }
         if let detail { selection = detail }
-        else if case .inGameMap? = selection { /* Keep the map under non-inspectable markers. */ }
-        else { selection = nil }
+        else if case .player(let uuid)? = item { inspector = .player(uuid) }
+        else if case .inGameMap? = selection { /* Keep the map under markers without details. */ }
+        else {
+            selection = nil
+            if case .player? = inspector { inspector = nil }
+        }
         search.selectedHitID = if case .hit(_, let id)? = item { id } else { nil }
         if let item { sidebarSelection = item }
         else if sidebarSelection != .worldInfo && sidebarSelection != .storage { sidebarSelection = nil }

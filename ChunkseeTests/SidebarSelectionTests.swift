@@ -114,7 +114,7 @@ import Testing
         session.show(map)
         let viewport = session.map?.viewport
         let targets: [MapTarget?] = [.row(.structure(structure.id)), .row(.place(spawner.id)), .row(.biome(biome.id)),
-            .row(.player(playerID)), .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
+            .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
             .row(.structure("gone")), .row(.place("gone")), .row(.creature("gone")),
             .row(.player(missingDimensionPlayerID)), .searchHit("gone")]
         var disclosure = SidebarDisclosure()
@@ -128,6 +128,10 @@ import Testing
             disclosure.selectOnMap(target, in: session)
             #expect(session.mapContent.inGameMap == nil && session.inspector == .selection)
         }
+        // A player has details too, so they replace the map just as a pet does.
+        session.show(map)
+        disclosure.selectOnMap(.row(.player(playerID)), in: session)
+        #expect(session.mapContent.inGameMap == nil && session.inspector == .player(playerID))
         session.close(); await session.waitUntilClosed()
     }
 
@@ -156,6 +160,39 @@ import Testing
         #expect(!session.canFocus(unavailable))
         session.mapClicked(.row(.player(unavailable.uuid)))
         #expect(session.sidebarSelection == nil)
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func selectingAPlayerShowsTheirDetailsAsWithAPet() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let structure = try #require(session.selectedIndex.structures.first)
+        let position = try #require(session.listedPlayers.first { $0.uuid == playerID }?.position)
+        // Choosing the row centers the map on them and shows their details, highlighted on the map.
+        session.sidebarSelection = .player(playerID)
+        session.choose(.player(playerID))
+        #expect(session.inspector == .player(playerID) && session.mapContent.selectedPlayerID == playerID)
+        #expect(session.map?.viewport.center == CGPoint(x: position.x, y: position.z))
+        // A marker without details closes them, as it closes a pet's.
+        session.mapClicked(.row(.structure(structure.id)))
+        #expect(session.inspector == nil && session.mapContent.selectedPlayerID == nil)
+        // Their marker shows them again without moving the map; an empty click closes them.
+        let viewport = session.map?.viewport
+        session.mapClicked(.row(.player(playerID)))
+        #expect(session.inspector == .player(playerID) && session.sidebarSelection == .player(playerID))
+        #expect(session.map?.viewport == viewport)
+        session.mapClicked(nil)
+        #expect(session.inspector == nil && session.sidebarSelection == nil)
+        // Without a mappable position, their row still shows their details and leaves the map alone.
+        let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
+        #expect(!session.canFocus(unavailable))
+        session.sidebarSelection = .player(unavailable.uuid)
+        session.choose(.player(unavailable.uuid))
+        #expect(session.inspector == .player(unavailable.uuid) && session.map?.viewport == viewport)
         session.close(); await session.waitUntilClosed()
     }
 
