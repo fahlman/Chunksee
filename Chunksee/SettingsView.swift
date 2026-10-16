@@ -23,11 +23,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder). Chunksee lists its worlds under File ▸ Open World, and uses the names Minecraft remembers for players who have played on this Mac.")
+                Text("Minecraft remembers the names of players who have played on this Mac. Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder) so Chunksee can use them.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Worlds and Player Names on This Mac")
+                Text("Player Names on This Mac")
             }
 
             Section {

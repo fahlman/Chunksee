@@ -8,7 +8,6 @@ final class AppModel {
     let names: PlayerNames
     let savedSearches: SavedSearches
     let worldFolders: WorldFolders
-    let savedWorlds: SavedWorlds
     @ObservationIgnored private var openWorlds: [String: WeakResources] = [:]
 
     private final class WeakResources {
@@ -24,7 +23,6 @@ final class AppModel {
         names = PlayerNames(defaults: defaults)
         savedSearches = SavedSearches(defaults: defaults)
         worldFolders = WorldFolders(defaults: defaults)
-        savedWorlds = SavedWorlds(names: names)
     }
 
     /// The open resources of a snapshot's world, which its other dimensions share, or new ones.

@@ -15,9 +15,7 @@ struct ChunkseeApp: App {
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 1200, height: 800)
         .commands {
-            CommandGroup(replacing: .newItem) {
-                OpenWorldMenu(worlds: model.savedWorlds)
-            }
+            CommandGroup(replacing: .newItem) {}
             SidebarCommands()
             InspectorCommands()
             WorldCommands()
