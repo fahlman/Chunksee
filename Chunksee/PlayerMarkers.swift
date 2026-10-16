@@ -9,6 +9,7 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     }
 
     var id: String
+    var playerID: UUID
     var kind: Kind
     /// World X/Z of the marker.
     var position: CGPoint
@@ -64,7 +65,7 @@ nonisolated enum PlayerPresentation {
             let id = player.uuid.uuidString
             func add(_ kind: MapMarker.Kind, _ location: PlayerInfo.Location?, _ label: String) {
                 guard let location, location.dimension == dimensionID else { return }
-                markers.append(MapMarker(id: "\(id)-\(kind)", kind: kind, position: CGPoint(x: location.x, y: location.z),
+                markers.append(MapMarker(id: "\(id)-\(kind)", playerID: player.uuid, kind: kind, position: CGPoint(x: location.x, y: location.z),
                                          label: label, isOutdated: outdated))
             }
             add(.respawn, player.respawn, String(localized: "\(name)’s respawn point"))

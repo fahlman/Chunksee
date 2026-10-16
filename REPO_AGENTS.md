@@ -94,6 +94,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
+| `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -119,6 +120,14 @@ appearance, collar and equipment from ChunkseeKit. Missing data stays absent. Th
 creature is resolved from the current shared index, so an open inspector follows saved changes.
 Scan-cache version 8 rereads entries made before the corrected pet maximums and durability defaults, including current-health-only
 version 6. Creature identity still follows the existing marker-ID rules.
+
+Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
+input through the List selection binding calls `choose` and requests sidebar focus. Pointer
+selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
+The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
+one action shared with the behavioral tests. Search pins
+select an existing result row (the active query first, then a shown saved query); the 200-row limit
+and per-dimension listing rules still apply.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
