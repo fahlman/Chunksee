@@ -102,6 +102,8 @@ final class WorldSession {
         }
     }
     var sidebarSelection: SidebarItem?
+    /// Linked-pet jumps also reveal an already-selected row after its group is collapsed again.
+    private(set) var sidebarRevealRequest: UUID?
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
@@ -254,6 +256,7 @@ final class WorldSession {
         selectedDimensionID = current.dimension
         sidebarSelection = .creature(current.id)
         choose(.creature(current.id))
+        sidebarRevealRequest = UUID()
     }
 
     /// Centers the map on a point in the selected dimension.

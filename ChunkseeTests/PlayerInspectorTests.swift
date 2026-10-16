@@ -76,11 +76,38 @@ import Testing
         #expect(requested == source.resources.documentURL(for: "minecraft:the_nether"))
         #expect(source.selectedDimensionID == "minecraft:overworld" && source.map?.viewport == initial)
         #expect(source.inspector == .player(owner))
+        #expect(source.sidebarRevealRequest == nil && target.sidebarRevealRequest != nil)
         #expect(target.currentSelection == .creature(pet) && target.sidebarSelection == .creature(pet.id))
         #expect(target.map?.viewport.center == pet.position && target.map?.viewport.scale == 4)
         #expect(target.visibility.creatures.contains(.pet))
         target.goBack()
         #expect(target.map?.viewport == targetInitial)
+        source.close(); target.close()
+        await source.waitUntilClosed(); await target.waitUntilClosed()
+    }
+
+    @Test func aPetJumpWaitsForItsDocumentAndRepeatedLinksRequestRevealAgain() async throws {
+        let url = try makeWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = try await open(url)
+        defer { source.close() }
+        let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
+        source.openDocument = { continuation.yield($0) }
+        var opened = opens.makeAsyncIterator()
+        let pet = try #require(source.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
+        source.showLinkedPet(pet, ownedBy: owner)
+        let requested = await opened.next(isolation: #isolation)
+        #expect(requested == source.resources.documentURL(for: pet.dimension))
+        #expect(source.sidebarRevealRequest == nil && source.sidebarSelection == nil)
+
+        // The destination receives the queued jump during creation, before its SwiftUI view exists.
+        let target = WorldSession(resources: source.resources, dimensionID: pet.dimension)
+        defer { target.close() }
+        let firstReveal = try #require(target.sidebarRevealRequest)
+        #expect(target.sidebarSelection == .creature(pet.id) && target.currentSelection == .creature(pet))
+        target.showLinkedPet(pet, ownedBy: owner)
+        #expect(target.sidebarRevealRequest != firstReveal)
+        #expect(target.sidebarSelection == .creature(pet.id) && target.currentSelection == .creature(pet))
         source.close(); target.close()
         await source.waitUntilClosed(); await target.waitUntilClosed()
     }
@@ -98,10 +125,10 @@ import Testing
         await session.search.waitForIndex()
         #expect(!session.linkedPets(to: owner).contains { $0.dimension == "minecraft:overworld" })
         session.showLinkedPet(old, ownedBy: owner)
-        #expect(session.selection == nil && session.map?.viewport == initial)
+        #expect(session.selection == nil && session.map?.viewport == initial && session.sidebarRevealRequest == nil)
         session.close()
         session.showLinkedPet(old, ownedBy: otherOwner)
-        #expect(session.selection == nil)
+        #expect(session.selection == nil && session.sidebarRevealRequest == nil)
         await session.waitUntilClosed()
     }
 

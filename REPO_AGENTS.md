@@ -128,6 +128,8 @@ and preserved legacy item wear. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
+Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
+or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
 not a live countdown. Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
