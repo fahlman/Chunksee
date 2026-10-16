@@ -3,6 +3,7 @@ import AppKit
 /// SwiftUI groups Close with Save and has no separate placements for Rename and Move.
 /// Keep native document commands and hide only actions that edit a world folder.
 final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
+    private var updateScheduled = false
     private static let editingActions: Set<Selector> = [
         #selector(NSDocument.save(_:)),
         #selector(NSDocument.saveAs(_:)),
@@ -21,9 +22,22 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationWillUpdate(_ notification: Notification) { hideEditingCommands() }
+    func applicationWillUpdate(_ notification: Notification) { scheduleUpdate() }
 
-    @objc private func menuItemsChanged(_ notification: Notification) { hideEditingCommands() }
+    @objc private func menuItemsChanged(_ notification: Notification) { scheduleUpdate() }
+
+    private func scheduleUpdate() {
+        guard !updateScheduled else { return }
+        updateScheduled = true
+        // Notifications can arrive inside AppKit's menu insertion/layout. Changing visibility
+        // there invalidates its backing indexes. Wait for that synchronous update to finish,
+        // and ignore the notifications our own setters produce during this pass.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            defer { self.updateScheduled = false }
+            self.hideEditingCommands()
+        }
+    }
 
     private func hideEditingCommands() {
         guard let fileMenu = NSApp.mainMenu?.items.compactMap(\.submenu).first(where: { menu in
@@ -38,8 +52,8 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
             guard isVersionsMenu || Self.editsDocument(item) else { continue }
             // Hiding leaves SwiftUI's item indexes intact. Only change a value when needed,
             // because both setters notify observers, including this hook.
-            if !item.isHidden { item.isHidden = true }
             if item.allowsKeyEquivalentWhenHidden { item.allowsKeyEquivalentWhenHidden = false }
+            if !item.isHidden { item.isHidden = true }
         }
     }
 

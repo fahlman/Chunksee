@@ -106,9 +106,13 @@ macOS names each window and Open Recent item after its folder (`overworld`, `the
 `the_end`), so the window subtitle names the world. Each dimension's
 map position is remembered in `RememberedViews`.
 
-`ChunkseeApp.init()` registers `NSShowAppCentricOpenPanelInsteadOfUntitledFile = false` before
-document restoration. With no documents to restore, the read-only app stays running without an
-automatic Open panel or a new document. File ▸ Open and Open Recent still use the native flow.
+The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
+documents to restore, the app stays running without an automatic Open panel or a new document.
+File ▸ Open and Open Recent still use the native flow.
+
+`ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
+changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
+menu backing indexes. The pass disables hidden key equivalents before hiding editing items.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
