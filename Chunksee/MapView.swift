@@ -55,24 +55,56 @@ struct MapContent {
         // Ids and names are built only for locations in view: a world can have thousands of
         // spawners and other places off screen.
         func add(_ id: @autoclosure () -> String, _ name: @autoclosure () -> String, _ position: CGPoint,
-                 selection: @autoclosure () -> MapSelection? = nil) {
+                 target: @autoclosure () -> MapTarget? = nil) {
             guard bounds.contains(viewport.viewPoint(for: position, in: size)) else { return }
-            locations.append(.init(id: id(), name: name(), position: position, selection: selection()))
+            locations.append(.init(id: id(), name: name(), position: position, target: target()))
         }
-        for marker in structures { add("structure-" + marker.id, marker.name, marker.position) }
+        for marker in structures { add("structure-" + marker.id, marker.name, marker.position, target: .row(.structure(marker.id))) }
         for marker in places where viewport.scale >= 0.125 || marker.group == .portal {
-            add("place-" + marker.id, marker.name, marker.position, selection: marker.portal.map(MapSelection.portal))
+            add("place-" + marker.id, marker.name, marker.position, target: .row(.place(marker.id)))
         }
         for marker in creatures where viewport.scale >= 0.25 || selection == .creature(marker) {
-            add("creature-" + marker.id, marker.name, marker.position, selection: .creature(marker))
+            add("creature-" + marker.id, marker.name, marker.position, target: .row(.creature(marker.id)))
         }
-        for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position) }
+        for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position, target: .row(.biome(area.id))) }
         for hit in hits {
-            if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position) }
+            if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position, target: .searchHit(hit.id)) }
         }
-        for marker in players { add("player-" + marker.id, marker.label, marker.position) }
-        for place in savedPlaces { add("saved-" + place.id.uuidString, place.name, place.position) }
+        for marker in players { add("player-" + marker.id, marker.label, marker.position, target: .row(.player(marker.playerID))) }
+        for place in savedPlaces { add("saved-" + place.id.uuidString, place.name, place.position, target: .row(.savedPlace(place.id))) }
         return locations
+    }
+
+    /// Hit tests only drawn markers. Match drawing order for overlapping badges, preserving a
+    /// portal's priority over a creature standing in it. Names are not prepared for hit testing.
+    func target(at point: CGPoint, viewport: MapViewport, size: CGSize) -> MapTarget? {
+        func nearest<Item>(_ items: some Sequence<Item>, within reach: CGFloat = 12,
+                           position: (Item) -> CGPoint) -> Item? {
+            var best: Item?
+            var distance = reach
+            for item in items {
+                let location = viewport.viewPoint(for: position(item), in: size)
+                let candidate = hypot(location.x - point.x, location.y - point.y)
+                if candidate <= distance { best = item; distance = candidate }
+            }
+            return best
+        }
+        if let place = nearest(savedPlaces, position: \.position) { return .row(.savedPlace(place.id)) }
+        if let player = nearest(players, position: { CGPoint(x: $0.position.x + 0.5, y: $0.position.y + 0.5) }) {
+            return .row(.player(player.playerID))
+        }
+        if let hit = nearest(hits.lazy.filter { $0.position != nil }, position: { $0.position! }) { return .searchHit(hit.id) }
+        if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: 14, position: \.position) {
+            return .row(.place(portal.id))
+        }
+        if let creature = nearest(creatures.lazy.filter { viewport.scale >= 0.25 || selection == .creature($0) }, position: \.position) {
+            return .row(.creature(creature.id))
+        }
+        if viewport.scale >= 0.125, let place = nearest(places, position: \.position) { return .row(.place(place.id)) }
+        if let structure = nearest(structures, position: \.position) { return .row(.structure(structure.id)) }
+        // Biomes draw areas, not badges at their representative position. They remain available
+        // through the sidebar and accessibility locations without an invisible pointer target.
+        return nil
     }
 }
 
@@ -80,7 +112,7 @@ struct AccessibleMapLocation: Identifiable {
     var id: String
     var name: String
     var position: CGPoint
-    var selection: MapSelection?
+    var target: MapTarget?
 }
 
 /// The pannable, zoomable top-down map of one dimension.
@@ -90,8 +122,8 @@ struct MapView: View {
     var content = MapContent()
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
-    /// Called when a portal or creature is clicked, or with `nil` when the map is clicked elsewhere.
-    var onSelect: (MapSelection?) -> Void = { _ in }
+    /// Called with the clicked marker's identity, or `nil` for empty map.
+    var onSelect: (MapTarget?) -> Void = { _ in }
 
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
@@ -120,7 +152,7 @@ struct MapView: View {
             if session.ruler.isEnabled {
                 session.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
             } else {
-                onSelect(selection(at: value.location))
+                onSelect(content.target(at: value.location, viewport: map.viewport, size: size))
             }
         })
         .scrollWheelInput(contextActions: contextActions) { action in
@@ -176,8 +208,9 @@ struct MapView: View {
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                 Button(location.name) {
+                    isFocused = true
                     session.goToCoordinates(location.position)
-                    onSelect(location.selection)
+                    onSelect(location.target)
                 }
                 .accessibilityValue(Text("X \(Int(location.position.x)), Z \(Int(location.position.y))"))
                 .accessibilityHint(Text("Center the map on this location"))
@@ -393,22 +426,6 @@ struct MapView: View {
         symbol.shading = .color(.black)
         let side = radius * 1.1
         context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-    }
-
-    /// What a click selects: a portal within 14 points, or else a drawn creature within 12. A
-    /// portal wins over a creature standing in it.
-    private func selection(at point: CGPoint) -> MapSelection? {
-        func nearest<Item>(_ items: [(item: Item, position: CGPoint)], within reach: CGFloat) -> Item? {
-            items.map { item, position in
-                let p = map.viewport.viewPoint(for: position, in: size)
-                return (item, hypot(p.x - point.x, p.y - point.y))
-            }.filter { $0.1 <= reach }.min { $0.1 < $1.1 }?.0
-        }
-        if let portal = nearest(content.places.compactMap { place in place.portal.map { ($0, place.position) } }, within: 14) {
-            return .portal(portal)
-        }
-        guard map.viewport.scale >= 0.25 else { return nil }
-        return nearest(content.creatures.map { ($0, $0.position) }, within: 12).map(MapSelection.creature)
     }
 
     /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.

@@ -93,6 +93,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
+| `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -112,6 +113,14 @@ automatic Open panel or a new document. File ▸ Open and Open Recent still use 
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
+
+Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
+input through the List selection binding calls `choose` and requests sidebar focus. Pointer
+selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
+The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
+one action shared with the behavioral tests. Search pins
+select an existing result row (the active query first, then a shown saved query); the 200-row limit
+and per-dimension listing rules still apply.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
