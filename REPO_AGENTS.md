@@ -117,7 +117,7 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 7 rereads entries made before these pet details, including current-health-only
+Scan-cache version 8 rereads entries made before the corrected pet maximums and durability defaults, including current-health-only
 version 6. Creature identity still follows the existing marker-ID rules.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its

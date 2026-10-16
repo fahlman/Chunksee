@@ -195,7 +195,7 @@ enum StructureTestWorld {
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
     }
 
-    @Test(arguments: [5, 6]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
+    @Test(arguments: [5, 6, 7]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
