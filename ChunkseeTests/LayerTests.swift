@@ -195,7 +195,7 @@ enum StructureTestWorld {
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
     }
 
-    @Test(arguments: [5, 6]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
+    @Test(arguments: [5, 6, 7]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
@@ -204,6 +204,7 @@ enum StructureTestWorld {
         func save(health: Float) throws {
             let pet = entity("minecraft:wolf", x: 4, z: 4, extra: [
                 "Health": .float(health), "CustomName": .string("Summer"), "Owner": .intArray([1, 2, 3, 4]),
+                "UUID": .intArray([11, 12, 13, 14]),
                 "attributes": .list([.compound(["id": .string("minecraft:max_health"), "base": .double(40)])]),
                 "Sitting": .byte(health == 8 ? 1 : 0), "CollarColor": .byte(health == 8 ? 1 : 11),
                 "variant": .string(health == 8 ? "minecraft:pale" : "minecraft:woods"),
@@ -227,6 +228,7 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         let pet = try #require(session.selectedIndex.creatures.first)
         #expect(pet.creature.health == 8 && !FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
         let cached: [Creature]? = cache.load("creatures", region: .init(x: 0, z: 0), fingerprint: fingerprint)

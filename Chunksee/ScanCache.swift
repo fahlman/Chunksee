@@ -12,7 +12,8 @@ nonisolated struct ScanCache: Sendable {
     /// 5: spawners in search contents (fahlman/Chunksee#121).
     /// 6: saved current health on creatures (fahlman/Chunksee#145).
     /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
-    static let version = 7
+    /// 8: stable creature UUIDs for player-pet links and selection through movement.
+    static let version = 8
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

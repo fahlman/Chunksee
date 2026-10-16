@@ -65,7 +65,8 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
         self.creature = creature
         self.group = group
         self.dimension = dimension
-        id = "\(creature.id)@\(creature.x),\(creature.y),\(creature.z)"
+        id = creature.uuid.map { "creature:\($0.uuidString.lowercased())" }
+            ?? "\(creature.id)@\(creature.x),\(creature.y),\(creature.z)"
     }
 }
 
