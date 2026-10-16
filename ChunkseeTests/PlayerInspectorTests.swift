@@ -150,8 +150,11 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let file = url.appendingPathComponent("players/data/\(owner.uuidString.lowercased()).dat")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        func save(health: Float, effects: [NBT]) throws {
+        func save(health: Float, effects: [NBT], healthBoost: Double = 0) throws {
             let nbt = NBT.compound(["DataVersion": .int(5023), "Health": .float(health), "active_effects": .list(effects),
+                "attributes": .list([.compound(["id": .string("minecraft:max_health"), "base": .double(20),
+                    "modifiers": .list(healthBoost == 0 ? [] : [.compound(["id": .string("minecraft:effect.health_boost"),
+                        "amount": .double(healthBoost), "operation": .string("add_value")])])])]),
                 "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(0), .double(64), .double(0)]),
                 "SelectedItemSlot": .int(0), "Inventory": .list([.compound(["id": .string("minecraft:diamond_sword"), "Slot": .byte(0),
                     "components": .compound(["minecraft:damage": .int(61)])])]),
@@ -164,7 +167,7 @@ import Testing
         session.inspector = .player(owner)
         let old = try #require(session.players.first { $0.uuid == owner })
         #expect(old.maxHealth == 20 && old.activeEffects.isEmpty)
-        try save(health: 28, effects: [.compound(["id": .string("minecraft:health_boost"), "amplifier": .byte(2), "duration": .int(1200)])])
+        try save(health: 28, effects: [.compound(["id": .string("minecraft:health_boost"), "amplifier": .byte(2), "duration": .int(1200)])], healthBoost: 12)
         session.resources.refreshDelay = .zero
         session.resources.worldChanged([file])
         await session.resources.waitForRefresh()

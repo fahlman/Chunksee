@@ -118,7 +118,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 8 rereads earlier entries for stable creature UUIDs. A marker uses its saved
+Scan-cache version 9 rereads earlier entries for corrected pet maximums, stable creature UUIDs
+and preserved legacy item wear. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
