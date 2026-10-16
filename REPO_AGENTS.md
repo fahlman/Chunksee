@@ -55,7 +55,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.25.0`, resolved to `0.25.0` (`9f71f9b5ee51311980861e06ac721df7adad64ee`).
+  minor" from `0.26.0`, resolved to `0.26.0` (`f887abb88991a0420e8a25b16e7203821692007c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -122,8 +122,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 8 rereads entries made before the corrected pet maximums and durability defaults, including current-health-only
-version 6. Creature identity still follows the existing marker-ID rules.
+Scan-cache version 8 rereads entries made before the corrected pet maximums and durability
+defaults, including current-health-only version 6. Creature identity still follows the existing marker-ID rules.
 
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
