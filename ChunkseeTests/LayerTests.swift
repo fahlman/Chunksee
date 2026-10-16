@@ -195,7 +195,7 @@ enum StructureTestWorld {
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
     }
 
-    @Test func oldCacheIsRebuiltAndSelectedPetHealthFollowsSavedChanges() async throws {
+    @Test(arguments: [5, 6]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
@@ -204,6 +204,10 @@ enum StructureTestWorld {
         func save(health: Float) throws {
             let pet = entity("minecraft:wolf", x: 4, z: 4, extra: [
                 "Health": .float(health), "CustomName": .string("Summer"), "Owner": .intArray([1, 2, 3, 4]),
+                "attributes": .list([.compound(["id": .string("minecraft:max_health"), "base": .double(40)])]),
+                "Sitting": .byte(health == 8 ? 1 : 0), "CollarColor": .byte(health == 8 ? 1 : 11),
+                "variant": .string(health == 8 ? "minecraft:pale" : "minecraft:woods"),
+                "equipment": .compound(health == 8 ? [:] : ["body": .compound(["id": .string("minecraft:wolf_armor")])]),
             ])
             let chunk = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([pet])])
             try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: file)
@@ -212,9 +216,9 @@ enum StructureTestWorld {
         let root = world.appendingPathComponent("app-cache")
         let cache = ScanCache(forWorldAt: world, dimensionID: dimension.id, root: root)
         let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), file])
-        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v5")
+        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v\(oldVersion)")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let oldPet = Creature(id: "minecraft:wolf", x: 4, y: 64, z: 4, customName: "Summer", owner: owner)
+        let oldPet = Creature(id: "minecraft:wolf", x: 4, y: 64, z: 4, customName: "Summer", owner: owner, health: oldVersion == 6 ? 8 : nil)
         let encoded = try PropertyListEncoder().encode([oldPet])
         try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
@@ -223,8 +227,11 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         let pet = try #require(session.selectedIndex.creatures.first)
         #expect(pet.creature.health == 8 && !FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
+        #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
         let cached: [Creature]? = cache.load("creatures", region: .init(x: 0, z: 0), fingerprint: fingerprint)
         #expect(cached?.first?.health == 8)
+        #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.choose(.creature(pet.id))
         #expect(session.currentSelection == .creature(pet))
         try save(health: 4)
@@ -233,6 +240,9 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         let refreshed = try #require(session.selectedIndex.creatures.first)
         #expect(refreshed.creature.health == 4 && pet.creature.health == 8)
+        #expect(refreshed.creature.sittingOrder == false && refreshed.creature.collarColor == "blue")
+        #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
+        #expect(refreshed.creature.equipment?["body"]?.id == "minecraft:wolf_armor")
         #expect(session.currentSelection == .creature(refreshed) && session.mapContent.selection == .creature(refreshed))
         #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
         session.map?.viewport.scale = 0.125

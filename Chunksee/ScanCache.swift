@@ -11,7 +11,8 @@ nonisolated struct ScanCache: Sendable {
     /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
     /// 5: spawners in search contents (fahlman/Chunksee#121).
     /// 6: saved current health on creatures (fahlman/Chunksee#145).
-    static let version = 6
+    /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
+    static let version = 7
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

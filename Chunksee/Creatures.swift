@@ -92,15 +92,10 @@ struct CreatureDetailView: View {
                     Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
                         .monospacedDigit()
                 }
-                if let health = marker.creature.health, health.isFinite, health >= 0 {
-                    LabeledContent("Health") {
-                        Text("\(health / 2, format: .number.precision(.fractionLength(0...2))) hearts")
-                            .monospacedDigit()
-                    }
-                    .help("Health recorded when Minecraft last saved this creature")
-                }
+                CreatureHealthRows(creature: marker.creature)
                 if let owner = marker.creature.owner {
                     LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))
+                    PetDetailRows(creature: marker.creature)
                 }
                 if let villager = marker.creature.villager {
                     if let job = villager.profession, job != "minecraft:none" {
@@ -111,6 +106,23 @@ struct CreatureDetailView: View {
                 }
             } header: {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
+            }
+            if marker.creature.owner != nil, let equipment = marker.creature.equipment, !equipment.isEmpty {
+                Section("Equipment") {
+                    ForEach(equipment.keys.sorted(), id: \.self) { slot in
+                        if let item = equipment[slot] {
+                            LabeledContent(PetDetailText.slot(slot)) {
+                                VStack(alignment: .trailing) {
+                                    Text(item.customName ?? ReadableName.from(item.id))
+                                    if let durability = item.durability {
+                                        Text("Durability: \(durability.remaining) of \(durability.maximum)")
+                                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if let trades = marker.creature.villager?.trades, !trades.isEmpty {
                 Section("Trades") {

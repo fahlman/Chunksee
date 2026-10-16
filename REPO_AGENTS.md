@@ -93,6 +93,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
+| `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -113,10 +114,11 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
-The creature inspector shows saved current health in hearts from `Creature.health`, without
-guessing a maximum. It reads the current indexed marker when the same creature is refreshed,
-so an open inspector follows saved health changes. Scan-cache version 6 rereads earlier entries
-that did not contain health. Creature identity still follows the existing marker-ID rules.
+The creature inspector shows saved current/maximum health in hearts and applicable pet order,
+appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
+creature is resolved from the current shared index, so an open inspector follows saved changes.
+Scan-cache version 7 rereads entries made before these pet details, including current-health-only
+version 6. Creature identity still follows the existing marker-ID rules.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
