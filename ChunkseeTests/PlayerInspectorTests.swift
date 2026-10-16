@@ -110,7 +110,9 @@ import Testing
             "minecraft:damage": .int(61), "minecraft:enchantments": .compound(["minecraft:sharpness": .int(5), "minecraft:mending": .int(1)]),
         ])])))
         let text = ItemAppearance.details(of: item)
-        #expect(text.contains("Sharpness V") && text.contains("Mending") && text.contains("Durability: 1500 of 1561"))
+        // The user's locale can group durability counts (for example, 1,500).
+        let expectedWear = String(localized: "Durability: \(1500) of \(1561)")
+        #expect(text.contains("Sharpness V") && text.contains("Mending") && text.contains(expectedWear))
         #expect(!ItemAppearance.details(of: ItemStack(id: "minecraft:apple")).contains("Durability"))
         #expect(PlayerEffectText.duration(.init(id: "minecraft:strength", amplifier: 1, durationTicks: 1680)) == "1:24")
         #expect(PlayerEffectText.duration(.init(id: "minecraft:strength", amplifier: 0, durationTicks: 1)) == "0:01")
