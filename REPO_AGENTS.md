@@ -133,6 +133,13 @@ Player health shows the actual saved maximum when available; active effects show
 not a live countdown. Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
 
+Selecting a player works like selecting a pet (Ryan, 2026-10-16, fahlman/Chunksee#157): their row,
+marker or VoiceOver location shows their details in the inspector and highlights their position,
+replacing an in-game map overlay; a marker without details or an empty click closes them. Players
+without a mappable position keep selectable rows for their details. Any player marker drawn in this
+dimension shows its player, including a death or respawn point of somebody listed in another
+dimension or with no current position; it selects a row only when this dimension lists them.
+
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.

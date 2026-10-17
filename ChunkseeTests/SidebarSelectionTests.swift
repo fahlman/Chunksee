@@ -114,7 +114,7 @@ import Testing
         session.show(map)
         let viewport = session.map?.viewport
         let targets: [MapTarget?] = [.row(.structure(structure.id)), .row(.place(spawner.id)), .row(.biome(biome.id)),
-            .row(.player(playerID)), .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
+            .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
             .row(.structure("gone")), .row(.place("gone")), .row(.creature("gone")),
             .row(.player(missingDimensionPlayerID)), .searchHit("gone")]
         var disclosure = SidebarDisclosure()
@@ -128,6 +128,10 @@ import Testing
             disclosure.selectOnMap(target, in: session)
             #expect(session.mapContent.inGameMap == nil && session.inspector == .selection)
         }
+        // A player has details too, so they replace the map just as a pet does.
+        session.show(map)
+        disclosure.selectOnMap(.row(.player(playerID)), in: session)
+        #expect(session.mapContent.inGameMap == nil && session.inspector == .player(playerID))
         session.close(); await session.waitUntilClosed()
     }
 
@@ -146,16 +150,96 @@ import Testing
         session.close(); await session.waitUntilClosed()
     }
 
-    @Test func mapCannotSelectADisabledPlayerInAMissingDimension() async throws {
+    @Test func mapIgnoresPlayerTargetsWithNoMarkerHere() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
+        // Listed here, since their dimension is missing, but nothing of theirs is drawn here.
         let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
         #expect(!session.canFocus(unavailable))
-        session.mapClicked(.row(.player(unavailable.uuid)))
-        #expect(session.sidebarSelection == nil)
+        session.visibility.hiddenPlayers = [playerID]
+        for stale in [unavailable.uuid, playerID, UUID()] {
+            session.mapClicked(.row(.player(stale)))
+            #expect(session.sidebarSelection == nil && session.inspector == nil)
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func deathAndRespawnMarkersShowTheirPlayerWhereverTheyAreListed() async throws {
+        let away = UUID(uuidString: "0000000A-0000-0000-0000-00000000000A")!
+        let unplaced = UUID(uuidString: "0000000B-0000-0000-0000-00000000000B")!
+        let url = try crossDimensionWorld(away: away, unplaced: unplaced)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        #expect(session.selectedDimensionID == "minecraft:overworld")
+        // `away` is listed in the Nether; `unplaced` has no position, so the Overworld lists them.
+        #expect(!session.listedPlayers.contains { $0.uuid == away })
+        let unplacedPlayer = try #require(session.listedPlayers.first { $0.uuid == unplaced })
+        #expect(!session.canFocus(unplacedPlayer))
+        let size = CGSize(width: 800, height: 600)
+        let viewport = MapViewport(center: .zero, scale: 4)
+        session.map?.viewport = viewport
+        let markers = session.mapContent.players
+        #expect(Set(markers.map(\.playerID)) == [away, unplaced] && markers.allSatisfy { $0.kind != .player })
+        let locations = session.mapContent.accessibleLocations(viewport: viewport, size: size)
+        var disclosure = SidebarDisclosure()
+        for marker in markers {
+            let point = viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size)
+            let pointer = session.mapContent.target(at: point, viewport: viewport, size: size)
+            let voiceOver = try #require(locations.first { $0.id == "player-" + marker.id }).target
+            for target in [pointer, voiceOver] {
+                #expect(target == .row(.player(marker.playerID)))
+                disclosure.selectOnMap(target, in: session)
+                #expect(session.inspector == .player(marker.playerID))
+                #expect(session.sidebarSelection == (marker.playerID == unplaced ? .player(unplaced) : nil))
+                #expect(session.map?.viewport == viewport)
+                session.mapClicked(nil)
+                #expect(session.inspector == nil)
+            }
+        }
+        // They replace an in-game map overlay, like a pet.
+        let map = try #require(session.inGameMaps.first { $0.id == 3 })
+        let death = try #require(markers.first { $0.playerID == away })
+        session.show(map, keepingZoom: true)
+        disclosure.selectOnMap(.row(.player(death.playerID)), in: session)
+        #expect(session.mapContent.inGameMap == nil && session.inspector == .player(away))
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func selectingAPlayerShowsTheirDetailsAsWithAPet() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let structure = try #require(session.selectedIndex.structures.first)
+        let position = try #require(session.listedPlayers.first { $0.uuid == playerID }?.position)
+        // Choosing the row centers the map on them and shows their details, highlighted on the map.
+        session.sidebarSelection = .player(playerID)
+        session.choose(.player(playerID))
+        #expect(session.inspector == .player(playerID) && session.mapContent.selectedPlayerID == playerID)
+        #expect(session.map?.viewport.center == CGPoint(x: position.x, y: position.z))
+        // A marker without details closes them, as it closes a pet's.
+        session.mapClicked(.row(.structure(structure.id)))
+        #expect(session.inspector == nil && session.mapContent.selectedPlayerID == nil)
+        // Their marker shows them again without moving the map; an empty click closes them.
+        let viewport = session.map?.viewport
+        session.mapClicked(.row(.player(playerID)))
+        #expect(session.inspector == .player(playerID) && session.sidebarSelection == .player(playerID))
+        #expect(session.map?.viewport == viewport)
+        session.mapClicked(nil)
+        #expect(session.inspector == nil && session.sidebarSelection == nil)
+        // Without a mappable position, their row still shows their details and leaves the map alone.
+        let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
+        #expect(!session.canFocus(unavailable))
+        session.sidebarSelection = .player(unavailable.uuid)
+        session.choose(.player(unavailable.uuid))
+        #expect(session.inspector == .player(unavailable.uuid) && session.map?.viewport == viewport)
         session.close(); await session.waitUntilClosed()
     }
 
@@ -186,6 +270,33 @@ import Testing
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.player(playerID)))
         let locations = content.accessibleLocations(viewport: viewport, size: size)
         #expect(locations.first { $0.id == "player-player" }?.target == .row(.player(playerID)))
+    }
+
+    /// An Overworld and a Nether, with `away` now in the Nether but having died and set a respawn
+    /// point in the Overworld, and `unplaced` with no current position but both of those.
+    private func crossDimensionWorld(away: UUID, unplaced: UUID) throws -> URL {
+        let url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
+        func location(_ x: Int32, _ z: Int32) -> NBT {
+            .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([x, 64, z])])
+        }
+        let players = url.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: players, withIntermediateDirectories: true)
+        let files: [(UUID, NBT)] = [
+            (away, .compound(["DataVersion": .int(5023), "Dimension": .string("minecraft:the_nether"),
+                              "Pos": .list([.double(5), .double(70), .double(5)]),
+                              "LastDeathLocation": location(20, 20), "respawn": location(-20, -20)])),
+            (unplaced, .compound(["DataVersion": .int(5023), "LastDeathLocation": location(30, -30), "respawn": location(-30, 30)])),
+        ]
+        for (id, player) in files {
+            try Data(Compression.deflate(player.serialized(), gzip: true)).write(to: players.appendingPathComponent("\(id.uuidString).dat"))
+        }
+        let maps = url.appendingPathComponent("data/minecraft/maps")
+        try FileManager.default.createDirectory(at: maps, withIntermediateDirectories: true)
+        let map = InGameMapTests().mapNBT(dimension: .string("minecraft:overworld"))
+        try Data(Compression.deflate(map.serialized(), gzip: true)).write(to: maps.appendingPathComponent("3.dat"))
+        return url
     }
 
     private func selectionWorld() throws -> URL {

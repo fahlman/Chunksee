@@ -41,7 +41,8 @@ It shows a top-down view of a world, the structures and places found in it, and 
    ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
    where its eye button keeps its pins on the map.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn
-   point (bed). Each dimension's sidebar lists the players last seen there; choose one to jump to them, or hide markers with the people
+   point (bed). Each dimension's sidebar lists the players last seen there; choose one to jump to them and see their
+   inventory, health, gear and pets in the inspector, or click their marker for the same details. Hide markers with the people
    button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so Chunksee
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.

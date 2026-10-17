@@ -411,6 +411,7 @@ final class WorldSession {
                                                      singleplayerUUID: world.level.singleplayerUUID,
                                                      worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
         content.selection = currentSelection
+        content.selectedPlayerID = if case .player(let uuid)? = inspector { uuid } else { nil }
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
         content.ruler = ruler
         return content
@@ -467,17 +468,24 @@ final class WorldSession {
         case .inGameMap(let id):
             if let map = inGameMaps.first(where: { $0.id == id }) { show(map, keepingZoom: true) }
         case .player(let uuid):
-            if let position = players.first(where: { $0.uuid == uuid })?.position { focus(on: position, keepingZoom: true) }
+            guard let player = players.first(where: { $0.uuid == uuid }) else { return }
+            // A player without a mappable position still has details to show.
+            if canFocus(player), let position = player.position { focus(on: position, keepingZoom: true) }
+            inspector = .player(uuid)
         case .hit(let query, let id):
             if let hit = search.results(for: query).first(where: { $0.id == id }) { show(hit, keepingZoom: true) }
         }
     }
 
-    /// Selects a marker's row without navigating or taking focus from the map. Only a portal or
-    /// creature replaces an in-game map overlay. Empty/stale clicks preserve that overlay.
+    /// Selects a marker's row without navigating or taking focus from the map. A portal, creature
+    /// or player shows its details, replacing an in-game map overlay. Other markers and empty or
+    /// stale clicks keep that overlay, and otherwise close the details, as for a pet (Ryan, 2026-10-16).
     @discardableResult func mapClicked(_ clicked: MapTarget?) -> SidebarItem? {
         let item = clicked.flatMap(sidebarItem(for:))
-        if item == nil, case .inGameMap? = selection { return nil }
+        // A player's death or respawn marker can be drawn here while their row is in another
+        // dimension's sidebar, or while their current position is unknown; it still shows them.
+        let player: UUID? = if case .row(.player(let id))? = clicked, drawsMarker(for: id) { id } else { nil }
+        if item == nil, player == nil, case .inGameMap? = selection { return nil }
         let detail: MapSelection?
         switch item {
         case .place(let id)?:
@@ -488,8 +496,12 @@ final class WorldSession {
             detail = nil
         }
         if let detail { selection = detail }
-        else if case .inGameMap? = selection { /* Keep the map under non-inspectable markers. */ }
-        else { selection = nil }
+        else if let player { inspector = .player(player) }
+        else if case .inGameMap? = selection { /* Keep the map under markers without details. */ }
+        else {
+            selection = nil
+            if case .player? = inspector { inspector = nil }
+        }
         search.selectedHitID = if case .hit(_, let id)? = item { id } else { nil }
         if let item { sidebarSelection = item }
         else if sidebarSelection != .worldInfo && sidebarSelection != .storage { sidebarSelection = nil }
@@ -514,14 +526,23 @@ final class WorldSession {
             case .creature(let id): index.creatures.contains { $0.id == id }
             case .biome(let id): index.biomeAreas.contains { $0.id == id }
             case .savedPlace(let id): listedPlaces.contains { $0.id == id }
-            case .player(let id): listedPlayers.contains { $0.uuid == id && canFocus($0) }
+            case .player(let id): drawsMarker(for: id) && listedPlayers.contains { $0.uuid == id }
             default: false
             }
             return exists ? item : nil
         }
     }
 
-    /// The same focus rule is used by native player rows and map-origin row selection.
+    /// Whether this dimension's map draws one of the player's markers: their position, last death
+    /// or respawn point. A stale target, such as a hidden or removed player, draws none.
+    private func drawsMarker(for playerID: UUID) -> Bool {
+        guard let id = selectedDimensionID, !visibility.hiddenPlayers.contains(playerID),
+              let player = players.first(where: { $0.uuid == playerID }) else { return false }
+        return !PlayerPresentation.markers(for: [player], in: id, singleplayerUUID: world.level.singleplayerUUID,
+                                           worldDataVersion: world.level.dataVersion).isEmpty
+    }
+
+    /// Whether choosing a player's row can center the map on their current position.
     func canFocus(_ player: PlayerInfo) -> Bool {
         guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
         return dimensions.contains { $0.id == position.dimension }
