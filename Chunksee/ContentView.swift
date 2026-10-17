@@ -82,6 +82,12 @@ struct WorldView: View {
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220)
                 .focused($isSidebarFocused)
+                // A new dimension can receive its jump before this view appears.
+                .onChange(of: session.sidebarRevealRequest, initial: true) {
+                    guard session.sidebarRevealRequest != nil, let item = session.sidebarSelection else { return }
+                    sidebarDisclosure.reveal(item, in: session)
+                    sidebarRevealID = UUID()
+                }
                 .onChange(of: sidebarRevealID) {
                     if let item = session.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
                 }

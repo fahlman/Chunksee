@@ -102,6 +102,8 @@ final class WorldSession {
         }
     }
     var sidebarSelection: SidebarItem?
+    /// Linked-pet jumps also reveal an already-selected row after its group is collapsed again.
+    private(set) var sidebarRevealRequest: UUID?
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
@@ -243,6 +245,18 @@ final class WorldSession {
             map?.viewport.center = CGPoint(x: location.x, y: location.z)
             if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
         }
+    }
+
+    /// Resolve a link again at activation, so refreshed ownership or a removed pet cannot use
+    /// stale inspector data. A cross-dimension jump belongs to the destination document.
+    func showLinkedPet(_ pet: CreatureMarker, ownedBy playerID: UUID) {
+        guard !isClosed,
+              let current = search.index.dimensions[pet.dimension]?.creatures.first(where: { $0.id == pet.id && $0.creature.owner == playerID }) else { return }
+        if route(to: current.dimension, perform: { $0.showLinkedPet(current, ownedBy: playerID) }) { return }
+        selectedDimensionID = current.dimension
+        sidebarSelection = .creature(current.id)
+        choose(.creature(current.id))
+        sidebarRevealRequest = UUID()
     }
 
     /// Centers the map on a point in the selected dimension.

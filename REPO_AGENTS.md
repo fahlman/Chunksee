@@ -55,7 +55,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.26.0`, resolved to `0.26.0` (`f887abb88991a0420e8a25b16e7203821692007c`).
+  minor" from `0.27.0`, resolved to `0.27.0` (`62995297f72a9b52ee7ec937413caa4911e4da1d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -93,6 +93,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
+| `PlayerDetails.swift`, `PlayerStatus.swift`, `PlayerEquipment.swift`, `LinkedPets.swift` | Native player inspector, saved effect duration/equipment presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
@@ -121,8 +122,16 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 8 rereads entries made before the corrected pet maximums and durability
-defaults, including current-health-only version 6. Creature identity still follows the existing marker-ID rules.
+Scan-cache version 9 rereads earlier entries for corrected pet maximums, stable creature UUIDs
+and preserved legacy item wear. A marker uses its saved
+entity UUID across movement and shared positions, with the older position fallback only when
+no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
+index and open/select in the destination dimension document. No owner is inferred from a name.
+Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
+or a jump received before the destination view appears; disclosure stays owned by that view.
+Player health shows the actual saved maximum when available; active effects show saved duration,
+not a live countdown. Equipment includes the selected main hand, durability and named enchantments.
+Empty or unavailable optional sections/values stay absent.
 
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer

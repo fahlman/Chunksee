@@ -46,11 +46,22 @@ nonisolated enum ItemAppearance {
 
     /// "64 Diamond", "Diamond Sword “Excalibur”, enchanted".
     static func description(of item: ItemStack) -> String {
-        var text = ReadableName.from(item.id)
-        if let name = item.customName { text += " “\(name)”" }
-        if item.count > 1 { text = "\(item.count) \(text)" }
+        var text = name(of: item)
         if isEnchanted(item) { text = String(localized: "\(text), enchanted") }
         return text
+    }
+
+    static func name(of item: ItemStack) -> String {
+        var text = ReadableName.from(item.id)
+        if let name = item.customName { text += " “\(name)”" }
+        return item.count > 1 ? "\(item.count) \(text)" : text
+    }
+
+    static func details(of item: ItemStack) -> String {
+        var lines = [name(of: item)]
+        lines += item.enchantments.sorted { $0.key < $1.key }.map { TradeText.enchantmentName($0.key, level: $0.value) }
+        if let wear = item.durability { lines.append(String(localized: "Durability: \(wear.remaining) of \(wear.maximum)")) }
+        return lines.joined(separator: "\n")
     }
 
     static func isEnchanted(_ item: ItemStack) -> Bool { !item.enchantments.isEmpty }
@@ -93,14 +104,7 @@ struct PlayerDetailView: View {
                 }
             }
             Section("Status") {
-                if let health = player.health {
-                    LabeledContent("Health") {
-                        Gauge(value: min(health, 20), in: 0...20) { EmptyView() } currentValueLabel: {
-                            Text("\(health / 2, format: .number.precision(.fractionLength(0...1))) of 10 hearts")
-                        }
-                        .tint(.red)
-                    }
-                }
+                PlayerHealthRow(player: player)
                 if let absorption = player.absorption, absorption > 0 {
                     LabeledContent("Absorption", value: String(localized: "\(absorption / 2, format: .number.precision(.fractionLength(0...1))) hearts"))
                 }
@@ -121,18 +125,9 @@ struct PlayerDetailView: View {
                     }
                 }
             }
-            if !player.equipment.isEmpty {
-                Section("Wearing") {
-                    ForEach(Self.equipmentOrder.filter { player.equipment[$0.key] != nil }, id: \.key) { slot in
-                        if let item = player.equipment[slot.key] {
-                            LabeledContent(slot.name) {
-                                Label(ItemAppearance.description(of: item), systemImage: ItemAppearance.symbol(for: item.id))
-                                    .foregroundStyle(ItemAppearance.tint(for: item.id))
-                            }
-                        }
-                    }
-                }
-            }
+            PlayerEffectsSection(effects: player.activeEffects)
+            PlayerEquipmentSection(player: player)
+            LinkedPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
                 SlotGrid(slots: ItemAppearance.slots(player.inventory, count: 9), selected: player.selectedSlot)
             }
@@ -176,9 +171,6 @@ struct PlayerDetailView: View {
         .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }
 
-    private static let equipmentOrder: [(key: String, name: LocalizedStringKey)] = [
-        ("head", "Head"), ("chest", "Chest"), ("legs", "Legs"), ("feet", "Feet"), ("offhand", "Offhand"),
-    ]
 }
 
 /// Nine slots per row, like the game's inventory screen.
@@ -224,8 +216,8 @@ private struct SlotView: View {
                         .padding(.trailing, 2)
                 }
             }
-            .help(item.map(ItemAppearance.description(of:)) ?? "")
+            .help(item.map(ItemAppearance.details(of:)) ?? "")
             .accessibilityElement()
-            .accessibilityLabel(item.map(ItemAppearance.description(of:)) ?? String(localized: "Empty"))
+            .accessibilityLabel(item.map(ItemAppearance.details(of:)) ?? String(localized: "Empty"))
     }
 }
