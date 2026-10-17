@@ -123,6 +123,12 @@ final class WorldSession {
         selectedDimensionID.flatMap { search.index.dimensions[$0] } ?? DimensionIndex()
     }
 
+    /// Keep the selected creature's details and map highlight current after a saved health change.
+    var currentSelection: MapSelection? {
+        guard case .creature(let marker)? = selection else { return selection }
+        return .creature(selectedIndex.creatures.first { $0.id == marker.id } ?? marker)
+    }
+
     private var cacheRoot: URL? { resources.cacheRoot }
     private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
@@ -390,7 +396,7 @@ final class WorldSession {
         content.players = PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
                                                      singleplayerUUID: world.level.singleplayerUUID,
                                                      worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
-        content.selection = selection
+        content.selection = currentSelection
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
         content.ruler = ruler
         return content

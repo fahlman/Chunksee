@@ -10,7 +10,10 @@ nonisolated struct ScanCache: Sendable {
     /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
     /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
     /// 5: spawners in search contents (fahlman/Chunksee#121).
-    static let version = 5
+    /// 6: saved current health on creatures (fahlman/Chunksee#145).
+    /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
+    /// 8: corrected loaded pet maximum health, Health Boost and durability defaults.
+    static let version = 8
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

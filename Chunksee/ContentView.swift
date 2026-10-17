@@ -287,7 +287,7 @@ private struct WorldInspector: View {
                     .id(player.uuid)
             }
         case .selection?:
-            switch session.selection {
+            switch session.currentSelection {
             case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
             case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
             case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)
