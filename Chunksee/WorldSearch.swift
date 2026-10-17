@@ -180,11 +180,13 @@ nonisolated enum WorldSearch {
     static func search(_ filter: LayerFilter, words: [String], in index: SearchIndex) -> [SearchHit] {
         let hits: [SearchHit]
         switch filter {
-        case .structure: hits = layerHits(index.structures, words: words) { .structure($0.group) }
-        case .place: hits = layerHits(index.places, words: words) { .place($0.group) }
-        case .creature: hits = layerHits(index.creatures, words: words) { .creature($0.group) }
-        case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words) { .creature($0.group) }
-        case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words) { .creature($0.group) }
+        case .structure: hits = layerHits(index.structures, words: words, y: \.y) { .structure($0.group) }
+        case .place: hits = layerHits(index.places, words: words, y: { $0.y }) { .place($0.group) }
+        case .creature: hits = layerHits(index.creatures, words: words, y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+        case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words,
+                                   y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+        case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words,
+                                        y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
         case .trade: hits = tradeHits(index.creatures, words: words)
         case .block: hits = blockHits(index, words: words)
         case .biome:
@@ -245,10 +247,11 @@ nonisolated enum WorldSearch {
     /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
     private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], words: [String],
                                                                      count: (Marker) -> Int = { _ in 1 },
+                                                                     y: (Marker) -> Int? = { _ in nil },
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
         entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map { entry in
             SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value)), dimension: entry.dimension,
-                      position: entry.value.position, y: nil, title: entry.value.group.name, detail: entry.value.name,
+                      position: entry.value.position, y: y(entry.value), title: entry.value.group.name, detail: entry.value.name,
                       count: count(entry.value))
         }
     }
@@ -300,7 +303,7 @@ nonisolated enum WorldSearch {
             let who = name(player)
             if let found = summary(of: player.inventory + player.equipment.values, words: words) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: player.position?.dimension,
-                                      position: player.position.map { CGPoint(x: $0.x, y: $0.z) }, y: player.position.map { Int($0.y) },
+                                      position: player.position.map { CGPoint(x: $0.x, y: $0.z) }, y: player.position.map { Int($0.y.rounded(.down)) },
                                       title: String(localized: "\(who)’s inventory"), detail: found.text, count: found.count))
             }
             if let found = summary(of: player.enderChest, words: words) {

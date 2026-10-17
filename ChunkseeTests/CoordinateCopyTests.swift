@@ -93,6 +93,101 @@ import Testing
         }
     }
 
+    @Test func activeAndSavedLayerSearchPinsKeepTheirMarkersHeight() async throws {
+        var chunk = TestWorld.chunk(x: -1, z: -1, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y <= 2 ? 1 : 0 }
+        var data = try #require(chunk.nbt.compound)
+        data["structures"] = .compound(["starts": .compound(["minecraft:mineshaft": .compound([
+            "id": .string("minecraft:mineshaft"), "ChunkX": .int(-1), "ChunkZ": .int(-1),
+            "Children": .list([.compound(["id": .string("piece"), "BB": .intArray([-14, -60, -14, -11, -41, -11])])]),
+        ])])])
+        data["block_entities"] = .list([.compound([
+            "id": .string("minecraft:mob_spawner"), "x": .int(-3), "y": .int(-23), "z": .int(-3),
+            "SpawnData": .compound(["entity": .compound(["id": .string("minecraft:zombie")])]),
+        ])])
+        chunk.nbt = .compound(data)
+        let url = try TestWorld.make(chunks: [chunk])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let entities = url.appendingPathComponent("dimensions/minecraft/overworld/entities")
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
+        let pets = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([-1, -1]), "Entities": .list([
+            .compound(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
+                       "Pos": .list([.double(-8.7), .double(-12.3), .double(-5.2)])]),
+            .compound(["id": .string("minecraft:villager"), "Health": .float(20),
+                       "VillagerData": .compound(["profession": .string("minecraft:farmer")]),
+                       "Pos": .list([.double(-3.7), .double(-22.3), .double(-13.2)])]),
+        ])])
+        try Data(TestWorld.regionFile([.init(x: -1, z: -1, nbt: pets)])).write(to: entities.appendingPathComponent("r.-1.-1.mca"))
+        let defaults = try #require(UserDefaults(suiteName: "ChunkseeTests-\(UUID())"))
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let map = try #require(session.map)
+        session.visibility.creatures = [.pet, .villager]
+        session.visibility.places = [.spawner]
+        session.visibility.structures = [.mineshaft]
+        let board = board()
+        defer { board.releaseGlobally() }
+        let examples: [(String, String, Bool)] = [
+            ("pet:", "-9 -13 -6", true), ("creature:wolf", "-9 -13 -6", true),
+            ("villager:", "-4 -23 -14", true), ("place:", "-3 -23 -3", true),
+            ("structure:", "-12 -50 -12", true), ("biome:plains", "-8 2 -8", false),
+        ]
+        for (query, expected, hasSavedHeight) in examples {
+            session.search.text = query
+            await session.search.waitForSearch()
+            for saved in [false, true] {
+                if saved {
+                    session.saveSearch()
+                    session.search.text = ""
+                    await session.search.waitForSearch()
+                }
+                let content = session.mapContent
+                #expect(content.hits.count == 1)
+                let pin = try #require(content.hits.first)
+                let position = try #require(pin.position)
+                let viewport = MapViewport(center: position, scale: 8)
+                let hit = try #require(content.hit(at: CGPoint(x: 204, y: 150), viewport: viewport, size: size))
+                #expect(hit.target == .searchHit(pin.id))  // the pin must win over its underlying marker
+                #expect((hit.y != nil) == hasSavedHeight)
+                MapClipboard.copy(hit.position, y: hit.y, on: map, to: board)
+                await map.waitForCoordinateReads()
+                #expect(board.string(forType: .string) == expected)
+            }
+            for saved in session.savedSearches.all { session.savedSearches.remove(saved.id) }
+        }
+        session.close()
+        await session.waitUntilClosed()
+    }
+
+    @Test func inventoryPinsCopyTheSameNegativeBlockAsThePlayer() throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let map = try map(url)
+        defer { map.close() }
+        let player = PlayerInfo(uuid: UUID(), nbt: .compound([
+            "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(-8.7), .double(-12.3), .double(-5.2)]),
+            "Inventory": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(1), "Slot": .byte(0)])]),
+        ]))
+        let board = board()
+        defer { board.releaseGlobally() }
+        var content = MapContent()
+        content.players = PlayerPresentation.markers(for: [player], in: "minecraft:overworld", singleplayerUUID: nil, worldDataVersion: 5023)
+        let viewport = MapViewport(center: CGPoint(x: -8.7, y: -5.2), scale: 8)
+        let playerHit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))
+        MapClipboard.copy(playerHit.position, y: playerHit.y, on: map, to: board)
+        #expect(board.string(forType: .string) == "-9 -13 -6")
+        content.players = []   // a hidden player leaves the inventory pin as the copy target
+        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in "Player" }
+        let pin = try #require(content.hits.first)
+        #expect(pin.source == .inventory(player.uuid))
+        let hit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))
+        #expect(hit.target == .searchHit(pin.id))
+        MapClipboard.copy(hit.position, y: hit.y, on: map, to: board)
+        #expect(board.string(forType: .string) == "-9 -13 -6")
+        #expect(map.unfinishedCoordinateReads == 0)
+    }
+
     @Test func anUnhoveredBlockUsesTheDisplayedHeightAndNegativeContainingBlock() async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -215,7 +310,7 @@ import Testing
         #expect(board.string(forType: .string) == "-1 -10 -1")
     }
 
-    @Test func oldStructureCachesAreRebuiltWithTheirVerticalLocation() async throws {
+    @Test(arguments: [5, 8, 9, 10]) func oldStructureCachesAreRebuiltWithTheirVerticalLocation(oldVersion: Int) async throws {
         var chunk = TestWorld.chunk(x: -1, z: -1, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         var data = try #require(chunk.nbt.compound)
         data["structures"] = .compound(["starts": .compound(["minecraft:mineshaft": .compound([
@@ -234,7 +329,7 @@ import Testing
         old.y = nil
         cache.store([old], "structures", region: region, fingerprint: fingerprint)
         let current = try #require(cache.directory).appendingPathComponent("structures.-1.-1.\(fingerprint).v\(ScanCache.version)")
-        let previous = current.deletingPathExtension().appendingPathExtension("v5")
+        let previous = current.deletingPathExtension().appendingPathExtension("v\(oldVersion)")
         try FileManager.default.moveItem(at: current, to: previous)
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await reader.structures(region)
