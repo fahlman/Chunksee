@@ -10,8 +10,13 @@ nonisolated struct ScanCache: Sendable {
     /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
     /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
     /// 5: spawners in search contents (fahlman/Chunksee#121).
-    /// 10: structure marker heights for Copy Coordinates (#159); 6–9 are used by pending #153/#154.
-    static let version = 10
+    /// 6: saved current health on creatures (fahlman/Chunksee#145).
+    /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
+    /// 8: corrected loaded pet maximum health, Health Boost and durability defaults.
+    /// 9: stable creature UUIDs and preserved legacy item wear.
+    /// 10: structure marker heights in the Copy Coordinates branch (fahlman/Chunksee#159).
+    /// 11: both creature details and structure heights; invalidates entries from either branch.
+    static let version = 11
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

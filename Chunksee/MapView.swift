@@ -23,6 +23,8 @@ struct MapContent {
     var selectedHitID: SearchHit.ID?
     /// Players' positions, last deaths and respawn points.
     var players: [MapMarker] = []
+    /// The player whose details the inspector shows; their position is drawn highlighted.
+    var selectedPlayerID: UUID?
     var savedPlaces: [SavedPlace] = []
     var ruler = MapRuler()
     /// The selected portal or creature, drawn highlighted.
@@ -382,7 +384,8 @@ struct MapView: View {
                          in: context, bounds: bounds)
         }
         for marker in content.players {
-            Self.draw(marker, at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
+            Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
+                      at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
                       in: context, bounds: bounds)
         }
         for place in content.savedPlaces {
@@ -485,7 +488,7 @@ struct MapView: View {
     }
 
     /// Markers keep a constant size at every zoom; players also get a name label.
-    private static func draw(_ marker: MapMarker, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
         guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return }
         var context = context
         context.opacity = marker.isOutdated ? 0.55 : 1
@@ -497,7 +500,7 @@ struct MapView: View {
         case .respawn: ("bed.double.fill", .purple)
         }
         context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(.white), lineWidth: 1.5)
+        context.stroke(circle, with: .color(selected ? .accentColor : .white), lineWidth: selected ? 2.5 : 1.5)
         var symbol = context.resolve(Image(systemName: symbolName))
         symbol.shading = .color(.white)
         let side = radius * 1.15

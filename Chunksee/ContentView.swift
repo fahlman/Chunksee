@@ -82,6 +82,12 @@ struct WorldView: View {
                 }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220)
                 .focused($isSidebarFocused)
+                // A new dimension can receive its jump before this view appears.
+                .onChange(of: session.sidebarRevealRequest, initial: true) {
+                    guard session.sidebarRevealRequest != nil, let item = session.sidebarSelection else { return }
+                    sidebarDisclosure.reveal(item, in: session)
+                    sidebarRevealID = UUID()
+                }
                 .onChange(of: sidebarRevealID) {
                     if let item = session.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
                 }
@@ -196,7 +202,8 @@ struct WorldView: View {
 
 }
 
-/// A player in the sidebar. Choosing one shows their last position on the map.
+/// A player in the sidebar. Choosing one shows their details and, when it's known, their last
+/// position on the map, as choosing a pet does.
 private struct PlayerRow: View {
     let session: WorldSession
     let player: PlayerInfo
@@ -217,22 +224,13 @@ private struct PlayerRow: View {
             VisibilityButton(isShown: Binding {
                 isShown
             } set: { setShown($0) })
-            Button("Show Details", systemImage: "info.circle") {
-                toggleDetails()
-            }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.plain)
-            .foregroundStyle(session.inspector == .player(player.uuid) ? Color.accentColor : .secondary)
-            .help("Show inventory, health and experience")
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
-        .selectionDisabled(!canFocus)
         .accessibilityElement(children: .combine)
         // Native sidebar rows combine their controls. Their context menu keeps each action reachable.
         .contextMenu {
             Button(isShown ? "Hide from Map" : "Show on Map") { setShown(!isShown) }
-            Button(session.inspector == .player(player.uuid) ? "Hide Details" : "Show Details") { toggleDetails() }
         }
     }
 
@@ -241,10 +239,6 @@ private struct PlayerRow: View {
     private func setShown(_ shown: Bool) {
         if shown { session.visibility.hiddenPlayers.remove(player.uuid) }
         else { session.visibility.hiddenPlayers.insert(player.uuid) }
-    }
-
-    private func toggleDetails() {
-        session.inspector = session.inspector == .player(player.uuid) ? nil : .player(player.uuid)
     }
 
     private var canFocus: Bool {
@@ -287,7 +281,7 @@ private struct WorldInspector: View {
                     .id(player.uuid)
             }
         case .selection?:
-            switch session.selection {
+            switch session.currentSelection {
             case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
             case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
             case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)
