@@ -268,7 +268,8 @@ final class MapModel {
 
     /// The block the map shows at a world block, once its chunk has been read.
     func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
-        let x = Int(block.x.rounded(.down)), z = Int(block.y.rounded(.down))
+        guard let coordinates = MapCoordinates(point: block) else { return nil }
+        let x = Int(coordinates.x), z = Int(coordinates.z)
         return topBlocks[ChunkCoordinate(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
     }
 
@@ -296,9 +297,10 @@ final class MapModel {
     /// Reads the chunk under the pointer off the main actor, unless it's read or being read. Only
     /// that chunk matters, so a read for one the pointer has left is cancelled.
     func loadTopBlocks(at block: CGPoint) {
-        let chunk = ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
+        guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
+        let chunk = ChunkCoordinate(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
         hoveredChunk = chunk
-        guard !isClosed, topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
+        guard topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
         startHoverRead(of: chunk)
     }
 

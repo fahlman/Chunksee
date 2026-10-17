@@ -110,7 +110,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         id = "\(poi.type)@\(poi.x),\(poi.y),\(poi.z)"
         type = poi.type
         group = PlaceGroup.group(for: poi.type)
-        position = CGPoint(x: Double(poi.x) + 0.5, y: Double(poi.z) + 0.5)
+        position = MapCoordinates.center(of: CGPoint(x: poi.x, y: poi.z))
         y = poi.y
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
     }
@@ -120,7 +120,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         id = "spawner@\(spawner.x),\(spawner.y),\(spawner.z)"
         type = "minecraft:mob_spawner"
         group = .spawner
-        position = CGPoint(x: Double(spawner.x) + 0.5, y: Double(spawner.z) + 0.5)
+        position = MapCoordinates.center(of: CGPoint(x: spawner.x, y: spawner.z))
         y = spawner.y
         isClaimed = false
         mob = spawner.mob
@@ -199,7 +199,7 @@ struct PortalDetailView: View {
         Form {
             Section {
                 LabeledContent("Position") {
-                    Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
+                    Text(Coordinates.text(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
                         .monospacedDigit()
                 }
             } header: {
@@ -208,15 +208,15 @@ struct PortalDetailView: View {
             Section {
                 switch session.link(for: portal) {
                 case .portal(let target, _)?:
-                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
+                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
                     if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
-                        Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
+                        Label("One-way: that portal leads back to a different one, at \(Coordinates.text(x: back.centerX, z: back.centerZ)).",
                               systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
                     Button("Show the Other Side") { session.show(target) }
                 case .wouldCreateNewPortal(let destination)?:
-                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
+                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 case nil:

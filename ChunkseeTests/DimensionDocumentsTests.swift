@@ -70,7 +70,7 @@ import Testing
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
         #expect(!overworld.navigation.canGoBack)
-        #expect(nether.map?.viewport == MapViewport(center: place.position, scale: 4))
+        #expect(nether.map?.viewport == MapViewport(center: CGPoint(x: 9.5, y: -6.5), scale: 4))
         nether.goBack()
         #expect(nether.map?.viewport == targetView)
         overworld.openDimension("minecraft:the_nether")

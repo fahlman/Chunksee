@@ -30,7 +30,7 @@ import Testing
         let cases: [(CGPoint, SidebarItem)] = [
             (structure.position, .structure(structure.id)), (spawner.position, .place(spawner.id)),
             (portal.position, .place(portal.id)), (creature.position, .creature(creature.id)),
-            (place.position, .savedPlace(place.id)),
+            (place.mapPosition, .savedPlace(place.id)),
         ]
         for (position, row) in cases {
             let target = session.mapContent.target(at: viewport.viewPoint(for: position, in: CGSize(width: 800, height: 600)),
@@ -266,7 +266,7 @@ import Testing
         let playerID = UUID()
         content.players = [.init(id: "player", playerID: playerID, kind: .player, position: CGPoint(x: -10, y: -20),
                                  label: "Friend", isOutdated: false)]
-        viewport = MapViewport(center: CGPoint(x: -9.5, y: -19.5), scale: 32)
+        viewport = MapViewport(center: CGPoint(x: -10, y: -20), scale: 32)
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.player(playerID)))
         let locations = content.accessibleLocations(viewport: viewport, size: size)
         #expect(locations.first { $0.id == "player-player" }?.target == .row(.player(playerID)))

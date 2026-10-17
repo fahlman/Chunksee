@@ -250,8 +250,8 @@ private struct PlayerRow: View {
             if let world = player.bukkitWorldName { return String(localized: "May be in another world, “\(world)”") }
             return String(localized: "May be in another world")
         }
-        guard let position = player.position else { return String(localized: "Location unknown") }
-        return session.dimensionName(position.dimension) + "  " + Coordinates.text(x: position.x, z: position.z)
+        guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
+        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.dimensionName(position.dimension))
     }
 
     private var help: String {

@@ -62,7 +62,7 @@ import Testing
                              position: CGPoint(x: 5, y: 6), y: 64, title: "Chest", detail: "3 Diamond", count: 3)]
         let locations = content.accessibleLocations(viewport: .init(center: .zero, scale: 1), size: .init(width: 400, height: 300))
         #expect(Set(locations.map(\.name)) == ["Friend", "Where Friend last died", "Friend’s respawn point", "Chest, 3 Diamond"])
-        #expect(locations.first { $0.name == "Where Friend last died" }?.position == CGPoint(x: 10, y: 20))
+        #expect(locations.first { $0.name == "Where Friend last died" }?.position == CGPoint(x: 10.5, y: 20.5))
         #expect(Set(locations.map(\.id)).count == locations.count)
     }
 }

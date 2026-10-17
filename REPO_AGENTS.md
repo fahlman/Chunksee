@@ -73,6 +73,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
+| `Presentation.swift`, `GoToCoordinatesView.swift` | Checked block conversion and coordinate labels, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -118,6 +119,10 @@ Copy Coordinates writes three whole block coordinates separated by single spaces
 Marker hit testing supplies saved heights; terrain and two-dimensional saved places use the
 renderer/hover reader's actual block height. `MapModel` owns, cancels and drains those background
 reads before world access ends. A late result cannot replace a newer copy or another clipboard change.
+Map accessibility locations expose the same Copy Coordinates action and saved heights. Coordinate
+readouts use containing-block flooring, including negative fractions; unreadable saved positions
+are unavailable for mapping. Player/creature positions remain exact, while death/respawn points,
+saved places and coordinate-entry destinations use the center of their block for drawing and focus.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is

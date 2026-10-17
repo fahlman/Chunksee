@@ -13,15 +13,31 @@ nonisolated enum ReadableName {
 
 /// Block coordinates as lists and readouts show them: "X 10  Z -2".
 nonisolated enum Coordinates {
-    static func text(x: Double, z: Double) -> String {
-        "X \(Int(x.rounded(.down)))  Z \(Int(z.rounded(.down)))"
+    /// Unreadable saved positions have no block coordinate; conversion must never trap.
+    static func block(_ value: Double) -> Int? { Int(exactly: value.rounded(.down)) }
+
+    static func canLocate(x: Double, y: Double, z: Double) -> Bool {
+        MapCoordinates(point: CGPoint(x: x, y: z)) != nil && block(y) != nil
     }
 
-    static func text(_ point: CGPoint) -> String { text(x: point.x, z: point.y) }
+    static func text(x: Double, z: Double) -> String {
+        text(CGPoint(x: x, y: z))
+    }
+
+    static func text(_ point: CGPoint, y: Double? = nil, dimension: String? = nil) -> String {
+        guard let x = block(point.x), let z = block(point.y) else { return String(localized: "Location unknown") }
+        var value = "X \(x)"
+        if let y {
+            guard let y = block(y) else { return String(localized: "Location unknown") }
+            value += "  Y \(y)"
+        }
+        value += "  Z \(z)"
+        return dimension.map { "\($0) · \(value)" } ?? value
+    }
 
     /// X, Y and Z together, in Minecraft's order.
-    static func text(_ point: CGPoint, y: Int) -> String {
-        "X \(Int(point.x.rounded(.down)))  Y \(y)  Z \(Int(point.y.rounded(.down)))"
+    static func text(_ point: CGPoint, y: Int, dimension: String? = nil) -> String {
+        text(point, y: Double(y), dimension: dimension)
     }
 }
 
