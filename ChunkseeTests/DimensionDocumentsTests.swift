@@ -122,7 +122,7 @@ import Testing
         let endOpened = await opened.next(isolation: #isolation)
         #expect(endOpened == resources.documentURL(for: "minecraft:the_end"))
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center == place.position)
+        #expect(end.map?.viewport.center == CGPoint(x: 900.5, y: -399.5))
         // A later document for the same dimension doesn't replay the jump.
         end.map?.viewport.center = .zero
         end.close()
@@ -142,7 +142,7 @@ import Testing
         for await failure in Observations({ overworld.openFailure }) where failure != nil { break }
         // Opening the End normally later keeps its own view, without the failed jump.
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center != place.position && !end.navigation.canGoBack)
+        #expect(end.map?.viewport.center != CGPoint(x: 900.5, y: -399.5) && !end.navigation.canGoBack)
         resources.close()
         await resources.waitUntilClosed()
     }
