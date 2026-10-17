@@ -178,7 +178,7 @@ import Testing
         MapClipboard.copy(playerHit.position, y: playerHit.y, on: map, to: board)
         #expect(board.string(forType: .string) == "-9 -13 -6")
         content.players = []   // a hidden player leaves the inventory pin as the copy target
-        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in "Player" }
+        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in .named("Player") }
         let pin = try #require(content.hits.first)
         #expect(pin.source == .inventory(player.uuid))
         let hit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))

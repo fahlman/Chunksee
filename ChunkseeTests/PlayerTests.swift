@@ -31,7 +31,7 @@ import Testing
         let mine = markers.first { $0.kind == .player && $0.label == "You" }
         #expect(mine?.position == CGPoint(x: -2806.6, y: -3895.2))
         #expect(mine?.isOutdated == false)
-        #expect(markers.contains { $0.kind == .respawn })
+        #expect(markers.contains { $0.kind == .respawn && $0.label == "Your respawn point" })
         let theirs = markers.first { $0.label == "Player 06d119da" }
         #expect(theirs?.isOutdated == true)  // file predates the world's version
         #expect(!markers.contains { $0.position == CGPoint(x: -12, y: 241) })
@@ -50,6 +50,10 @@ import Testing
         let nether = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you, worldDataVersion: 5023)
         #expect(nether.map(\.kind) == [.death])
         #expect(nether.first?.position == CGPoint(x: 10, y: 20))
+        #expect(nether.first?.label == "Where you last died")
+        let named = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you,
+                                               worldDataVersion: 5023, knownName: { _ in "You" })
+        #expect(named.first?.label == "Where You last died")
     }
 }
 
