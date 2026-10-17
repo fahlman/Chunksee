@@ -155,6 +155,8 @@ import Testing
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
         await session.search.waitForIndex()
         session.close()
+        // Its background cache writes must finish before the deferred cleanup removes `root`.
+        await session.waitUntilClosed()
         let scans = try #require(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root))
             .appendingPathComponent("scans")
         #expect(FileManager.default.fileExists(atPath: scans.path))
