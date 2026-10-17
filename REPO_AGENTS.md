@@ -75,7 +75,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary |
+| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
@@ -114,6 +114,11 @@ File ▸ Open and Open Recent still use the native flow.
 changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
 menu backing indexes. The pass disables hidden key equivalents before hiding editing items.
 
+Copy Coordinates writes three whole block coordinates separated by single spaces, in X Y Z order.
+Marker hit testing supplies saved heights; terrain and two-dimensional saved places use the
+renderer/hover reader's actual block height. `MapModel` owns, cancels and drains those background
+reads before world access ends. A late result cannot replace a newer copy or another clipboard change.
+
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
@@ -122,8 +127,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 9 rereads earlier entries for corrected pet maximums, stable creature UUIDs
-and preserved legacy item wear. A marker uses its saved
+Scan-cache version 11 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+preserved legacy item wear and structure heights. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.

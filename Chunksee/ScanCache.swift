@@ -14,7 +14,9 @@ nonisolated struct ScanCache: Sendable {
     /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
     /// 8: corrected loaded pet maximum health, Health Boost and durability defaults.
     /// 9: stable creature UUIDs and preserved legacy item wear.
-    static let version = 9
+    /// 10: structure marker heights in the Copy Coordinates branch (fahlman/Chunksee#159).
+    /// 11: both creature details and structure heights; invalidates entries from either branch.
+    static let version = 11
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

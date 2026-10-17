@@ -227,11 +227,13 @@ final class MapModel {
     func waitForRenders() async {
         for task in renders.values { await task.value }
         await waitForTopBlocks()
+        await waitForCoordinateReads()
     }
 
     func close() {
         isClosed = true
         hoverReads.values.forEach { $0.cancel() }
+        coordinateReads.values.forEach { $0.cancel() }
         cancel()
     }
 
@@ -251,6 +253,8 @@ final class MapModel {
     /// Every hover read until it finishes, cancelled or not, so closing can drain them all before
     /// the world's access ends, as `renders` does for tiles.
     @ObservationIgnored private var hoverReads: [UUID: Task<Void, Never>] = [:]
+    /// Explicit coordinate copies must finish reading even if the pointer moves to another chunk.
+    @ObservationIgnored private var coordinateReads: [UUID: Task<Void, Never>] = [:]
     /// Bumped when the game saves a region, so a read of the old file doesn't publish after it.
     @ObservationIgnored private var regionGenerations: [RegionCoordinate: Int] = [:]
     /// The region file last read for the readout, reused while the pointer stays in its region.
@@ -260,11 +264,33 @@ final class MapModel {
 
     /// Hover reads not yet finished, cancelled or not.
     var unfinishedHoverReads: Int { hoverReads.count }
+    var unfinishedCoordinateReads: Int { coordinateReads.count }
 
     /// The block the map shows at a world block, once its chunk has been read.
     func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
         let x = Int(block.x.rounded(.down)), z = Int(block.y.rounded(.down))
         return topBlocks[ChunkCoordinate(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
+    }
+
+    /// Uses the same reader and cached columns as hover, while keeping this request independent
+    /// of pointer movement. Closing the map cancels and drains every read before access ends.
+    func readTopBlock(at block: CGPoint, completion: @escaping (RegionTileRenderer.TopBlock?) -> Void) {
+        guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
+        if let cached = topBlock(at: coordinates.position) { completion(cached); return }
+        let chunk = ChunkCoordinate(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
+        let index = (Int(coordinates.z) & 15) * 16 + (Int(coordinates.x) & 15), id = UUID()
+        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion, read = readTopBlocksFor
+        coordinateReads[id] = Task { [weak self] in
+            let result = await read(chunk, dimension, ceilingY, cached)
+            guard let self else { return }
+            self.coordinateReads[id] = nil
+            guard !Task.isCancelled, !self.isClosed else { return }
+            completion(result.flatMap { $0.blocks.indices.contains(index) ? $0.blocks[index] : nil })
+        }
+    }
+
+    func waitForCoordinateReads() async {
+        while let task = coordinateReads.values.first { await task.value }
     }
 
     /// Reads the chunk under the pointer off the main actor, unless it's read or being read. Only

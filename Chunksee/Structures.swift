@@ -114,6 +114,8 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
     var group: StructureGroup
     /// World X/Z rectangle around all of the structure's pieces.
     var bounds: CGRect
+    /// The vertical center of the recorded pieces; absent when the start has no bounds.
+    var y: Int?
     /// For a stronghold, the center of its End portal room (piece `minecraft:shpr`; every stronghold in
     /// Ryan's Realm has exactly one).
     var portalRoom: CGPoint?
@@ -141,6 +143,7 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
         group = StructureGroup.group(for: start.id)
         if let box = start.bounds {
             bounds = CGRect(x: box.minX, y: box.minZ, width: box.maxX - box.minX + 1, height: box.maxZ - box.minZ + 1)
+            y = box.minY + (box.maxY - box.minY + 1) / 2
         } else {
             // No pieces recorded: the start chunk itself.
             bounds = CGRect(x: start.chunkX * 16, y: start.chunkZ * 16, width: 16, height: 16)

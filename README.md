@@ -75,7 +75,9 @@ a map point and choose **Save Place…**. Your **Saved Places** appear in their 
 map; click a sidebar place to visit it, and use its context menu to rename or remove it. They are
 kept per world in Chunksee's preferences and remain available when the world is reopened or moved.
 
-Right-click or Control-click any map point and choose **Copy Coordinates** to copy its X and Z.
+Right-click or Control-click a marker or block and choose **Copy Coordinates** to copy X, Y and Z
+as three numbers separated by single spaces, ready to paste into a Minecraft command (for example,
+`-9 64 1`). Markers use their saved height; terrain and saved places use the displayed block's height.
 With the map selected, **Edit ▸ Copy** (**⌘C**) copies an image of the map as shown; the toolbar's
 Share button sends one.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then

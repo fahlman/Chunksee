@@ -35,8 +35,26 @@ private final class MapContextTarget: NSObject {
 }
 
 enum MapClipboard {
-    static func copy(_ point: CGPoint) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(Coordinates.text(point), forType: .string)
+    private static var requests: [NSPasteboard.Name: UUID] = [:]
+
+    /// Every Copy Coordinates action comes here. A marker supplies its saved Y; other locations
+    /// use the block actually drawn by this map. A late read cannot replace a newer clipboard.
+    static func copy(_ point: CGPoint, y: Double? = nil, on map: MapModel, to pasteboard: NSPasteboard = .general) {
+        guard let coordinates = MapCoordinates(point: point) else { return }
+        let id = UUID(), changeCount = pasteboard.changeCount
+        requests[pasteboard.name] = id
+        func finish(_ y: Int?) {
+            guard requests[pasteboard.name] == id else { return }
+            requests[pasteboard.name] = nil
+            guard pasteboard.changeCount == changeCount else { return }
+            guard let y else { NSSound.beep(); return }
+            pasteboard.clearContents()
+            pasteboard.setString("\(coordinates.x) \(y) \(coordinates.z)", forType: .string)
+        }
+        if let y {
+            finish(Int(exactly: y.rounded(.down)))
+        } else {
+            map.readTopBlock(at: coordinates.position) { finish($0?.y) }
+        }
     }
 }
