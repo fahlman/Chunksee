@@ -478,6 +478,63 @@ enum StructureTestWorld {
         session.heatMap.isShown = false
         #expect(session.heatMap.visibleImages == nil)
     }
+
+    @Test(.timeLimit(.minutes(1))) func savesDuringAReadAreCoalescedAndHiddenSavesAreRemembered() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimensions().first)
+        let gate = AsyncReadGate<RegionData>()
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let layer = HeatMapLayer(readers: [dimension.id: reader])
+        layer.dimension = dimension.id
+        layer.isShown = true
+        await gate.waitForRequest("region")
+        layer.load(reread: true)
+        layer.load(reread: true)
+        let waiting = Task { await layer.waitForReads() }
+        var inhabited = RegionData()
+        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        await gate.finish("region", with: inhabited)
+        await gate.waitForRequest("region", count: 2)
+        #expect(layer.visibleImages?.count == 1) // completed data stays visible during the next pass
+        await gate.finish("region", with: RegionData())
+        await waiting.value
+        #expect(layer.visibleImages?.isEmpty == true)
+        #expect(await gate.requested == ["region", "region"])
+
+        layer.isShown = false
+        layer.load(reread: true)
+        #expect(await gate.requested.count == 2)
+        layer.isShown = true
+        await gate.waitForRequest("region", count: 3)
+        await gate.finish("region", with: inhabited)
+        await layer.waitForReads()
+        #expect(layer.visibleImages?.count == 1)
+        layer.cancel()
+        await reader.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func closingRejectsALateImageAndDropsTheQueuedPass() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimensions().first)
+        let gate = AsyncReadGate<RegionData>()
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let layer = HeatMapLayer(readers: [dimension.id: reader])
+        layer.dimension = dimension.id
+        layer.isShown = true
+        await gate.waitForRequest("region")
+        layer.load(reread: true)
+        layer.cancel()
+        var inhabited = RegionData()
+        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        await gate.finish("region", with: inhabited)
+        await layer.waitForReads()
+        layer.load(reread: true)
+        #expect(layer.visibleImages == nil)
+        #expect(await gate.requested == ["region"])
+        await reader.close()
+    }
 }
 
 @Suite struct InGameMapTests {
