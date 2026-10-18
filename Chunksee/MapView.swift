@@ -294,27 +294,19 @@ struct MapView: View {
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
     /// 1/2×) and, for strongholds, the End portal room.
     private static func draw(_ structure: StructureMarker, viewport: MapViewport, in context: GraphicsContext,
-                             size: CGSize, bounds: CGRect) {
+                             size: CGSize, bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         let topLeft = viewport.viewPoint(for: structure.bounds.origin, in: size)
         let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
                                                            height: structure.bounds.height * viewport.scale))
         guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return }
-        let color = Color(hex: structure.group.color)
+        let style = MarkerStyle.structure(structure.group), color = style.fill
         if viewport.scale >= 0.25 {
             let path = Path(outline)
             context.fill(path, with: .color(color.opacity(0.12)))
             context.stroke(path, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
         }
         let center = CGPoint(x: outline.midX, y: outline.midY)
-        let geometry = MarkerGeometry.structure, radius = geometry.radius
-        let disc = Path(roundedRect: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2),
-                        cornerRadius: 4)
-        context.fill(disc, with: .color(color))
-        context.stroke(disc, with: .color(.white.opacity(0.9)), lineWidth: 1)
-        var symbol = context.resolve(Image(systemName: structure.group.symbol))
-        symbol.shading = .color(.white)
-        let side = geometry.symbolSide
-        context.draw(symbol, in: CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side))
+        style.drawBody(at: center, in: context, symbol: symbol)
 
         if viewport.scale >= 0.25, let room = structure.portalRoom {
             let p = viewport.viewPoint(for: room, in: size)
@@ -324,13 +316,7 @@ struct MapView: View {
             sparkle.shading = .color(.mint)
             context.draw(sparkle, in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
         }
-        guard viewport.scale >= 0.5 else { return }
-        let text = context.resolve(Text(structure.name).font(.caption2.weight(.semibold)).foregroundStyle(.white))
-        let textSize = text.measure(in: CGSize(width: 240, height: 40))
-        let label = CGRect(x: center.x - textSize.width / 2 - 5, y: center.y + radius + 2,
-                           width: textSize.width + 10, height: textSize.height + 2)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        style.drawName(structure.name, at: center, scale: viewport.scale, in: context)
     }
 
     /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
@@ -383,18 +369,16 @@ struct MapView: View {
             let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
             context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
         }
-        for structure in content.structures {
-            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
-        }
-        // Each badge's symbol is resolved once per draw rather than once per marker: thousands of
-        // spawners can be in view at once.
-        var symbols: [String: GraphicsContext.ResolvedImage] = [:]
-        func symbol(_ name: String) -> GraphicsContext.ResolvedImage {
-            if let image = symbols[name] { return image }
-            var image = context.resolve(Image(systemName: name))
-            image.shading = .color(.white)
-            symbols[name] = image
+        var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
+        func symbol(_ key: MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage {
+            if let image = symbols[key] { return image }
+            var image = context.resolve(Image(systemName: key.name))
+            image.shading = .color(key.color)
+            symbols[key] = image
             return image
+        }
+        for structure in content.structures {
+            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol)
         }
         // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
         for place in content.nearbyPlaces(viewport: map.viewport, size: size) {
@@ -413,17 +397,16 @@ struct MapView: View {
         for hit in content.hits {
             guard let position = hit.position else { continue }
             Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
-                         in: context, bounds: bounds)
+                         in: context, bounds: bounds, symbol: symbol)
         }
         for marker in content.players {
             Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
                       at: map.viewport.viewPoint(for: marker.anchor, in: size),
-                      in: context, bounds: bounds)
+                      in: context, bounds: bounds, symbol: symbol)
         }
         for place in content.savedPlaces {
-            Self.drawBadge(symbol: symbol("mappin"), color: .accentColor, geometry: .savedPlace, name: place.name,
-                           showsName: map.viewport.scale >= 2, opacity: 1, selected: false,
-                           at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds)
+            Self.drawBadge(style: .savedPlace, name: place.name, scale: map.viewport.scale,
+                           at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds, symbol: symbol)
         }
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
     }
@@ -471,80 +454,40 @@ struct MapView: View {
         context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
     }
 
-    /// A yellow search-result pin; the selected one is larger with a ring.
-    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect) {
+    /// A yellow search-result pin; the selected one has the larger shared geometry.
+    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect,
+                                symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        let geometry = MarkerGeometry.search(selected: selected), radius = geometry.radius
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        context.fill(circle, with: .color(.yellow))
-        context.stroke(circle, with: .color(.black.opacity(0.6)), lineWidth: selected ? 2 : 1)
-        var symbol = context.resolve(Image(systemName: "magnifyingglass"))
-        symbol.shading = .color(.black)
-        let side = geometry.symbolSide
-        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        MarkerStyle.search(selected: selected).drawBody(at: point, in: context, symbol: symbol)
     }
 
-    /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
     private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect,
-                             symbol: (String) -> GraphicsContext.ResolvedImage) {
-        drawBadge(symbol: symbol(place.group.symbol), color: Color(hex: place.group.color), geometry: .place(isPortal: place.group == .portal), name: place.name,
-                  showsName: scale >= 2, opacity: place.isClaimed ? 0.65 : 1, selected: false, at: point, in: context, bounds: bounds)
+                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
+        drawBadge(style: .place(place.group, claimed: place.isClaimed), name: place.name, scale: scale,
+                  at: point, in: context, bounds: bounds, symbol: symbol)
     }
 
-    /// Creatures look like places; a selected one is larger and always named.
     private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext,
-                             bounds: CGRect, symbol: (String) -> GraphicsContext.ResolvedImage) {
-        drawBadge(symbol: symbol(creature.group.symbol), color: Color(hex: creature.group.color), geometry: .creature(selected: selected), name: creature.name,
-                  showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
+                             bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
+        drawBadge(style: .creature(creature.group, selected: selected), name: creature.name, scale: scale,
+                  at: point, in: context, bounds: bounds, symbol: symbol)
     }
 
-    /// The symbol, color and name are evaluated only for a badge in view, and the name only when it's shown.
-    private static func drawBadge(symbol: @autoclosure () -> GraphicsContext.ResolvedImage, color: @autoclosure () -> Color,
-                                  geometry: MarkerGeometry, name: @autoclosure () -> String, showsName: Bool, opacity: Double,
-                                  selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+    private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String, scale: CGFloat,
+                                  at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+                                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        let color = color()
-        let radius = geometry.radius
-        var context = context
-        context.opacity = opacity
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
-        let side = geometry.symbolSide
-        context.draw(symbol(), in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-        guard showsName else { return }
-        let text = context.resolve(Text(name()).font(.caption2.weight(.medium)).foregroundStyle(.white))
-        let size = text.measure(in: CGSize(width: 200, height: 30))
-        let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + radius + 2, width: size.width + 8, height: size.height + 2)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        let style = style()
+        style.drawBody(at: point, in: context, symbol: symbol)
+        style.drawName(name(), at: point, scale: scale, in: context)
     }
 
-    /// Markers keep a constant size at every zoom; players also get a name label.
-    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return }
-        var context = context
-        context.opacity = marker.isOutdated ? 0.55 : 1
-        let geometry = MarkerGeometry.player(marker.kind), radius = geometry.radius
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        let (symbolName, color): (String, Color) = switch marker.kind {
-        case .player: ("person.fill", .blue)
-        case .death: ("xmark", .red)
-        case .respawn: ("bed.double.fill", .purple)
-        }
-        context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(selected ? .accentColor : .white), lineWidth: selected ? 2.5 : 1.5)
-        var symbol = context.resolve(Image(systemName: symbolName))
-        symbol.shading = .color(.white)
-        let side = geometry.symbolSide
-        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-        guard marker.kind == .player else { return }
-        let text = context.resolve(Text(marker.label).font(.caption.weight(.semibold)).foregroundStyle(.white))
-        let textSize = text.measure(in: CGSize(width: 240, height: 40))
-        let label = CGRect(x: point.x - textSize.width / 2 - 6, y: point.y + radius + 3,
-                           width: textSize.width + 12, height: textSize.height + 4)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(.black.opacity(0.6)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        let style = MarkerStyle.player(marker.kind, outdated: marker.isOutdated, selected: selected)
+        style.drawBody(at: point, in: context, symbol: symbol)
+        style.drawName(marker.label, at: point, scale: 1, in: context)
     }
 
     private var statusBar: some View {
