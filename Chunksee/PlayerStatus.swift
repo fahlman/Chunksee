@@ -33,11 +33,11 @@ struct PlayerEffectsSection: View {
             Section("Active Effects") {
                 ForEach(Array(effects.sorted { $0.id < $1.id }.enumerated()), id: \.offset) { _, effect in
                     let name = PlayerEffectText.name(effect, locale: locale)
-                    LabeledContent(name, value: PlayerEffectText.duration(effect, locale: locale))
-                        .monospacedDigit()
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(Text(name))
-                        .accessibilityValue(Text(PlayerEffectText.accessibleDuration(effect, locale: locale)))
+                    LabeledContent(name) {
+                        Text(PlayerEffectText.duration(effect, locale: locale))
+                            .accessibilityLabel(Text(PlayerEffectText.accessibleDuration(effect, locale: locale)))
+                    }
+                    .monospacedDigit()
                 }
             }
             .help("Effects and time remaining when Minecraft last saved this player")
