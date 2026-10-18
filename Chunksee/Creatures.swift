@@ -153,8 +153,15 @@ nonisolated enum TradeText {
     }
 
     static func enchantmentName(_ id: String, level: Int) -> String {
-        guard level > 1 else { return ReadableName.from(id) }
+        if level == 1, singleLevelEnchantments.contains(id) { return ReadableName.from(id) }
         return ReadableName.from(id) + " " + LevelText.numeral(level)
     }
 
+    // Vanilla 26.3 data/minecraft/enchantment/*.json. The game hides the suffix only when
+    // both the saved and maximum levels are 1; unknown/modded enchantments keep their level.
+    private static let singleLevelEnchantments: Set<String> = [
+        "minecraft:aqua_affinity", "minecraft:binding_curse", "minecraft:channeling",
+        "minecraft:flame", "minecraft:infinity", "minecraft:mending", "minecraft:multishot",
+        "minecraft:silk_touch", "minecraft:vanishing_curse",
+    ]
 }

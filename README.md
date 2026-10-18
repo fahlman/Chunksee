@@ -56,6 +56,9 @@ It shows a top-down view of a world, the structures and places found in it, and 
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
+Enchantment labels retain the saved level, including `Sharpness I`. The nine single-level
+vanilla 26.3 enchantments omit `I`, as in Minecraft; unknown or modded enchantments keep it.
+
 Chunksee only reads your world; it never changes it. Each world opens as a native Mac document in
 its own window. **File ▸ Open Recent** and window restoration follow your macOS settings, including
 your preference for reopening windows after quitting. You can select several world folders in
