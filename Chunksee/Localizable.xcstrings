@@ -1,22 +1,22 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "%lld chunks": {
-      "comment": "Number of neighboring chunks in one biome area.",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld chunk"
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld chunks" : {
+      "comment" : "Number of neighboring chunks in one biome area.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld chunk"
                 }
               },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld chunks"
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld chunks"
                 }
               }
             }
@@ -24,22 +24,22 @@
         }
       }
     },
-    "%lld blocks · Y %lld to %lld": {
-      "comment": "Block deposit count followed by its minimum and maximum height. Pluralize only the first argument.",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld block · Y %2$lld to %3$lld"
+    "%lld blocks · Y %lld to %lld" : {
+      "comment" : "Block deposit count followed by its minimum and maximum height. Pluralize only the first argument.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$lld block · Y %2$lld to %3$lld"
                 }
               },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%1$lld blocks · Y %2$lld to %3$lld"
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$lld blocks · Y %2$lld to %3$lld"
                 }
               }
             }
@@ -47,50 +47,50 @@
         }
       }
     },
-    "%lld kinds of items in %lld containers": {
-      "comment": "Storage summary. The item-kind and container counts vary independently.",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%#@kinds@ in %#@containers@"
+    "%lld kinds of items in %lld containers" : {
+      "comment" : "Storage summary. The item-kind and container counts vary independently.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@kinds@ in %#@containers@"
           },
-          "substitutions": {
-            "kinds": {
-              "argNum": 1,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%lld kind of item"
+          "substitutions" : {
+            "kinds" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld kind of item"
                     }
                   },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%lld kinds of items"
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld kinds of items"
                     }
                   }
                 }
               }
             },
-            "containers": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%lld container"
+            "containers" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld container"
                     }
                   },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%lld containers"
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld containers"
                     }
                   }
                 }
@@ -101,5 +101,5 @@
       }
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }

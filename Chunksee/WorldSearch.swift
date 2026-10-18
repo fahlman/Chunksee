@@ -9,8 +9,16 @@ nonisolated struct DimensionIndex: Sendable {
     var storage: [StoredItem] = []
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
-    var places: [PlaceMarker] = []
-    var creatures: [CreatureMarker] = []
+    var placePoints = PointMarkers<PlaceMarker>()
+    var creaturePoints = PointMarkers<CreatureMarker>()
+    var places: [PlaceMarker] {
+        get { placePoints.all }
+        set { placePoints = PointMarkers(newValue) }
+    }
+    var creatures: [CreatureMarker] {
+        get { creaturePoints.all }
+        set { creaturePoints = PointMarkers(newValue) }
+    }
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
@@ -19,37 +27,57 @@ nonisolated struct DimensionIndex: Sendable {
     var blocks: [ChunkDeposit] = []
     /// Readable and pre-1.18 chunks across the dimension.
     var formats = ChunkFormats()
+    /// Inputs are replaced per region; all cross-region aggregates derive from these.
+    var regions: [RegionCoordinate: RegionIndex] = [:]
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
-    static func read(_ reader: RegionReader) async -> DimensionIndex {
+    static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
         var part = DimensionIndex()
-        var spawners: [Spawner] = []
-        for region in await reader.everyRegion({ await $0.contents($1) }) {
-            guard !Task.isCancelled else { return part }
-            part.containers += region.value.containers
-            part.signs += region.value.signs
-            spawners += region.value.spawners
+        let available = Set(ChunkseeKit.Dimension.Folder.allCases.flatMap { reader.dimension.regionFiles($0) }
+            .map { RegionCoordinate(x: $0.x, z: $0.z) })
+        let changed: Set<RegionCoordinate>
+        if let previous, case .regions(let selected) = change {
+            part.regions = previous.regions
+            for removed in selected.subtracting(available) { part.regions[removed] = nil }
+            changed = selected.intersection(available)
+        } else { changed = available }
+        let replacements = await withTaskGroup(of: (RegionCoordinate, RegionIndex).self) { group in
+            for region in changed {
+                guard !Task.isCancelled else { break }
+                group.addTask {
+                    let value = await RegionIndex.read(reader, region: region)
+                    return (region, value)
+                }
+            }
+            var values: [RegionCoordinate: RegionIndex] = [:]
+            for await (region, value) in group { values[region] = value }
+            return values
         }
         guard !Task.isCancelled else { return part }
+        part.regions.merge(replacements) { $1 }
+        var points: [PointOfInterest] = []
+        var spawners: [Spawner] = []
+        var creatures: [CreatureMarker] = []
+        for coordinate in part.regions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
+            let region = part.regions[coordinate]!
+            part.containers += region.contents.containers
+            part.signs += region.contents.signs
+            spawners += region.contents.spawners
+            part.structures += region.structures
+            creatures += region.creatures
+            part.biomes.merge(region.biomes) { $1 }
+            part.caveBiomes.merge(region.caveBiomes) { $1 }
+            part.blocks += region.blocks.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
+            part.formats = part.formats + region.formats
+            points += region.pointsOfInterest
+        }
         part.storage = StoredItem.totals(in: part.containers)
-        async let structures = StructureScanner.scan(reader)
-        async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
-        async let creatures = CreatureScanner.scan(reader)
-        async let biomes = BiomeScanner.scan(reader)
-        async let blocks = reader.everyRegion { await $0.blocks($1) }
-        async let formats = reader.everyRegion { await $0.formats($1) }
-        part.formats = await formats.reduce(ChunkFormats()) { $0 + $1.value }
-        part.structures = await structures
-        part.places = await places + spawners.map(PlaceMarker.init)
-        part.creatures = await creatures
-        let biomeScan = await biomes
-        part.biomeAreas = biomeScan.areas
-        part.biomes = biomeScan.biomes
-        part.caveBiomes = biomeScan.caveBiomes
-        part.blocks = await blocks.flatMap { region in
-            region.value.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
-        }.sorted { $0.deposit.count > $1.deposit.count }
+        part.structures.sort { $0.id < $1.id }
+        part.creatures = creatures.sorted { $0.id < $1.id }
+        part.places = PlaceScanner.markers(from: points, in: reader.dimension.id) + spawners.map(PlaceMarker.init)
+        part.biomeAreas = BiomeScanner.areas(surface: part.biomes, caves: part.caveBiomes)
+        part.blocks.sort { $0.deposit.count > $1.deposit.count }
         return part
     }
 }
@@ -165,7 +193,7 @@ nonisolated enum WorldSearch {
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }
             results[query] = search(query, in: request.index, players: request.players) {
-                request.playerNames[$0.uuid] ?? $0.uuid.uuidString
+                request.playerNames[$0.uuid] ?? PlayerPresentation.label(of: $0, singleplayerUUID: nil)
             }
         }
         return results
@@ -182,11 +210,11 @@ nonisolated enum WorldSearch {
         switch filter {
         case .structure: hits = layerHits(index.structures, words: words, y: \.y) { .structure($0.group) }
         case .place: hits = layerHits(index.places, words: words, y: { $0.y }) { .place($0.group) }
-        case .creature: hits = layerHits(index.creatures, words: words, y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+        case .creature: hits = layerHits(index.creatures, words: words, y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words,
-                                   y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+                                   y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words,
-                                        y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+                                        y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .trade: hits = tradeHits(index.creatures, words: words)
         case .block: hits = blockHits(index, words: words)
         case .biome:
@@ -232,14 +260,13 @@ nonisolated enum WorldSearch {
             guard let villager = entry.value.creature.villager else { return nil }
             let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
             guard !matching.isEmpty else { return nil }
-            let job = villager.profession.flatMap { $0 == "minecraft:none" ? nil : ReadableName.from($0) } ?? entry.value.name
-            let title = villager.level.map { "\(job), \(TradeText.levelName($0))" } ?? job
+            let title = VillagerText.description(villager) ?? entry.value.name
             let detail = matching.map { trade in
                 let offer = String(localized: "\(TradeText.describe(trade.sell)) for \(TradeText.cost(of: trade))")
                 return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
             }.joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group)),
-                             dimension: entry.dimension, position: entry.value.position, y: Int(entry.value.creature.y.rounded(.down)),
+                             dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: title, detail: detail, count: matching.count)
         }
     }
@@ -294,7 +321,7 @@ nonisolated enum WorldSearch {
 
     /// Places matching `query`, most items first. `name(of:)` names players.
     static func search(_ query: String, in index: SearchIndex, players: [PlayerInfo],
-                       name: (PlayerInfo) -> String) -> [SearchHit] {
+                       name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
         if let (filter, rest) = LayerFilter.parse(query) {
             return search(filter, words: words(in: rest), in: index)
         }
@@ -304,14 +331,15 @@ nonisolated enum WorldSearch {
         for player in players {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
+            let location = PlayerPresentation.position(of: player)
             if let found = summary(of: player.inventory + player.equipment.values, words: words) {
-                hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: player.position?.dimension,
-                                      position: player.position.map { CGPoint(x: $0.x, y: $0.z) }, y: player.position.map { Int($0.y.rounded(.down)) },
-                                      title: String(localized: "\(who)’s inventory"), detail: found.text, count: found.count))
+                hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
+                                      position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
+                                      title: who.inventory, detail: found.text, count: found.count))
             }
             if let found = summary(of: player.enderChest, words: words) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", source: .enderChest(player.uuid), dimension: nil, position: nil, y: nil,
-                                      title: String(localized: "\(who)’s ender chest"), detail: found.text, count: found.count))
+                                      title: who.enderChest, detail: found.text, count: found.count))
             }
         }
         for entry in index.containers {
@@ -321,7 +349,7 @@ nonisolated enum WorldSearch {
             let title = ItemAppearance.label(kind: container.kind, customName: container.customName)
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
-                                  position: CGPoint(x: Double(container.x) + 0.5, y: Double(container.z) + 0.5), y: container.y,
+                                  position: MapCoordinates.center(of: CGPoint(x: container.x, y: container.z)), y: container.y,
                                   title: title, detail: found.text, count: found.count))
         }
         for entry in index.signs {
@@ -331,7 +359,7 @@ nonisolated enum WorldSearch {
             let lines = (sign.front + sign.back).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             guard contains(lines.joined(separator: " "), words: words) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(sign.kind)@\(sign.x),\(sign.y),\(sign.z)", source: .sign,
-                                  dimension: entry.dimension, position: CGPoint(x: Double(sign.x) + 0.5, y: Double(sign.z) + 0.5),
+                                  dimension: entry.dimension, position: MapCoordinates.center(of: CGPoint(x: sign.x, y: sign.z)),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
         }
         // Named creatures by name; `creature:` and `pet:` find the rest.
@@ -340,7 +368,7 @@ nonisolated enum WorldSearch {
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group)),
-                                  dimension: entry.dimension, position: entry.value.position, y: Int(creature.y.rounded(.down)),
+                                  dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(creature.y),
                                   title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
