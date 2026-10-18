@@ -214,11 +214,14 @@ import Testing
         try await withFixture { f in
             let invalid = f.start(f.url.appendingPathComponent("dimensions"))
             await #expect(throws: WorldOpenError.notADimension) { try await invalid.value }
-            let session = try f.attach(try await f.read(f.documents[0]))
+            // Reuse the same reader across the phase change, as well as the same document owner.
+            let reader = WorldDocument.Reader(folders: f.model.worldFolders, model: f.model,
+                                               reuseOpenWorld: { f.sessions.isEmpty })
+            guard case .dimension(let initial) = try await reader.readContents(from: f.documents[0]) else { Issue.record("Missing dimension"); return }
+            let session = try f.attach(initial)
             #expect(await f.probe.count == 2)
             try f.writePlayer(health: 9)
-            let freshReader = WorldDocument.Reader(folders: f.model.worldFolders, model: f.model, reuseOpenWorld: false)
-            guard case .dimension(let fresh) = try await freshReader.readContents(from: f.documents[0]),
+            guard case .dimension(let fresh) = try await reader.readContents(from: f.documents[0]),
                   case .snapshot(let snapshot) = fresh.source else { Issue.record("Reread reused initial resources"); return }
             #expect(snapshot.players.first?.health == 9 && snapshot.access !== session.resources.access)
             fresh.discardUnused()

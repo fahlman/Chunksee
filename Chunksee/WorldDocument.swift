@@ -217,7 +217,7 @@ final class WorldDocument: ReadableDocument {
     nonisolated struct Reader: DocumentReader {
         let folders: WorldFolders
         var model: AppModel?
-        var reuseOpenWorld = true
+        var reuseOpenWorld: @MainActor @Sendable () -> Bool = { true }
 
         /// A world folder isn't itself a document: it holds one for each dimension. Reading it
         /// remembers the world's access and lists those, for its window to open instead.
@@ -234,7 +234,7 @@ final class WorldDocument: ReadableDocument {
                 folders.remember(source)
                 return .world(dimensions: world.dimensions().map { $0.documentURL(inWorldAt: source) })
             }
-            if reuseOpenWorld, let model {
+            if let model, await reuseOpenWorld() {
                 guard let worldURL = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
                 if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: worldURL) {
                     do { try Task.checkCancellation() }
@@ -255,7 +255,10 @@ final class WorldDocument: ReadableDocument {
     private(set) var worldDimensions: [URL]?
 
     func reader(configuration: sending ReadConfiguration) -> sending Reader {
-        Reader(folders: model.worldFolders, model: model, reuseOpenWorld: session == nil)
+        Reader(folders: model.worldFolders, model: model, reuseOpenWorld: { [weak self] in
+            guard let self else { return false }
+            return self.session == nil
+        })
     }
 
     func apply(snapshot: sending FolderSnapshot, previous: sending FolderSnapshot?) async throws {
