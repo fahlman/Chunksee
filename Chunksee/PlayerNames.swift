@@ -34,6 +34,13 @@ nonisolated struct MojangProfiles: Sendable {
     }
 }
 
+/// Inputs that require another name-source request; movement and inspector values do not.
+struct PlayerNameRequest: Equatable {
+    let folder: URL?
+    let online: Bool
+    let players: Set<UUID>
+}
+
 /// Player names shared by documents. Each source owns its tasks and invalidates pending results
 /// when the user changes permission, clears names, or chooses another local folder.
 @Observable
@@ -85,6 +92,17 @@ final class PlayerNames {
 
     func name(for uuid: UUID) -> String? { local[uuid] ?? online[uuid] }
 
+    func request(for players: [PlayerInfo]) -> PlayerNameRequest {
+        PlayerNameRequest(folder: minecraftFolder, online: looksUpOnline, players: Set(players.map(\.uuid)))
+    }
+
+    func load(_ request: PlayerNameRequest) async {
+        guard request.folder == minecraftFolder, request.online == looksUpOnline, !Task.isCancelled else { return }
+        await reloadLocal()
+        guard request.folder == minecraftFolder, request.online == looksUpOnline, !Task.isCancelled else { return }
+        await lookUp(request.players.sorted { $0.uuidString < $1.uuidString })
+    }
+
     func chooseMinecraftFolder(_ url: URL) async {
         forgetMinecraftFolder()
         folderAccess = WorldReadAccess(url)
@@ -118,22 +136,25 @@ final class PlayerNames {
         minecraftFolder = url
     }
 
-    /// Reads off the main actor, keeping the chosen folder's access through cancellation.
+    /// Pending reads belong to the shared source, including when a requesting view disappears.
+    /// Only overlapping requests coalesce; a subsequent reload still rereads the local caches.
     func reloadLocal() async {
-        guard let folder = minecraftFolder, let access = folderAccess else { return }
-        localTask?.cancel()
+        guard let folder = minecraftFolder, let access = folderAccess, !Task.isCancelled else { return }
+        if let pending = localTask {
+            await pending.value
+            return
+        }
         localGeneration = UUID()
         let id = localGeneration, read = readCaches
         let task = Task { [weak self] in
+            defer { if self?.localGeneration == id { self?.localTask = nil } }
             let names = await read(folder)
             withExtendedLifetime(access) {}
             guard !Task.isCancelled, let self, self.localGeneration == id, self.minecraftFolder == folder else { return }
             self.local = names
         }
         localTask = task
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: { task.cancel() }
+        await task.value
     }
 
     @concurrent
@@ -166,9 +187,9 @@ final class PlayerNames {
             }
         }
         onlineTasks[id] = task
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: { task.cancel() }
+        // Another document may already have skipped this UUID as attempted. Its name must still
+        // arrive if this caller closes; permission/source changes cancel through the owner.
+        await task.value
     }
 
     private func cancelOnline() {

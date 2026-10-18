@@ -13,6 +13,7 @@ struct WorldView: View {
         @Bindable var visibility = session.visibility
         @Bindable var search = session.search
         @Bindable var heatMap = session.heatMap
+        let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
             ScrollViewReader { proxy in
                 List(selection: sidebarSelection) {
@@ -96,9 +97,8 @@ struct WorldView: View {
                 }
                 // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
                 // whenever either setting changes.
-                .task(id: NameSources(folder: session.names.minecraftFolder, online: session.names.looksUpOnline)) {
-                    await session.names.reloadLocal()
-                    await session.names.lookUp(session.players.filter(PlayerPresentation.isMappable).map(\.uuid))
+                .task(id: nameRequest) {
+                    await session.names.load(nameRequest)
                 }
             }
         } detail: {
@@ -288,11 +288,6 @@ private struct WorldInspector: View {
             EmptyView()
         }
     }
-}
-
-private struct NameSources: Equatable {
-    var folder: URL?
-    var online: Bool
 }
 
 /// Places matching the search, most items first. Choosing one shows it on the map.

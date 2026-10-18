@@ -198,6 +198,13 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
+`PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
+share one pending read; later reloads still reread the source. Closing one caller does not cancel
+globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
+still cancel/invalidate their sources. The view request follows folder, online permission and the
+known player UUID set, including players without reliable coordinates, so new players trigger lookup
+without reloading for every position change. Online remains off by default and permission-gated.
+
 Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining
 the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
 biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
