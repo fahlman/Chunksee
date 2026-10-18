@@ -89,7 +89,10 @@ import Testing
         #expect(target.map?.viewport.center == pet.position && target.map?.viewport.scale == 4)
         #expect(target.visibility.creatures.contains(.pet))
         target.goBack()
-        #expect(target.map?.viewport == targetInitial)
+        #expect(target.map?.viewport == targetInitial && !target.navigation.canGoBack)
+        #expect(!source.navigation.canGoBack)
+        target.goForward()
+        #expect(target.map?.viewport.center == pet.position && !target.navigation.canGoForward)
         source.close(); target.close()
         await source.waitUntilClosed(); await target.waitUntilClosed()
     }

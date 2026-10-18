@@ -113,6 +113,7 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
+                    .onChange(of: map.depth) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session] in session.renderMapImage() }])
                     // Remember the position a second after the map stops moving.
@@ -214,9 +215,9 @@ private struct PlayerRow: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "person.fill")
+                Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
-            .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
+            .opacity(canFocus && !session.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: Binding {
@@ -248,8 +249,8 @@ private struct PlayerRow: View {
             if let world = player.bukkitWorldName { return String(localized: "May be in another world, “\(world)”") }
             return String(localized: "May be in another world")
         }
-        guard let position = player.position else { return String(localized: "Location unknown") }
-        return session.dimensionName(position.dimension) + "  " + Coordinates.text(x: position.x, z: position.z)
+        guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
+        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.dimensionName(position.dimension))
     }
 
     private var help: String {

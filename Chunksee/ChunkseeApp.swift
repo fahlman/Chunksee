@@ -4,6 +4,7 @@ import SwiftUI
 struct ChunkseeApp: App {
     @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
     @State private var model = AppModel()
+    @FocusedValue(\.worldSession) private var focusedSession
 
     var body: some Scene {
         DocumentGroup { (document: WorldDocument) in
@@ -14,6 +15,9 @@ struct ChunkseeApp: App {
         }
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 1200, height: 800)
+        .onChange(of: focusedSession?.viewID) {
+            focusedSession?.becameActive(isTerminating: documentMenus.isTerminating)
+        }
         .commands {
             CommandGroup(replacing: .newItem) {}
             SidebarCommands()

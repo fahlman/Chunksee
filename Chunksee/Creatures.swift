@@ -61,7 +61,8 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     }
 
     init?(_ creature: Creature, dimension: String) {
-        guard let group = CreatureGroup.group(for: creature) else { return nil }
+        guard let group = CreatureGroup.group(for: creature),
+              Coordinates.canLocate(x: creature.x, y: creature.y, z: creature.z) else { return nil }
         self.creature = creature
         self.group = group
         self.dimension = dimension
@@ -90,7 +91,7 @@ struct CreatureDetailView: View {
             Section {
                 LabeledContent("Kind", value: ReadableName.from(marker.creature.id))
                 LabeledContent("Position") {
-                    Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
+                    Text(Coordinates.text(marker.position, y: marker.creature.y))
                         .monospacedDigit()
                 }
                 CreatureHealthRows(creature: marker.creature)

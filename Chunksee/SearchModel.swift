@@ -7,7 +7,7 @@ nonisolated struct SearchRequest: Sendable {
     var queries: [String]
     var index: SearchIndex
     var players: [PlayerInfo]
-    var playerNames: [UUID: String]
+    var playerNames: [UUID: PlayerPresentation.Name]
 }
 
 /// The world index and published query results. Views read snapshots; they never scan a world.
@@ -45,7 +45,7 @@ final class SearchModel {
     @ObservationIgnored private var isClosed = false
 
     private struct Sources: Equatable {
-        var names: [UUID: String]
+        var names: [UUID: PlayerPresentation.Name]
         var revision: Int
         var indexRevision: Int
     }
@@ -91,7 +91,7 @@ final class SearchModel {
             !$0.trimmingCharacters(in: .whitespaces).isEmpty
         })
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
-            ($0.uuid, PlayerPresentation.name(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
+            ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
         let next = Sources(names: playerNames, revision: revision, indexRevision: indexStore.revision)
         if next != sources {

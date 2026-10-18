@@ -31,12 +31,67 @@ import Testing
             "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)]),
             "EnderItems": .list([item("minecraft:diamond", 5)]),
         ]))
-        let hits = WorldSearch.search("diamond", in: index, players: [player]) { _ in "fahlman" }
+        let hits = WorldSearch.search("diamond", in: index, players: [player]) { _ in .named("fahlman") }
         #expect(hits.map(\.count) == [67, 5])   // chest (3 + 64 in the shulker box), then the ender chest
         #expect(hits[0].title == "Chest" && hits[0].detail == "67 Diamond")
         #expect(hits[0].position == CGPoint(x: 10.5, y: -4.5))
         #expect(hits[1].title == "fahlman’s ender chest" && hits[1].position == nil)
-        #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in "" }.isEmpty)
+        #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in .named("") }.isEmpty)
+    }
+
+    @Test func anInventoryFromAnotherServerWorldRemainsSearchableWithoutAMapPin() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let serverID = UUID(), localID = UUID()
+        func player(_ uuid: UUID, server: Bool) -> PlayerInfo {
+            var fields: [String: NBT] = [
+                "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(-8.7), .double(63.9), .double(4.6)]),
+                "Inventory": .list([item("minecraft:diamond", 3)]),
+            ]
+            if server { fields["SpawnWorld"] = .string("some other world") }
+            return PlayerInfo(uuid: uuid, nbt: .compound(fields))
+        }
+        let original = try await WorldSnapshot.read(url)
+        let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
+                                     dimensionDocuments: original.dimensionDocuments, players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
+                                   savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        session.search.text = "diamond"
+        await session.search.waitForSearch()
+        let server = try #require(session.search.results.first { $0.source == .inventory(serverID) })
+        let local = try #require(session.search.results.first { $0.source == .inventory(localID) })
+        #expect(server.position == nil && server.dimension == nil && server.y == nil && server.count == 3)
+        #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
+        let viewport = session.map?.viewport
+        session.choose(.hit(query: session.search.text, id: server.id))
+        #expect(session.map?.viewport == viewport)
+        let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
+                                                            size: CGSize(width: 400, height: 300))
+        #expect(!visible.contains { $0.id == "search-" + server.id })
+        #expect(visible.contains { $0.id == "search-" + local.id })
+        session.close()
+        await session.waitUntilClosed()
+    }
+
+    @Test func personalInventoryPhrasesChangeWhenAnAccountNamedYouBecomesKnown() async {
+        let uuid = UUID()
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"You"}"#.utf8), 200) }))
+        names.looksUpOnline = true
+        let player = PlayerInfo(uuid: uuid, nbt: .compound([
+            "Inventory": .list([item("minecraft:diamond", 1)]), "EnderItems": .list([item("minecraft:diamond", 2)]),
+        ]))
+        let search = SearchModel(readers: [], players: [player], names: names, singleplayerUUID: uuid,
+                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults))
+        search.text = "diamond"
+        await search.waitForSearch()
+        #expect(Set(search.results.map(\.title)) == ["Your inventory", "Your ender chest"])
+        await names.lookUp([uuid])
+        await search.waitForSearch()
+        #expect(Set(search.results.map(\.title)) == ["You’s inventory", "You’s ender chest"])
+        search.cancel()
+        await search.waitForTasks()
     }
 
     @Test func storageTotalsCountNestedItemsOncePerContainer() {
@@ -87,10 +142,10 @@ import Testing
             ChunkDeposit(chunk: ChunkCoordinate(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
         }.sorted { $0.deposit.count > $1.deposit.count }
         let index = SearchIndex.overworld(DimensionIndex(blocks: deposits))
-        let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in "" }
+        let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }
         #expect(hits.count == WorldSearch.blockResultLimit)
         #expect(hits.first?.count == WorldSearch.blockResultLimit + 500 && hits.last?.count == 501)
-        #expect(WorldSearch.search("block:emerald", in: index, players: []) { _ in "" }.isEmpty)
+        #expect(WorldSearch.search("block:emerald", in: index, players: []) { _ in .named("") }.isEmpty)
     }
 
     @Test func signsAndBooksMatchTheirText() throws {
@@ -107,12 +162,12 @@ import Testing
         let index = SearchIndex.overworld(DimensionIndex(containers: ItemContainer.containers(inChunk: chunk),
                                 signs: Sign.signs(inChunk: chunk)))
         // A phrase can run across a sign's lines and onto its back.
-        let hits = WorldSearch.search("desert village", in: index, players: []) { _ in "" }
+        let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
         #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
         #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")
         #expect(hits.first { $0.title == "Lectern" }?.detail == "1 “Travels” by fahlman")
-        #expect(WorldSearch.search("written book", in: index, players: []) { _ in "" }.map(\.title) == ["Lectern"])
-        #expect(WorldSearch.search("exit", in: index, players: []) { _ in "" }.map(\.title) == ["Hanging Sign"])
+        #expect(WorldSearch.search("written book", in: index, players: []) { _ in .named("") }.map(\.title) == ["Lectern"])
+        #expect(WorldSearch.search("exit", in: index, players: []) { _ in .named("") }.map(\.title) == ["Hanging Sign"])
     }
 
     @Test func sessionIndexesAndSearchesAWorld() async throws {
@@ -195,24 +250,30 @@ import Testing
 }
 
 @Suite struct RememberedViewTests {
-    @Test func reopensInTheLastDimensionAtTheSamePlace() async throws {
+    @Test func reopensEachDocumentAtItsOwnViewAndRemembersTheFrontDimension() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let nether = WorldSession(resources: first.resources, dimensionID: "minecraft:the_nether")
         first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
-        first.selectedDimensionID = "minecraft:the_nether"   // leaving the Overworld remembers it
-        first.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
-        first.close()
+        first.becameActive()
+        nether.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
+        nether.becameActive()
+        first.close(); nether.close()
+        await first.waitUntilClosed(); await nether.waitUntilClosed()
 
         let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        defer { second.close() }
+        let overworld = WorldSession(resources: second.resources, dimensionID: "minecraft:overworld")
+        defer { second.close(); overworld.close() }
         #expect(second.selectedDimensionID == "minecraft:the_nether")
         #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 7, y: 8), scale: 4))
-        second.selectedDimensionID = "minecraft:overworld"
-        #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        #expect(overworld.selectedDimensionID == "minecraft:overworld")
+        #expect(overworld.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        second.close(); overworld.close()
+        await second.waitUntilClosed(); await overworld.waitUntilClosed()
     }
 }
 
@@ -240,9 +301,9 @@ import Testing
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
         let index = SearchIndex.overworld(DimensionIndex(structures: [village],
-                                places: [bed],
-                                creatures: [wolf, cat, farmer]))
-        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in "" } }
+                                placePoints: PointMarkers([bed]),
+                                creaturePoints: PointMarkers([wolf, cat, farmer])))
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         #expect(search("structure:village").map(\.detail) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
         #expect(search("structure:village").first?.source == .layer(.structure(.village)))
@@ -271,8 +332,8 @@ import Testing
             ])]),
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
-        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in "" } }
+        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian, Master"])
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
@@ -296,16 +357,16 @@ import Testing
     }
 
     @Test func biomePrefixSearchesBiomeAreasLargestFirst() {
-        let hits = WorldSearch.search("biome:pale garden", in: index(), players: []) { _ in "" }
+        let hits = WorldSearch.search("biome:pale garden", in: index(), players: []) { _ in .named("") }
         #expect(hits.map(\.count) == [6, 4])
         #expect(hits.allSatisfy { $0.detail == "Pale Garden" && $0.source == .layer(.biome(BiomeGroup(id: "minecraft:pale_garden"))) })
         #expect(hits.first?.title == "6 chunks")
         // The id works too, the prefix ignores case, and other searches don't list biomes.
-        #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in "" }.count == 2)
-        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in "" }.map(\.detail) == ["Plains"])
-        #expect(WorldSearch.search("pale garden", in: index(), players: []) { _ in "" }.isEmpty)
+        #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in .named("") }.count == 2)
+        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in .named("") }.map(\.detail) == ["Plains"])
+        #expect(WorldSearch.search("pale garden", in: index(), players: []) { _ in .named("") }.isEmpty)
         // A filter on its own lists everything of its kind.
-        #expect(WorldSearch.search("biome:", in: index(), players: []) { _ in "" }.count == 3)
+        #expect(WorldSearch.search("biome:", in: index(), players: []) { _ in .named("") }.count == 3)
     }
 
     @Test func choosingABiomeResultOutlinesTheBiome() async throws {

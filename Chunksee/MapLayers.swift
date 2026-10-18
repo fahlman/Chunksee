@@ -114,7 +114,7 @@ struct VisibilityButton: View {
     }
 }
 
-/// Which layers and players the map shows, remembered between launches in `defaults`.
+/// One world dimension's layer controls, remembered between launches in `defaults`.
 @Observable
 final class LayerVisibility {
     var structures: Set<StructureGroup> { didSet { save(structures.map(\.rawValue), Keys.structures) } }
@@ -124,9 +124,11 @@ final class LayerVisibility {
     var biomes: Set<BiomeGroup> { didSet { save(biomes.map(\.id), Keys.biomes) } }
     var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
     /// Chunk and region lines; off at first.
-    var showsGrid: Bool { didSet { defaults.set(showsGrid, forKey: Keys.showsGrid) } }
+    var showsGrid: Bool { didSet { saveValue(showsGrid, Keys.showsGrid) } }
 
     private let defaults: UserDefaults
+    private let worldKey: String
+    private let dimension: String?
 
     private enum Keys {
         static let structures = "shownStructureGroups"
@@ -135,23 +137,73 @@ final class LayerVisibility {
         static let biomes = "shownBiomeGroups"
         static let hiddenPlayers = "hiddenPlayers"
         static let showsGrid = "showsGrid"
+        static let timeSpent = "showsTimeSpent"
+        static let legacy = [structures, places, creatures, biomes, hiddenPlayers, showsGrid]
     }
 
-    init(defaults: UserDefaults) {
+    init(world: URL, dimension: String?, defaults: UserDefaults) {
         self.defaults = defaults
+        let worldKey = Self.key(for: world)
+        self.worldKey = worldKey
+        self.dimension = dimension
+        let previous = dimension.flatMap { defaults.dictionary(forKey: worldKey)?[$0] as? [String: Any] }
+        // The previous app-wide choices seed a tab once; tab changes never write those keys.
+        let values = previous ?? Dictionary(uniqueKeysWithValues: Keys.legacy.compactMap { key in
+            defaults.object(forKey: key).map { (key, $0) }
+        })
         func saved<Group: RawRepresentable & CaseIterable & Sendable>(_ key: String, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
-            guard let names = defaults.stringArray(forKey: key) else { return Set(Group.allCases.filter(isShown)) }
+            guard let names = values[key] as? [String] else { return Set(Group.allCases.filter(isShown)) }
             return Set(names.compactMap(Group.init(rawValue:)))
         }
         structures = saved(Keys.structures, default: \.isShownByDefault)
         places = saved(Keys.places, default: \.isShownByDefault)
         creatures = saved(Keys.creatures, default: \.isShownByDefault)
-        biomes = Set((defaults.stringArray(forKey: Keys.biomes) ?? []).map(BiomeGroup.init(id:)))
-        hiddenPlayers = Set((defaults.stringArray(forKey: Keys.hiddenPlayers) ?? []).compactMap(UUID.init(uuidString:)))
-        showsGrid = defaults.bool(forKey: Keys.showsGrid)
+        biomes = Set((values[Keys.biomes] as? [String] ?? []).map(BiomeGroup.init(id:)))
+        hiddenPlayers = Set((values[Keys.hiddenPlayers] as? [String] ?? []).compactMap(UUID.init(uuidString:)))
+        showsGrid = values[Keys.showsGrid] as? Bool ?? false
+        if previous == nil {
+            write([
+                Keys.structures: structures.map(\.rawValue).sorted(), Keys.places: places.map(\.rawValue).sorted(),
+                Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
+                Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
+                Keys.timeSpent: false,
+            ])
+        }
     }
 
-    private func save(_ names: [String], _ key: String) {
-        defaults.set(names.sorted(), forKey: key)
+    private static func key(for world: URL) -> String { "mapLayers." + world.standardizedFileURL.path }
+
+    private var stored: [String: Any] {
+        dimension.flatMap { defaults.dictionary(forKey: worldKey)?[$0] as? [String: Any] } ?? [:]
+    }
+
+    /// HeatMapLayer owns the live flag; these accessors only restore and persist its value.
+    var rememberedTimeSpent: Bool { stored[Keys.timeSpent] as? Bool ?? false }
+    func rememberTimeSpent(_ shown: Bool) { saveValue(shown, Keys.timeSpent) }
+
+    private func save(_ names: [String], _ key: String) { saveValue(names.sorted(), key) }
+
+    private func saveValue(_ value: Any, _ key: String) {
+        var values = stored
+        values[key] = value
+        write(values)
+    }
+
+    private func write(_ values: [String: Any]) {
+        guard let dimension else { return }
+        // Read the current dictionary so another dimension's changes are retained.
+        var dimensions = defaults.dictionary(forKey: worldKey) ?? [:]
+        dimensions[dimension] = values
+        defaults.set(dimensions, forKey: worldKey)
+    }
+
+    /// A native move keeps every dimension's settings under the moving world's new URL.
+    func relocate(to world: URL) {
+        let destination = Self.key(for: world)
+        guard destination != worldKey, let moving = defaults.dictionary(forKey: worldKey) else { return }
+        var merged = defaults.dictionary(forKey: destination) ?? [:]
+        merged.merge(moving) { _, moving in moving }
+        defaults.set(merged, forKey: destination)
+        defaults.removeObject(forKey: worldKey)
     }
 }
