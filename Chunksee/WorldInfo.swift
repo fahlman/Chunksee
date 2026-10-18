@@ -120,7 +120,7 @@ struct WorldInfoView: View {
             }
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
-                    LabeledContent(dimension.displayName, value: borderDescription(details.borders[dimension.id]))
+                    LabeledContent(session.dimensionName(dimension.id), value: borderDescription(details.borders[dimension.id]))
                 }
             }
             Section("Mods and Data Packs") {
