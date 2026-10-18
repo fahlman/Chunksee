@@ -56,7 +56,7 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
     var name: String {
         if let name = creature.customName { return name }
-        if let job = creature.villager?.profession, job != "minecraft:none" { return ReadableName.from(job) }
+        if let villager = creature.villager, let job = VillagerText.jobName(villager) { return job }
         return ReadableName.from(creature.id)
     }
 
@@ -99,8 +99,8 @@ struct CreatureDetailView: View {
                     PetDetailRows(creature: marker.creature)
                 }
                 if let villager = marker.creature.villager {
-                    if let job = villager.profession, job != "minecraft:none" {
-                        LabeledContent("Job", value: "\(ReadableName.from(job)), \(TradeText.levelName(villager.level))")
+                    if let job = VillagerText.description(villager) {
+                        LabeledContent("Job", value: job)
                     } else if marker.creature.id == "minecraft:villager" {
                         LabeledContent("Job", value: String(localized: "None yet"))
                     }
@@ -158,14 +158,4 @@ nonisolated enum TradeText {
         return ReadableName.from(id) + " " + (level <= numerals.count ? numerals[level - 1] : String(level))
     }
 
-    /// The game's names for villager levels 1–5.
-    static func levelName(_ level: Int?) -> String {
-        switch level {
-        case 2: String(localized: "Apprentice")
-        case 3: String(localized: "Journeyman")
-        case 4: String(localized: "Expert")
-        case 5: String(localized: "Master")
-        default: String(localized: "Novice")
-        }
-    }
 }

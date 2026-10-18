@@ -115,9 +115,10 @@ struct PlayerDetailView: View {
                     LabeledContent("Last Saved") { Text(saved, format: .dateTime.year().month().day().hour().minute()) }
                 }
             } header: {
-                Text(session.name(of: player)).font(.headline)
+                Label(session.name(of: player), systemImage: "person.fill").font(.headline)
             }
-            if PlayerPresentation.isMappable(player) {
+            if PlayerPresentation.isMappable(player),
+               player.position != nil || player.lastDeath != nil || player.respawn != nil {
                 Section("Locations") {
                     if let location = player.position { locationButton("Last Position", location) }
                     if let location = player.lastDeath { locationButton("Last Death", location) }

@@ -65,7 +65,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 to coordinates, the world spawn or another dimension and saves the current search. Choose
 **Navigate ▸ Go to Coordinates…** (**⌘⇧G**) and enter X and Z to center the current dimension's
 map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
-**Locations** offers the last position, last death and respawn point. VoiceOver can also explore
+**Locations** offers the saved last position, last death and respawn point when available. VoiceOver can also explore
 the individual visible map locations and center the map on them.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
