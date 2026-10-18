@@ -72,8 +72,8 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | File | Owns |
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
-| `AppModel.swift` | App-wide player names and saved searches, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance and jumps waiting for a dimension to open; closing its last dimension drains reads and maintenance before relinquishing access |
+| `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
+| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
@@ -118,6 +118,27 @@ route only through the native document opener; an unavailable opener cannot repl
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,
 ruler and history only when the dimension identity matches. No in-session dimension switching
 or retired replacement maps are kept.
+
+Initial dimension readers share AppModel's pending full-world metadata read, then the live
+WorldResources. Every returned snapshot has its own WorldOpening handle; it attaches a session
+before finishing that handle, or finishes on discard/deinit. Closing a tab cannot end access needed
+by a pending sibling. The pending task holds an opening until its awaiters receive their own;
+the last canceled requester cancels it, and generations protect a replacement read from old
+completion. There is no separate completed metadata cache or timeout. Closing all sessions and
+openings drains the world's work, and reopening rereads it. File access is never released through
+a sibling's raw token. Metadata and resolved dimension-document paths are read off-main.
+Existing-document rereads and native moves keep fresh coordinated reads. An unknown path in a
+live catalog also goes through fresh validation. A fresh snapshot can add newly created dimensions
+to the open world's catalog without replacing existing readers, maps or tab state. WorldIndexStore
+owns the reader collection; WorldResources derives its dimensions/readers from it and retains the
+resolved document-path lookup. Additions queue a complete pass behind an unfinished one, and last
+world closure cancels/drains all readers. Discovery happens when a dimension is opened or freshly
+validated; this does not add automatic directory discovery to the navigation menu or remove
+already-open dimensions. DocumentGroup still owns document/window behavior.
+The portal inspector only shows loading while the index has an actual pending reader for its
+matching target dimension and no published portal result. Missing/unsupported/closed targets show
+an unavailable message, without fabricating an empty list. Known-empty indexed targets retain
+ChunkseeKit's normal prediction. The prediction footer appears only with an actual link result.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.

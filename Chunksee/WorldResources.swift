@@ -2,26 +2,50 @@ import Foundation
 import ChunkseeKit
 import Observation
 
+/// A document snapshot owns its own opening, never another document's raw file-access token.
+/// Finishing after attachment leaves the session as owner; dropping an unused snapshot can close
+/// the world once its other openings and sessions are gone.
+final class WorldOpening {
+    private(set) var resources: WorldResources?
+    private let id: UUID
+
+    fileprivate init(resources: WorldResources, id: UUID) {
+        self.resources = resources
+        self.id = id
+    }
+
+    func finish() {
+        guard let resources else { return }
+        self.resources = nil
+        resources.finishOpening(id)
+    }
+
+    isolated deinit { finish() }
+}
+
 /// One world's access and reads, shared by its open dimension documents, each of which owns only
 /// its presentation. Closing the last of them closes the world.
 @Observable
 final class WorldResources {
     let access: WorldReadAccess
     let world: World
-    let dimensions: [ChunkseeKit.Dimension]
+    var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
+    private(set) var dimensionDocuments: [String: String]
     let details: WorldDetails
     let names: PlayerNames
     let savedSearches: SavedSearches
     let savedPlaces: SavedPlaces
-    let readers: [String: RegionReader]
+    var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
     let views: RememberedViews
     let defaults: UserDefaults
     let cacheRoot: URL?
+    private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData
     private(set) var players: [PlayerInfo]
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
+    @ObservationIgnored private var openings: Set<UUID> = []
     /// Jumps waiting for a dimension's document to open.
     @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
     @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
@@ -59,28 +83,44 @@ final class WorldResources {
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
         world = snapshot.world
-        dimensions = snapshot.dimensions
+        dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
         players = snapshot.players
         self.names = names
         self.savedSearches = savedSearches
         self.defaults = defaults
         self.cacheRoot = cacheRoot
+        self.readRegion = readRegion
         views = RememberedViews(world: snapshot.access.url, defaults: defaults)
         savedPlaces = SavedPlaces(world: snapshot.access.url, defaults: defaults)
-        readers = Dictionary(uniqueKeysWithValues: snapshot.dimensions.map { dimension in
-            (dimension.id, RegionReader(dimension: dimension,
-                                       cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                                       read: readRegion))
-        })
+        let readers = snapshot.dimensions.map { dimension in
+            RegionReader(dimension: dimension,
+                         cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
+                         read: readRegion)
+        }
         let last = views.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: Array(readers.values), firstDimension: firstDimension)
+        index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
         }
+    }
+
+    /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
+    /// The snapshot's own access remains the caller's; this world keeps its original root access.
+    func includeDimensions(from snapshot: WorldSnapshot) {
+        guard !isClosed else { return }
+        let known = Set(dimensions.map(\.id))
+        let added = snapshot.dimensions.filter { !known.contains($0.id) }
+        guard !added.isEmpty else { return }
+        let newIDs = Set(added.map(\.id))
+        dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
+        index.include(added.map { dimension in
+            RegionReader(dimension: dimension,
+                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot), read: readRegion)
+        }, firstDimension: activeDimensionID)
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
@@ -93,6 +133,23 @@ final class WorldResources {
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
+    }
+
+    /// An initial document read keeps this world's access until it attaches a view or is dropped.
+    func opening() throws -> WorldOpening {
+        guard !isClosed else { throw CancellationError() }
+        let id = UUID()
+        openings.insert(id)
+        return WorldOpening(resources: self, id: id)
+    }
+
+    fileprivate func finishOpening(_ id: UUID) {
+        guard openings.remove(id) != nil else { return }
+        closeIfUnused()
+    }
+
+    private func closeIfUnused() {
+        if openings.isEmpty && sessions.values.allSatisfy({ $0.value == nil }) { close() }
     }
 
     /// Performs a jump in a dimension's view now if it's open, or else once its document opens.
@@ -126,12 +183,13 @@ final class WorldResources {
             await task.value
             self?.retiringViews[id] = nil
         }
-        if sessions.values.allSatisfy({ $0.value == nil }) { close() }
+        closeIfUnused()
     }
 
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        openings = []
         pendingActions = [:]
         watcher?.stop()
         cacheMaintenance?.cancel()
