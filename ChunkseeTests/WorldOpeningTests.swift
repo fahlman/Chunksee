@@ -98,7 +98,7 @@ import Testing
     private func waitUntil(_ predicate: @escaping @MainActor @Sendable () -> Bool) async {
         if predicate() { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            @MainActor @Sendable func observe() {
+            @MainActor func observe() {
                 if predicate() { continuation.resume(); return }
                 // Both check and registration are synchronous on the owner's actor. A true
                 // predicate must not register another observer after resuming the continuation.
@@ -206,7 +206,7 @@ import Testing
             unused.discardUnused()
             #expect(resource.isClosed)
             await resource.waitUntilClosed()
-            func readAndDrop() async throws -> WorldResources {
+            @MainActor func readAndDrop() async throws -> WorldResources {
                 guard case .dimension(let snapshot) = try await f.reader.readContents(from: f.documents[1]),
                       case .opening(let opening) = snapshot.source, let resource = opening.resources else { throw WorldOpenError.unreadable }
                 return resource
@@ -239,12 +239,32 @@ import Testing
         }
     }
 
-    @Test func aWorldFolderStillRedirectsToItsNativeDocumentsWithoutStartingMetadataWork() async throws {
+    @Test func aWorldFolderStillRedirectsToItsNativeDocumentsWithoutStartingAFullWorldRead() async throws {
         try await withFixture { f in
             guard case .world(let urls) = try await f.reader.readContents(from: f.url) else { Issue.record("World did not redirect"); return }
             #expect(Set(urls) == Set(f.documents))
             #expect(await f.probe.count == 0 && f.model.openingRequestCount == 0)
         }
+    }
+
+    @Test func differentWorldFoldersKeepSeparateOpeningReadsAndPlayerData() async throws {
+        let first = try Fixture(probe: Reads(paused: false)), second = try Fixture(probe: Reads(paused: false))
+        do {
+            try second.writePlayer(health: 7)
+            first.model.worldFolders.remember(second.url)
+            let one = try first.attach(try await first.read(first.documents[0]))
+            let two = try first.attach(try await first.read(second.documents[0]))
+            #expect(one.resources !== two.resources)
+            #expect(one.players.first?.health == 20 && two.players.first?.health == 7)
+            let late = try await first.read(first.documents[1])
+            let sibling = try first.attach(late)
+            #expect(sibling.resources === one.resources)
+            #expect(await first.probe.count == 2)
+        } catch {
+            await first.close(); await second.close()
+            throw error
+        }
+        await first.close(); await second.close()
     }
 
     @Test func aliasesUseResolvedIdentityAndUnknownLiveCatalogPathsStillGetFreshValidation() async throws {
