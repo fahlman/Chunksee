@@ -16,7 +16,8 @@ nonisolated struct ScanCache: Sendable {
     /// 9: stable creature UUIDs and preserved legacy item wear.
     /// 10: structure marker heights in the Copy Coordinates branch (fahlman/Chunksee#159).
     /// 11: both creature details and structure heights; invalidates entries from either branch.
-    static let version = 11
+    /// 12: cave biome membership uses referenced cells, excluding unused palette entries.
+    static let version = 12
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?
