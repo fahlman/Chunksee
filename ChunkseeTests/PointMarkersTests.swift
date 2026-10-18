@@ -66,28 +66,28 @@ import Testing
         let places = places(), creatures = creatures()
         content.places = places; content.creatures = creatures
         content.selection = .creature(creatures[3])
-        func nearest<Marker>(_ values: [Marker], viewport: MapViewport, point: CGPoint, reach: CGFloat, position: (Marker) -> CGPoint) -> Marker? {
-            var best: Marker?, distance = reach
+        func nearest<Marker>(_ values: [Marker], viewport: MapViewport, point: CGPoint, reach: (Marker) -> CGFloat, position: (Marker) -> CGPoint) -> Marker? {
+            var best: Marker?, distance = CGFloat.infinity
             for value in values {
                 let location = viewport.viewPoint(for: position(value), in: size)
                 let candidate = hypot(location.x - point.x, location.y - point.y)
-                if candidate <= distance { best = value; distance = candidate }
+                if candidate <= reach(value), candidate <= distance { best = value; distance = candidate }
             }
             return best
         }
         for scale in [0.0625, 0.125, 0.25, 2, 32] {
             let viewport = MapViewport(center: CGPoint(x: 512, y: 0), scale: scale)
             for x in [-513.0, -512.1, -0.1, 0, 511.5, 512, 512.5, 513] {
-                for offset in [0.0, 12, 12.01, 14, 14.01] {
+                for offset in [0.0, 12, 12.01, 14, 14.01, 15, 15.01] {
                     var point = viewport.viewPoint(for: CGPoint(x: x, y: 0), in: size)
                     point.y += offset
                     var expected: MapTarget?
-                    if let portal = nearest(places.filter { $0.portal != nil }, viewport: viewport, point: point, reach: 14, position: \.position) {
+                    if let portal = nearest(places.filter { $0.portal != nil }, viewport: viewport, point: point, reach: { _ in 14 }, position: \.position) {
                         expected = .row(.place(portal.id))
                     } else if let pet = nearest(creatures.filter { scale >= 0.25 || content.selection == .creature($0) }, viewport: viewport,
-                                                point: point, reach: 12, position: \.position) {
+                                                point: point, reach: { content.selection == .creature($0) ? 15 : 12 }, position: \.position) {
                         expected = .row(.creature(pet.id))
-                    } else if scale >= 0.125, let place = nearest(places, viewport: viewport, point: point, reach: 12, position: \.position) {
+                    } else if scale >= 0.125, let place = nearest(places, viewport: viewport, point: point, reach: { $0.portal != nil ? 14 : 12 }, position: \.position) {
                         expected = .row(.place(place.id))
                     }
                     #expect(content.target(at: point, viewport: viewport, size: size) == expected)

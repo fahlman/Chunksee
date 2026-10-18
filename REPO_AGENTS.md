@@ -78,6 +78,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
+| `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -145,6 +146,13 @@ empty space. Structure areas and the smaller player/search/saved-place lists kee
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
+
+Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
+tolerance beyond the body. Labels, structure outlines and portal status decorations do not
+enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
+cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
+retain the saved coordinates. Marker zoom growth stays separate.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
