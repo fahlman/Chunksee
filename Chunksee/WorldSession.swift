@@ -552,8 +552,8 @@ final class WorldSession {
     }
 
     /// The native front dimension can change without this session switching dimensions.
-    func becameActive() {
-        guard !isClosed, !resources.isClosed, let id = selectedDimensionID, map != nil else { return }
+    func becameActive(isTerminating: Bool = false) {
+        guard !isTerminating, !isClosed, !resources.isClosed, let id = selectedDimensionID, map != nil else { return }
         resources.activeDimensionID = id
         saveView()
     }

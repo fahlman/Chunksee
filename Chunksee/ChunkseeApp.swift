@@ -16,7 +16,7 @@ struct ChunkseeApp: App {
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 1200, height: 800)
         .onChange(of: focusedSession?.viewID) {
-            focusedSession?.becameActive()
+            focusedSession?.becameActive(isTerminating: documentMenus.isTerminating)
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

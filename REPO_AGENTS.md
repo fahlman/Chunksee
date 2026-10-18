@@ -109,6 +109,10 @@ map position is remembered in `RememberedViews`.
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.
+SwiftUI ScenePhase has no Quit event. The existing NSApplicationDelegate hook exposes the early
+termination query so focus changes while AppKit closes tabs cannot overwrite the last front tab.
+It returns the normal immediate reply for this app's read-only documents; native termination and
+window restoration remain AppKit's. No tab/window focus bridge is used.
 
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
