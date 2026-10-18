@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.28.0`, resolved to `0.28.0` (`63508ececf6143fccd5e85a63a0ce51c008ed0e3`).
+  minor" from `0.29.0`, resolved to `0.29.0` (`5ad021215bfced0191b3d25cd6805413eff467c0`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -252,7 +252,8 @@ fractional digits in hearts, with a gauge when current and maximum are known and
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
 empty stacks are omitted, and material tint applies to symbols while text uses semantic colors.
 Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
-Scan-cache version 13 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+Scan-cache version 14 rereads earlier entries for Kit 0.29's versioned pet health, equipped modifiers,
+shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
 preserved legacy item wear, structure heights, cave-biome membership, checked entity-container
 positions and missing villager-level defaults. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
@@ -269,6 +270,10 @@ show completed seconds/minutes/hours rather than dropping every duration below a
 keep rounding partial seconds up. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
+
+Tile-cache renderer version 7 refreshes surfaces affected by Kit 0.29's heightmap correction.
+When a packed heightmap has an ambiguous width, the renderer's existing block scan finds the
+surface; it does not infer a dimension's build height from its occupied sections.
 
 Selecting a player works like selecting a pet (Ryan, 2026-10-16, fahlman/Chunksee#157): their row,
 marker or VoiceOver location shows their details in the inspector and highlights their position,

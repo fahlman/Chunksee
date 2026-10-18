@@ -18,7 +18,8 @@ nonisolated struct ScanCache: Sendable {
     /// 11: both creature details and structure heights; invalidates entries from either branch.
     /// 12: cave biome membership uses referenced cells, excluding unused palette entries.
     /// 13: Kit 0.28 corrects entity-container positions and missing villager-level defaults.
-    static let version = 13
+    /// 14: Kit 0.29 corrects versioned pet health, equipment modifiers, UUIDs and display text.
+    static let version = 14
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

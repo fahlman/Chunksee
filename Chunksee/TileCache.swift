@@ -10,8 +10,9 @@ nonisolated struct TileCache: Sendable {
     /// 2: relief shading on each region's top row. 3: the Nether drawn under its roof.
     /// 4: solid Nether columns drawn darkened instead of left empty. 5: that block taken from below
     /// the roof's bedrock band. 6: independent Surface/cutaway height keys.
+    /// 7: Kit 0.29 rejects ambiguous heightmaps, so surface rendering scans the blocks instead.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 6
+    static let rendererVersion = 7
 
     let directory: URL
 
