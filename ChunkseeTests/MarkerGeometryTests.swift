@@ -76,17 +76,17 @@ import Testing
     @Test func voiceOverUsesTheDrawnPlayerAnchorForEdgeVisibility() {
         var content = MapContent()
         let viewport = MapViewport(center: .zero, scale: 32)
-        // A half-block is 16 points here: the left marker is visible, the right one is outside
-        // the existing 20-point accessibility margin once the drawing offset is included.
+        // Live entities have no half-block adjustment: the left marker is outside the existing
+        // 20-point accessibility margin, while the right marker is inside it.
         content.players = [-25.0, size.width + 15].enumerated().map { index, x in
             MapMarker(id: "edge-\(index)", playerID: UUID(), kind: .player,
                       position: viewport.blockPoint(at: CGPoint(x: x, y: size.height / 2), in: size),
                       y: 64, label: "Edge \(index)", isOutdated: false)
         }
         let locations = content.accessibleLocations(viewport: viewport, size: size)
-        #expect(locations.map(\.id) == ["player-edge-0"])
-        #expect(locations.first?.position == content.players.first?.position)
-        #expect(locations.first?.anchor == content.players.first?.anchor)
+        #expect(locations.map(\.id) == ["player-edge-1"])
+        #expect(locations.first?.position == content.players.last?.position)
+        #expect(locations.first?.anchor == content.players.last?.anchor)
     }
 
     @Test func selectedReachCrossesRegionBucketsAndStillChoosesTheClosestMarker() throws {
