@@ -2,6 +2,7 @@ import ChunkseeKit
 import CoreGraphics
 import CryptoKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Chunksee
 
@@ -156,5 +157,31 @@ import Testing
                 print("Marker presentation image \(scale) variant=\(variant): \(digest)")
             }
         }
+    }
+
+    @Test func captionsFormatNamesOnlyWhenTheyAreShown() throws {
+        let probe = NameProbe()
+        let cases: [(MarkerStyle, CGFloat, Bool)] = [
+            (.place(.spawner, claimed: false), 1, false),
+            (.structure(try structure().group), 0.49, false),
+            (.player(.death, outdated: true, selected: false), 4, false),
+            (.search(selected: true), 4, false),
+            (.place(.spawner, claimed: false), 2, true),
+            (.creature(try pet().group, selected: true), 0.0625, true),
+            (.player(.player, outdated: true, selected: true), 0.0625, true),
+        ]
+        for (style, scale, expected) in cases {
+            let before = probe.calls
+            let renderer = ImageRenderer(content: Canvas { context, _ in
+                style.drawName(probe.name(), at: CGPoint(x: 120, y: 30), scale: scale, in: context)
+            }.frame(width: 240, height: 100))
+            _ = try #require(renderer.cgImage)
+            #expect((probe.calls > before) == expected)
+        }
+    }
+
+    private final class NameProbe {
+        var calls = 0
+        func name() -> String { calls += 1; return "Fixture label" }
     }
 }

@@ -8,7 +8,7 @@ struct SavedPlacesSection: View {
         Section("Saved Places") {
             ForEach(session.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
-                    Label(place.name, systemImage: "mappin")
+                    Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
                     Text(Coordinates.text(place.position))
                         .font(.caption)
                         .foregroundStyle(.secondary)
