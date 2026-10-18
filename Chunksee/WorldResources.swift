@@ -78,7 +78,7 @@ final class WorldResources {
     /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
-         watchWorld: (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
+         watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access

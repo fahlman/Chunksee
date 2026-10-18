@@ -60,7 +60,7 @@ import Testing
     // These tests drive notifications explicitly. A real watcher would deliver them again after
     // its coalescing delay, making exact read counts depend on the test's speed.
     private func resources(_ url: URL, reads: Reads,
-                           watchWorld: (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
+                           watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
