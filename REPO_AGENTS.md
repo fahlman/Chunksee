@@ -144,6 +144,10 @@ ChunkseeKit's normal prediction. The prediction footer appears only with an actu
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
+The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
+for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
+writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
+cache writer survives that drain.
 Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
 Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
 plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at

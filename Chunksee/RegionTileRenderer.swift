@@ -15,7 +15,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Rendered pixels saved between launches; `nil` renders every time.
     var cache: TileCache?
     /// Saving compresses and writes about 1 MB, so by default it happens after the tile is
-    /// returned, at low priority, keeping it off the path to the screen. Tests save synchronously.
+    /// returned. MapModel owns that low-priority write and its lifetime. Tests save synchronously.
     var savesInBackground = true
     /// Nil keeps the normal surface/Nether view; a height starts each column there.
     var cutawayY: Int?
@@ -66,6 +66,18 @@ nonisolated struct RegionTileRenderer: Sendable {
     struct RenderedTile: @unchecked Sendable {  // CGImage is immutable.
         var full: CGImage
         var preview: CGImage
+        var cacheWrite: CacheWrite? = nil
+    }
+
+    /// Immutable data for an accepted tile's save. The map owns scheduling/draining it; canceled
+    /// render results never start disk work. The actual compression/write stays off the main actor.
+    struct CacheWrite: Sendable {
+        let cache: TileCache
+        let key: TileCache.Key
+        let pixels: [UInt8]
+
+        @concurrent
+        func store() async { cache.store(pixels, for: key) }
     }
 
     static let previewSide = side / 2
@@ -78,13 +90,14 @@ nonisolated struct RegionTileRenderer: Sendable {
         let regionFile = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
         let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, cutawayY: cutawayY)
         var pixels: [UInt8]?
+        var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
             pixels = cached
         } else {
             pixels = try await self.pixels(for: region)
             if let cache, let key, let pixels {
                 if savesInBackground {
-                    Task.detached(priority: .utility) { cache.store(pixels, for: key) }
+                    cacheWrite = CacheWrite(cache: cache, key: key, pixels: pixels)
                 } else {
                     cache.store(pixels, for: key)
                 }
@@ -93,7 +106,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let pixels,
               let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
-        return RenderedTile(full: full, preview: preview)
+        return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
