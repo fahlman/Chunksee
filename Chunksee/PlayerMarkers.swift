@@ -15,6 +15,9 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     var position: CGPoint
     var y: Double?
     var label: String
+    /// Entity positions are exact; death and respawn positions identify whole blocks. Drawing,
+    /// picking and VoiceOver share this anchor, while copying retains the saved coordinates.
+    var anchor: CGPoint { kind == .player ? position : CGPoint(x: position.x + 0.5, y: position.y + 0.5) }
     /// True when the player's file predates the world's current version: they haven't been seen
     /// since, so the position is old.
     var isOutdated: Bool
@@ -89,13 +92,19 @@ nonisolated enum PlayerPresentation {
         !player.isFromBukkitServer
     }
 
+    static func position(of player: PlayerInfo) -> PlayerInfo.Location? {
+        guard isMappable(player), let location = player.position,
+              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return nil }
+        return location
+    }
+
     /// The players a dimension's sidebar lists: those last seen in it. Players with no usable
     /// position in this world are listed in its first dimension, the Overworld, so each player
     /// is listed once.
     static func listed(_ players: [PlayerInfo], in dimensionID: String, dimensions: [String]) -> [PlayerInfo] {
         players.filter { player in
-            if isMappable(player), let dimension = player.position?.dimension, dimensions.contains(dimension) {
-                return dimension == dimensionID
+            if let position = position(of: player), dimensions.contains(position.dimension) {
+                return position.dimension == dimensionID
             }
             return dimensionID == dimensions.first
         }
@@ -110,7 +119,8 @@ nonisolated enum PlayerPresentation {
             let outdated = isOutdated(player, worldDataVersion: worldDataVersion)
             let id = player.uuid.uuidString
             func add(_ kind: MapMarker.Kind, _ location: PlayerInfo.Location?, _ label: String) {
-                guard let location, location.dimension == dimensionID else { return }
+                guard let location, location.dimension == dimensionID,
+                      Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
                 markers.append(MapMarker(id: "\(id)-\(kind)", playerID: player.uuid, kind: kind, position: CGPoint(x: location.x, y: location.z),
                                          y: location.y, label: label, isOutdated: outdated))
             }

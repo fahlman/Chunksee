@@ -125,8 +125,7 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
     /// "Plains Village", "Stronghold", "Ocean Ruin Cold" and so on, from the id. Minecraft's own
     /// names live in its language files, which can't be redistributed.
     var name: String {
-        let base = structureID.split(separator: ":").last.map(String.init) ?? structureID
-        var words = base.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        var words = ReadableName.from(structureID).split(separator: " ").map(String.init)
         // Variants come last in ids ("village_plains", "ocean_ruin_cold"); English puts them first.
         let variants: Set<String> = ["Plains", "Desert", "Savanna", "Snowy", "Taiga", "Cold", "Warm", "Ocean",
                                      "Jungle", "Mountain", "Swamp", "Nether", "Beached", "Mesa"]

@@ -53,7 +53,7 @@ import Testing
         }
         let original = try await WorldSnapshot.read(url)
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
-                                     players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
+                                     dimensionDocuments: original.dimensionDocuments, players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let session = WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
@@ -64,7 +64,7 @@ import Testing
         #expect(server.position == nil && server.dimension == nil && server.y == nil && server.count == 3)
         #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
         let viewport = session.map?.viewport
-        session.show(server)
+        session.choose(.hit(query: session.search.text, id: server.id))
         #expect(session.map?.viewport == viewport)
         let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
                                                             size: CGSize(width: 400, height: 300))
@@ -165,7 +165,7 @@ import Testing
         let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
         #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
         #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")
-        #expect(hits.first { $0.title == "Lectern" }?.detail == "1 “Travels” by fahlman")
+        #expect(hits.first { $0.title == "Lectern" }?.detail == "1 Written Book “Travels” by fahlman")
         #expect(WorldSearch.search("written book", in: index, players: []) { _ in .named("") }.map(\.title) == ["Lectern"])
         #expect(WorldSearch.search("exit", in: index, players: []) { _ in .named("") }.map(\.title) == ["Hanging Sign"])
     }
@@ -191,8 +191,8 @@ import Testing
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
-        session.show(session.search.results[0])
-        #expect(session.search.selectedHitID == session.search.results[0].id)
+        session.choose(.hit(query: session.search.text, id: session.search.results[0].id))
+        #expect(session.selectedHitID == session.search.results[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
@@ -250,24 +250,30 @@ import Testing
 }
 
 @Suite struct RememberedViewTests {
-    @Test func reopensInTheLastDimensionAtTheSamePlace() async throws {
+    @Test func reopensEachDocumentAtItsOwnViewAndRemembersTheFrontDimension() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let nether = WorldSession(resources: first.resources, dimensionID: "minecraft:the_nether")
         first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
-        first.selectedDimensionID = "minecraft:the_nether"   // leaving the Overworld remembers it
-        first.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
-        first.close()
+        first.becameActive()
+        nether.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
+        nether.becameActive()
+        first.close(); nether.close()
+        await first.waitUntilClosed(); await nether.waitUntilClosed()
 
         let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        defer { second.close() }
+        let overworld = WorldSession(resources: second.resources, dimensionID: "minecraft:overworld")
+        defer { second.close(); overworld.close() }
         #expect(second.selectedDimensionID == "minecraft:the_nether")
         #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 7, y: 8), scale: 4))
-        second.selectedDimensionID = "minecraft:overworld"
-        #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        #expect(overworld.selectedDimensionID == "minecraft:overworld")
+        #expect(overworld.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        second.close(); overworld.close()
+        await second.waitUntilClosed(); await overworld.waitUntilClosed()
     }
 }
 
@@ -295,8 +301,8 @@ import Testing
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
         let index = SearchIndex.overworld(DimensionIndex(structures: [village],
-                                places: [bed],
-                                creatures: [wolf, cat, farmer]))
+                                placePoints: PointMarkers([bed]),
+                                creaturePoints: PointMarkers([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         #expect(search("structure:village").map(\.detail) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
@@ -326,7 +332,7 @@ import Testing
             ])]),
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
+        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian, Master"])
@@ -375,7 +381,7 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.visibility.biomes.isEmpty)
-        session.show(hit)
+        session.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
         #expect(session.mapContent.biomeAreas.count == 1)
     }

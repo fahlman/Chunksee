@@ -1,5 +1,12 @@
 import ChunkseeKit
+import Foundation
 import SwiftUI
+
+nonisolated enum StorageText {
+    static func summary(kinds: Int, containers: Int, locale: Locale = .current) -> String {
+        String(localized: "\(kinds) kinds of items in \(containers) containers", locale: locale)
+    }
+}
 
 /// One kind of item stored in a dimension's containers: how many in all, and in how many
 /// containers. Shulker boxes and bundles count with what's inside them.
@@ -30,6 +37,7 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
 /// so its containers show in the sidebar and on the map.
 struct StorageView: View {
     let session: WorldSession
+    @Environment(\.locale) private var locale
     @State private var sortOrder = [KeyPathComparator(\StoredItem.count, order: .reverse)]
     @State private var selection: StoredItem.ID?
 
@@ -42,7 +50,7 @@ struct StorageView: View {
             } else if items.isEmpty {
                 Text("Nothing is stored in this dimension’s containers.").foregroundStyle(.secondary)
             } else {
-                Text("\(items.count) kinds of items in \(session.selectedIndex.containers.count) containers")
+                Text(StorageText.summary(kinds: items.count, containers: session.selectedIndex.containers.count, locale: locale))
                     .font(.callout).foregroundStyle(.secondary)
                 Table(items.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Item", value: \.name)

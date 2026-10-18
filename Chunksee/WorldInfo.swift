@@ -55,6 +55,7 @@ nonisolated struct WorldDetails: Sendable {
 struct WorldInfoView: View {
     let session: WorldSession
     @State private var showsSeed = false
+    @Environment(\.locale) private var locale
 
     private var level: LevelInfo { session.world.level }
     private var details: WorldDetails { session.details }
@@ -66,7 +67,8 @@ struct WorldInfoView: View {
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = level.spawnPosition {
-                    LabeledContent("World Spawn", value: "X \(spawn.x)  Y \(spawn.y)  Z \(spawn.z)")
+                    LabeledContent("World Spawn", value: Coordinates.text(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y))
+                        .monospacedDigit()
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {
@@ -82,8 +84,8 @@ struct WorldInfoView: View {
                 Text(session.displayName).font(.headline)
             }
             Section("Time and Weather") {
-                if let ticks = level.time {
-                    LabeledContent("World Age", value: String(localized: "\(ticks / 72_000) hours"))
+                if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks, locale: locale) {
+                    LabeledContent("World Age", value: elapsed)
                         .help("Time the world has been running in the game, at 20 ticks a second")
                 }
                 if let ticks = details.dayTime {
@@ -119,7 +121,7 @@ struct WorldInfoView: View {
             }
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
-                    LabeledContent(dimension.displayName, value: borderDescription(details.borders[dimension.id]))
+                    LabeledContent(session.dimensionName(dimension.id), value: borderDescription(details.borders[dimension.id]))
                 }
             }
             Section("Mods and Data Packs") {
@@ -167,6 +169,7 @@ struct WorldInfoView: View {
 
     private func borderDescription(_ border: WorldBorder?) -> String {
         guard let border, border.isLimited else { return String(localized: "None") }
-        return String(localized: "\(Int(border.size).formatted()) blocks wide, centered at X \(Int(border.centerX)) Z \(Int(border.centerZ))")
+        guard let size = Coordinates.block(border.size), size >= 0 else { return String(localized: "Unknown") }
+        return String(localized: "\(size.formatted()) blocks wide, centered at \(Coordinates.text(x: border.centerX, z: border.centerZ))")
     }
 }
