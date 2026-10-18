@@ -96,18 +96,8 @@ import Testing
 
     /// Observe the actual owner transition, never a sleep or a fixed yield count.
     private func waitUntil(_ predicate: @escaping @MainActor @Sendable () -> Bool) async {
-        if predicate() { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            @MainActor func observe() {
-                if predicate() { continuation.resume(); return }
-                // Both check and registration are synchronous on the owner's actor. A true
-                // predicate must not register another observer after resuming the continuation.
-                withObservationTracking { _ = predicate() } onChange: {
-                    Task { @MainActor in observe() }
-                }
-            }
-            observe()
-        }
+        let changes = Observations<Void, Never>.untilFinished { predicate() ? .finish : .next(()) }
+        for await _ in changes {}
     }
 
     @Test func threeSequentialDocumentsAndALaterReaderShareOneWorldReadThenReopenFresh() async throws {
