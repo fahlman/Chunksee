@@ -17,8 +17,9 @@ import Testing
         let index = WorldIndexStore(readers: [], firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let players = PlayerSnapshot([])
         func document() -> SearchModel {
-            SearchModel(readers: [], players: [], names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -56,8 +57,9 @@ import Testing
         let index = WorldIndexStore(readers: [], firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let players = PlayerSnapshot([])
         func document() -> SearchModel {
-            SearchModel(readers: [], players: [], names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -86,7 +88,7 @@ import Testing
         let index = WorldIndexStore(readers: [], firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], players: [], names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, indexStore: index)
         await gate.waitForRequest("saved")
@@ -111,7 +113,7 @@ import Testing
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], players: [], names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) })
         await gate.waitForRequest("saved")
@@ -144,21 +146,22 @@ import Testing
         func player(_ revision: Int32) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
         }
-        func document(_ revision: Int32) -> SearchModel {
-            SearchModel(readers: [], players: [player(revision)], names: names, singleplayerUUID: nil,
+        func document(_ players: PlayerSnapshot) -> SearchModel {
+            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read(String($0.players[0].nbt["Revision"]!.int!)) }, indexStore: index)
         }
-        let first = document(1), second = document(1)
+        let original = PlayerSnapshot([player(1)]), updated = PlayerSnapshot([player(2)])
+        let first = document(original), second = document(original)
         await gate.waitForRequest("1")
-        first.players = [player(2)]
-        second.players = [player(2)]
+        first.playerSnapshot = updated
+        second.playerSnapshot = updated
         await gate.waitForRequest("2")
         await gate.finish("2", with: ["saved": [hit("New")]])
         for model in [first, second] { await model.waitForSearch() }
-        let later = document(2)
+        let later = document(updated)
         await later.waitForSearch()
-        first.players = [player(2)]
+        first.playerSnapshot = updated
         await first.waitForSearch()
         #expect(await gate.requested.filter { $0 == "1" }.count == 1)
         #expect(await gate.requested.filter { $0 == "2" }.count == 1)
@@ -183,8 +186,9 @@ import Testing
         let index = WorldIndexStore(readers: [], firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let players = PlayerSnapshot([player])
         func document() -> SearchModel {
-            SearchModel(readers: [], players: [player], names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.playerNames[uuid]!.text) }, indexStore: index)
         }
@@ -208,7 +212,7 @@ import Testing
         await index.waitForTasks()
     }
 
-    @Test func nativeDimensionSessionsUseTheSharedOwnerAndRealSearchResults() async throws {
+    @Test func worldPublishesOnePlayerSnapshotForOpenAndLaterDocuments() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         for folder in ["DIM-1/region", "DIM1/region"] {
@@ -226,35 +230,58 @@ import Testing
         saved.add("diamond")
         let resources = WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                        savedSearches: saved, defaults: defaults, cacheRoot: nil)
-        let sessions = resources.dimensions.map { WorldSession(resources: resources, dimensionID: $0.id) }
-        #expect(sessions.count == 3)
+        var sessions = resources.dimensions.prefix(2).map { WorldSession(resources: resources, dimensionID: $0.id) }
+        let originalPlayers = resources.playerSnapshot
+        #expect(resources.dimensions.count == 3 && sessions.count == 2)
         for session in sessions {
             #expect(session.search.indexStore.savedQueries === resources.index.savedQueries)
+            #expect(session.search.playerSnapshot === originalPlayers)
             await session.search.waitForIndex()
             await session.search.waitForSearch()
             let found = session.search.results(for: "diamond")
             #expect(found.count == 1 && found.first?.source == .inventory(player.uuid))
             #expect(found.first?.count == 4 && found.first?.dimension == "minecraft:the_nether")
         }
+
+        // Same UUID, save date and roster size, but a different inventory. All documents must
+        // switch to one new publication and expose real updated results, including a later opener.
+        let updated = PlayerInfo(uuid: player.uuid, nbt: .compound([
+            "Dimension": .string("minecraft:the_nether"), "Pos": .list([.double(2), .double(63), .double(3)]),
+            "Inventory": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(7)])]),
+        ]), lastSaved: player.lastSaved)
+        resources.refreshDelay = .zero
+        resources.readPlayers = { _ in [updated] }
+        resources.worldChanged([resources.world.playerDataDirectory.appendingPathComponent("\(player.uuid).dat")])
+        await resources.waitForRefresh()
+        #expect(resources.playerSnapshot !== originalPlayers)
+        let later = WorldSession(resources: resources, dimensionID: resources.dimensions[2].id)
+        sessions.append(later)
+        for session in sessions {
+            #expect(session.search.playerSnapshot === resources.playerSnapshot)
+            await session.search.waitForSearch()
+            let found = session.search.results(for: "diamond")
+            #expect(found.count == 1 && found.first?.count == 7 && found.first?.source == .inventory(player.uuid))
+        }
         resources.close()
         await resources.waitUntilClosed()
         for session in sessions { #expect(session.isClosed) }
     }
 
-    @Test func sharedKeysIncludeIndexVersionPlayerIdentityAndSaveDate() async {
+    @Test func sharedKeysIncludeIndexVersionAndPlayerPublication() async {
         let cache = SavedQueryResults(), gate = AsyncReadGate<SavedQueryResults.Results>()
         let uuid = UUID(), other = UUID(), date = Date(timeIntervalSince1970: 1)
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
+        let original = PlayerSnapshot([player])
         let sources = [
-            SearchSources(names: [:], players: [player], indexRevision: 0),
-            SearchSources(names: [:], players: [player], indexRevision: 1),
-            SearchSources(names: [:], players: [PlayerInfo(uuid: other, nbt: player.nbt)], indexRevision: 1),
-            SearchSources(names: [:], players: [PlayerInfo(uuid: other, nbt: player.nbt, lastSaved: date)], indexRevision: 1),
+            SearchSources(names: [:], playerSnapshot: original, indexRevision: 0),
+            SearchSources(names: [:], playerSnapshot: original, indexRevision: 1),
+            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: player.nbt)]), indexRevision: 1),
+            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: player.nbt, lastSaved: date)]), indexRevision: 1),
         ]
         cache.keep(["saved"])
         await gate.releaseAllAndFuture(with: ["saved": [hit("Result")]])
         for (step, source) in sources.enumerated() {
-            let request = SearchRequest(queries: ["saved"], index: SearchIndex(), players: source.players, playerNames: source.names)
+            let request = SearchRequest(queries: ["saved"], index: SearchIndex(), players: source.playerSnapshot.players, playerNames: source.names)
             for _ in 0..<2 {
                 let found = await cache.results(for: request, sources: source, waiter: UUID(),
                                                 execute: { _ in await gate.read(String(step)) })
@@ -271,7 +298,7 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<SavedQueryResults.Results>()
         let request = SearchRequest(queries: ["saved"], index: SearchIndex(), players: [], playerNames: [:])
-        let source = SearchSources(names: [:], players: [], indexRevision: 0)
+        let source = SearchSources(names: [:], playerSnapshot: PlayerSnapshot([]), indexRevision: 0)
         index.savedQueries.keep(["saved"])
         let pending = Task.immediate {
             await index.savedQueries.results(for: request, sources: source, waiter: UUID(),

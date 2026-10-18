@@ -19,9 +19,10 @@ final class SearchModel {
         }
     }
     var selectedHitID: SearchHit.ID?
-    var players: [PlayerInfo] {
-        didSet { updateQueries() }
+    var playerSnapshot: PlayerSnapshot {
+        didSet { if playerSnapshot !== oldValue { updateQueries() } }
     }
+    var players: [PlayerInfo] { playerSnapshot.players }
     var index: SearchIndex { indexStore.index }
     var portals: [String: [NetherPortal]] { indexStore.portals }
     var isIndexing: Bool { indexStore.isIndexing }
@@ -44,13 +45,13 @@ final class SearchModel {
     @ObservationIgnored private var sources: SearchSources?
     @ObservationIgnored private var isClosed = false
 
-    init(readers: [RegionReader], players: [PlayerInfo], names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], playerSnapshot: PlayerSnapshot, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil) {
         self.ownsIndex = indexStore == nil
         self.indexStore = indexStore ?? WorldIndexStore(readers: readers, firstDimension: firstDimension)
-        self.players = players
+        self.playerSnapshot = playerSnapshot
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
@@ -90,7 +91,7 @@ final class SearchModel {
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
-        let next = SearchSources(names: playerNames, players: players, indexRevision: indexStore.revision)
+        let next = SearchSources(names: playerNames, playerSnapshot: playerSnapshot, indexRevision: indexStore.revision)
         if next != sources {
             sources = next
             sourceGeneration = UUID()

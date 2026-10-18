@@ -149,7 +149,7 @@ final class WorldSession {
         self.resources = resources
         visibility = LayerVisibility(defaults: resources.defaults)
         let selected = dimensionID ?? resources.defaultDimensionID
-        search = SearchModel(readers: [], players: resources.players, names: resources.names,
+        search = SearchModel(readers: [], playerSnapshot: resources.playerSnapshot, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
         heatMap = HeatMapLayer(readers: resources.readers)

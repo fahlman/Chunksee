@@ -69,7 +69,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
 | `AppModel.swift` | App-wide player names and saved searches, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher and jumps waiting for a dimension to open; closing its last dimension drains all reads before relinquishing access |
+| `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, immutable player publication, shared index, file watcher and jumps waiting for a dimension to open; closing its last dimension drains all reads before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
@@ -122,8 +122,11 @@ reads before world access ends. A late result cannot replace a newer copy or ano
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
 ready. Each world's `WorldIndexStore.savedQueries` shares identical pending/completed saved-query
-work across dimension documents, keyed by index revision, player UUID/NBT/save date and player-name
-presentation. Typed unsaved queries remain per document. Removing a saved query retires its cached
+work across dimension documents, keyed by index revision, the shared player-snapshot identity and
+player-name presentation. `WorldResources` publishes one immutable `PlayerSnapshot` per completed
+player read; current and later documents share that instance. Checking query sources never compares
+player NBT. A newly published read invalidates saved results even if its data happens to be equal;
+names can invalidate independently. Typed unsaved queries remain per document. Removing a saved query retires its cached
 work; an active typed waiter can still finish. Closing one document releases its wait without
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.

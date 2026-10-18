@@ -1,17 +1,14 @@
 import Foundation
 import ChunkseeKit
 
-/// Saved-query identity includes captured player data and names, not just the roster size.
+/// A publication's identity represents its immutable player data; names can change separately.
 nonisolated struct SearchSources: Equatable, Sendable {
     var names: [UUID: PlayerPresentation.Name]
-    var players: [PlayerInfo]
+    var playerSnapshot: PlayerSnapshot
     var indexRevision: Int
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.indexRevision == rhs.indexRevision && lhs.names == rhs.names &&
-        lhs.players.elementsEqual(rhs.players) {
-            $0.uuid == $1.uuid && $0.lastSaved == $1.lastSaved && $0.nbt == $1.nbt
-        }
+        lhs.indexRevision == rhs.indexRevision && lhs.playerSnapshot === rhs.playerSnapshot && lhs.names == rhs.names
     }
 }
 
