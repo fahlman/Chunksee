@@ -110,7 +110,7 @@ struct WorldCommands: Commands {
             }
             .disabled(session == nil)
             Button("Save Search") { session?.saveSearch() }
-                .disabled(session?.search.isActive != true || session?.savedSearches.contains(session?.search.text ?? "") == true)
+                .disabled(session?.canSaveSearch != true)
         }
     }
 }

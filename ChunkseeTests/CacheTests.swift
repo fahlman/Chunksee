@@ -144,6 +144,40 @@ import Testing
 }
 
 @Suite struct CacheRootTests {
+    @Test(.timeLimit(.minutes(1))) func closingWaitsForStartupMaintenanceBeforeCacheCleanup() async throws {
+        let world = try TestWorld.make(chunks: [])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID())")
+        defer {
+            try? FileManager.default.removeItem(at: world)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let gate = AsyncReadGate<Void>()
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
+                                       maintainCache: { _, folder in
+            await gate.read("maintenance")
+            // A disk operation already underway can still finish after cancellation.
+            TileCache.markUsed(worldFolder: folder)
+        })
+        await gate.waitForRequest("maintenance")
+        await resources.index.waitForIndex()
+        var finishedClosing = false
+        let closing = Task {
+            resources.close()
+            await resources.waitUntilClosed()
+            finishedClosing = true
+        }
+        await gate.waitForCancellation("maintenance")
+        #expect(resources.isClosed && !finishedClosing)
+        await gate.finish("maintenance", with: ())
+        await closing.value
+        #expect(finishedClosing && FileManager.default.fileExists(atPath: root.path))
+        try FileManager.default.removeItem(at: root)
+        await resources.waitUntilClosed()
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test func sessionsCacheOnlyUnderTheirRoot() async throws {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID().uuidString)")
@@ -163,5 +197,89 @@ import Testing
         // Nothing for this world in the app's own Caches folder.
         let appFolder = try #require(TileCache.worldFolder(forWorldAt: world))
         #expect(!FileManager.default.fileExists(atPath: appFolder.path))
+    }
+}
+
+@Suite(.timeLimit(.minutes(1))) struct TileCacheWriteLifecycleTests {
+    private final class Fixture {
+        let url: URL
+        let gate = AsyncReadGate<Void>()
+        var maps: [MapModel] = []
+        var cache: URL { url.appendingPathComponent("test-cache") }
+
+        init() throws {
+            url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        }
+
+        func dimension() throws -> ChunkseeKit.Dimension { try #require(try World(contentsOf: url).dimension("overworld")) }
+        func close() async {
+            maps.forEach { $0.close() }
+            await gate.finishAll(with: ())
+            for map in maps { await map.waitForRenders() }
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private func withFixture(_ body: (Fixture) async throws -> Void) async throws {
+        let fixture = try Fixture()
+        do { try await body(fixture) }
+        catch { await fixture.close(); throw error }
+        await fixture.close()
+    }
+
+    @Test func visibleTilesDoNotWaitForCacheButClosingDoes() async throws {
+        try await withFixture { f in
+            let gate = f.gate, dimension = try f.dimension()
+            let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
+                // Represent an already-started disk operation that completes despite cancellation.
+                await gate.read("write")
+                await operation.store()
+            })
+            f.maps.append(map)
+            map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+            await gate.waitForRequest("write")
+            await map.waitUntilIdle()
+            #expect(map.tiles.count == 1 && map.unfinishedCacheWrites == 1)
+            #expect(!FileManager.default.fileExists(atPath: f.cache.path))
+            var finished = false
+            let closing = Task { map.close(); await map.waitForRenders(); finished = true }
+            await gate.waitForCancellation("write")
+            #expect(!finished)
+            await gate.finish("write", with: ())
+            await closing.value
+            #expect(finished && map.unfinishedCacheWrites == 0)
+            let key = try #require(TileCache.key(for: RegionCoordinate(x: 0, z: 0), regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
+            let bytes = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)]?.dataProvider?.data as Data?)
+            #expect(TileCache(directory: f.cache).load(key) == Array(bytes))
+            try FileManager.default.removeItem(at: f.cache)
+            #expect(!FileManager.default.fileExists(atPath: f.cache.path))
+        }
+    }
+
+    @Test func aDroppedRenderNeverSchedulesItsCacheWrite() async throws {
+        try await withFixture { f in
+            let gate = f.gate, count = WriteCount()
+            let map = MapModel(dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
+                writeCache: { operation in await count.note(); await operation.store() }, renderTile: { renderer, region in
+                    let tile = try await renderer.tile(for: region)
+                    await gate.read("render")
+                    return tile
+                })
+            f.maps.append(map)
+            map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+            await gate.waitForRequest("render")
+            map.cancel()
+            await gate.waitForCancellation("render")
+            await gate.finish("render", with: ())
+            await map.waitForRenders()
+            #expect(await count.value == 0)
+            #expect(map.tiles.isEmpty && map.unfinishedCacheWrites == 0)
+            #expect(!FileManager.default.fileExists(atPath: f.cache.path))
+        }
+    }
+
+    private actor WriteCount {
+        private(set) var value = 0
+        func note() { value += 1 }
     }
 }
