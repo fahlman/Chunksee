@@ -23,30 +23,26 @@ struct SidebarDisclosure {
     }
 
     mutating func reveal(_ item: SidebarItem, in session: WorldSession) {
-        let index = session.selectedIndex
-        switch item {
-        case .structure(let id):
-            guard let marker = index.structures.first(where: { $0.id == id }) else { return }
+        switch session.resolve(item) {
+        case .structure(let marker)?:
             collapsedLayers.remove(.structures)
             structures.insert(marker.group)
-        case .place(let id):
-            guard let marker = index.places.first(where: { $0.id == id }) else { return }
+        case .place(let marker)?:
             collapsedLayers.remove(.places)
             places.insert(marker.group)
-        case .creature(let id):
-            guard let marker = index.creatures.first(where: { $0.id == id }) else { return }
+        case .creature(let marker)?:
             collapsedLayers.remove(.creatures)
             creatures.insert(marker.group)
-        case .biome(let id):
-            guard let marker = index.biomeAreas.first(where: { $0.id == id }) else { return }
+        case .biome(let marker)?:
             collapsedLayers.remove(.biomes)
             biomes.insert(marker.group)
-        case .hit(let query, _):
+        case .hit?:
+            guard case .hit(let query, _) = item else { return }
             if let saved = session.savedSearches.all.first(where: { $0.query == query }) {
                 savedSearches.insert(saved.id)
             }
-        default:
-            break
+        case .inGameMap?: showsInGameMaps = true
+        case .worldInfo?, .storage?, .savedPlace?, .player?, nil: break
         }
     }
 }

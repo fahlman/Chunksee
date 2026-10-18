@@ -67,7 +67,8 @@ struct WorldInfoView: View {
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = level.spawnPosition {
-                    LabeledContent("World Spawn", value: "X \(spawn.x)  Y \(spawn.y)  Z \(spawn.z)")
+                    LabeledContent("World Spawn", value: Coordinates.text(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y))
+                        .monospacedDigit()
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {
@@ -120,7 +121,7 @@ struct WorldInfoView: View {
             }
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
-                    LabeledContent(dimension.displayName, value: borderDescription(details.borders[dimension.id]))
+                    LabeledContent(session.dimensionName(dimension.id), value: borderDescription(details.borders[dimension.id]))
                 }
             }
             Section("Mods and Data Packs") {
@@ -168,6 +169,7 @@ struct WorldInfoView: View {
 
     private func borderDescription(_ border: WorldBorder?) -> String {
         guard let border, border.isLimited else { return String(localized: "None") }
-        return String(localized: "\(Int(border.size).formatted()) blocks wide, centered at X \(Int(border.centerX)) Z \(Int(border.centerZ))")
+        guard let size = Coordinates.block(border.size), size >= 0 else { return String(localized: "Unknown") }
+        return String(localized: "\(size.formatted()) blocks wide, centered at \(Coordinates.text(x: border.centerX, z: border.centerZ))")
     }
 }

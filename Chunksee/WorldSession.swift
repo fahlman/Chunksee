@@ -73,48 +73,64 @@ final class WorldSession {
     /// Why another dimension's document couldn't open, until it's been shown.
     var openFailure: String?
 
-    var selectedDimensionID: String? {
-        didSet {
-            guard oldValue != selectedDimensionID else { return }
-            resources.activeDimensionID = selectedDimensionID
-            if !isNavigating, let oldValue, let map {
-                navigation.record(MapViewLocation(dimension: oldValue, viewport: map.viewport))
-            }
-            saveView(of: oldValue)   // the map still shows the dimension being left
-            if let selection, selection.dimension != selectedDimensionID { self.selection = nil }
-            heatMap.dimension = selectedDimensionID
-            ruler.clear()
-            makeMapForSelection()
-        }
-    }
-    private(set) var map: MapModel?
-    /// What the inspector shows, if it's open.
+    let selectedDimensionID: String?
+    let map: MapModel?
+    private var selectedItem: SidebarItem?
+    private var inspectorIsShown = false
+    /// An in-game map can remain under a selected marker that has no details of its own.
+    private var overlayID: Int?
+
+    /// Content and highlights are derived from one identity and the current world data.
     var inspector: Inspector? {
-        didSet {
-            guard inspector != oldValue else { return }
-            playerRecords.cancel()
-            // The inspector shows one thing; showing something else lets go of the map selection,
-            // and of World Info or Storage in the sidebar.
-            if inspector != .selection, selection != nil { selection = nil }
-            if (sidebarSelection == .worldInfo && inspector != .world) || (sidebarSelection == .storage && inspector != .storage) {
-                sidebarSelection = nil
+        get {
+            guard inspectorIsShown else { return nil }
+            switch selectedItem.flatMap(resolve) {
+            case .worldInfo?: return .world
+            case .storage?: return .storage
+            case .player(let player)?: return .player(player.uuid)
+            default: return selection == nil ? nil : .selection
+            }
+        }
+        set {
+            switch newValue {
+            case .world?: select(.worldInfo)
+            case .storage?: select(.storage)
+            case .player(let id)?: select(.player(id))
+            case .selection?: inspectorIsShown = true
+            case nil:
+                let previous = inspector
+                inspectorIsShown = false
+                overlayID = nil
+                if selectedItem == .worldInfo || selectedItem == .storage { selectedItem = nil }
+                if inspector != previous { playerRecords.cancel() }
             }
         }
     }
-    var sidebarSelection: SidebarItem?
+    var sidebarSelection: SidebarItem? {
+        guard let item = selectedItem, resolve(item) != nil else { return nil }
+        if case .player(let id) = item, !listedPlayers.contains(where: { $0.uuid == id }) { return nil }
+        return item
+    }
+    var selectedHitID: SearchHit.ID? {
+        if case .hit(_, let id)? = sidebarSelection { return id }
+        return nil
+    }
     /// Linked-pet jumps also reveal an already-selected row after its group is collapsed again.
     private(set) var sidebarRevealRequest: UUID?
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
     private(set) var navigation = MapNavigationHistory()
-    @ObservationIgnored private var isNavigating = false
     var selection: MapSelection? {
-        didSet {
-            guard selection != oldValue else { return }
-            if selection != nil { inspector = .selection }
-            else if inspector == .selection { inspector = nil }
+        guard inspectorIsShown else { return nil }
+        switch selectedItem.flatMap(resolve) {
+        case .creature(let marker)?: return .creature(marker)
+        case .place(let marker)?:
+            if let portal = marker.portal { return .portal(portal) }
+        default: break
         }
+        guard let overlayID, let map = inGameMaps.first(where: { $0.id == overlayID }), canShow(map) else { return nil }
+        return .inGameMap(map)
     }
     /// How opaque a selected in-game map is over the terrain.
     var inGameMapOpacity = 0.85
@@ -125,17 +141,11 @@ final class WorldSession {
         selectedDimensionID.flatMap { search.index.dimensions[$0] } ?? DimensionIndex()
     }
 
-    /// Keep the selected creature's details and map highlight current after a saved health change.
-    var currentSelection: MapSelection? {
-        guard case .creature(let marker)? = selection else { return selection }
-        return .creature(selectedIndex.creatures.first { $0.id == marker.id } ?? marker)
-    }
+    var currentSelection: MapSelection? { selection }
 
-    private var cacheRoot: URL? { resources.cacheRoot }
     private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
-    @ObservationIgnored private var retiringMaps: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
     convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
@@ -147,16 +157,16 @@ final class WorldSession {
 
     init(resources: WorldResources, dimensionID: String? = nil) {
         self.resources = resources
-        visibility = LayerVisibility(defaults: resources.defaults)
         let selected = dimensionID ?? resources.defaultDimensionID
+        visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
         search = SearchModel(readers: [], players: resources.players, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
-        heatMap = HeatMapLayer(readers: resources.readers)
+        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] })
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
-        heatMap.dimension = selected
-        makeMapForSelection()
+        map = Self.initialMap(resources: resources, dimensionID: selected)
+        heatMap.restoreVisibility(from: visibility)
         resources.attach(self)
     }
 
@@ -181,13 +191,12 @@ final class WorldSession {
         playerRecords.close()
         map?.close()
         let search = search, heatMap = heatMap, playerRecords = playerRecords
-        let map = map, retiring = Array(retiringMaps.values)
+        let map = map
         let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
             await playerRecords.waitForReads()
             await map?.waitForRenders()
-            for task in retiring { await task.value }
         }
         closingTask = task
         resources.detach(self, draining: task)
@@ -225,24 +234,40 @@ final class WorldSession {
 
     /// A dimension's name as players know it, by id.
     func dimensionName(_ id: String) -> String {
-        dimensions.first { $0.id == id }?.displayName ?? id
+        let name = Self.dimensionName(id)
+        let isAmbiguous = dimensions.contains { $0.id != id && Self.dimensionName($0.id) == name }
+        return isAmbiguous ? String(localized: "\(name) (\(id))") : name
+    }
+
+    private static func dimensionName(_ id: String) -> String {
+        switch id {
+        case "minecraft:overworld": String(localized: "Overworld")
+        case "minecraft:the_nether": String(localized: "The Nether")
+        case "minecraft:the_end": String(localized: "The End")
+        default: ReadableName.from(id)
+        }
     }
 
     /// The world spawn when it's in the selected dimension, otherwise the origin.
     var spawnPoint: CGPoint {
-        guard let spawn = world.level.spawnPosition,
-              (world.level.spawnDimension ?? "minecraft:overworld") == selectedDimensionID else { return .zero }
-        return CGPoint(x: spawn.x, y: spawn.z)
+        Self.spawnPoint(in: world, dimensionID: selectedDimensionID)
     }
 
-    /// Shows a location: switches to its dimension if needed, centers the map on it, and zooms in
+    private static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
+        guard let spawn = world.level.spawnPosition,
+              (world.level.spawnDimension ?? "minecraft:overworld") == dimensionID else { return .zero }
+        return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
+    }
+
+    /// Shows a location in its dimension document, centers the map, and zooms in
     /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
-    func focus(on location: PlayerInfo.Location, keepingZoom: Bool = false) {
-        guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
-        if route(to: location.dimension, perform: { $0.focus(on: location, keepingZoom: keepingZoom) }) { return }
+    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
+        guard dimensions.contains(where: { $0.id == location.dimension }),
+              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
+        if route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
         navigate {
-            selectedDimensionID = location.dimension
-            map?.viewport.center = CGPoint(x: location.x, y: location.z)
+            let point = CGPoint(x: location.x, y: location.z)
+            map?.viewport.center = blockPosition ? MapCoordinates.center(of: point) : point
             if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
         }
     }
@@ -253,8 +278,6 @@ final class WorldSession {
         guard !isClosed,
               let current = search.index.dimensions[pet.dimension]?.creatures.first(where: { $0.id == pet.id && $0.creature.owner == playerID }) else { return }
         if route(to: current.dimension, perform: { $0.showLinkedPet(current, ownedBy: playerID) }) { return }
-        selectedDimensionID = current.dimension
-        sidebarSelection = .creature(current.id)
         choose(.creature(current.id))
         sidebarRevealRequest = UUID()
     }
@@ -267,7 +290,8 @@ final class WorldSession {
 
     /// Coordinate entry changes only the center, keeping the chosen zoom.
     func goToCoordinates(_ point: CGPoint) {
-        navigate { map?.viewport.center = point }
+        guard let coordinates = MapCoordinates(point: point) else { return }
+        navigate { map?.viewport.center = coordinates.center }
     }
 
     func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
@@ -281,19 +305,20 @@ final class WorldSession {
         placeDraft = SavedPlaceDraft(existingID: place.id, name: place.name, dimension: place.dimension, position: place.position)
     }
 
+    func canVisit(_ place: SavedPlace) -> Bool { dimensions.contains { $0.id == place.dimension } }
+
     func visit(_ place: SavedPlace) {
-        guard dimensions.contains(where: { $0.id == place.dimension }) else { return }
+        guard canVisit(place) else { return }
         if route(to: place.dimension, perform: { $0.visit(place) }) { return }
         let scale = map?.viewport.scale ?? 1
         navigate {
-            selectedDimensionID = place.dimension
-            map?.viewport = MapViewport(center: place.position, scale: scale)
+            map?.viewport = MapViewport(center: place.mapPosition, scale: scale)
         }
     }
 
     func setRulerEnabled(_ enabled: Bool) {
         ruler.isEnabled = enabled
-        if enabled { selection = nil }
+        if enabled, selection != nil { inspector = nil }
     }
 
     func beginMeasurement(at point: CGPoint, in dimension: String) {
@@ -303,21 +328,17 @@ final class WorldSession {
         ruler.mark(point)
     }
 
-    private var currentView: MapViewLocation? {
-        guard let map, let dimension = selectedDimensionID else { return nil }
-        return MapViewLocation(dimension: dimension, viewport: map.viewport)
-    }
+    private var currentView: MapViewport? { map?.viewport }
 
     func openDimension(_ id: String) {
         guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
-        if openDocument != nil { open(id, then: nil) }
-        else { selectedDimensionID = id }
+        open(id, then: nil)
     }
 
     /// Each dimension is its own document; a jump to another dimension happens in that
     /// dimension's document, once it's open.
     private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
-        guard !isClosed, dimension != selectedDimensionID, openDocument != nil else { return false }
+        guard !isClosed, dimension != selectedDimensionID else { return false }
         open(dimension, then: perform)
         return true
     }
@@ -338,14 +359,11 @@ final class WorldSession {
         }
     }
 
-    /// Capture a whole jump once, even when it also switches dimensions or fits a map.
+    /// History belongs to this document. A routed jump records its destination's viewport.
     private func navigate(_ change: () -> Void) {
         guard !isClosed else { return }
-        if isNavigating { change(); return }
         let previous = currentView
-        isNavigating = true
         change()
-        isNavigating = false
         if let previous, previous != currentView { navigation.record(previous) }
     }
 
@@ -359,22 +377,16 @@ final class WorldSession {
         restore(destination)
     }
 
-    private func restore(_ location: MapViewLocation) {
-        isNavigating = true
-        selectedDimensionID = location.dimension
-        map?.viewport = location.viewport
-        isNavigating = false
-    }
+    private func restore(_ viewport: MapViewport) { map?.viewport = viewport }
 
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
-        let dimensions = Set(dimensions.map(\.id))
+        guard selectedDimensionID == previous.selectedDimensionID, map != nil,
+              let viewport = previous.currentView else { return }
         navigation = previous.navigation
-        navigation.retainDimensions(dimensions)
-        if let location = previous.currentView, dimensions.contains(location.dimension) {
-            restore(location)
-            ruler = previous.ruler
-        }
+        restore(viewport)
+        if let depth = previous.map?.depth { map?.setDepth(depth) }
+        ruler = previous.ruler
     }
 
     var canFitWorld: Bool {
@@ -403,10 +415,12 @@ final class WorldSession {
         content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
         content.showsGrid = visibility.showsGrid
         content.structures = index.structures.filter { visibility.structures.contains($0.group) }
-        content.places = index.places.filter { visibility.places.contains($0.group) }
-        content.creatures = index.creatures.filter { visibility.creatures.contains($0.group) }
+        content.placePoints = index.placePoints
+        content.shownPlaceGroups = visibility.places
+        content.creaturePoints = index.creaturePoints
+        content.shownCreatureGroups = visibility.creatures
         content.hits = pinnedHits.filter { $0.dimension == id && $0.position != nil }
-        content.selectedHitID = search.selectedHitID
+        content.selectedHitID = selectedHitID
         content.players = PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
                                                      singleplayerUUID: world.level.singleplayerUUID,
                                                      worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
@@ -417,120 +431,123 @@ final class WorldSession {
         return content
     }
 
-    private func makeMapForSelection() {
-        guard !isClosed else { return }
-        if let old = map {
-            old.close()
-            let id = UUID()
-            retiringMaps[id] = Task { [weak self] in
-                await old.waitForRenders()
-                self?.retiringMaps[id] = nil
-            }
-        }
-        guard let dimension = selectedDimension else {
-            map = nil
-            return
-        }
+    private static func initialMap(resources: WorldResources, dimensionID: String?) -> MapModel? {
+        guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        map = MapModel(dimension: dimension, center: spawnPoint,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
-        if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
+        let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+                           cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
+        if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
+        map.setDepth(resources.views.depth(for: dimension.id))
+        return map
     }
 
-    /// Shows what a sidebar row stands for, making its layer visible on the map.
-    func choose(_ item: SidebarItem) {
+    /// Resolves every selectable identity in one place, without retaining an old marker snapshot.
+    func resolve(_ item: SidebarItem) -> ResolvedSidebarItem? {
         let index = selectedIndex
         switch item {
-        case .worldInfo:
-            inspector = .world
-        case .storage:
-            inspector = .storage
-        case .savedPlace(let id):
-            if let place = savedPlaces.all.first(where: { $0.id == id }) { visit(place) }
-        case .structure(let id):
-            guard let marker = index.structures.first(where: { $0.id == id }) else { return }
+        case .worldInfo: return .worldInfo
+        case .storage: return .storage
+        case .savedPlace(let id): return listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
+        case .structure(let id): return index.structures.first { $0.id == id }.map(ResolvedSidebarItem.structure)
+        case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
+        case .creature(let id): return index.creatures.first { $0.id == id }.map(ResolvedSidebarItem.creature)
+        case .biome(let id): return index.biomeAreas.first { $0.id == id }.map(ResolvedSidebarItem.biome)
+        case .inGameMap(let id): return inGameMaps.first { $0.id == id }.map(ResolvedSidebarItem.inGameMap)
+        case .player(let id): return players.first { $0.uuid == id }.map(ResolvedSidebarItem.player)
+        case .hit(let query, let id):
+            guard (search.isActive && query == search.text) || savedSearches.contains(query) else { return nil }
+            return listedHits(for: query).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
+        }
+    }
+
+    /// Changes selection for every input path. Overlay retention is independent of row selection.
+    private func select(_ item: SidebarItem?, preservingGlobalRows: Bool = false) {
+        guard !isClosed else { return }
+        if item == nil, preservingGlobalRows {
+            if selectedItem == .worldInfo || selectedItem == .storage { return }
+            if case .inGameMap(let id)? = selectedItem, overlayID == id { return }
+        }
+        let previous = inspector
+        let resolved = item.flatMap(resolve)
+        selectedItem = resolved == nil ? nil : item
+        switch resolved {
+        case .worldInfo?, .storage?, .player?, .creature?: overlayID = nil
+        case .place(let marker)?:
+            if marker.portal != nil { overlayID = nil }
+        case .inGameMap(let map)?: overlayID = map.id
+        case .savedPlace?, .structure?, .biome?, .hit?, nil: break
+        }
+        inspectorIsShown = true
+        if inspector != previous { playerRecords.cancel() }
+    }
+
+    /// Only sidebar input navigates and reveals a hidden layer; map input keeps map focus/viewport.
+    func choose(_ item: SidebarItem?) {
+        guard !isClosed else { return }
+        guard let item, let resolved = resolve(item) else { select(nil); return }
+        switch resolved {
+        case .worldInfo, .storage: break
+        case .savedPlace(let place):
+            guard canVisit(place) else { return }
+            visit(place)
+        case .structure(let marker):
             visibility.structures.insert(marker.group)
             center(on: marker.position, keepingZoom: true)
-        case .place(let id):
-            guard let marker = index.places.first(where: { $0.id == id }) else { return }
+        case .place(let marker):
             visibility.places.insert(marker.group)
-            if let portal = marker.portal { show(portal, keepingZoom: true) } else { center(on: marker.position, keepingZoom: true) }
-        case .creature(let id):
-            guard let marker = index.creatures.first(where: { $0.id == id }) else { return }
+            center(on: marker.position, keepingZoom: true)
+        case .creature(let marker):
             visibility.creatures.insert(marker.group)
             center(on: marker.position, keepingZoom: true)
-            selection = .creature(marker)
-        case .biome(let id):
-            guard let area = index.biomeAreas.first(where: { $0.id == id }) else { return }
+        case .biome(let area):
             visibility.biomes.insert(area.group)
             center(on: area.position, keepingZoom: true)
-        case .inGameMap(let id):
-            if let map = inGameMaps.first(where: { $0.id == id }) { show(map, keepingZoom: true) }
-        case .player(let uuid):
-            guard let player = players.first(where: { $0.uuid == uuid }) else { return }
-            // A player without a mappable position still has details to show.
+        case .inGameMap(let map):
+            guard canShow(map) else { return }
+            show(map, keepingZoom: true)
+        case .player(let player):
+            visibility.hiddenPlayers.remove(player.uuid)
             if canFocus(player), let position = player.position { focus(on: position, keepingZoom: true) }
-            inspector = .player(uuid)
-        case .hit(let query, let id):
-            if let hit = search.results(for: query).first(where: { $0.id == id }) { show(hit, keepingZoom: true) }
+        case .hit(let hit):
+            guard let dimension = hit.dimension, let position = hit.position else { return }
+            focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
+            if case .layer(let layer) = hit.source {
+                switch layer {
+                case .structure(let group): visibility.structures.insert(group)
+                case .place(let group): visibility.places.insert(group)
+                case .creature(let group): visibility.creatures.insert(group)
+                case .biome(let group): visibility.biomes.insert(group)
+                }
+            }
         }
+        select(item)
     }
 
-    /// Selects a marker's row without navigating or taking focus from the map. A portal, creature
-    /// or player shows its details, replacing an in-game map overlay. Other markers and empty or
-    /// stale clicks keep that overlay, and otherwise close the details, as for a pet (Ryan, 2026-10-16).
+    /// Selects the current target without navigating. A player's death/respawn marker can show
+    /// details here even when their row belongs to another dimension.
     @discardableResult func mapClicked(_ clicked: MapTarget?) -> SidebarItem? {
-        let item = clicked.flatMap(sidebarItem(for:))
-        // A player's death or respawn marker can be drawn here while their row is in another
-        // dimension's sidebar, or while their current position is unknown; it still shows them.
-        let player: UUID? = if case .row(.player(let id))? = clicked, drawsMarker(for: id) { id } else { nil }
-        if item == nil, player == nil, case .inGameMap? = selection { return nil }
-        let detail: MapSelection?
-        switch item {
-        case .place(let id)?:
-            detail = selectedIndex.places.first { $0.id == id }?.portal.map(MapSelection.portal)
-        case .creature(let id)?:
-            detail = selectedIndex.creatures.first { $0.id == id }.map(MapSelection.creature)
-        default:
-            detail = nil
+        let item: SidebarItem?
+        switch clicked {
+        case .searchHit(let id)?: item = searchRow(for: id)
+        case .row(let row)?:
+            switch row {
+            case .player(let id): item = drawsMarker(for: id) ? row : nil
+            case .savedPlace, .structure, .place, .creature, .biome, .hit:
+                item = resolve(row) == nil ? nil : row
+            case .worldInfo, .storage, .inGameMap: item = nil
+            }
+        case nil: item = nil
         }
-        if let detail { selection = detail }
-        else if let player { inspector = .player(player) }
-        else if case .inGameMap? = selection { /* Keep the map under markers without details. */ }
-        else {
-            selection = nil
-            if case .player? = inspector { inspector = nil }
-        }
-        search.selectedHitID = if case .hit(_, let id)? = item { id } else { nil }
-        if let item { sidebarSelection = item }
-        else if sidebarSelection != .worldInfo && sidebarSelection != .storage { sidebarSelection = nil }
-        return item
+        select(item, preservingGlobalRows: true)
+        return item == nil ? nil : sidebarSelection
     }
 
-    private func sidebarItem(for target: MapTarget) -> SidebarItem? {
-        switch target {
-        case .searchHit(let id):
-            let queries = (search.isActive ? [search.text] : []) + savedSearches.all.filter(\.isShown).map(\.query)
-            for query in queries where listed(search.results(for: query)).prefix(200).contains(where: { $0.id == id }) {
-                return .hit(query: query, id: id)
-            }
-            return nil
-        case .row(let item):
-            // A live update may have removed the marker since this frame was drawn. Players'
-            // death/respawn markers can also belong to somebody listed in another dimension.
-            let index = selectedIndex
-            let exists = switch item {
-            case .structure(let id): index.structures.contains { $0.id == id }
-            case .place(let id): index.places.contains { $0.id == id }
-            case .creature(let id): index.creatures.contains { $0.id == id }
-            case .biome(let id): index.biomeAreas.contains { $0.id == id }
-            case .savedPlace(let id): listedPlaces.contains { $0.id == id }
-            case .player(let id): drawsMarker(for: id) && listedPlayers.contains { $0.uuid == id }
-            default: false
-            }
-            return exists ? item : nil
+    private func searchRow(for id: SearchHit.ID) -> SidebarItem? {
+        for query in visibleSearchQueries where listedHits(for: query).rows.contains(where: { $0.id == id }) {
+            return .hit(query: query, id: id)
         }
+        return nil
     }
 
     /// Whether this dimension's map draws one of the player's markers: their position, last death
@@ -544,41 +561,44 @@ final class WorldSession {
 
     /// Whether choosing a player's row can center the map on their current position.
     func canFocus(_ player: PlayerInfo) -> Bool {
-        guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
+        guard let position = PlayerPresentation.position(of: player) else { return false }
         return dimensions.contains { $0.id == position.dimension }
+    }
+
+    /// The native front dimension can change without this session switching dimensions.
+    func becameActive(isTerminating: Bool = false) {
+        guard !isTerminating, !isClosed, !resources.isClosed, let id = selectedDimensionID, map != nil else { return }
+        resources.activeDimensionID = id
+        saveView()
     }
 
     /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is
     /// showing: the selected one, except while switching away from it.
-    func saveView(of dimensionID: String? = nil) {
-        guard let map, let id = dimensionID ?? selectedDimensionID else { return }
-        views.save(map.viewport, for: id, selected: resources.activeDimensionID)
+    func saveView() {
+        guard let map, let id = selectedDimensionID else { return }
+        views.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
     }
 
     // MARK: Search results, portals and in-game maps
 
-    /// Centers the map on a search result, switching dimension if needed, and shows its layer's
-    /// kind (a biome's outline, say) so the result is on the map.
-    func show(_ hit: SearchHit, keepingZoom: Bool = false) {
-        guard let dimension = hit.dimension, let position = hit.position else { return }
-        if route(to: dimension, perform: { $0.show(hit, keepingZoom: keepingZoom) }) { return }
-        focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: keepingZoom)
-        search.selectedHitID = hit.id
-        guard case .layer(let layer) = hit.source else { return }
-        switch layer {
-        case .structure(let group): visibility.structures.insert(group)
-        case .place(let group): visibility.places.insert(group)
-        case .creature(let group): visibility.creatures.insert(group)
-        case .biome(let group): visibility.biomes.insert(group)
-        }
+    /// The sidebar, map pins and click resolver share the same per-dimension 200-row limit.
+    func listedHits(for query: String) -> (rows: ArraySlice<SearchHit>, total: Int) {
+        let hits = listed(search.results(for: query))
+        return (hits.prefix(200), hits.count)
     }
 
-    /// What's pinned on the map: the search bar's results and those of the saved searches shown,
-    /// each once.
+    private var visibleSearchQueries: [String] {
+        (search.isActive ? [search.text] : []) + savedSearches.all.filter(\.isShown).map(\.query)
+    }
+
     var pinnedHits: [SearchHit] {
         var seen = Set<SearchHit.ID>()
-        let queries = [search.text] + savedSearches.all.filter(\.isShown).map(\.query)
-        return queries.flatMap { search.results(for: $0) }.filter { seen.insert($0.id).inserted }
+        return visibleSearchQueries.flatMap { listedHits(for: $0).rows }.filter { seen.insert($0.id).inserted }
+    }
+
+    var canSaveSearch: Bool {
+        let query = search.text.trimmingCharacters(in: .whitespaces)
+        return !query.isEmpty && !savedSearches.contains(query)
     }
 
     /// Saves the search bar's query to the sidebar.
@@ -586,11 +606,16 @@ final class WorldSession {
         savedSearches.add(search.text)
     }
 
-    /// Where a portal leads, or `nil` until both sides' portals are loaded.
+    /// Where a portal leads, or `nil` while its target's saved portals are pending or unavailable.
     func link(for portal: NetherPortal) -> NetherPortal.Link? {
         guard let target = NetherPortal.targetDimension(from: portal.dimension),
               let candidates = portalsByDimension[target] else { return nil }
         return portal.link(into: candidates)
+    }
+
+    func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
+        guard !isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
+        return resources.index.isWaitingForPortals(in: target)
     }
 
     /// Whether a portal links both ways, one way, or to nothing.
@@ -603,7 +628,7 @@ final class WorldSession {
         if route(to: portal.dimension, perform: { $0.show(portal, keepingZoom: keepingZoom) }) { return }
         focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
               keepingZoom: keepingZoom)
-        selection = .portal(portal)
+        select(.place(PlaceMarker(portal).id))
     }
 
     /// Drawn maps made in the game that this dimension's sidebar lists: those drawn in it, and, in
@@ -637,7 +662,7 @@ final class WorldSession {
                   keepingZoom: keepingZoom)
             if !keepingZoom { self.map?.viewport.scale = InGameMapImage.fittingScale(for: map) }
         }
-        selection = .inGameMap(map)
+        select(.inGameMap(map.id))
     }
 
     // MARK: Players
@@ -721,18 +746,6 @@ enum WorldOpenError: LocalizedError, Equatable {
             String(localized: "Open the world’s folder, inside your saves folder, instead.")
         case .unreadable:
             String(localized: "It may be from a version Chunksee doesn’t support, or damaged.")
-        }
-    }
-}
-
-extension ChunkseeKit.Dimension {
-    /// The dimension's name as players know it.
-    var displayName: String {
-        switch id {
-        case "minecraft:overworld": String(localized: "Overworld")
-        case "minecraft:the_nether": String(localized: "The Nether")
-        case "minecraft:the_end": String(localized: "The End")
-        default: id
         }
     }
 }

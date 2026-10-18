@@ -189,7 +189,7 @@ enum StructureTestWorld {
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         #expect(marker.group == .villager && marker.name == "Librarian")
-        #expect(TradeText.levelName(5) == "Master")
+        #expect(VillagerText.levelName(5) == "Master")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
         #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
@@ -297,11 +297,10 @@ enum StructureTestWorld {
         // The map centers on it but keeps the zoom the user chose.
         #expect(session.map?.viewport == MapViewport(center: summer.position, scale: 0.25))
         // World Info stays selected in the sidebar only while the inspector shows it.
-        session.sidebarSelection = .worldInfo
         session.choose(.worldInfo)
         #expect(session.inspector == .world && session.selection == nil)
         session.inspector = .storage
-        #expect(session.sidebarSelection == nil)
+        #expect(session.sidebarSelection == .storage)
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
         session.center(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
@@ -477,6 +476,108 @@ enum StructureTestWorld {
         #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
         session.heatMap.isShown = false
         #expect(session.heatMap.visibleImages == nil)
+    }
+
+    @Test func dimensionDocumentsKeepTheirOwnHeatImagesAndVisibility() async throws {
+        func chunk(ticks: Int) -> TestWorld.ChunkSpec {
+            var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+            var root = spec.nbt.compound!
+            root["InhabitedTime"] = .long(Int64(ticks))
+            spec.nbt = .compound(root)
+            return spec
+        }
+        let world = try TestWorld.make(chunks: [chunk(ticks: HeatMap.maximumTicks)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let netherFolder = world.appendingPathComponent("DIM-1/region")
+        try FileManager.default.createDirectory(at: netherFolder, withIntermediateDirectories: true)
+        try Data(TestWorld.regionFile([chunk(ticks: HeatMap.minimumTicks)])).write(to: netherFolder.appendingPathComponent("r.0.0.mca"))
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        await resources.index.waitForIndex()
+        func pixel(_ session: WorldSession) throws -> [UInt8] {
+            let image = try #require(session.heatMap.visibleImages?[RegionCoordinate(x: 0, z: 0)])
+            let data = try #require(image.dataProvider?.data)
+            let bytes = try #require(CFDataGetBytePtr(data))
+            return Array(UnsafeBufferPointer(start: bytes, count: 4))
+        }
+        overworld.heatMap.isShown = true
+        await overworld.heatMap.waitForReads()
+        #expect(nether.heatMap.visibleImages == nil && !nether.heatMap.isLoading)
+        let red = try pixel(overworld)
+        #expect(red[0] > red[2] && red[3] > 0)
+        nether.heatMap.isShown = true
+        await nether.heatMap.waitForReads()
+        let blue = try pixel(nether)
+        #expect(blue[2] > blue[0] && blue[3] > 0)
+        overworld.heatMap.isShown = false
+        overworld.heatMap.load(reread: true)
+        #expect(overworld.heatMap.visibleImages == nil)
+        #expect(try pixel(nether) == blue)
+        overworld.heatMap.isShown = true
+        await overworld.heatMap.waitForReads()
+        #expect(try pixel(overworld) == red)
+        #expect(try pixel(nether) == blue)
+        resources.close()
+        await resources.waitUntilClosed()
+        #expect(overworld.isClosed && nether.isClosed)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func savesDuringAReadAreCoalescedAndHiddenSavesAreRemembered() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimensions().first)
+        let gate = AsyncReadGate<RegionData>()
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let layer = HeatMapLayer(reader: reader)
+        layer.isShown = true
+        await gate.waitForRequest("region")
+        layer.load(reread: true)
+        layer.load(reread: true)
+        let waiting = Task { await layer.waitForReads() }
+        var inhabited = RegionData()
+        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        await gate.finish("region", with: inhabited)
+        await gate.waitForRequest("region", count: 2)
+        #expect(layer.visibleImages?.count == 1) // completed data stays visible during the next pass
+        await gate.finish("region", with: RegionData())
+        await waiting.value
+        #expect(layer.visibleImages?.isEmpty == true)
+        #expect(await gate.requested == ["region", "region"])
+
+        layer.isShown = false
+        layer.load(reread: true)
+        #expect(await gate.requested.count == 2)
+        layer.isShown = true
+        await gate.waitForRequest("region", count: 3)
+        await gate.finish("region", with: inhabited)
+        await layer.waitForReads()
+        #expect(layer.visibleImages?.count == 1)
+        layer.cancel()
+        await reader.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func closingRejectsALateImageAndDropsTheQueuedPass() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimensions().first)
+        let gate = AsyncReadGate<RegionData>()
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let layer = HeatMapLayer(reader: reader)
+        layer.isShown = true
+        await gate.waitForRequest("region")
+        layer.load(reread: true)
+        layer.cancel()
+        var inhabited = RegionData()
+        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        await gate.finish("region", with: inhabited)
+        await layer.waitForReads()
+        layer.load(reread: true)
+        #expect(layer.visibleImages == nil)
+        #expect(await gate.requested == ["region"])
+        await reader.close()
     }
 }
 
