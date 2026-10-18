@@ -1,4 +1,5 @@
 import ChunkseeKit
+import CoreGraphics
 import CryptoKit
 import Foundation
 import Testing
@@ -42,6 +43,7 @@ import Testing
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
         content.creatures = []; content.selection = nil; content.hits = [hit]
         viewport.center = .zero
+        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 12.5), viewport: viewport, size: size) == .searchHit(hit.id))
         #expect(content.target(at: near, viewport: viewport, size: size) == nil)
         content.selectedHitID = hit.id
         #expect(content.target(at: near, viewport: viewport, size: size) == .searchHit(hit.id))
@@ -84,6 +86,36 @@ import Testing
         let locations = content.accessibleLocations(viewport: viewport, size: size)
         #expect(locations.map(\.id) == ["player-edge-0"])
         #expect(locations.first?.position == content.players.first?.position)
+        #expect(locations.first?.anchor == content.players.first?.anchor)
+    }
+
+    @Test func selectedReachCrossesRegionBucketsAndStillChoosesTheClosestMarker() throws {
+        let selected = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 511.999, y: 64, z: 8,
+            owner: UUID()), dimension: "minecraft:overworld"))
+        var content = MapContent()
+        content.creatures = [selected]; content.selection = .creature(selected)
+        let viewport = MapViewport(center: selected.position, scale: 32)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let edge = CGPoint(x: center.x + 14.99, y: center.y)
+        #expect(viewport.blockPoint(at: edge, in: size).x > 512)
+        #expect(content.target(at: edge, viewport: viewport, size: size) == .row(.creature(selected.id)))
+        let closer = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 512.2, y: 64, z: 8,
+            owner: UUID()), dimension: "minecraft:overworld"))
+        content.creatures = [closer, selected]
+        #expect(content.target(at: edge, viewport: viewport, size: size) == .row(.creature(closer.id)))
+        content.creatures = [selected, closer]
+        #expect(content.target(at: edge, viewport: viewport, size: size) == .row(.creature(closer.id)))
+    }
+
+    @Test(arguments: [MapMarker.Kind.death, .respawn])
+    func playerLocationBadgesRetainTheirOwnBodySize(_ kind: MapMarker.Kind) {
+        let marker = MapMarker(id: "location", playerID: UUID(), kind: kind, position: .zero,
+                               y: 64, label: "Location", isOutdated: false)
+        var content = MapContent(); content.players = [marker]
+        let viewport = MapViewport(center: marker.anchor, scale: 32)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        #expect(content.target(at: CGPoint(x: center.x + 14.99, y: center.y), viewport: viewport, size: size) == .row(.player(marker.playerID)))
+        #expect(content.target(at: CGPoint(x: center.x + 15.01, y: center.y), viewport: viewport, size: size) == nil)
     }
 
     @Test func unchangedMarkerRenderingProducesComparableImages() throws {
