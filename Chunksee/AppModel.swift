@@ -47,6 +47,7 @@ final class AppModel {
         openWorlds = openWorlds.filter { $0.value.value.map { !$0.isClosed } ?? false }
         let key = snapshot.access.url.resolvingSymlinksInPath().path
         if let open = openWorlds[key]?.value {
+            open.includeDimensions(from: snapshot)
             snapshot.access.release()
             return open
         }

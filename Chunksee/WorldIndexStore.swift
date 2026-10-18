@@ -9,7 +9,8 @@ final class WorldIndexStore {
     private(set) var portals: [String: [NetherPortal]] = [:]
     private(set) var revision = 0
     private(set) var isIndexing = false
-    private let readers: [RegionReader]
+    /// The world's canonical reader catalog. Resources derive their dimension views from it.
+    private(set) var readers: [RegionReader]
     @ObservationIgnored private var indexTask: Task<Void, Never>?
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
     /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
@@ -19,6 +20,17 @@ final class WorldIndexStore {
 
     init(readers: [RegionReader], firstDimension: String?) {
         self.readers = readers
+        rebuild(firstDimension: firstDimension)
+    }
+
+    /// A freshly validated document can discover a dimension created since the world opened.
+    /// Keep existing readers, and finish a running pass before indexing the expanded catalog.
+    func include(_ additions: [RegionReader], firstDimension: String?) {
+        guard !isClosed else { return }
+        var known = Set(readers.map { $0.dimension.id })
+        let added = additions.filter { known.insert($0.dimension.id).inserted }
+        guard !added.isEmpty else { return }
+        readers += added
         rebuild(firstDimension: firstDimension)
     }
 

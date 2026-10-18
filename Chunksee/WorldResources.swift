@@ -29,17 +29,18 @@ final class WorldOpening {
 final class WorldResources {
     let access: WorldReadAccess
     let world: World
-    let dimensions: [ChunkseeKit.Dimension]
-    let dimensionDocuments: [String: String]
+    var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
+    private(set) var dimensionDocuments: [String: String]
     let details: WorldDetails
     let names: PlayerNames
     let savedSearches: SavedSearches
     let savedPlaces: SavedPlaces
-    let readers: [String: RegionReader]
+    var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
     let views: RememberedViews
     let defaults: UserDefaults
     let cacheRoot: URL?
+    private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData
     private(set) var players: [PlayerInfo]
     var activeDimensionID: String?
     private(set) var isClosed = false
@@ -78,7 +79,6 @@ final class WorldResources {
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
         world = snapshot.world
-        dimensions = snapshot.dimensions
         dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
         players = snapshot.players
@@ -86,21 +86,37 @@ final class WorldResources {
         self.savedSearches = savedSearches
         self.defaults = defaults
         self.cacheRoot = cacheRoot
+        self.readRegion = readRegion
         views = RememberedViews(world: snapshot.access.url, defaults: defaults)
         savedPlaces = SavedPlaces(world: snapshot.access.url, defaults: defaults)
-        readers = Dictionary(uniqueKeysWithValues: snapshot.dimensions.map { dimension in
-            (dimension.id, RegionReader(dimension: dimension,
-                                       cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                                       read: readRegion))
-        })
+        let readers = snapshot.dimensions.map { dimension in
+            RegionReader(dimension: dimension,
+                         cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
+                         read: readRegion)
+        }
         let last = views.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: Array(readers.values), firstDimension: firstDimension)
+        index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
         watcher = WorldWatcher(folder: snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
         }
+    }
+
+    /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
+    /// The snapshot's own access remains the caller's; this world keeps its original root access.
+    func includeDimensions(from snapshot: WorldSnapshot) {
+        guard !isClosed else { return }
+        let known = Set(dimensions.map(\.id))
+        let added = snapshot.dimensions.filter { !known.contains($0.id) }
+        guard !added.isEmpty else { return }
+        let newIDs = Set(added.map(\.id))
+        dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
+        index.include(added.map { dimension in
+            RegionReader(dimension: dimension,
+                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot), read: readRegion)
+        }, firstDimension: activeDimensionID)
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
