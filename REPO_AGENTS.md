@@ -84,7 +84,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
+| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
@@ -178,6 +178,13 @@ Map accessibility locations expose the same Copy Coordinates action and saved he
 readouts use ChunkseeKit’s `BlockPosition` containing-block conversion, including negative fractions; unreadable saved positions
 are unavailable for mapping. Player/creature positions remain exact, while death/respawn points,
 saved places and coordinate-entry destinations use the center of their block for drawing and focus.
+
+Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
+Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.
+A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
+available on the map. NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
+selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu
+does not supply that point. Held menus disable/guard commands when their document closes.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is

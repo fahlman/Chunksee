@@ -1,5 +1,6 @@
 import AppKit
 import ChunkseeKit
+import SwiftUI
 import Testing
 @testable import Chunksee
 
@@ -83,11 +84,12 @@ import Testing
             let viewport = MapViewport(center: position, scale: 8)
             // An offset click on the badge must copy the marker, not the pointer's block.
             let hit = try #require(content.hit(at: CGPoint(x: 204, y: 150), viewport: viewport, size: size))
-            let menu = MapContextMenu.make(actions: [.init(title: "Copy Coordinates") {
-                MapClipboard.copy(hit.position, y: hit.y, on: map, to: board)
-            }])
-            let item = try #require(menu.item(at: 0))
-            #expect(NSApplication.shared.sendAction(try #require(item.action), to: item.target, from: item))
+            let menu = MapContextMenu.make {
+                Button("Copy Coordinates") { MapClipboard.copy(hit.position, y: hit.y, on: map, to: board) }
+            }
+            menu.update()
+            _ = try #require(menu.item(at: 0))
+            menu.performActionForItem(at: 0)
             #expect(board.string(forType: .string) == expected)
             #expect(map.unfinishedCoordinateReads == 0)
         }

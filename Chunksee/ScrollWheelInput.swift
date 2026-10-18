@@ -10,12 +10,12 @@ struct ScrollWheelInput: NSViewRepresentable {
     }
 
     let perform: (Action) -> Void
-    var contextActions: (CGPoint) -> [MapContextAction] = { _ in [] }
+    var contextContent: (CGPoint) -> MapContextMenuContent? = { _ in nil }
 
-    func makeNSView(context: Context) -> MapScrollView { MapScrollView(perform: perform, contextActions: contextActions) }
+    func makeNSView(context: Context) -> MapScrollView { MapScrollView(perform: perform, contextContent: contextContent) }
     func updateNSView(_ view: MapScrollView, context: Context) {
         view.perform = perform
-        view.contextActions = contextActions
+        view.contextContent = contextContent
     }
 
     /// What a scroll does: a trackpad scroll pans with the fingers; ⌘-scroll or a mouse wheel zooms
@@ -34,12 +34,12 @@ struct ScrollWheelInput: NSViewRepresentable {
 /// Native event routing distinguishes windows and respects controls layered over the map.
 final class MapScrollView: NSView {
     var perform: (ScrollWheelInput.Action) -> Void
-    var contextActions: (CGPoint) -> [MapContextAction]
+    var contextContent: (CGPoint) -> MapContextMenuContent?
     override var isFlipped: Bool { true }
 
-    init(perform: @escaping (ScrollWheelInput.Action) -> Void, contextActions: @escaping (CGPoint) -> [MapContextAction] = { _ in [] }) {
+    init(perform: @escaping (ScrollWheelInput.Action) -> Void, contextContent: @escaping (CGPoint) -> MapContextMenuContent? = { _ in nil }) {
         self.perform = perform
-        self.contextActions = contextActions
+        self.contextContent = contextContent
         super.init(frame: .zero)
     }
 
@@ -61,8 +61,8 @@ final class MapScrollView: NSView {
         guard let window, event.window === window else { return nil }
         let point = convert(event.locationInWindow, from: nil)
         guard bounds.contains(point) else { return nil }
-        let actions = contextActions(point)
-        return actions.isEmpty ? nil : MapContextMenu.make(actions: actions)
+        guard let content = contextContent(point) else { return nil }
+        return MapContextMenu.make { content }
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -80,8 +80,8 @@ final class MapScrollView: NSView {
 }
 
 extension View {
-    func scrollWheelInput(contextActions: @escaping (CGPoint) -> [MapContextAction] = { _ in [] },
+    func scrollWheelInput(contextContent: @escaping (CGPoint) -> MapContextMenuContent? = { _ in nil },
                           perform: @escaping (ScrollWheelInput.Action) -> Void) -> some View {
-        overlay { ScrollWheelInput(perform: perform, contextActions: contextActions).accessibilityHidden(true) }
+        overlay { ScrollWheelInput(perform: perform, contextContent: contextContent).accessibilityHidden(true) }
     }
 }
