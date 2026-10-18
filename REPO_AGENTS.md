@@ -75,7 +75,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
+| `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
@@ -118,6 +118,13 @@ Copy Coordinates writes three whole block coordinates separated by single spaces
 Marker hit testing supplies saved heights; terrain and two-dimensional saved places use the
 renderer/hover reader's actual block height. `MapModel` owns, cancels and drains those background
 reads before world access ends. A late result cannot replace a newer copy or another clipboard change.
+
+Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
+Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.
+A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
+available on the map. NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
+selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu
+does not supply that point. Held menus disable/guard commands when their document closes.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is

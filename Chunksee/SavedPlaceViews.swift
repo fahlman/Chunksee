@@ -18,13 +18,7 @@ struct SavedPlacesSection: View {
                 .id(SidebarItem.savedPlace(place.id))
                 .selectionDisabled(!session.canVisit(place))
                 .contextMenu {
-                    Button("Rename…") { session.edit(place) }
-                    Button("Copy Coordinates") {
-                        if let map = session.map { MapClipboard.copy(place.position, on: map) }
-                    }
-                    .disabled(session.map == nil || !session.canVisit(place))
-                    Divider()
-                    Button("Remove", role: .destructive) { session.savedPlaces.remove(place.id) }
+                    SavedPlaceMenu(session: session, place: place, map: session.map)
                 }
             }
             Button("Save Place…", systemImage: "mappin.and.ellipse") { session.savePlace() }

@@ -176,7 +176,9 @@ struct MapView: View {
                 onSelect(content.target(at: value.location, viewport: map.viewport, size: size))
             }
         })
-        .scrollWheelInput(contextActions: contextActions) { action in
+        .scrollWheelInput(contextContent: { point in
+            MapContextMenuContent(at: point, session: session, map: map, content: content, size: size)
+        }) { action in
             switch action {
             case .pan(let delta): map.viewport.pan(by: delta)
             case .zoom(let factor, let anchor): map.viewport.zoom(by: factor, anchor: anchor, in: size)
@@ -245,18 +247,6 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
         .overlay(alignment: .bottom) { statusBar }
         .toolbar { MapToolbar(session: session, map: map) }
-    }
-
-    private func contextActions(at point: CGPoint) -> [MapContextAction] {
-        guard let coordinates = MapCoordinates(point: map.viewport.blockPoint(at: point, in: size)) else { return [] }
-        let position = coordinates.position, dimension = map.dimension.id
-        let hit = content.hit(at: point, viewport: map.viewport, size: size)
-        let copyPosition = hit?.position ?? position, copyY = hit?.y, map = map
-        return [
-            MapContextAction(title: String(localized: "Copy Coordinates")) { MapClipboard.copy(copyPosition, y: copyY, on: map) },
-            MapContextAction(title: String(localized: "Save Place…")) { session.savePlace(at: position, in: dimension) },
-            MapContextAction(title: String(localized: "Measure Distance from Here")) { session.beginMeasurement(at: position, in: dimension) },
-        ]
     }
 
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
