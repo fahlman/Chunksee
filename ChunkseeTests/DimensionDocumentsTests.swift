@@ -230,7 +230,7 @@ import Testing
         #expect(documents.map(\.lastPathComponent).sorted() == ["DIM-1", "region"])
         let overworld = try await DimensionSnapshot.read(url.appendingPathComponent("region"), folders: folders)
         #expect(overworld.dimensionID == "minecraft:overworld")
-        overworld.world.access.release()
+        overworld.discardUnused()
     }
 
     @Test func aDimensionDocumentReadsItsWorldThroughTheRememberedFolder() async throws {
@@ -247,7 +247,8 @@ import Testing
         folders.remember(url) // remembering again keeps one bookmark
         #expect((defaults.array(forKey: "worldFolderBookmarks") ?? []).count == 1)
         let snapshot = try await DimensionSnapshot.read(nether, folders: folders)
-        #expect(snapshot.dimensionID == "minecraft:the_nether" && snapshot.world.world.level.name == "Test")
+        guard case .snapshot(let world) = snapshot.source else { Issue.record("A fresh read reused an opening"); return }
+        #expect(snapshot.dimensionID == "minecraft:the_nether" && world.world.level.name == "Test")
         let overworld = try await DimensionSnapshot.read(url.appendingPathComponent("dimensions/minecraft/overworld"), folders: folders)
         #expect(overworld.dimensionID == "minecraft:overworld")
         await #expect(throws: WorldOpenError.notADimension) {
@@ -256,15 +257,19 @@ import Testing
 
         // Dimensions of one open world share its resources until the last one closes.
         let model = AppModel(defaults: defaults)
-        let first = model.resources(for: snapshot.world)
-        #expect(model.resources(for: overworld.world) === first)
-        let view = WorldSession(resources: first, dimensionID: snapshot.dimensionID)
+        let view = try snapshot.makeSession(in: model)
+        let other = try overworld.makeSession(in: model)
+        let first = view.resources
+        #expect(other.resources === first)
         view.close()
+        other.close()
         await view.waitUntilClosed()
+        await other.waitUntilClosed()
         let again = try await DimensionSnapshot.read(nether, folders: folders)
-        let second = model.resources(for: again.world)
+        let next = try again.makeSession(in: model)
+        let second = next.resources
         #expect(second !== first)
-        second.close()
+        next.close()
         await second.waitUntilClosed()
     }
 
@@ -308,8 +313,12 @@ import Testing
                 Issue.record("A remembered dimension should read through its world")
                 continue
             }
-            #expect(snapshot.world.world.level.name == "Test" && snapshot.documentURL == document)
-            snapshot.world.access.release()
+            defer { snapshot.discardUnused() }
+            guard case .snapshot(let world) = snapshot.source else {
+                Issue.record("A reader without an AppModel should own its opening snapshot")
+                continue
+            }
+            #expect(world.world.level.name == "Test" && snapshot.documentURL == document)
         }
         await #expect(throws: WorldOpenError.notADimension) {
             try await reader.readFolder(url.appendingPathComponent("dimensions"))
