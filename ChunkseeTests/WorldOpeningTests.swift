@@ -18,13 +18,14 @@ import Testing
 
         init(probe: Reads) throws {
             self.probe = probe
-            url = try TestWorld.make(chunks: [])
+            let worldURL = try TestWorld.make(chunks: [])
+            url = worldURL
             for name in ["the_nether", "the_end"] {
                 try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/\(name)/region"), withIntermediateDirectories: true)
             }
             suite = "ChunkseeTests-\(UUID())"
             defaults = UserDefaults(suiteName: suite)!
-            documents = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
+            documents = try World(contentsOf: worldURL).dimensions().map { $0.documentURL(inWorldAt: worldURL) }
             model = AppModel(defaults: defaults, cacheRoot: nil, readWorld: { try await probe.read($0) })
             model.worldFolders.remember(url)
             try writePlayer(health: 20)
