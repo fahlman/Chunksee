@@ -6,6 +6,39 @@ import Testing
 @testable import Chunksee
 
 @Suite struct TileCacheTests {
+    @Test func oldTilesAreRebuiltByScanningBlocksWhenHeightmapWidthIsAmbiguous() async throws {
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:grass_block"]) { _, y, _ in
+            y == 10 ? 1 : 0
+        }
+        // A 4000-block-high dimension starting at -2032: first free Y 11 is stored as 2043.
+        // Both 11-bit and 12-bit maps occupy 52 longs, so their length cannot choose a width.
+        var packed = [UInt64](repeating: 0, count: 52)
+        for i in 0..<256 { packed[i / 5] |= UInt64(2043) << UInt64(i % 5 * 12) }
+        spec.nbt = .compound(try #require(spec.nbt.compound).merging([
+            "yPos": .int(-127),
+            "Heightmaps": .compound(["WORLD_SURFACE": .longArray(packed.map { Int64(bitPattern: $0) })]),
+        ]) { $1 })
+        let world = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let region = RegionCoordinate(x: 0, z: 0)
+        let cache = TileCache(directory: world.appendingPathComponent("test-cache"))
+        let key = try #require(TileCache.key(for: region, regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
+        let oldFile = cache.directory.appendingPathComponent("r.0.0.surface.\(key.fileSize).\(key.modified).v6.lzfse")
+        try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
+        let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
+        try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
+
+        let renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
+        let tile = try #require(try await renderer.tile(for: region))
+        let pixels = try #require(tile.full.dataProvider?.data as Data?)
+        let offset = (RegionTileRenderer.side + 1) * 4
+        let grass = try #require(BlockColors.color(for: "minecraft:grass_block"))
+        #expect(Array(pixels[offset..<offset + 4]) == [grass.red, grass.green, grass.blue, 255])
+        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(cache.load(key) == Array(pixels))
+    }
+
     @Test func secondRenderComesFromTheCacheAndChangesInvalidateIt() async throws {
         let world = try TestWorld.make(chunks: [
             TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 },
@@ -65,6 +98,35 @@ import Testing
 }
 
 @Suite struct ScanCacheTests {
+    @Test func oldCreatureCacheIsRereadWithTheEntityChunksHealthDefaults() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let region = RegionCoordinate(x: 0, z: 0)
+        let entitiesFile = dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")
+        let entity = NBT.compound([
+            "id": .string("minecraft:cat"), "Health": .float(6), "Owner": .intArray([1, 2, 3, 4]),
+            "Pos": .list([.double(4), .double(64), .double(4)]),
+        ])
+        let chunk = NBT.compound(["DataVersion": .int(4786), "Entities": .list([entity])])
+        try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
+        try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: entitiesFile)
+        let cache = ScanCache(directory: world.appendingPathComponent("test-cache"))
+        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
+        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v13")
+        try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let stale = [Creature(id: "minecraft:cat", x: 4, y: 64, z: 4, owner: NBT.intArray([1, 2, 3, 4]).uuid, health: 6)]
+        let encoded = try PropertyListEncoder().encode(stale)
+        try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
+
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        let creatures = await reader.creatures(region)
+        #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
+        let saved: [Creature]? = cache.load("creatures", region: region, fingerprint: fingerprint)
+        #expect(saved?.first?.maxHealth == 10)
+        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+    }
+
     @Test func previousStructureCacheIsRebuiltWithoutUnplacedMarkers() async throws {
         let world = try TestWorld.make(chunks: StructureTestWorld.chunks())
         defer { try? FileManager.default.removeItem(at: world) }
