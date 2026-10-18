@@ -553,6 +553,13 @@ final class WorldSession {
         return dimensions.contains { $0.id == position.dimension }
     }
 
+    /// The native front dimension can change without this session switching dimensions.
+    func becameActive(isTerminating: Bool = false) {
+        guard !isTerminating, !isClosed, !resources.isClosed, let id = selectedDimensionID, map != nil else { return }
+        resources.activeDimensionID = id
+        saveView()
+    }
+
     /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is
     /// showing: the selected one, except while switching away from it.
     func saveView(of dimensionID: String? = nil) {
