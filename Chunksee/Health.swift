@@ -5,10 +5,11 @@ import SwiftUI
 struct HealthRow: View {
     let health: Double?
     let maximum: Double?
+    @Environment(\.locale) private var locale
 
     var body: some View {
         let reading = HealthPresentation(health: health, maximum: maximum)
-        if let text = reading.text() {
+        if let text = reading.text(locale: locale) {
             let label: LocalizedStringKey = reading.health == nil ? "Maximum Health" : "Health"
             LabeledContent(label) {
                 if let value = reading.gaugeValue, let maximum = reading.maximum {
@@ -43,16 +44,11 @@ nonisolated struct HealthPresentation: Equatable, Sendable {
     func text(locale: Locale = .current) -> String? {
         guard let health else { return maximum.flatMap { Self.hearts($0, locale: locale) } }
         guard let maximum else { return Self.hearts(health, locale: locale) }
-        let format = Self.format(locale)
-        return String(localized: "\(health / 2, format: format) of \(maximum / 2, format: format) hearts", locale: locale)
+        return CountedText.hearts(health / 2, of: maximum / 2, locale: locale)
     }
 
     static func hearts(_ health: Double, locale: Locale = .current) -> String? {
         guard health.isFinite, health >= 0 else { return nil }
-        return String(localized: "\(health / 2, format: format(locale)) hearts", locale: locale)
-    }
-
-    private static func format(_ locale: Locale) -> FloatingPointFormatStyle<Double> {
-        .number.precision(.fractionLength(0...2)).locale(locale)
+        return CountedText.hearts(health / 2, locale: locale)
     }
 }

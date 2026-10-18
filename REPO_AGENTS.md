@@ -109,7 +109,7 @@ remain localized. Names do not replace identifiers or native document folder tit
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
-| `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
+| `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
