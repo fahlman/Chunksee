@@ -28,18 +28,28 @@
       "comment" : "Block deposit count followed by its minimum and maximum height. Pluralize only the first argument.",
       "localizations" : {
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%1$lld block · Y %2$lld to %3$lld"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%1$lld blocks · Y %2$lld to %3$lld"
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@blocks@ · Y %2$lld to %3$lld"
+          },
+          "substitutions" : {
+            "blocks" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld block"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%lld blocks"
+                    }
+                  }
                 }
               }
             }
