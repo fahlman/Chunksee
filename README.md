@@ -18,11 +18,17 @@ It shows a top-down view of a world, the structures and places found in it, and 
    tabs, following your tab preference in System Settings, and **Window ▸ Merge All Windows**
    gathers them into tabs. **Navigate ▸ Dimension** brings another dimension to the front or
    reopens one you closed, and macOS restores open dimensions when you reopen the app.
+   Custom dimension labels use readable words, such as "Sky Realm" for `example:sky_realm`.
+   If two dimensions would have the same label, their full IDs distinguish them, for example
+   "Caves (mod_a:caves)" and "Caves (mod_b:caves)".
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
    appears beside the toolbar's zoom controls; click it to choose a zoom level or **Fit World**,
    which fits all saved terrain in the current dimension into the window. You can zoom in to 3,200%.
+   To look underground, move the toolbar’s height slider or enter a whole **Y** coordinate. The map
+   shows the terrain at or below that height, including cave floors. **Surface** returns to the
+   normal map. Each dimension remembers its own height and mode when reopened or restored.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.
@@ -37,6 +43,9 @@ It shows a top-down view of a world, the structures and places found in it, and 
 8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")
    or a custom name to list every chest, barrel, shulker box, minecart and player inventory holding it,
    most items first. Each dimension lists the results in it; choose one to jump there. They show as yellow pins.
+   Item names keep their kind beside a custom name, such as `Diamond Sword “Excalibur”`, in
+   search, equipment and trades. Trade searches also match custom names on either cost or the
+   item for sale. Written books retain their title and author.
    Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
    ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
    where its eye button keeps its pins on the map.
@@ -65,7 +74,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 to coordinates, the world spawn or another dimension and saves the current search. Choose
 **Navigate ▸ Go to Coordinates…** (**⌘⇧G**) and enter X and Z to center the current dimension's
 map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
-**Locations** offers the last position, last death and respawn point. VoiceOver can also explore
+**Locations** offers the saved last position, last death and respawn point when available. VoiceOver can also explore
 the individual visible map locations and center the map on them.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the

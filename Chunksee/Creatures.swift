@@ -56,12 +56,13 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
     var name: String {
         if let name = creature.customName { return name }
-        if let job = creature.villager?.profession, job != "minecraft:none" { return ReadableName.from(job) }
+        if let villager = creature.villager, let job = VillagerText.jobName(villager) { return job }
         return ReadableName.from(creature.id)
     }
 
     init?(_ creature: Creature, dimension: String) {
-        guard let group = CreatureGroup.group(for: creature) else { return nil }
+        guard let group = CreatureGroup.group(for: creature),
+              Coordinates.canLocate(x: creature.x, y: creature.y, z: creature.z) else { return nil }
         self.creature = creature
         self.group = group
         self.dimension = dimension
@@ -90,17 +91,17 @@ struct CreatureDetailView: View {
             Section {
                 LabeledContent("Kind", value: ReadableName.from(marker.creature.id))
                 LabeledContent("Position") {
-                    Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
+                    Text(Coordinates.text(marker.position, y: marker.creature.y))
                         .monospacedDigit()
                 }
-                CreatureHealthRows(creature: marker.creature)
+                HealthRow(health: marker.creature.health, maximum: marker.creature.maxHealth)
                 if let owner = marker.creature.owner {
                     LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))
                     PetDetailRows(creature: marker.creature)
                 }
                 if let villager = marker.creature.villager {
-                    if let job = villager.profession, job != "minecraft:none" {
-                        LabeledContent("Job", value: "\(ReadableName.from(job)), \(TradeText.levelName(villager.level))")
+                    if let job = VillagerText.description(villager) {
+                        LabeledContent("Job", value: job)
                     } else if marker.creature.id == "minecraft:villager" {
                         LabeledContent("Job", value: String(localized: "None yet"))
                     }
@@ -108,22 +109,8 @@ struct CreatureDetailView: View {
             } header: {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
             }
-            if marker.creature.owner != nil, let equipment = marker.creature.equipment, !equipment.isEmpty {
-                Section("Equipment") {
-                    ForEach(equipment.keys.sorted(), id: \.self) { slot in
-                        if let item = equipment[slot] {
-                            LabeledContent(PetDetailText.slot(slot)) {
-                                VStack(alignment: .trailing) {
-                                    Text(item.customName ?? ReadableName.from(item.id))
-                                    if let durability = item.durability {
-                                        Text("Durability: \(durability.remaining) of \(durability.maximum)")
-                                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            if marker.creature.owner != nil, let equipment = marker.creature.equipment {
+                EquipmentSection(items: equipment)
             }
             if let trades = marker.creature.villager?.trades, !trades.isEmpty {
                 Section("Trades") {
@@ -148,7 +135,7 @@ struct CreatureDetailView: View {
 nonisolated enum TradeText {
     /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
     static func describe(_ item: ItemStack) -> String {
-        let base = "\(item.count) \(ReadableName.from(item.id))"
+        let base = ItemAppearance.name(of: item, includingOne: true)
         let enchantments = item.enchantments.sorted { $0.key < $1.key }.map { enchantmentName($0.key, level: $0.value) }
         return enchantments.isEmpty ? base : "\(base) (\(enchantments.joined(separator: ", ")))"
     }
@@ -161,7 +148,7 @@ nonisolated enum TradeText {
     /// The text trade search matches: every item's name and id, and the enchantments' names.
     static func searchText(of trade: Trade) -> String {
         let items = [trade.buy, trade.sell] + (trade.buyB.map { [$0] } ?? [])
-        return items.flatMap { [ReadableName.from($0.id), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
+        return items.flatMap { [ItemAppearance.label(of: $0), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
             .joined(separator: " ")
     }
 
@@ -177,15 +164,4 @@ nonisolated enum TradeText {
         "minecraft:flame", "minecraft:infinity", "minecraft:mending", "minecraft:multishot",
         "minecraft:silk_touch", "minecraft:vanishing_curse",
     ]
-
-    /// The game's names for villager levels 1–5.
-    static func levelName(_ level: Int?) -> String {
-        switch level {
-        case 2: String(localized: "Apprentice")
-        case 3: String(localized: "Journeyman")
-        case 4: String(localized: "Expert")
-        case 5: String(localized: "Master")
-        default: String(localized: "Novice")
-        }
-    }
 }

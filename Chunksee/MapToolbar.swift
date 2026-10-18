@@ -54,6 +54,9 @@ struct MapToolbar: ToolbarContent {
             .help("Choose a zoom level or fit the world")
         }
         ToolbarItem {
+            MapDepthControl(map: map)
+        }
+        ToolbarItem {
             Toggle("Measure Distance", systemImage: "ruler", isOn: Binding {
                 session.ruler.isEnabled
             } set: { session.setRulerEnabled($0) })
