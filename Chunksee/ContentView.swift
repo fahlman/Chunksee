@@ -113,6 +113,7 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
+                    .onChange(of: map.depth) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session] in session.renderMapImage() }])
                     // Remember the position a second after the map stops moving.
@@ -175,9 +176,7 @@ struct WorldView: View {
     /// Only input through the native List binding navigates and requests sidebar focus.
     private var sidebarSelection: Binding<SidebarItem?> {
         Binding { session.sidebarSelection } set: { item in
-            session.sidebarSelection = item
-            guard let item else { return }
-            isSidebarFocused = true
+            if item != nil { isSidebarFocused = true }
             session.choose(item)
         }
     }
@@ -216,9 +215,9 @@ private struct PlayerRow: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "person.fill")
+                Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
-            .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
+            .opacity(canFocus && !session.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: visibility)
@@ -247,8 +246,8 @@ private struct PlayerRow: View {
             if let world = player.bukkitWorldName { return String(localized: "May be in another world, “\(world)”") }
             return String(localized: "May be in another world")
         }
-        guard let position = player.position else { return String(localized: "Location unknown") }
-        return session.dimensionName(position.dimension) + "  " + Coordinates.text(x: position.x, z: position.z)
+        guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
+        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.dimensionName(position.dimension))
     }
 
     private var help: String {
@@ -303,7 +302,7 @@ private struct SearchResultsSection: View {
     var body: some View {
         let search = session.search
         Section {
-            HitList(session: session, query: search.text, hits: session.listed(search.results))
+            HitList(session: session, query: search.text)
         } header: {
             HStack {
                 Text("Search Results")
@@ -311,7 +310,7 @@ private struct SearchResultsSection: View {
                 Button("Save Search", systemImage: "plus.circle") { session.saveSearch() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(session.savedSearches.contains(search.text.trimmingCharacters(in: .whitespaces)))
+                    .disabled(!session.canSaveSearch)
                     .help("Keep this search in the sidebar")
             }
         }
@@ -327,7 +326,7 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.listed(session.search.results(for: saved.query))
+                let hits = session.listedHits(for: saved.query)
                 let visibility = Binding {
                     session.savedSearches.all.first { $0.id == saved.id }?.isShown ?? false
                 } set: { session.savedSearches.setShown(saved.id, $0) }
@@ -336,10 +335,10 @@ private struct SavedSearchesSection: View {
                 } set: {
                     if $0 { expanded.insert(saved.id) } else { expanded.remove(saved.id) }
                 }) {
-                    HitList(session: session, query: saved.query, hits: hits)
+                    HitList(session: session, query: saved.query)
                 } label: {
                     HStack {
-                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.count))", systemImage: "magnifyingglass")
+                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.total))", systemImage: "magnifyingglass")
                         Spacer()
                         VisibilityButton(isShown: visibility)
                     }
@@ -359,21 +358,20 @@ private struct SavedSearchesSection: View {
 private struct HitList: View {
     let session: WorldSession
     let query: String
-    let hits: [SearchHit]
-
     var body: some View {
         let search = session.search
-        if (search.isIndexing || search.isSearching) && hits.isEmpty {
+        let hits = session.listedHits(for: query)
+        if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
             Label {
                 Text("Searching the world…")
             } icon: {
                 ProgressView().controlSize(.small)
             }
             .foregroundStyle(.secondary)
-        } else if hits.isEmpty {
+        } else if hits.rows.isEmpty {
             Text("No matches").foregroundStyle(.secondary)
         } else {
-            ForEach(hits.prefix(200)) { hit in
+            ForEach(hits.rows) { hit in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(hit.detail).lineLimit(2)
                     Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -383,8 +381,8 @@ private struct HitList: View {
                 .id(SidebarItem.hit(query: query, id: hit.id))
                 .selectionDisabled(hit.position == nil)
             }
-            if hits.count > 200 {
-                Text("Showing the first 200 of \(hits.count)").font(.caption).foregroundStyle(.secondary)
+            if hits.total > hits.rows.count {
+                Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)
             }
         }
     }

@@ -36,6 +36,13 @@ actor AsyncReadGate<Value: Sendable> {
         reads[key]!.removeFirst().resume(returning: value)
     }
 
+    /// Cleanup after a failed assertion/setup must still drain every suspended read.
+    func finishAll(with value: Value) {
+        let pending = reads.values.flatMap { $0 }
+        reads = [:]
+        for continuation in pending { continuation.resume(returning: value) }
+    }
+
     private func noteCancellation(_ key: String) {
         cancelled.insert(key)
         for waiter in cancellationWaiters.removeValue(forKey: key) ?? [] { waiter.resume() }

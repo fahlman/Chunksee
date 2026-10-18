@@ -10,6 +10,7 @@ nonisolated struct SavedPlace: Codable, Equatable, Identifiable, Sendable {
     var z: Int32
 
     var position: CGPoint { CGPoint(x: Int(x), y: Int(z)) }
+    var mapPosition: CGPoint { MapCoordinates.center(of: position) }
 }
 
 /// Annotations live in the app's preferences, never in the read-only world folder.

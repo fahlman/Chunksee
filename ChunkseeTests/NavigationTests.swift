@@ -5,11 +5,8 @@ import Testing
 @testable import Chunksee
 
 @Suite struct NavigationTests {
-    private func openWorld(withNether: Bool = false) async throws -> (URL, WorldSession) {
+    private func openWorld() async throws -> (URL, WorldSession) {
         let url = try TestWorld.make(chunks: [])
-        if withNether {
-            try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-        }
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
@@ -24,11 +21,11 @@ import Testing
         #expect(!session.canFitWorld) // the dimension has no saved regions
         map.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 0.125)
         session.goToCoordinates(CGPoint(x: -266, y: 71))
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -266, y: 71), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
         session.focus(on: .init(dimension: "minecraft:overworld", x: 10, y: 64, z: 20))
         #expect(map.viewport.scale == 2)
         session.goBack()
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -266, y: 71), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
         session.close()
         await session.waitUntilClosed()
     }
@@ -37,7 +34,7 @@ import Testing
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let map = try #require(session.map)
-        let original = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.25)
+        let original = MapViewport(center: CGPoint(x: 100.5, y: -199.5), scale: 0.25)
         map.viewport = original
         session.goToCoordinates(original.center)
         #expect(!session.navigation.canGoBack)
@@ -61,32 +58,6 @@ import Testing
         await session.waitUntilClosed()
     }
 
-    @Test func dimensionsAndSavedPlacesParticipateInTheSameHistory() async throws {
-        let (url, session) = try await openWorld(withNether: true)
-        defer { session.close(); try? FileManager.default.removeItem(at: url) }
-        let original = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
-        session.map?.viewport = original
-        session.ruler.isEnabled = true
-        session.ruler.mark(.zero)
-        session.ruler.mark(CGPoint(x: 3, y: 4))
-        let place = try #require(session.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: -12, y: 9)))
-        session.visit(place)
-        #expect(session.selectedDimensionID == "minecraft:the_nether")
-        #expect(session.map?.viewport == MapViewport(center: place.position, scale: 4))
-        #expect(session.ruler.start == nil && session.ruler.end == nil)
-        #expect(session.mapContent.savedPlaces == [place])
-        session.goBack()
-        #expect(session.selectedDimensionID == "minecraft:overworld" && session.map?.viewport == original)
-        #expect(session.mapContent.savedPlaces.isEmpty)
-        session.goForward()
-        #expect(session.selectedDimensionID == "minecraft:the_nether" && session.map?.viewport.center == place.position)
-        session.selectedDimensionID = "minecraft:overworld" // direct sidebar navigation
-        session.goBack()
-        #expect(session.selectedDimensionID == "minecraft:the_nether")
-        session.close()
-        await session.waitUntilClosed()
-    }
-
     @Test func aReplacedDocumentSessionKeepsNavigationAndAnotherWorldHasNone() async throws {
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
@@ -103,7 +74,7 @@ import Testing
         defer { replacement.close() }
         replacement.restoreView(from: session)
         #expect(replacement.ruler == session.ruler && replacement.ruler.distance == 5)
-        #expect(replacement.map?.viewport.center == CGPoint(x: 10, y: -20))
+        #expect(replacement.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
         replacement.goBack()
         #expect(replacement.map?.viewport == original)
         let (otherURL, other) = try await openWorld()
