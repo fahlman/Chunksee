@@ -8,7 +8,7 @@ struct SavedPlacesSection: View {
         Section("Saved Places") {
             ForEach(session.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
-                    Label(place.name, systemImage: "mappin")
+                    Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
                     Text(Coordinates.text(place.position))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -16,14 +16,9 @@ struct SavedPlacesSection: View {
                 .lineLimit(1)
                 .tag(SidebarItem.savedPlace(place.id))
                 .id(SidebarItem.savedPlace(place.id))
+                .selectionDisabled(!session.canVisit(place))
                 .contextMenu {
-                    Button("Rename…") { session.edit(place) }
-                    Button("Copy Coordinates") {
-                        if let map = session.map { MapClipboard.copy(place.position, on: map) }
-                    }
-                    .disabled(session.map == nil)
-                    Divider()
-                    Button("Remove", role: .destructive) { session.savedPlaces.remove(place.id) }
+                    SavedPlaceMenu(session: session, place: place, map: session.map)
                 }
             }
             Button("Save Place…", systemImage: "mappin.and.ellipse") { session.savePlace() }
@@ -51,7 +46,7 @@ struct SavedPlaceEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(draft.existingID == nil ? "Save Place" : "Rename Place").font(.headline)
-            Text("\(session.dimensionName(draft.dimension)) · \(Coordinates.text(draft.position))")
+            Text(Coordinates.text(draft.position, dimension: session.dimensionName(draft.dimension)))
                 .foregroundStyle(.secondary)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
