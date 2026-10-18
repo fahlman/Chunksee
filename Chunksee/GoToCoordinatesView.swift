@@ -16,13 +16,20 @@ nonisolated struct MapCoordinates: Equatable, Sendable {
     }
 
     init?(point: CGPoint) {
-        guard let x = Int32(exactly: point.x.rounded(.down)),
-              let z = Int32(exactly: point.y.rounded(.down)) else { return nil }
+        guard let blockX = Coordinates.block(point.x), let blockZ = Coordinates.block(point.y),
+              let x = Int32(exactly: blockX), let z = Int32(exactly: blockZ) else { return nil }
         self.x = x
         self.z = z
     }
 
     var position: CGPoint { CGPoint(x: Int(x), y: Int(z)) }
+
+    var center: CGPoint { Self.center(of: position) }
+
+    /// Whole-block locations use their centers; exact entity positions never pass through here.
+    static func center(of point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x.rounded(.down) + 0.5, y: point.y.rounded(.down) + 0.5)
+    }
 }
 
 /// A sheet belongs to its world window; editing or cancelling never moves the map.
@@ -38,8 +45,8 @@ struct GoToCoordinatesView: View {
     init(session: WorldSession) {
         self.session = session
         let center = session.map?.viewport.center ?? .zero
-        _x = State(initialValue: String(Int(center.x.rounded(.down))))
-        _z = State(initialValue: String(Int(center.y.rounded(.down))))
+        _x = State(initialValue: Coordinates.block(center.x).map(String.init) ?? "")
+        _z = State(initialValue: Coordinates.block(center.y).map(String.init) ?? "")
     }
 
     private var destination: MapCoordinates? { MapCoordinates(x: x, z: z) }

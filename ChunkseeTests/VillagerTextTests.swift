@@ -16,16 +16,17 @@ import Testing
         ])))
     }
 
-    @Test func missingAndUnknownLevelsAreNotCalledNovice() throws {
-        let levels: [Int32?] = [nil, 0, 6]
-        for level in levels {
+    @Test func savedDefaultsComeFromKitAndUnknownLevelsStayAbsent() throws {
+        let cases: [(Int32?, String)] = [(nil, "Farmer, Novice"), (0, "Farmer"), (6, "Farmer")]
+        for (level, expected) in cases {
             let saved = try creature(level: level)
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creatures: [marker])), players: []) { _ in "" }
-            #expect(VillagerText.description(villager) == "Farmer")
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creatures: [marker])), players: []) { _ in .named("") }
+            #expect(villager.level == level.map(Int.init) ?? 1)
+            #expect(VillagerText.description(villager) == expected)
             #expect(marker.name == "Farmer")
-            #expect(hits.map(\.title) == ["Farmer"])
+            #expect(hits.map(\.title) == [expected])
         }
     }
 
@@ -34,7 +35,7 @@ import Testing
             let saved = try creature(level: Int32(index + 1))
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creatures: [marker])), players: []) { _ in "" }
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creatures: [marker])), players: []) { _ in .named("") }
             #expect(VillagerText.description(villager) == "Farmer, \(name)")
             #expect(hits.map(\.title) == ["Farmer, \(name)"])
             #expect(marker.name == "Farmer")

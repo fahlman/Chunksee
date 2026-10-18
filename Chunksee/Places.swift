@@ -110,7 +110,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         id = "\(poi.type)@\(poi.x),\(poi.y),\(poi.z)"
         type = poi.type
         group = PlaceGroup.group(for: poi.type)
-        position = CGPoint(x: Double(poi.x) + 0.5, y: Double(poi.z) + 0.5)
+        position = MapCoordinates.center(of: CGPoint(x: poi.x, y: poi.z))
         y = poi.y
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
     }
@@ -120,7 +120,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         id = "spawner@\(spawner.x),\(spawner.y),\(spawner.z)"
         type = "minecraft:mob_spawner"
         group = .spawner
-        position = CGPoint(x: Double(spawner.x) + 0.5, y: Double(spawner.z) + 0.5)
+        position = MapCoordinates.center(of: CGPoint(x: spawner.x, y: spawner.z))
         y = spawner.y
         isClaimed = false
         mob = spawner.mob
@@ -144,11 +144,7 @@ nonisolated enum PlaceScanner {
             for file in dimension.regionFiles(.pointsOfInterest) {
                 guard !Task.isCancelled else { break }
                 group.addTask {
-                    guard !Task.isCancelled else { return [] }
-                    return cache.value("places", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
-                        guard !Task.isCancelled else { return [] }
-                        return (try? dimension.pointsOfInterest(regionX: file.x, regionZ: file.z)) ?? []
-                    }
+                    await Self.blocks(dimension, region: RegionCoordinate(x: file.x, z: file.z), cache: cache)
                 }
             }
             var all: [PointOfInterest] = []
@@ -156,9 +152,23 @@ nonisolated enum PlaceScanner {
             return all
         }
         guard !Task.isCancelled else { return [] }
+        return markers(from: blocks, in: dimension.id)
+    }
+
+    @concurrent
+    static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate, cache: ScanCache) async -> [PointOfInterest] {
+        guard !Task.isCancelled else { return [] }
+        let file = dimension.poiDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        return cache.value("places", region: region, sources: [file]) {
+            guard !Task.isCancelled else { return [] }
+            return (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []
+        }
+    }
+
+    static func markers(from blocks: [PointOfInterest], in dimension: String) -> [PlaceMarker] {
         // Portal blocks become one place per portal (ChunkseeKit owns the grouping rule).
         let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
-        let portals = NetherPortal.portals(from: blocks, in: dimension.id).map(PlaceMarker.init)
+        let portals = NetherPortal.portals(from: blocks, in: dimension).map(PlaceMarker.init)
         return (others + portals).sorted { $0.id < $1.id }
     }
 }
@@ -196,36 +206,44 @@ struct PortalDetailView: View {
     let portal: NetherPortal
 
     var body: some View {
+        let link = session.link(for: portal)
         Form {
             Section {
                 LabeledContent("Position") {
-                    Text("X \(Int(portal.centerX.rounded(.down)))  Y \(portal.minY)  Z \(Int(portal.centerZ.rounded(.down)))")
+                    Text(Coordinates.text(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
                         .monospacedDigit()
                 }
             } header: {
-                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
+                Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }
             Section {
-                switch session.link(for: portal) {
+                switch link {
                 case .portal(let target, _)?:
-                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at X \(Int(target.centerX.rounded(.down))), Z \(Int(target.centerZ.rounded(.down))).")
+                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
                     if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
-                        Label("One-way: that portal leads back to a different one, at X \(Int(back.centerX.rounded(.down))), Z \(Int(back.centerZ.rounded(.down))).",
+                        Label("One-way: that portal leads back to a different one, at \(Coordinates.text(x: back.centerX, z: back.centerZ)).",
                               systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
                     Button("Show the Other Side") { session.show(target) }
                 case .wouldCreateNewPortal(let destination)?:
-                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near X \(destination.x), Z \(destination.z).",
+                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 case nil:
-                    ProgressView().controlSize(.small)
+                    if session.isWaitingForPortalLink(portal) {
+                        ProgressView("Reading portal links…").controlSize(.small)
+                    } else {
+                        Text("Portal links aren’t available for this dimension.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } header: {
                 Text("Link")
             } footer: {
-                Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                if link != nil {
+                    Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                }
             }
         }
         .formStyle(.grouped)
