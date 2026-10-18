@@ -17,6 +17,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Saving compresses and writes about 1 MB, so by default it happens after the tile is
     /// returned, at low priority, keeping it off the path to the screen. Tests save synchronously.
     var savesInBackground = true
+    /// Nil keeps the normal surface/Nether view; a height starts each column there.
+    var cutawayY: Int?
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
@@ -28,7 +30,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY) {
+                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY, cutawayY: cutawayY) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ)
                 }
             }
@@ -41,7 +43,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        return Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY).map { (localX, localZ, $0) }
+                        return Self.columns(in: file, localX: localX, localZ: localZ, ceilingY: ceilingY, cutawayY: cutawayY).map { (localX, localZ, $0) }
                     }
                 }
                 for _ in 0..<chunkConcurrency { startNext() }
@@ -74,7 +76,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile)
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, cutawayY: cutawayY)
         var pixels: [UInt8]?
         if let cache, let key, let cached = cache.load(key) {
             pixels = cached
@@ -116,32 +118,35 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
     /// One damaged chunk shouldn't blank the whole region; it's left transparent instead.
-    static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [Column?]? {
-        scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY)?.columns
+    static func columns(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil, cutawayY: Int? = nil) -> [Column?]? {
+        scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY, cutawayY: cutawayY)?.columns
     }
 
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
     /// readout: the same scan the map is drawn with, naming what it found.
-    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil) -> [TopBlock?]? {
-        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY) else { return nil }
+    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, ceilingY: Int? = nil, cutawayY: Int? = nil) -> [TopBlock?]? {
+        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, ceilingY: ceilingY, cutawayY: cutawayY) else { return nil }
         return columns.map { column in
             column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth) }
         }
     }
 
-    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, ceilingY: Int?) -> (sections: ColorSections, columns: [Column?])? {
+    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, ceilingY: Int?, cutawayY: Int?) -> (sections: ColorSections, columns: [Column?])? {
         // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk)
         // The heightmap gives the first free block above the surface; without one (most chunks
         // upgraded from old versions have none), every column starts at the top of the chunk.
-        let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
-        let topY = sections.topY
-        let columns = if let ceilingY {
-            sections.topColumns(underCeiling: true) { _ in ceilingY }
+        let columns: [Column?]
+        if let cutawayY {
+            columns = sections.topColumns { _ in cutawayY }
+        } else if let ceilingY {
+            columns = sections.topColumns(underCeiling: true) { _ in ceilingY }
         } else {
-            sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
+            let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
+            let topY = sections.topY
+            columns = sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
         }
         return (sections, columns)
     }

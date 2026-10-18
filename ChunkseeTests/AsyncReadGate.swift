@@ -36,7 +36,7 @@ actor AsyncReadGate<Value: Sendable> {
         reads[key]!.removeFirst().resume(returning: value)
     }
 
-    /// Cleanup after a failed assertion/setup must still drain every suspended read.
+    /// Cleanup must release every entered read even when a throwing assertion stops the test.
     func finishAll(with value: Value) {
         let pending = reads.values.flatMap { $0 }
         reads = [:]

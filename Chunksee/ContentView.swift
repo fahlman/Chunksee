@@ -113,6 +113,7 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
+                    .onChange(of: map.depth) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session] in session.renderMapImage() }])
                     // Remember the position a second after the map stops moving.
