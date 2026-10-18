@@ -72,7 +72,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                                 }
                                 .tag(item(marker))
                                 .id(item(marker))
-                                .help("Show on the map")
+                                .help("Center the map on this location")
                             }
                         } label: {
                             row(group, count: byGroup[group]?.count ?? 0)
@@ -84,17 +84,20 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     }
 
     private func row(_ group: Marker.Group, count: Int) -> some View {
-        HStack {
-            Label("\(group.name) (\(count))", systemImage: group.symbol)
-            Spacer()
-            if let shown {
-                VisibilityButton(isShown: Binding {
-                    shown.wrappedValue.contains(group)
-                } set: {
-                    if $0 { shown.wrappedValue.insert(group) } else { shown.wrappedValue.remove(group) }
-                })
+        let visibility = shown.map { shown in
+            Binding {
+                shown.wrappedValue.contains(group)
+            } set: {
+                if $0 { shown.wrappedValue.insert(group) } else { shown.wrappedValue.remove(group) }
             }
         }
+        return HStack {
+            Label("\(group.name) (\(count))", systemImage: group.symbol)
+            Spacer()
+            if let visibility { VisibilityButton(isShown: visibility) }
+        }
+        .contextMenu { if let visibility { VisibilityCommand(isShown: visibility) } }
+        .accessibilityActions { if let visibility { VisibilityCommand(isShown: visibility) } }
     }
 
     private func nearestFirst(_ markers: [Marker]) -> [Marker] {
@@ -102,12 +105,21 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     }
 }
 
-/// The eye button that shows or hides something on the map, in every sidebar layer and player row.
-struct VisibilityButton: View {
+/// One action/label for eye buttons, native context menus and combined rows' accessibility actions.
+struct VisibilityCommand: View {
     @Binding var isShown: Bool
 
     var body: some View {
         Button(isShown ? "Hide on Map" : "Show on Map", systemImage: isShown ? "eye" : "eye.slash") { isShown.toggle() }
+    }
+}
+
+/// The eye button that shows or hides something on the map.
+struct VisibilityButton: View {
+    @Binding var isShown: Bool
+
+    var body: some View {
+        VisibilityCommand(isShown: $isShown)
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
             .foregroundStyle(isShown ? .primary : .tertiary)

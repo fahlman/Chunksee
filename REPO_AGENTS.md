@@ -153,6 +153,11 @@ or another dimension's entry. Native world moves migrate every dimension's saved
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
 
+The eye buttons, layer/player/saved-search context menus and their named accessibility actions
+share one SwiftUI VisibilityCommand, all using Show on Map/Hide on Map. Existing model bindings
+own the settings; the command only toggles its binding. Saved-search menus also retain Search
+for This and Remove. Row navigation help says Center the map, distinct from the visibility action.
+
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.

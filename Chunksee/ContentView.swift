@@ -221,20 +221,18 @@ private struct PlayerRow: View {
             .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
             .help(help)
             Spacer(minLength: 0)
-            VisibilityButton(isShown: Binding {
-                isShown
-            } set: { setShown($0) })
+            VisibilityButton(isShown: visibility)
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
         .accessibilityElement(children: .combine)
-        // Native sidebar rows combine their controls. Their context menu keeps each action reachable.
-        .contextMenu {
-            Button(isShown ? "Hide from Map" : "Show on Map") { setShown(!isShown) }
-        }
+        // Native rows combine their controls; keep the same command reachable by menu and VoiceOver.
+        .contextMenu { VisibilityCommand(isShown: visibility) }
+        .accessibilityActions { VisibilityCommand(isShown: visibility) }
     }
 
     private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
+    private var visibility: Binding<Bool> { Binding { isShown } set: { setShown($0) } }
 
     private func setShown(_ shown: Bool) {
         if shown { session.visibility.hiddenPlayers.remove(player.uuid) }
@@ -261,7 +259,8 @@ private struct PlayerRow: View {
         if session.isOutdated(player) {
             return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
         }
-        return String(localized: "Show on the map")
+        return canFocus ? String(localized: "Show this player’s details and center the map on their last location")
+            : String(localized: "Show this player’s details")
     }
 }
 
@@ -330,6 +329,9 @@ private struct SavedSearchesSection: View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
                 let hits = session.listed(session.search.results(for: saved.query))
+                let visibility = Binding {
+                    session.savedSearches.all.first { $0.id == saved.id }?.isShown ?? false
+                } set: { session.savedSearches.setShown(saved.id, $0) }
                 DisclosureGroup(isExpanded: Binding {
                     expanded.contains(saved.id)
                 } set: {
@@ -340,17 +342,16 @@ private struct SavedSearchesSection: View {
                     HStack {
                         Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.count))", systemImage: "magnifyingglass")
                         Spacer()
-                        VisibilityButton(isShown: Binding {
-                            saved.isShown
-                        } set: {
-                            session.savedSearches.setShown(saved.id, $0)
-                        })
+                        VisibilityButton(isShown: visibility)
                     }
                 }
                 .contextMenu {
+                    VisibilityCommand(isShown: visibility)
+                    Divider()
                     Button("Search for This") { session.search.text = saved.query }
                     Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
                 }
+                .accessibilityActions { VisibilityCommand(isShown: visibility) }
             }
         }
     }
