@@ -556,11 +556,16 @@ final class WorldSession {
         savedSearches.add(search.text)
     }
 
-    /// Where a portal leads, or `nil` until both sides' portals are loaded.
+    /// Where a portal leads, or `nil` while its target's saved portals are pending or unavailable.
     func link(for portal: NetherPortal) -> NetherPortal.Link? {
         guard let target = NetherPortal.targetDimension(from: portal.dimension),
               let candidates = portalsByDimension[target] else { return nil }
         return portal.link(into: candidates)
+    }
+
+    func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
+        guard !isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
+        return resources.index.isWaitingForPortals(in: target)
     }
 
     /// Whether a portal links both ways, one way, or to nothing.
