@@ -16,8 +16,19 @@ struct MapContent {
     /// Whether chunk and region lines are drawn.
     var showsGrid = false
     var structures: [StructureMarker] = []
-    var places: [PlaceMarker] = []
-    var creatures: [CreatureMarker] = []
+    var placePoints = PointMarkers<PlaceMarker>()
+    var creaturePoints = PointMarkers<CreatureMarker>()
+    /// Nil means all groups (standalone map snapshots); a document supplies its own visibility.
+    var shownPlaceGroups: Set<PlaceGroup>?
+    var shownCreatureGroups: Set<CreatureGroup>?
+    var places: [PlaceMarker] {
+        get { placePoints.all.filter { shownPlaceGroups?.contains($0.group) ?? true } }
+        set { placePoints = PointMarkers(newValue) }
+    }
+    var creatures: [CreatureMarker] {
+        get { creaturePoints.all.filter { shownCreatureGroups?.contains($0.group) ?? true } }
+        set { creaturePoints = PointMarkers(newValue) }
+    }
     /// Search results, drawn as pins.
     var hits: [SearchHit] = []
     var selectedHitID: SearchHit.ID?
@@ -49,6 +60,20 @@ struct MapContent {
         ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
     }
 
+    func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
+        guard shownPlaceGroups?.isEmpty != true else { return [] }
+        return placePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
+                                      viewport: viewport, size: size)
+            .filter { (shownPlaceGroups?.contains($0.group) ?? true) && (viewport.scale >= 0.125 || $0.group == .portal) }
+    }
+
+    func nearbyCreatures(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [CreatureMarker] {
+        guard shownCreatureGroups?.isEmpty != true else { return [] }
+        return creaturePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
+                                         viewport: viewport, size: size)
+            .filter { (shownCreatureGroups?.contains($0.group) ?? true) && (viewport.scale >= 0.25 || selection == .creature($0)) }
+    }
+
     /// The individual locations represented by Canvas. Names and actions remain available
     /// to VoiceOver even though Canvas itself creates no accessibility children.
     func accessibleLocations(viewport: MapViewport, size: CGSize) -> [AccessibleMapLocation] {
@@ -62,10 +87,10 @@ struct MapContent {
             locations.append(.init(id: id(), name: name(), position: position, target: target()))
         }
         for marker in structures { add("structure-" + marker.id, marker.name, marker.position, target: .row(.structure(marker.id))) }
-        for marker in places where viewport.scale >= 0.125 || marker.group == .portal {
+        for marker in nearbyPlaces(viewport: viewport, size: size) {
             add("place-" + marker.id, marker.name, marker.position, target: .row(.place(marker.id)))
         }
-        for marker in creatures where viewport.scale >= 0.25 || selection == .creature(marker) {
+        for marker in nearbyCreatures(viewport: viewport, size: size) {
             add("creature-" + marker.id, marker.name, marker.position, target: .row(.creature(marker.id)))
         }
         for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position, target: .row(.biome(area.id))) }
@@ -104,10 +129,12 @@ struct MapContent {
         if let hit = nearest(hits.lazy.filter { $0.position != nil }, position: { $0.position! }) {
             return MapHit(target: .searchHit(hit.id), position: hit.position!, y: hit.y.map(Double.init))
         }
+        let bounds = CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28)
+        let places = nearbyPlaces(viewport: viewport, size: size, bounds: bounds)
         if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: 14, position: \.position) {
             return MapHit(target: .row(.place(portal.id)), position: portal.position, y: Double(portal.y))
         }
-        if let creature = nearest(creatures.lazy.filter { viewport.scale >= 0.25 || selection == .creature($0) }, position: \.position) {
+        if let creature = nearest(nearbyCreatures(viewport: viewport, size: size, bounds: bounds), position: \.position) {
             return MapHit(target: .row(.creature(creature.id)), position: creature.position, y: creature.creature.y)
         }
         if viewport.scale >= 0.125, let place = nearest(places, position: \.position) {
@@ -364,7 +391,7 @@ struct MapView: View {
             return image
         }
         // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
-        for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
+        for place in content.nearbyPlaces(viewport: map.viewport, size: size) {
             let point = map.viewport.viewPoint(for: place.position, in: size)
             Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
             if let portal = place.portal {
@@ -372,9 +399,8 @@ struct MapView: View {
             }
         }
         // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
-        for creature in content.creatures {
+        for creature in content.nearbyCreatures(viewport: map.viewport, size: size) {
             let selected = content.selection == .creature(creature)
-            guard map.viewport.scale >= 0.25 || selected else { continue }
             Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
                       scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
         }

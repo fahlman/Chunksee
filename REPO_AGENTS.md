@@ -77,6 +77,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
+| `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -136,6 +137,11 @@ world. Exact world, dimension or region-directory notifications reconcile full d
 and terrain availability. Other files beneath a dimension, including saved data such as raids and
 chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
 and inhabited-time reads alone.
+Places/creature point collections own their arrays and immutable region buckets. MapContent
+shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
+arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,
+then retain their exact bounds/zoom/distance checks. Fit World visits occupied buckets rather than
+empty space. Structure areas and the smaller player/search/saved-place lists keep their existing paths.
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
