@@ -4,7 +4,7 @@ import ChunkseeKit
 import Testing
 @testable import Chunksee
 
-@Suite struct SharedSavedQueryTests {
+@Suite(.timeLimit(.minutes(1))) struct SharedSavedQueryTests {
     private func hit(_ title: String) -> SearchHit {
         SearchHit(id: title, source: .sign, dimension: "minecraft:overworld", position: .zero,
                   y: 64, title: title, detail: title, count: 1)
@@ -238,7 +238,7 @@ import Testing
         }
         resources.close()
         await resources.waitUntilClosed()
-        #expect(sessions.allSatisfy(\.isClosed))
+        for session in sessions { #expect(session.isClosed) }
     }
 
     @Test func sharedKeysIncludeIndexVersionPlayerIdentityAndSaveDate() async {
