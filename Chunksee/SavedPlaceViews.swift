@@ -16,12 +16,13 @@ struct SavedPlacesSection: View {
                 .lineLimit(1)
                 .tag(SidebarItem.savedPlace(place.id))
                 .id(SidebarItem.savedPlace(place.id))
+                .selectionDisabled(!session.canVisit(place))
                 .contextMenu {
                     Button("Rename…") { session.edit(place) }
                     Button("Copy Coordinates") {
                         if let map = session.map { MapClipboard.copy(place.position, on: map) }
                     }
-                    .disabled(session.map == nil)
+                    .disabled(session.map == nil || !session.canVisit(place))
                     Divider()
                     Button("Remove", role: .destructive) { session.savedPlaces.remove(place.id) }
                 }
