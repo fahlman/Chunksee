@@ -136,11 +136,10 @@ final class WorldSession {
         search = SearchModel(readers: [], players: resources.players, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
-        heatMap = HeatMapLayer(readers: resources.readers)
+        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] })
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
         map = Self.initialMap(resources: resources, dimensionID: selected)
-        heatMap.dimension = selected
         heatMap.restoreVisibility(from: visibility)
         resources.attach(self)
     }

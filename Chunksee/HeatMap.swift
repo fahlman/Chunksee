@@ -65,8 +65,7 @@ nonisolated enum HeatMap {
     }
 }
 
-/// The heat map as a layer: whether it's shown, and each dimension's images, read the first time
-/// the dimension is shown with the layer on and again after the game saves.
+/// One dimension document's heat map, read when first shown and again after the game saves.
 @Observable
 final class HeatMapLayer {
     var isShown = false {
@@ -76,19 +75,15 @@ final class HeatMapLayer {
             load()
         }
     }
-    /// The dimension the map is showing.
-    var dimension: String? {
-        didSet { load() }
-    }
-    private var images: [String: [RegionCoordinate: CGImage]] = [:]
-    @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored private var invalidated: Set<String> = []
-    private let readers: [String: RegionReader]
+    private var images: [RegionCoordinate: CGImage]?
+    @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var invalidated = false
+    private let reader: RegionReader?
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
     private var isClosed = false
 
-    init(readers: [String: RegionReader]) {
-        self.readers = readers
+    init(reader: RegionReader?) {
+        self.reader = reader
     }
 
     /// Restores this tab's flag without making a second live copy in LayerVisibility.
@@ -98,44 +93,42 @@ final class HeatMapLayer {
         isShown = visibility.rememberedTimeSpent
     }
 
-    /// The shown dimension's images, when the layer is on and they've been read.
+    /// This document's images, when the layer is on and they've been read.
     var visibleImages: [RegionCoordinate: CGImage]? {
-        guard isShown, let dimension else { return nil }
-        return images[dimension]
+        isShown ? images : nil
     }
 
-    var isLoading: Bool { isShown && dimension.map { images[$0] == nil } ?? false }
+    var isLoading: Bool { isShown && reader != nil && images == nil }
 
     /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
     /// the current ones stay until the new ones are ready.
     func load(reread: Bool = false) {
-        guard !isClosed, let dimension, let reader = readers[dimension] else { return }
-        if reread { invalidated.insert(dimension) }
-        guard isShown, tasks[dimension] == nil,
-              invalidated.contains(dimension) || images[dimension] == nil else { return }
-        invalidated.remove(dimension)
-        tasks[dimension] = Task(priority: .userInitiated) { [weak self] in
-            defer { self?.tasks[dimension] = nil }
+        guard !isClosed, let reader else { return }
+        if reread { invalidated = true }
+        guard isShown, task == nil, invalidated || images == nil else { return }
+        invalidated = false
+        task = Task(priority: .userInitiated) { [weak self] in
+            defer { self?.task = nil }
             repeat {
                 let images = await HeatMap.images(reader)
                 guard let self, !Task.isCancelled, !self.isClosed else { return }
-                self.images[dimension] = images
+                self.images = images
                 // Saves during a read join one following pass instead of getting lost or
                 // restarting a large dimension's read every time the game saves.
-                guard self.isShown, self.dimension == dimension,
-                      self.invalidated.remove(dimension) != nil else { return }
+                guard self.isShown, self.invalidated else { return }
+                self.invalidated = false
             } while true
         }
     }
 
     func waitForReads() async {
-        while let task = tasks.values.first { await task.value }
+        while let task { await task.value }
     }
 
     func cancel() {
         isClosed = true
-        invalidated = []
-        tasks.values.forEach { $0.cancel() }
+        invalidated = false
+        task?.cancel()
     }
 }
 
