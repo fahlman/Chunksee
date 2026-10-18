@@ -78,7 +78,7 @@ import Testing
             #expect(resources.readers["minecraft:the_nether"] != nil)
             #expect(resources.dimensionDocuments[folder.resolvingSymlinksInPath().path] == "minecraft:the_nether")
             await resources.index.waitForIndex()
-            #expect(resources.index.index.dimensions["minecraft:the_nether"]?.contents.spawners.count == 1)
+            #expect(resources.index.index.dimensions["minecraft:the_nether"]?.places.filter { $0.group == .spawner }.count == 1)
             #expect(first.map === oldMap && oldMap.viewport == view)
             #expect(!first.visibility.showsGrid && first.navigation.canGoBack)
         }
