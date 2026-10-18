@@ -92,8 +92,8 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
-| `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
-| `PlayerDetails.swift`, `PlayerStatus.swift`, `PlayerEquipment.swift`, `LinkedPets.swift` | Native player inspector, saved effect duration/equipment presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
+| `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
+| `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
@@ -127,6 +127,11 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
+Players and creatures share the native equipment section and health row. Health uses up to two
+fractional digits in hearts, with a gauge when current and maximum are known and text for the
+available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
+empty stacks are omitted, and material tint applies to symbols while text uses semantic colors.
+Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
 Scan-cache version 11 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
 preserved legacy item wear and structure heights. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when

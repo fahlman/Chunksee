@@ -93,7 +93,7 @@ struct CreatureDetailView: View {
                     Text("X \(Int(marker.creature.x.rounded(.down)))  Y \(Int(marker.creature.y.rounded(.down)))  Z \(Int(marker.creature.z.rounded(.down)))")
                         .monospacedDigit()
                 }
-                CreatureHealthRows(creature: marker.creature)
+                HealthRow(health: marker.creature.health, maximum: marker.creature.maxHealth)
                 if let owner = marker.creature.owner {
                     LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))
                     PetDetailRows(creature: marker.creature)
@@ -108,22 +108,8 @@ struct CreatureDetailView: View {
             } header: {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
             }
-            if marker.creature.owner != nil, let equipment = marker.creature.equipment, !equipment.isEmpty {
-                Section("Equipment") {
-                    ForEach(equipment.keys.sorted(), id: \.self) { slot in
-                        if let item = equipment[slot] {
-                            LabeledContent(PetDetailText.slot(slot)) {
-                                VStack(alignment: .trailing) {
-                                    Text(item.customName ?? ReadableName.from(item.id))
-                                    if let durability = item.durability {
-                                        Text("Durability: \(durability.remaining) of \(durability.maximum)")
-                                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            if marker.creature.owner != nil, let equipment = marker.creature.equipment {
+                EquipmentSection(items: equipment)
             }
             if let trades = marker.creature.villager?.trades, !trades.isEmpty {
                 Section("Trades") {
