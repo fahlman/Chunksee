@@ -193,7 +193,7 @@ nonisolated enum WorldSearch {
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }
             results[query] = search(query, in: request.index, players: request.players) {
-                request.playerNames[$0.uuid] ?? $0.uuid.uuidString
+                request.playerNames[$0.uuid] ?? PlayerPresentation.label(of: $0, singleplayerUUID: nil)
             }
         }
         return results
@@ -319,7 +319,7 @@ nonisolated enum WorldSearch {
 
     /// Places matching `query`, most items first. `name(of:)` names players.
     static func search(_ query: String, in index: SearchIndex, players: [PlayerInfo],
-                       name: (PlayerInfo) -> String) -> [SearchHit] {
+                       name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
         if let (filter, rest) = LayerFilter.parse(query) {
             return search(filter, words: words(in: rest), in: index)
         }
@@ -329,14 +329,15 @@ nonisolated enum WorldSearch {
         for player in players {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
+            let location = PlayerPresentation.isMappable(player) ? player.position : nil
             if let found = summary(of: player.inventory + player.equipment.values, words: words) {
-                hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: player.position?.dimension,
-                                      position: player.position.map { CGPoint(x: $0.x, y: $0.z) }, y: player.position.map { Int($0.y.rounded(.down)) },
-                                      title: String(localized: "\(who)’s inventory"), detail: found.text, count: found.count))
+                hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
+                                      position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.map { Int($0.y.rounded(.down)) },
+                                      title: who.inventory, detail: found.text, count: found.count))
             }
             if let found = summary(of: player.enderChest, words: words) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", source: .enderChest(player.uuid), dimension: nil, position: nil, y: nil,
-                                      title: String(localized: "\(who)’s ender chest"), detail: found.text, count: found.count))
+                                      title: who.enderChest, detail: found.text, count: found.count))
             }
         }
         for entry in index.containers {
