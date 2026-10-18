@@ -20,7 +20,7 @@ final class SearchModel {
     }
     var selectedHitID: SearchHit.ID?
     var players: [PlayerInfo] {
-        didSet { revision += 1; updateQueries() }
+        didSet { updateQueries() }
     }
     var index: SearchIndex { indexStore.index }
     var portals: [String: [NetherPortal]] { indexStore.portals }
@@ -41,15 +41,8 @@ final class SearchModel {
     @ObservationIgnored private var activeQueries: [String: UUID] = [:]
     @ObservationIgnored private var completedQueries: Set<String> = []
     @ObservationIgnored private var sourceGeneration = UUID()
-    @ObservationIgnored private var revision = 0
-    @ObservationIgnored private var sources: Sources?
+    @ObservationIgnored private var sources: SearchSources?
     @ObservationIgnored private var isClosed = false
-
-    private struct Sources: Equatable {
-        var names: [UUID: PlayerPresentation.Name]
-        var revision: Int
-        var indexRevision: Int
-    }
 
     init(readers: [RegionReader], players: [PlayerInfo], names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
@@ -88,22 +81,25 @@ final class SearchModel {
 
     private func updateQueries() {
         guard !isClosed else { return }
-        let queries = Set(([text] + savedSearches.all.map(\.query)).filter {
+        let saved = Set(savedSearches.all.map(\.query))
+        let shared = indexStore.savedQueries
+        shared.keep(saved)
+        let queries = Set(([text] + Array(saved)).filter {
             !$0.trimmingCharacters(in: .whitespaces).isEmpty
         })
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
-        let next = Sources(names: playerNames, revision: revision, indexRevision: indexStore.revision)
+        let next = SearchSources(names: playerNames, players: players, indexRevision: indexStore.revision)
         if next != sources {
             sources = next
             sourceGeneration = UUID()
-            for id in activeQueries.values { tasks[id]?.cancel() }
+            for id in activeQueries.values { cancelQuery(id) }
             activeQueries = [:]
             completedQueries = []
         }
         for (query, id) in activeQueries where !queries.contains(query) {
-            tasks[id]?.cancel()
+            cancelQuery(id)
             activeQueries[query] = nil
         }
         completedQueries.formIntersection(queries)
@@ -115,13 +111,20 @@ final class SearchModel {
         for query in queries.sorted() where !completedQueries.contains(query) && activeQueries[query] == nil {
             let id = UUID(), generation = sourceGeneration, execute = execute
             let request = SearchRequest(queries: [query], index: index, players: players, playerNames: playerNames)
+            let isSaved = saved.contains(query)
             activeQueries[query] = id
             let task = Task(priority: .userInitiated) { [weak self] in
-                defer { self?.tasks[id] = nil }
-                let found = await execute(request)
+                defer { shared.release(id); self?.tasks[id] = nil }
+                let found: [String: [SearchHit]]?
+                if isSaved {
+                    found = await shared.results(for: request, sources: next, waiter: id, execute: execute)
+                } else {
+                    found = await execute(request)
+                }
                 guard !Task.isCancelled, let self, !self.isClosed,
                       self.sourceGeneration == generation, self.activeQueries[query] == id else { return }
                 self.activeQueries[query] = nil
+                guard let found else { self.isSearching = !self.activeQueries.isEmpty; return }
                 self.completedQueries.insert(query)
                 self.queryResults[query] = found[query] ?? []
                 if query == self.text { self.displayedQuery = query }
@@ -159,10 +162,15 @@ final class SearchModel {
     func cancel() {
         isClosed = true
         sourceGeneration = UUID()
+        for id in tasks.keys { cancelQuery(id) }
         activeQueries = [:]
-        tasks.values.forEach { $0.cancel() }
         isSearching = false
         if ownsIndex { indexStore.cancel() }
+    }
+
+    private func cancelQuery(_ id: UUID) {
+        tasks[id]?.cancel()
+        indexStore.savedQueries.release(id)
     }
 
     func waitForTasks() async {

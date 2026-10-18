@@ -81,7 +81,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
-| `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
+| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
@@ -121,8 +121,12 @@ reads before world access ends. A late result cannot replace a newer copy or ano
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
-ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
-invalidate it. Callers that need completion await `waitForSearch()`.
+ready. Each world's `WorldIndexStore.savedQueries` shares identical pending/completed saved-query
+work across dimension documents, keyed by index revision, player UUID/NBT/save date and player-name
+presentation. Typed unsaved queries remain per document. Removing a saved query retires its cached
+work; an active typed waiter can still finish. Closing one document releases its wait without
+cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
+retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
 
 `PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
 share one pending read; later reloads still reread the source. Closing one caller does not cancel
