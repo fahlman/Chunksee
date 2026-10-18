@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Rendered region pixels kept on disk, so reopening a world draws from the cache instead of
@@ -8,9 +9,9 @@ nonisolated struct TileCache: Sendable {
     /// Bump whenever rendering output changes (colors, shading, layout), invalidating old entries.
     /// 2: relief shading on each region's top row. 3: the Nether drawn under its roof.
     /// 4: solid Nether columns drawn darkened instead of left empty. 5: that block taken from below
-    /// the roof's bedrock band.
+    /// the roof's bedrock band. 6: independent Surface/cutaway height keys.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 5
+    static let rendererVersion = 6
 
     let directory: URL
 
@@ -18,12 +19,14 @@ nonisolated struct TileCache: Sendable {
         var region: RegionCoordinate
         var fileSize: Int
         var modified: Int64
+        var cutawayY: Int? = nil
 
         var fileName: String {
-            "r.\(region.x).\(region.z).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            "\(prefix)\(cutawayY.map { "y\($0)." } ?? "")\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
-        var prefix: String { "r.\(region.x).\(region.z)." }
+        var regionPrefix: String { "r.\(region.x).\(region.z)." }
+        var prefix: String { "\(regionPrefix)\(cutawayY == nil ? "surface" : "cutaway")." }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -36,8 +39,10 @@ nonisolated struct TileCache: Sendable {
 
     /// The cache directory for one dimension of one world, by default inside the app's Caches folder.
     static func directory(forWorldAt world: URL, dimensionID: String, root: URL? = TileCache.root) -> URL? {
-        let dimension = String(dimensionID.map { $0.isLetter || $0.isNumber ? $0 : "_" })
-        return worldFolder(forWorldAt: world, root: root)?.appendingPathComponent(dimension, isDirectory: true)
+        // Replacing punctuation with underscores aliases valid IDs such as ice-caves/ice_caves.
+        // Old folders may contain another dimension's data, so don't migrate their contents.
+        let dimension = SHA256.hash(data: Data(dimensionID.utf8)).map { String(format: "%02x", $0) }.joined()
+        return worldFolder(forWorldAt: world, root: root)?.appendingPathComponent("dimension-" + dimension, isDirectory: true)
     }
 
     /// The folder holding every world's tiles.
@@ -73,12 +78,12 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
-    static func key(for region: RegionCoordinate, regionFile: URL) -> Key? {
+    static func key(for region: RegionCoordinate, regionFile: URL, cutawayY: Int? = nil) -> Key? {
         // FileManager rather than URL resource values, which are cached on the URL and can be stale.
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: regionFile.path),
               let size = (attributes[.size] as? NSNumber)?.intValue,
               let modified = attributes[.modificationDate] as? Date else { return nil }
-        return Key(region: region, fileSize: size, modified: Int64(modified.timeIntervalSince1970 * 1_000_000))
+        return Key(region: region, fileSize: size, modified: Int64(modified.timeIntervalSince1970 * 1_000_000), cutawayY: cutawayY)
     }
 
     func load(_ key: Key) -> [UInt8]? {
@@ -88,13 +93,15 @@ nonisolated struct TileCache: Sendable {
         return [UInt8](pixels)
     }
 
-    /// Saves pixels and removes older entries for the same region. Failures only cost a re-render.
+    /// Keeps Surface and the latest cutaway per region, so dragging across many heights does not
+    /// retain every intermediate slice. Failures only cost a re-render.
     func store(_ pixels: [UInt8], for key: Key) {
         guard let compressed = try? (Data(pixels) as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        where name.hasPrefix(key.prefix) && name != key.fileName {
+        where (name.hasPrefix(key.prefix) && name != key.fileName)
+            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")) {
             try? fileManager.removeItem(at: directory.appendingPathComponent(name))
         }
         try? compressed.write(to: directory.appendingPathComponent(key.fileName), options: .atomic)

@@ -23,7 +23,7 @@ struct LinkedPetsSection: View {
                     Button { session.showLinkedPet(pet, ownedBy: playerID) } label: {
                         VStack(alignment: .leading) {
                             Label(pet.name, systemImage: "pawprint.fill")
-                            Text("\(session.dimensionName(pet.dimension)): X \(Int(pet.creature.x.rounded(.down)))  Y \(Int(pet.creature.y.rounded(.down)))  Z \(Int(pet.creature.z.rounded(.down)))")
+                            Text(Coordinates.text(pet.position, y: pet.creature.y, dimension: session.dimensionName(pet.dimension)))
                                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                         }
                     }

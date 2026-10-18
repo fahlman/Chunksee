@@ -120,8 +120,8 @@ struct PlayerDetailView: View {
             if PlayerPresentation.isMappable(player) {
                 Section("Locations") {
                     if let location = player.position { locationButton("Last Position", location) }
-                    if let location = player.lastDeath { locationButton("Last Death", location) }
-                    if let location = player.respawn { locationButton("Respawn Point", location) }
+                    if let location = player.lastDeath { locationButton("Last Death", location, blockPosition: true) }
+                    if let location = player.respawn { locationButton("Respawn Point", location, blockPosition: true) }
                 }
             }
             Section("Status") {
@@ -185,11 +185,16 @@ struct PlayerDetailView: View {
         }
     }
 
-    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location) -> some View {
-        Button { session.focus(on: location) } label: {
-            LabeledContent(title, value: String(localized: "\(session.dimensionName(location.dimension)): X \(Int(location.x)), Y \(Int(location.y)), Z \(Int(location.z))"))
+    @ViewBuilder
+    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location, blockPosition: Bool = false) -> some View {
+        if Coordinates.canLocate(x: location.x, y: location.y, z: location.z) {
+            Button { session.focus(on: location, blockPosition: blockPosition) } label: {
+                LabeledContent(title, value: Coordinates.text(CGPoint(x: location.x, y: location.z), y: location.y,
+                                                             dimension: session.dimensionName(location.dimension)))
+                    .monospacedDigit()
+            }
+            .disabled(!session.dimensions.contains { $0.id == location.dimension })
         }
-        .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }
 
 }

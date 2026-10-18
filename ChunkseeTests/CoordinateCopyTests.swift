@@ -1,5 +1,6 @@
 import AppKit
 import ChunkseeKit
+import SwiftUI
 import Testing
 @testable import Chunksee
 
@@ -14,7 +15,7 @@ import Testing
     }
 
     private func map(_ url: URL, dimensionID: String = "overworld",
-                     read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+                     read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
         if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
         return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
@@ -83,11 +84,12 @@ import Testing
             let viewport = MapViewport(center: position, scale: 8)
             // An offset click on the badge must copy the marker, not the pointer's block.
             let hit = try #require(content.hit(at: CGPoint(x: 204, y: 150), viewport: viewport, size: size))
-            let menu = MapContextMenu.make(actions: [.init(title: "Copy Coordinates") {
-                MapClipboard.copy(hit.position, y: hit.y, on: map, to: board)
-            }])
-            let item = try #require(menu.item(at: 0))
-            #expect(NSApplication.shared.sendAction(try #require(item.action), to: item.target, from: item))
+            let menu = MapContextMenu.make {
+                Button("Copy Coordinates") { MapClipboard.copy(hit.position, y: hit.y, on: map, to: board) }
+            }
+            menu.update()
+            _ = try #require(menu.item(at: 0))
+            menu.performActionForItem(at: 0)
             #expect(board.string(forType: .string) == expected)
             #expect(map.unfinishedCoordinateReads == 0)
         }
@@ -178,7 +180,7 @@ import Testing
         MapClipboard.copy(playerHit.position, y: playerHit.y, on: map, to: board)
         #expect(board.string(forType: .string) == "-9 -13 -6")
         content.players = []   // a hidden player leaves the inventory pin as the copy target
-        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in "Player" }
+        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in .named("Player") }
         let pin = try #require(content.hits.first)
         #expect(pin.source == .inventory(player.uuid))
         let hit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))

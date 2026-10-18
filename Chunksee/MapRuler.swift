@@ -35,7 +35,7 @@ nonisolated struct MapRuler: Equatable {
     func draw(in context: GraphicsContext, viewport: MapViewport, size: CGSize) {
         guard isEnabled, let start else { return }
         func point(_ coordinates: MapCoordinates) -> CGPoint {
-            viewport.viewPoint(for: CGPoint(x: Double(coordinates.x) + 0.5, y: Double(coordinates.z) + 0.5), in: size)
+            viewport.viewPoint(for: coordinates.center, in: size)
         }
         func endpoint(_ position: CGPoint) {
             let circle = Path(ellipseIn: CGRect(x: position.x - 5, y: position.y - 5, width: 10, height: 10))
