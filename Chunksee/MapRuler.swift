@@ -49,7 +49,7 @@ nonisolated struct MapRuler: Equatable {
             context.stroke(line, with: .color(.black.opacity(0.6)), lineWidth: 5)
             context.stroke(line, with: .color(.accentColor), style: StrokeStyle(lineWidth: 3, dash: [6, 3]))
             endpoint(last)
-            let text = context.resolve(Text("\(distance.formatted(.number.precision(.fractionLength(0...2)))) blocks")
+            let text = context.resolve(Text(CountedText.blocks(distance, locale: context.environment.locale))
                 .font(.callout.monospacedDigit()).foregroundStyle(.white))
             let textSize = text.measure(in: CGSize(width: 200, height: 30))
             // Keep short measurements' endpoint dots clear of the distance text.

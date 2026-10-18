@@ -102,6 +102,7 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
+    @Environment(\.locale) private var locale
     private var records: PlayerRecords? {
         session.playerRecords.uuid == player.uuid ? session.playerRecords.records : nil
     }
@@ -126,7 +127,7 @@ struct PlayerDetailView: View {
             }
             Section("Status") {
                 HealthRow(health: player.health, maximum: player.maxHealth)
-                if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption) {
+                if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption, locale: locale) {
                     LabeledContent("Absorption", value: text)
                 }
                 if let food = player.foodLevel {
