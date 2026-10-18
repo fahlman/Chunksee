@@ -254,6 +254,12 @@ through that dimension scope; there is no second editable flag in LayerVisibilit
 It holds only that document's fixed region reader, heat images, pending task and reread flag;
 there is no mutable dimension selector or per-dimension image/task store inside the layer.
 
+The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
+all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on
+combined rows. Existing model bindings own the settings; the command only toggles its binding.
+Saved-search menus also retain Search for This and Remove. Row navigation help says Center the
+map, distinct from the visibility action.
+
 WorldSession owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
 snapshots. The native inspector visibility and an in-game map retained under nondetail markers
