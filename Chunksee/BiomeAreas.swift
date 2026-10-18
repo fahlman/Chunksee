@@ -35,8 +35,8 @@ nonisolated struct BiomeScan: Sendable {
 }
 
 /// Finds biome areas by sampling one surface column per chunk and joining neighboring chunks of
-/// the same biome. Cave biomes never reach the surface, so each chunk's sections are also checked
-/// for them, and their areas are found the same way.
+/// the same biome. Each chunk's sections also identify cave biomes the surface sample can miss,
+/// and their areas are found the same way.
 nonisolated enum BiomeScanner {
     /// Biomes that generate only underground.
     static let caveBiomeIDs: Set<String> = [
@@ -61,9 +61,17 @@ nonisolated enum BiomeScanner {
         areas(from: surface.filter { !caveBiomeIDs.contains($0.value) }) + caveAreas(from: caves)
     }
 
-    /// The cave biomes anywhere in a chunk, from its sections' biome palettes.
+    /// The cave biomes actually used by cells in a chunk. A palette may retain unused entries.
     static func caveBiomes(of chunk: Chunk) -> [String] {
-        Set(chunk.sections.flatMap { $0.biomes?.palette ?? [] }).intersection(caveBiomeIDs).sorted()
+        var found = Set<String>()
+        for section in chunk.sections {
+            guard let biomes = section.biomes else { continue }
+            let candidates = biomes.palette.indices.filter { caveBiomeIDs.contains(biomes.palette[$0]) }
+            guard !candidates.isEmpty else { continue }
+            let counts = biomes.paletteCounts()
+            for index in candidates where counts[index] > 0 { found.insert(biomes.palette[index]) }
+        }
+        return found.sorted()
     }
 
     /// Areas of each cave biome; a chunk can belong to more than one.

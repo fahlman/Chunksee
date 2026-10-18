@@ -54,6 +54,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
+    Tile and scan directories share a SHA-256 key of the full dimension ID; punctuation and
+    nested paths must not alias another dimension. Older lossy dimension directories are not
+    read or migrated because their contents may belong to a different dimension. Dimensions
+    rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
   minor" from `0.27.0`, resolved to `0.27.0` (`62995297f72a9b52ee7ec937413caa4911e4da1d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
@@ -69,7 +73,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
 | `AppModel.swift` | App-wide player names and saved searches, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher and jumps waiting for a dimension to open; closing its last dimension drains all reads before relinquishing access |
+| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance and jumps waiting for a dimension to open; closing its last dimension drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
@@ -132,8 +136,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 11 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
-preserved legacy item wear and structure heights. A marker uses its saved
+Scan-cache version 12 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+preserved legacy item wear, structure heights and corrected cave-biome membership. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
@@ -164,6 +168,11 @@ through File > Open and Open Recent. Opening folders from within the app and nat
 restoration are required; Finder and Dock opening are not required. The old app-owned
 recent/open-world preferences are removed; users reopen each old world once to establish
 native history and restoration state.
+
+Cave membership uses ChunkseeKit's paletteCounts() and only referenced entries; palettes without
+cave candidates skip cell counting. Unused names never create cave areas/hover membership, while
+all actually used areas and the full per-dimension vanilla-biome catalog remain. Scan-cache
+version 12 invalidates earlier false membership; surface sampling and area grouping stay unchanged.
 
 ## Build and test
 

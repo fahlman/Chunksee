@@ -26,6 +26,7 @@ final class WorldResources {
     @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
     @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var closingTask: Task<Void, Never>?
+    @ObservationIgnored private var cacheMaintenance: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
     @ObservationIgnored private var pendingRegions: [String: Set<RegionCoordinate>] = [:]
     @ObservationIgnored private var pendingDimensions: Set<String> = []
@@ -50,7 +51,8 @@ final class WorldResources {
 
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
-         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
+         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
+         maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
         world = snapshot.world
         dimensions = snapshot.dimensions
@@ -73,11 +75,15 @@ final class WorldResources {
         index = WorldIndexStore(readers: Array(readers.values), firstDimension: firstDimension)
         watcher = WorldWatcher(folder: snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
-            Task.detached(priority: .background) {
-                TileCache.markUsed(worldFolder: folder)
-                TileCache.prune(root: root, limit: 1 << 30, keeping: folder)
-            }
+            cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
         }
+    }
+
+    @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
+        guard !Task.isCancelled else { return }
+        TileCache.markUsed(worldFolder: folder)
+        guard !Task.isCancelled else { return }
+        TileCache.prune(root: root, limit: 1 << 30, keeping: folder)
     }
 
     func attach(_ session: WorldSession) {
@@ -124,17 +130,19 @@ final class WorldResources {
         isClosed = true
         pendingActions = [:]
         watcher?.stop()
+        cacheMaintenance?.cancel()
         refreshTasks.values.forEach { $0.cancel() }
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
-        let refresh = Array(refreshTasks.values), access = access
+        let refresh = Array(refreshTasks.values), access = access, maintenance = cacheMaintenance
         closingTask = Task {
             await withTaskGroup(of: Void.self) { group in
                 for reader in readers { group.addTask { await reader.close() } }
             }
             await index.waitForTasks()
             for task in retiring + refresh { await task.value }
+            await maintenance?.value
             access.release()
         }
     }
