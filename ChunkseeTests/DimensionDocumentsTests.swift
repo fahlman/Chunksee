@@ -273,6 +273,54 @@ import Testing
         await second.waitUntilClosed()
     }
 
+    @Test func openingAnUnrecognizedFolderAsksForAWorldInsteadOfDiagnosingADimension() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
+        for path in ["minecraft/vanilla/release/saves", "unrelated"] {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        for path in ["minecraft", "unrelated"] {
+            await #expect(throws: WorldOpenError.notAWorld) { try await reader.readFolder(url.appendingPathComponent(path)) }
+        }
+        #expect(defaults.array(forKey: "worldFolderBookmarks")?.isEmpty ?? true)
+    }
+
+    @Test func aCorruptWorldIsNotRetriedAsADimension() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("not a level file".utf8).write(to: url.appendingPathComponent("level.dat"))
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
+        await #expect(throws: WorldOpenError.unreadable) { try await reader.readFolder(url) }
+        #expect(defaults.array(forKey: "worldFolderBookmarks") == nil)
+    }
+
+    @Test func theFolderReaderRemembersAWorldAndReadsItsDimensionDocuments() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let folders = WorldFolders(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!)
+        let reader = WorldDocument.Reader(folders: folders)
+        let expected = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
+        guard case .world(let documents) = try await reader.readFolder(url) else {
+            Issue.record("A world folder should open its dimensions")
+            return
+        }
+        #expect(documents == expected && !documents.isEmpty)
+        for document in documents {
+            guard case .dimension(let snapshot) = try await reader.readFolder(document) else {
+                Issue.record("A remembered dimension should read through its world")
+                continue
+            }
+            #expect(snapshot.world.world.level.name == "Test" && snapshot.documentURL == document)
+            snapshot.world.access.release()
+        }
+        await #expect(throws: WorldOpenError.notADimension) {
+            try await reader.readFolder(url.appendingPathComponent("dimensions"))
+        }
+    }
+
     @Test func liveChangesRefreshTheMatchingDimensionViews() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
