@@ -50,8 +50,11 @@ final class WorldResources {
         views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
     }
 
+    /// Tests that inject file changes substitute the watcher so real notifications cannot race
+    /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+         watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
@@ -74,7 +77,7 @@ final class WorldResources {
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: Array(readers.values), firstDimension: firstDimension)
-        watcher = WorldWatcher(folder: snapshot.access.url) { [weak self] in self?.worldChanged($0) }
+        watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
         }
