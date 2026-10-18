@@ -22,6 +22,54 @@ import Testing
         return requests.makeAsyncIterator()
     }
 
+    @Test(arguments: ["menu", "location", "saved place"])
+    func aDimensionDoesNotChangeWithoutTheNativeOpener(_ action: String) async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let map = try #require(source.map), visibility = source.visibility
+        let original = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
+        map.viewport = original
+        source.ruler.isEnabled = true
+        source.ruler.mark(.zero)
+        source.ruler.mark(CGPoint(x: 3, y: 4))
+        let place = try #require(source.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
+        switch action {
+        case "menu": source.openDimension(place.dimension)
+        case "location": source.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
+        default: source.visit(place)
+        }
+        #expect(source.selectedDimensionID == "minecraft:overworld")
+        #expect(source.map === map && source.map?.viewport == original)
+        #expect(source.visibility === visibility && source.ruler.distance == 5)
+        #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
+        // A later normal opening must not replay an action that could not invoke its opener.
+        let target = WorldSession(resources: resources, dimensionID: place.dimension)
+        #expect(target.map?.viewport.center != place.position && !target.navigation.canGoBack)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test func restoringAnotherDimensionKeepsTheTargetDocumentIdentity() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        source.map?.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
+        source.goToCoordinates(CGPoint(x: 500, y: 600))
+        source.ruler.isEnabled = true
+        source.ruler.mark(.zero)
+        source.ruler.mark(CGPoint(x: 3, y: 4))
+        let target = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let map = try #require(target.map), original = map.viewport
+        target.restoreView(from: source)
+        #expect(target.selectedDimensionID == "minecraft:the_nether")
+        #expect(target.map === map && target.map?.viewport == original)
+        #expect(!target.navigation.canGoBack && !target.navigation.canGoForward)
+        #expect(target.ruler.start == nil && target.ruler.end == nil)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func dimensionsKeepIndependentViewsHistoriesRulersAndSearches() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
@@ -62,6 +110,9 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: 12, y: 24), scale: 4)
         overworld.map?.viewport = sourceView
         nether.map?.viewport = targetView
+        overworld.ruler.isEnabled = true
+        overworld.ruler.mark(.zero)
+        overworld.ruler.mark(CGPoint(x: 3, y: 4))
         var opened = recordOpens(of: overworld)
         let netherDocument = resources.documentURL(for: "minecraft:the_nether")
         let place = try #require(overworld.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
@@ -69,10 +120,13 @@ import Testing
         let jumpOpened = await opened.next(isolation: #isolation)
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
-        #expect(!overworld.navigation.canGoBack)
+        #expect(!overworld.navigation.canGoBack && overworld.ruler.distance == 5 && nether.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: place.position, scale: 4))
         nether.goBack()
-        #expect(nether.map?.viewport == targetView)
+        #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
+        nether.goForward()
+        #expect(nether.map?.viewport.center == place.position && !nether.navigation.canGoForward)
+        nether.goBack()
         overworld.openDimension("minecraft:the_nether")
         let menuOpened = await opened.next(isolation: #isolation)
         #expect(menuOpened == netherDocument && nether.map?.viewport == targetView)
