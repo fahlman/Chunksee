@@ -206,6 +206,7 @@ struct PortalDetailView: View {
     let portal: NetherPortal
 
     var body: some View {
+        let link = session.link(for: portal)
         Form {
             Section {
                 LabeledContent("Position") {
@@ -216,7 +217,7 @@ struct PortalDetailView: View {
                 Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
             }
             Section {
-                switch session.link(for: portal) {
+                switch link {
                 case .portal(let target, _)?:
                     Text("Leads to the portal in \(session.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
                     if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
@@ -230,12 +231,19 @@ struct PortalDetailView: View {
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 case nil:
-                    ProgressView().controlSize(.small)
+                    if session.isWaitingForPortalLink(portal) {
+                        ProgressView("Reading portal links…").controlSize(.small)
+                    } else {
+                        Text("Portal links aren’t available for this dimension.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } header: {
                 Text("Link")
             } footer: {
-                Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                if link != nil {
+                    Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
+                }
             }
         }
         .formStyle(.grouped)

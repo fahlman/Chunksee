@@ -42,9 +42,9 @@ import Testing
 
     @Test func theGridSettingIsRemembered() {
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
-        #expect(!LayerVisibility(defaults: defaults).showsGrid)
-        LayerVisibility(defaults: defaults).showsGrid = true
-        #expect(LayerVisibility(defaults: defaults).showsGrid)
+        #expect(!LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid)
+        LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid = true
+        #expect(LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid)
     }
 }
 
