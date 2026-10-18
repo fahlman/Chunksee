@@ -7,13 +7,6 @@ struct MarkerStyle {
     nonisolated struct Symbol: Hashable, Sendable {
         let name: String
         let color: Color
-        let opacity: Double?
-
-        init(name: String, color: Color, opacity: Double? = nil) {
-            self.name = name
-            self.color = color
-            self.opacity = opacity
-        }
     }
 
     enum Shape {
@@ -43,9 +36,7 @@ struct MarkerStyle {
     let fill: Color
     let stroke: Color
     let lineWidth: CGFloat
-    /// Structures/search pins inherit their enclosing drawing state; badges/players explicitly
-    /// set opacity. Preserve the old paths rather than inserting an extra alpha operation.
-    let opacity: Double?
+    let opacity: Double
     let caption: Caption?
 
     // Reuse semantic fonts/layout, and create a label's translucent fill only when it is shown.
@@ -74,7 +65,7 @@ struct MarkerStyle {
         let color = Color(hex: group.color)
         return MarkerStyle(geometry: .structure, shape: .roundedRectangle,
             symbol: Symbol(name: group.symbol, color: .white), fill: color, stroke: .white.opacity(0.9),
-            lineWidth: 1, opacity: nil,
+            lineWidth: 1, opacity: 1,
             caption: structureCaption)
     }
 
@@ -95,15 +86,13 @@ struct MarkerStyle {
     static func search(selected: Bool) -> MarkerStyle {
         MarkerStyle(geometry: .search(selected: selected), shape: .circle,
             symbol: Symbol(name: "magnifyingglass", color: .black), fill: .yellow, stroke: .black.opacity(0.6),
-            lineWidth: selected ? 2 : 1, opacity: nil, caption: nil)
+            lineWidth: selected ? 2 : 1, opacity: 1, caption: nil)
     }
 
     static func player(_ kind: MapMarker.Kind, outdated: Bool, selected: Bool) -> MarkerStyle {
         let appearance = playerAppearance(kind)
         return MarkerStyle(geometry: .player(kind), shape: .circle,
-            // Player glyphs were resolved in their faded context, unlike the shared place
-            // glyphs. Preserve that resolution state as well as the final drawing opacity.
-            symbol: Symbol(name: appearance.symbol, color: .white, opacity: outdated ? 0.55 : 1), fill: appearance.color,
+            symbol: Symbol(name: appearance.symbol, color: .white), fill: appearance.color,
             stroke: selected ? .accentColor : .white, lineWidth: selected ? 2.5 : 1.5,
             opacity: outdated ? 0.55 : 1,
             caption: kind == .player ? playerCaption : nil)
@@ -123,7 +112,7 @@ struct MarkerStyle {
     func drawBody(at point: CGPoint, in context: GraphicsContext,
                   symbol resolve: (Symbol) -> GraphicsContext.ResolvedImage) {
         var context = context
-        if let opacity { context.opacity = opacity }
+        context.opacity = opacity
         let radius = geometry.radius
         let path = shape.path(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
         context.fill(path, with: .color(fill))
@@ -136,7 +125,7 @@ struct MarkerStyle {
     func drawName(_ name: @autoclosure () -> String, at point: CGPoint, scale: CGFloat, in context: GraphicsContext) {
         guard let caption, scale >= caption.minimumScale else { return }
         var context = context
-        if let opacity { context.opacity = opacity }
+        context.opacity = opacity
         let text = context.resolve(Text(name()).font(caption.font).foregroundStyle(.white))
         let size = text.measure(in: caption.maximumSize)
         let label = CGRect(x: point.x - size.width / 2 - caption.padding.width, y: point.y + geometry.radius + caption.gap,
