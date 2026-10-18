@@ -28,8 +28,9 @@ final class WorldResources {
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var cacheMaintenance: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
-    @ObservationIgnored private var pendingRegions: [String: Set<RegionCoordinate>] = [:]
-    @ObservationIgnored private var pendingDimensions: Set<String> = []
+    @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
+    /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
+    @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
     @ObservationIgnored private var pendingPlayers = false
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
@@ -155,7 +156,10 @@ final class WorldResources {
             let path = file.path
             if path == url.standardizedFileURL.path {
                 // A broad notification can cover several dimension folders under this world.
-                pendingDimensions.formUnion(dimensions.map(\.id))
+                for dimension in dimensions {
+                    pendingIndex[dimension.id] = .all
+                    pendingTerrain[dimension.id] = .all
+                }
                 pendingPlayers = true
             } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path ||
                         path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
@@ -163,14 +167,23 @@ final class WorldResources {
             } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
                 .max(by: { $0.url.path.count < $1.url.path.count }) {
                 // Nether, End and custom dimension folders can sit inside the Overworld folder.
-                pendingDimensions.insert(dimension.id)
-                if file.deletingLastPathComponent().path == dimension.regionDirectory.standardizedFileURL.path,
-                   let region = RegionFile.parseCoordinates(file.lastPathComponent) {
-                    pendingRegions[dimension.id, default: []].insert(RegionCoordinate(x: region.x, z: region.z))
+                let parent = file.deletingLastPathComponent().path
+                if ChunkseeKit.Dimension.Folder.allCases.contains(where: { parent == dimension.directory($0).standardizedFileURL.path }),
+                   let parsed = RegionFile.parseCoordinates(file.lastPathComponent) {
+                    let change = RegionChange.regions([RegionCoordinate(x: parsed.x, z: parsed.z)])
+                    if pendingIndex[dimension.id] != nil { pendingIndex[dimension.id]?.merge(change) }
+                    else { pendingIndex[dimension.id] = change }
+                    if parent == dimension.regionDirectory.standardizedFileURL.path {
+                        if pendingTerrain[dimension.id] != nil { pendingTerrain[dimension.id]?.merge(change) }
+                        else { pendingTerrain[dimension.id] = change }
+                    }
+                } else {
+                    pendingIndex[dimension.id] = .all
+                    pendingTerrain[dimension.id] = .all
                 }
             }
         }
-        guard !pendingDimensions.isEmpty || pendingPlayers else { return }
+        guard !pendingIndex.isEmpty || pendingPlayers else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -195,15 +208,15 @@ final class WorldResources {
     }
 
     private func refresh() async {
-        let regions = pendingRegions, changed = pendingDimensions, playersChanged = pendingPlayers
-        pendingRegions = [:]; pendingDimensions = []; pendingPlayers = false
+        let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
+        pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
         for session in sessions.values.compactMap(\.value) {
-            if let id = session.selectedDimensionID, changed.contains(id) {
-                session.map?.regionsChanged(regions[id] ?? [])
+            if let id = session.selectedDimensionID, let changes = terrain[id] {
+                session.map?.regionsChanged(changes.mapRegions)
                 session.heatMap.load(reread: true)
             }
         }
-        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, dimensions: changed) }
+        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
             // an older, slower read finishing later must not put old positions back.

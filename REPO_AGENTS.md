@@ -80,7 +80,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
-| `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
+| `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
 | `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
@@ -124,10 +124,12 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
-Live index refreshes read only the known changed dimensions, retaining every other published
-snapshot. Queued dimension sets merge while a pass runs; an explicit full request dominates
-subsets. Initial and manual indexing still cover the whole world. Broad world/dimension folder
-notifications request the appropriate full dimension reads; region-specific retention is separate.
+Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining
+the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
+biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
+merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
+world. Broad directory notifications reconcile full dimension contents and terrain availability;
+entity/POI file saves leave terrain images and inhabited-time reads alone.
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
