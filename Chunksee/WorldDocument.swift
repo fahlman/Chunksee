@@ -223,26 +223,39 @@ final class WorldDocument: ReadableDocument {
         /// remembers the world's access and lists those, for its window to open instead.
         @concurrent
         func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending FolderSnapshot {
-            try await readContents(from: source)
+            try await readFolder(source)
         }
 
         @concurrent
-        func readContents(from source: URL) async throws -> FolderSnapshot {
+        func readFolder(_ source: URL) async throws -> FolderSnapshot {
             try Task.checkCancellation()
-            if let world = try? World(contentsOf: source) {
+            do {
+                let world = try World(contentsOf: source)
+                let dimensions = world.dimensions().map { $0.documentURL(inWorldAt: source) }
                 try Task.checkCancellation()
                 folders.remember(source)
-                return .world(dimensions: world.dimensions().map { $0.documentURL(inWorldAt: source) })
-            }
-            if let model, await reuseOpenWorld() {
-                guard let worldURL = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
-                if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: worldURL) {
-                    do { try Task.checkCancellation() }
-                    catch { await snapshot.discardUnused(); throw error }
-                    return .dimension(snapshot)
+                return .world(dimensions: dimensions)
+            } catch WorldError.missingLevelDat {
+                do {
+                    if let model, await reuseOpenWorld() {
+                        guard let worldURL = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
+                        if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: worldURL) {
+                            do { try Task.checkCancellation() }
+                            catch { await snapshot.discardUnused(); throw error }
+                            return .dimension(snapshot)
+                        }
+                    }
+                    return .dimension(try await DimensionSnapshot.read(source, folders: folders))
+                } catch WorldOpenError.needsWorldFolder {
+                    // Without a containing world, an arbitrary folder isn't known to be a
+                    // dimension. Ask for a world instead of diagnosing lost access to one.
+                    throw WorldOpenError.notAWorld
                 }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw WorldOpenError.unreadable
             }
-            return .dimension(try await DimensionSnapshot.read(source, folders: folders))
         }
     }
 
