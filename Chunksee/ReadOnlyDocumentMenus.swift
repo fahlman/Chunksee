@@ -3,6 +3,7 @@ import AppKit
 /// SwiftUI groups Close with Save and has no separate placements for Rename and Move.
 /// Keep native document commands and hide only actions that edit a world folder.
 final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
+    private(set) var isTerminating = false
     private var updateScheduled = false
     private static let editingActions: Set<Selector> = [
         #selector(NSDocument.save(_:)),
@@ -23,6 +24,13 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillUpdate(_ notification: Notification) { scheduleUpdate() }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // ScenePhase does not identify Quit. Ignore transient tab focus as AppKit closes windows;
+        // every document is read-only, so the normal immediate termination remains appropriate.
+        isTerminating = true
+        return .terminateNow
+    }
 
     @objc private func menuItemsChanged(_ notification: Notification) { scheduleUpdate() }
 

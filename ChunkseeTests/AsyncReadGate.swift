@@ -5,7 +5,7 @@ import Foundation
 actor AsyncReadGate<Value: Sendable> {
     private var reads: [String: [CheckedContinuation<Value, Never>]] = [:]
     private(set) var requested: [String] = []
-    private var entered: [String: [CheckedContinuation<Void, Never>]] = [:]
+    private var entered: [String: [(count: Int, continuation: CheckedContinuation<Void, Never>)]] = [:]
     private var cancelled: Set<String> = []
     private var cancellationWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
 
@@ -14,21 +14,33 @@ actor AsyncReadGate<Value: Sendable> {
             await withCheckedContinuation { continuation in
                 reads[key, default: []].append(continuation)
                 requested.append(key)
-                for waiter in entered.removeValue(forKey: key) ?? [] { waiter.resume() }
+                let count = requested.filter { $0 == key }.count
+                let waiters = entered.removeValue(forKey: key) ?? []
+                for waiter in waiters {
+                    if count >= waiter.count { waiter.continuation.resume() }
+                    else { entered[key, default: []].append(waiter) }
+                }
             }
         } onCancel: {
             Task { await self.noteCancellation(key) }
         }
     }
 
-    func waitForRequest(_ key: String) async {
-        guard !requested.contains(key) else { return }
-        await withCheckedContinuation { entered[key, default: []].append($0) }
+    func waitForRequest(_ key: String, count: Int = 1) async {
+        guard requested.filter({ $0 == key }).count < count else { return }
+        await withCheckedContinuation { entered[key, default: []].append((count, $0)) }
     }
 
     func finish(_ key: String, with value: Value) {
         precondition(reads[key]?.isEmpty == false, "Release only an entered read")
         reads[key]!.removeFirst().resume(returning: value)
+    }
+
+    /// Cleanup after a failed assertion/setup must still drain every suspended read.
+    func finishAll(with value: Value) {
+        let pending = reads.values.flatMap { $0 }
+        reads = [:]
+        for continuation in pending { continuation.resume(returning: value) }
     }
 
     private func noteCancellation(_ key: String) {

@@ -64,7 +64,9 @@ struct InGameMapDetailView: View {
         Form {
             Section {
                 LabeledContent("Area", value: "\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
-                LabeledContent("Center") { Text("X \(map.centerX)  Z \(map.centerZ)").monospacedDigit() }
+                LabeledContent("Center") {
+                    Text(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))).monospacedDigit()
+                }
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(map.blocksPerPixel) blocks"))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
