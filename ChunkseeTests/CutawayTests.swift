@@ -22,7 +22,7 @@ import Testing
             }])
         }
 
-        func dimension() throws -> Dimension { try #require(try World(contentsOf: url).dimension("overworld")) }
+        func dimension() throws -> ChunkseeKit.Dimension { try #require(try World(contentsOf: url).dimension("overworld")) }
 
         func close() async {
             maps.forEach { $0.close() }
