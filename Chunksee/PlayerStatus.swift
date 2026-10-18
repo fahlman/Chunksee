@@ -33,11 +33,13 @@ struct PlayerEffectsSection: View {
             Section("Active Effects") {
                 ForEach(Array(effects.sorted { $0.id < $1.id }.enumerated()), id: \.offset) { _, effect in
                     let name = PlayerEffectText.name(effect, locale: locale)
-                    LabeledContent(name) {
-                        Text(PlayerEffectText.duration(effect, locale: locale))
-                            .accessibilityLabel(Text(PlayerEffectText.accessibleDuration(effect, locale: locale)))
-                    }
-                    .monospacedDigit()
+                    LabeledContent(name, value: PlayerEffectText.duration(effect, locale: locale))
+                        .monospacedDigit()
+                        // Form's labeled-value style discards an inner Text's accessibility
+                        // label. Represent the row with the same native control and full units.
+                        .accessibilityRepresentation {
+                            LabeledContent(name, value: PlayerEffectText.accessibleDuration(effect, locale: locale))
+                        }
                 }
             }
             .help("Effects and time remaining when Minecraft last saved this player")
