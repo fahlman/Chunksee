@@ -71,6 +71,32 @@ import Testing
 }
 
 @Suite struct SharedNameReadTests {
+    @Test func requestTracksThePlayerRosterWithoutDependingOnItsPositionsOrOrder() async {
+        let first = UUID(), second = UUID()
+        func player(_ uuid: UUID, x: Double?) -> PlayerInfo {
+            var fields: [String: NBT] = ["DataVersion": .int(5023), "Dimension": .string("minecraft:overworld")]
+            if let x { fields["Pos"] = .list([.double(x), .double(64), .double(0)]) }
+            return PlayerInfo(uuid: uuid, nbt: .compound(fields))
+        }
+        let gate = AsyncReadGate<(Data, Int)>()
+        let names = PlayerNames(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!,
+                                mojang: MojangProfiles(fetch: { await gate.read($0.lastPathComponent) }))
+        names.looksUpOnline = true
+        let request = names.request(for: [player(first, x: 0), player(second, x: nil)])
+        #expect(request.players == [first, second])
+        #expect(request == names.request(for: [player(second, x: nil), player(first, x: 100)]))
+        #expect(request != names.request(for: [player(first, x: 0)]))
+        await gate.releaseAllAndFuture(with: (Data(#"{"name":"Known"}"#.utf8), 200))
+        await names.load(request)
+        #expect(names.name(for: first) == "Known" && names.name(for: second) == "Known")
+        #expect(Set(await gate.requested) == Set([first, second].map { MojangProfiles.profileURL(for: $0).lastPathComponent }))
+        names.looksUpOnline = false
+        #expect(request != names.request(for: [player(first, x: 0), player(second, x: nil)]))
+        names.clearOnlineNames()
+        await names.load(request) // a stale permission request cannot restart a source
+        #expect(names.online.isEmpty)
+    }
+
     @Test func overlappingLocalRequestsShareTheReadAndOneCanceledDocumentCannotLoseIt() async throws {
         let gate = AsyncReadGate<[UUID: String]>()
         let folder = try TestWorld.make(chunks: []), uuid = UUID()

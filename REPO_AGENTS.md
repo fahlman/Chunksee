@@ -124,6 +124,13 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
+`PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
+share one pending read; later reloads still reread the source. Closing one caller does not cancel
+globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
+still cancel/invalidate their sources. The view request follows folder, online permission and the
+known player UUID set, including players without reliable coordinates, so new players trigger lookup
+without reloading for every position change. Online remains off by default and permission-gated.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
