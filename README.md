@@ -19,6 +19,8 @@ It shows a top-down view of a world, the structures and places found in it, and 
    gathers them into tabs. **Navigate ▸ Dimension** brings another dimension to the front or
    reopens one you closed, and macOS restores open dimensions when you reopen the app.
    Custom dimension labels use readable words, such as "Sky Realm" for `example:sky_realm`.
+   If two dimensions would have the same label, their full IDs distinguish them, for example
+   "Caves (mod_a:caves)" and "Caves (mod_b:caves)".
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage

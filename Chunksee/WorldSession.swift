@@ -225,7 +225,18 @@ final class WorldSession {
 
     /// A dimension's name as players know it, by id.
     func dimensionName(_ id: String) -> String {
-        dimensions.first { $0.id == id }?.displayName ?? ReadableName.from(id)
+        let name = Self.dimensionName(id)
+        let isAmbiguous = dimensions.contains { $0.id != id && Self.dimensionName($0.id) == name }
+        return isAmbiguous ? "\(name) (\(id))" : name
+    }
+
+    private static func dimensionName(_ id: String) -> String {
+        switch id {
+        case "minecraft:overworld": String(localized: "Overworld")
+        case "minecraft:the_nether": String(localized: "The Nether")
+        case "minecraft:the_end": String(localized: "The End")
+        default: ReadableName.from(id)
+        }
     }
 
     /// The world spawn when it's in the selected dimension, otherwise the origin.
@@ -725,14 +736,3 @@ enum WorldOpenError: LocalizedError, Equatable {
     }
 }
 
-extension ChunkseeKit.Dimension {
-    /// The dimension's name as players know it.
-    var displayName: String {
-        switch id {
-        case "minecraft:overworld": String(localized: "Overworld")
-        case "minecraft:the_nether": String(localized: "The Nether")
-        case "minecraft:the_end": String(localized: "The End")
-        default: ReadableName.from(id)
-        }
-    }
-}
