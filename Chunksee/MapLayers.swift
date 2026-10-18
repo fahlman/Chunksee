@@ -97,7 +97,6 @@ struct LayerSection<Marker: MapLayerMarker>: View {
             if let visibility { VisibilityButton(isShown: visibility) }
         }
         .contextMenu { if let visibility { VisibilityCommand(isShown: visibility) } }
-        .accessibilityActions { if let visibility { VisibilityCommand(isShown: visibility) } }
     }
 
     private func nearestFirst(_ markers: [Marker]) -> [Marker] {
@@ -105,7 +104,8 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     }
 }
 
-/// One action/label for eye buttons, native context menus and combined rows' accessibility actions.
+/// One action/label for eye buttons and native context menus. SwiftUI exposes the button action
+/// on combined accessibility rows too.
 struct VisibilityCommand: View {
     @Binding var isShown: Bool
 

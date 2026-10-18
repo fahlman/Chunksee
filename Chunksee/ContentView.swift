@@ -228,7 +228,6 @@ private struct PlayerRow: View {
         .accessibilityElement(children: .combine)
         // Native rows combine their controls; keep the same command reachable by menu and VoiceOver.
         .contextMenu { VisibilityCommand(isShown: visibility) }
-        .accessibilityActions { VisibilityCommand(isShown: visibility) }
     }
 
     private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
@@ -351,7 +350,6 @@ private struct SavedSearchesSection: View {
                     Button("Search for This") { session.search.text = saved.query }
                     Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
                 }
-                .accessibilityActions { VisibilityCommand(isShown: visibility) }
             }
         }
     }
