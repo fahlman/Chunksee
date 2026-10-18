@@ -137,20 +137,48 @@ actor RegionReader {
     func inhabitedTimes(_ region: RegionCoordinate) async -> [Int] { await part("inhabitedTimes", \.inhabitedTimes, region) }
     func formats(_ region: RegionCoordinate) async -> ChunkFormats { await part("formats", \.formats, region) }
 
+    /// Indexing needs these parts together. A cold region uses one shared pass even when the
+    /// disk cache is disabled; a warm one loads only this region's existing part entries.
+    func indexData(_ region: RegionCoordinate) async -> RegionData {
+        guard !isClosed, !Task.isCancelled else { return RegionData() }
+        let fingerprint = fingerprint(region)
+        if let contents: SearchContents = cache.load("contents", region: region, fingerprint: fingerprint),
+           let structures: [StructureMarker] = cache.load("structures", region: region, fingerprint: fingerprint),
+           let creatures: [Creature] = cache.load("creatures", region: region, fingerprint: fingerprint),
+           let biomes: [ChunkCoordinate: String] = cache.load("biomes", region: region, fingerprint: fingerprint),
+           let caves: [ChunkCoordinate: [String]] = cache.load("caveBiomes", region: region, fingerprint: fingerprint),
+           let blocks: [ChunkCoordinate: [BlockDeposit]] = cache.load("blocks", region: region, fingerprint: fingerprint),
+           let formats: ChunkFormats = cache.load("formats", region: region, fingerprint: fingerprint) {
+            var data = RegionData()
+            data.contents = contents; data.structures = structures; data.creatures = creatures
+            data.biomes = biomes; data.caveBiomes = caves; data.blocks = blocks; data.formats = formats
+            return data
+        }
+        return await data(region, fingerprint: fingerprint)
+    }
+
+    private func fingerprint(_ region: RegionCoordinate) -> String {
+        ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca"),
+                               dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")])
+    }
+
     private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionCoordinate) async -> T {
         guard !isClosed, !Task.isCancelled else { return RegionData()[keyPath: part] }
         // Taken before reading, so a region the game saves meanwhile is read again next time.
-        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca"),
-                                                 dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")])
+        let fingerprint = fingerprint(region)
         if let saved: T = cache.load(kind, region: region, fingerprint: fingerprint) { return saved }
+        return await data(region, fingerprint: fingerprint)[keyPath: part]
+    }
+
+    private func data(_ region: RegionCoordinate, fingerprint: String) async -> RegionData {
         let key = "\(region.x).\(region.z).\(fingerprint)"
-        if let task = reading[key] { return await task.value[keyPath: part] }
+        if let task = reading[key] { return await task.value }
         let dimension = dimension, cache = cache, read = read
         let task = Task { await Self.readAndSave(dimension, region: region, cache: cache, fingerprint: fingerprint, read: read) }
         reading[key] = task
         let data = await task.value
         reading[key] = nil
-        return data[keyPath: part]
+        return data
     }
 
     /// Refuses queued requests and waits for the shared region reads to stop.

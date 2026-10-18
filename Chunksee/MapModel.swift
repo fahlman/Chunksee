@@ -181,7 +181,10 @@ final class MapModel {
     private var stale: Set<RegionCoordinate> = []
 
     /// Redraws regions whose files the game saved, and shows regions it just created.
-    func regionsChanged(_ regions: Set<RegionCoordinate>) {
+    func regionsChanged(_ regions: Set<RegionCoordinate>? = nil) {
+        // A directory notification has no individual file names. Include the old set so deleted
+        // regions are removed too, and the current set so newly created regions become visible.
+        let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
         for region in regions {
             let file = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
             if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
