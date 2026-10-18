@@ -54,6 +54,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
+    Tile and scan directories share a SHA-256 key of the full dimension ID; punctuation and
+    nested paths must not alias another dimension. Older lossy dimension directories are not
+    read or migrated because their contents may belong to a different dimension. Dimensions
+    rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
   minor" from `0.27.0`, resolved to `0.27.0` (`62995297f72a9b52ee7ec937413caa4911e4da1d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
