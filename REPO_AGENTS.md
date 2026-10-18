@@ -128,7 +128,13 @@ completion. There is no separate completed metadata cache or timeout. Closing al
 openings drains the world's work, and reopening rereads it. File access is never released through
 a sibling's raw token. Metadata and resolved dimension-document paths are read off-main.
 Existing-document rereads and native moves keep fresh coordinated reads. An unknown path in a
-live catalog also goes through fresh validation. DocumentGroup still owns document/window behavior.
+live catalog also goes through fresh validation. A fresh snapshot can add newly created dimensions
+to the open world's catalog without replacing existing readers, maps or tab state. WorldIndexStore
+owns the reader collection; WorldResources derives its dimensions/readers from it and retains the
+resolved document-path lookup. Additions queue a complete pass behind an unfinished one, and last
+world closure cancels/drains all readers. Discovery happens when a dimension is opened or freshly
+validated; this does not add automatic directory discovery to the navigation menu or remove
+already-open dimensions. DocumentGroup still owns document/window behavior.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
