@@ -78,6 +78,7 @@ final class HeatMapLayer {
     }
     private var images: [String: [RegionCoordinate: CGImage]] = [:]
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var invalidated: Set<String> = []
     private let readers: [String: RegionReader]
     private var isClosed = false
 
@@ -96,22 +97,32 @@ final class HeatMapLayer {
     /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
     /// the current ones stay until the new ones are ready.
     func load(reread: Bool = false) {
-        guard !isClosed, isShown, let dimension, reread || images[dimension] == nil, tasks[dimension] == nil,
-              let reader = readers[dimension] else { return }
+        guard !isClosed, let dimension, let reader = readers[dimension] else { return }
+        if reread { invalidated.insert(dimension) }
+        guard isShown, tasks[dimension] == nil,
+              invalidated.contains(dimension) || images[dimension] == nil else { return }
+        invalidated.remove(dimension)
         tasks[dimension] = Task(priority: .userInitiated) { [weak self] in
-            let images = await HeatMap.images(reader)
-            guard let self, !Task.isCancelled else { return }
-            self.images[dimension] = images
-            self.tasks[dimension] = nil
+            defer { self?.tasks[dimension] = nil }
+            repeat {
+                let images = await HeatMap.images(reader)
+                guard let self, !Task.isCancelled, !self.isClosed else { return }
+                self.images[dimension] = images
+                // Saves during a read join one following pass instead of getting lost or
+                // restarting a large dimension's read every time the game saves.
+                guard self.isShown, self.dimension == dimension,
+                      self.invalidated.remove(dimension) != nil else { return }
+            } while true
         }
     }
 
     func waitForReads() async {
-        for task in tasks.values { await task.value }
+        while let task = tasks.values.first { await task.value }
     }
 
     func cancel() {
         isClosed = true
+        invalidated = []
         tasks.values.forEach { $0.cancel() }
     }
 }

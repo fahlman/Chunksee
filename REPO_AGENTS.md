@@ -69,7 +69,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
 | `AppModel.swift` | App-wide player names and saved searches, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher and jumps waiting for a dimension to open; closing its last dimension drains all reads before relinquishing access |
+| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance and jumps waiting for a dimension to open; closing its last dimension drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
