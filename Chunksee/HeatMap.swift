@@ -70,7 +70,11 @@ nonisolated enum HeatMap {
 @Observable
 final class HeatMapLayer {
     var isShown = false {
-        didSet { load() }
+        didSet {
+            guard !isClosed, isShown != oldValue else { return }
+            rememberedVisibility?.rememberTimeSpent(isShown)
+            load()
+        }
     }
     /// The dimension the map is showing.
     var dimension: String? {
@@ -80,10 +84,18 @@ final class HeatMapLayer {
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var invalidated: Set<String> = []
     private let readers: [String: RegionReader]
+    @ObservationIgnored private var rememberedVisibility: LayerVisibility?
     private var isClosed = false
 
     init(readers: [String: RegionReader]) {
         self.readers = readers
+    }
+
+    /// Restores this tab's flag without making a second live copy in LayerVisibility.
+    func restoreVisibility(from visibility: LayerVisibility) {
+        guard !isClosed else { return }
+        rememberedVisibility = visibility
+        isShown = visibility.rememberedTimeSpent
     }
 
     /// The shown dimension's images, when the layer is on and they've been read.

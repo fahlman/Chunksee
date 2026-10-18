@@ -63,7 +63,7 @@ final class WorldSession {
     var savedSearches: SavedSearches { resources.savedSearches }
     var savedPlaces: SavedPlaces { resources.savedPlaces }
     var players: [PlayerInfo] { resources.players }
-    let visibility: LayerVisibility
+    private(set) var visibility: LayerVisibility
     let search: SearchModel
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
@@ -82,7 +82,9 @@ final class WorldSession {
             }
             saveView(of: oldValue)   // the map still shows the dimension being left
             if let selection, selection.dimension != selectedDimensionID { self.selection = nil }
+            visibility = LayerVisibility(world: url, dimension: selectedDimensionID, defaults: resources.defaults)
             heatMap.dimension = selectedDimensionID
+            heatMap.restoreVisibility(from: visibility)
             ruler.clear()
             makeMapForSelection()
         }
@@ -147,8 +149,8 @@ final class WorldSession {
 
     init(resources: WorldResources, dimensionID: String? = nil) {
         self.resources = resources
-        visibility = LayerVisibility(defaults: resources.defaults)
         let selected = dimensionID ?? resources.defaultDimensionID
+        visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
         search = SearchModel(readers: [], players: resources.players, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
@@ -156,6 +158,7 @@ final class WorldSession {
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
         heatMap.dimension = selected
+        heatMap.restoreVisibility(from: visibility)
         makeMapForSelection()
         resources.attach(self)
     }

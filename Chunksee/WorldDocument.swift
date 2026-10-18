@@ -234,6 +234,7 @@ final class WorldDocument: ReadableDocument {
         if let oldSession, oldSession.url != worldURL {
             oldSession.savedPlaces.relocate(to: worldURL)
             oldSession.resources.views.relocate(to: worldURL)
+            oldSession.visibility.relocate(to: worldURL)
         }
         let opened = WorldSession(resources: model.resources(for: current.world), dimensionID: current.dimensionID)
         if let oldSession { opened.restoreView(from: oldSession) }
