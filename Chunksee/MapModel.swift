@@ -21,6 +21,9 @@ final class MapModel {
 
     private var failed: Set<RegionCoordinate> = []
     private let renderer: RegionTileRenderer
+    @ObservationIgnored private var cacheWrites: [Int: Task<Void, Never>] = [:]
+    @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
+    var unfinishedCacheWrites: Int { cacheWrites.count }
     @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
@@ -36,6 +39,7 @@ final class MapModel {
     init(dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
+         writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
          readTopBlocks: @escaping @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
@@ -43,6 +47,7 @@ final class MapModel {
         self.dimension = dimension
         self.readTopBlocksFor = readTopBlocks
         self.renderTile = renderTile
+        self.writeCache = writeCache
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
@@ -141,6 +146,13 @@ final class MapModel {
         switch result {
         case .success(let tile?):
             store(tile, for: region)
+            if let operation = tile.cacheWrite {
+                let write = writeCache
+                cacheWrites[id] = Task(priority: .utility) { [weak self] in
+                    if !Task.isCancelled { await write(operation) }
+                    self?.cacheWrites[id] = nil
+                }
+            }
         case .success(nil):
             failed.insert(region)  // no region file any more
         case .failure(let error):
@@ -232,6 +244,7 @@ final class MapModel {
 
     func waitForRenders() async {
         for task in renders.values { await task.value }
+        while let task = cacheWrites.values.first { await task.value }
         await waitForTopBlocks()
         await waitForCoordinateReads()
     }
@@ -240,6 +253,7 @@ final class MapModel {
         isClosed = true
         hoverReads.values.forEach { $0.cancel() }
         coordinateReads.values.forEach { $0.cancel() }
+        cacheWrites.values.forEach { $0.cancel() }
         cancel()
     }
 
