@@ -144,11 +144,7 @@ nonisolated enum PlaceScanner {
             for file in dimension.regionFiles(.pointsOfInterest) {
                 guard !Task.isCancelled else { break }
                 group.addTask {
-                    guard !Task.isCancelled else { return [] }
-                    return cache.value("places", region: RegionCoordinate(x: file.x, z: file.z), sources: [file.url]) {
-                        guard !Task.isCancelled else { return [] }
-                        return (try? dimension.pointsOfInterest(regionX: file.x, regionZ: file.z)) ?? []
-                    }
+                    await Self.blocks(dimension, region: RegionCoordinate(x: file.x, z: file.z), cache: cache)
                 }
             }
             var all: [PointOfInterest] = []
@@ -156,9 +152,23 @@ nonisolated enum PlaceScanner {
             return all
         }
         guard !Task.isCancelled else { return [] }
+        return markers(from: blocks, in: dimension.id)
+    }
+
+    @concurrent
+    static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate, cache: ScanCache) async -> [PointOfInterest] {
+        guard !Task.isCancelled else { return [] }
+        let file = dimension.poiDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        return cache.value("places", region: region, sources: [file]) {
+            guard !Task.isCancelled else { return [] }
+            return (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []
+        }
+    }
+
+    static func markers(from blocks: [PointOfInterest], in dimension: String) -> [PlaceMarker] {
         // Portal blocks become one place per portal (ChunkseeKit owns the grouping rule).
         let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
-        let portals = NetherPortal.portals(from: blocks, in: dimension.id).map(PlaceMarker.init)
+        let portals = NetherPortal.portals(from: blocks, in: dimension).map(PlaceMarker.init)
         return (others + portals).sorted { $0.id < $1.id }
     }
 }
@@ -204,7 +214,7 @@ struct PortalDetailView: View {
                         .monospacedDigit()
                 }
             } header: {
-                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
+                Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }
             Section {
                 switch link {

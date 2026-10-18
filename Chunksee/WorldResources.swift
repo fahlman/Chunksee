@@ -52,8 +52,9 @@ final class WorldResources {
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var cacheMaintenance: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
-    @ObservationIgnored private var pendingRegions: [String: Set<RegionCoordinate>] = [:]
-    @ObservationIgnored private var pendingDimensions: Set<String> = []
+    @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
+    /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
+    @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
     @ObservationIgnored private var pendingPlayers = false
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
@@ -61,7 +62,7 @@ final class WorldResources {
     @ObservationIgnored private var isRefreshScheduled = false
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
-    @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo] = { await WorldResources.readPlayers($0) }
+    @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0) }
 
     private final class WeakSession {
         weak var value: WorldSession?
@@ -73,8 +74,11 @@ final class WorldResources {
         views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
     }
 
+    /// Tests that inject file changes substitute the watcher so real notifications cannot race
+    /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+         watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
@@ -98,7 +102,7 @@ final class WorldResources {
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
-        watcher = WorldWatcher(folder: snapshot.access.url) { [weak self] in self?.worldChanged($0) }
+        watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
         }
@@ -211,19 +215,39 @@ final class WorldResources {
         guard !isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
             let path = file.path
-            if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+            if path == url.standardizedFileURL.path {
+                // A broad notification can cover several dimension folders under this world.
+                for dimension in dimensions {
+                    pendingIndex[dimension.id] = .all
+                    pendingTerrain[dimension.id] = .all
+                }
                 pendingPlayers = true
-            } else if let dimension = dimensions.filter({ path.hasPrefix($0.url.standardizedFileURL.path + "/") })
+            } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path ||
+                        path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+                pendingPlayers = true
+            } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
                 .max(by: { $0.url.path.count < $1.url.path.count }) {
                 // Nether, End and custom dimension folders can sit inside the Overworld folder.
-                pendingDimensions.insert(dimension.id)
-                if file.deletingLastPathComponent().path == dimension.regionDirectory.standardizedFileURL.path,
-                   let region = RegionFile.parseCoordinates(file.lastPathComponent) {
-                    pendingRegions[dimension.id, default: []].insert(RegionCoordinate(x: region.x, z: region.z))
+                let parent = file.deletingLastPathComponent().path
+                if ChunkseeKit.Dimension.Folder.allCases.contains(where: { parent == dimension.directory($0).standardizedFileURL.path }),
+                   let parsed = RegionFile.parseCoordinates(file.lastPathComponent) {
+                    let change = RegionChange.regions([RegionCoordinate(x: parsed.x, z: parsed.z)])
+                    if pendingIndex[dimension.id] != nil { pendingIndex[dimension.id]?.merge(change) }
+                    else { pendingIndex[dimension.id] = change }
+                    if parent == dimension.regionDirectory.standardizedFileURL.path {
+                        if pendingTerrain[dimension.id] != nil { pendingTerrain[dimension.id]?.merge(change) }
+                        else { pendingTerrain[dimension.id] = change }
+                    }
+                } else if path == dimension.url.standardizedFileURL.path ||
+                            ChunkseeKit.Dimension.Folder.allCases.contains(where: { path == dimension.directory($0).standardizedFileURL.path }) {
+                    // Only broad region/dimension events need reconciliation. Saved data such as
+                    // raids.dat and chunk_tickets.dat does not feed the index, terrain or heat map.
+                    pendingIndex[dimension.id] = .all
+                    pendingTerrain[dimension.id] = .all
                 }
             }
         }
-        guard !pendingDimensions.isEmpty || pendingPlayers else { return }
+        guard !pendingIndex.isEmpty || pendingPlayers else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -248,26 +272,32 @@ final class WorldResources {
     }
 
     private func refresh() async {
-        let regions = pendingRegions, changed = pendingDimensions, playersChanged = pendingPlayers
-        pendingRegions = [:]; pendingDimensions = []; pendingPlayers = false
+        let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
+        pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
         for session in sessions.values.compactMap(\.value) {
-            if let id = session.selectedDimensionID, changed.contains(id) {
-                session.map?.regionsChanged(regions[id] ?? [])
+            if let id = session.selectedDimensionID, let changes = terrain[id] {
+                session.map?.regionsChanged(changes.mapRegions)
                 session.heatMap.load(reread: true)
             }
         }
-        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID) }
+        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
             // an older, slower read finishing later must not put old positions back.
             playerReadGeneration += 1
             let generation = playerReadGeneration
             let updated = await readPlayers(world)
-            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration else { return }
+            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
             players = updated
             for session in sessions.values.compactMap(\.value) { session.search.players = updated }
         }
     }
 
-    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] { world.players() }
+    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo]? {
+        // World keeps its opening level.dat snapshot, including the single-player fallback.
+        // Reopen through Kit so a save updates that record too. An unreadable save must not
+        // clear the last good players; a successful read with no players does clear them.
+        guard !Task.isCancelled, let current = try? World(contentsOf: world.url) else { return nil }
+        return current.players()
+    }
 }
