@@ -64,7 +64,7 @@ import Testing
         #expect(server.position == nil && server.dimension == nil && server.y == nil && server.count == 3)
         #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
         let viewport = session.map?.viewport
-        session.show(server)
+        session.choose(.hit(query: session.search.text, id: server.id))
         #expect(session.map?.viewport == viewport)
         let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
                                                             size: CGSize(width: 400, height: 300))
