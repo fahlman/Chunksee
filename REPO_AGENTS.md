@@ -106,6 +106,12 @@ The opening action captures only `openDocument`, so a view never keeps its own d
 macOS names each window and Open Recent item after its folder (`overworld`, `the_nether`,
 `the_end`), so the window subtitle names the world. Each dimension's
 map position is remembered in `RememberedViews`.
+Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
+route only through the native document opener; an unavailable opener cannot replace the source
+map. Back/Forward stores that document's viewports, and a native reread/move restores view,
+ruler and history only when the dimension identity matches. No in-session dimension switching
+or retired replacement maps are kept.
+
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.

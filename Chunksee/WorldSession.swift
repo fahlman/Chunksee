@@ -63,7 +63,7 @@ final class WorldSession {
     var savedSearches: SavedSearches { resources.savedSearches }
     var savedPlaces: SavedPlaces { resources.savedPlaces }
     var players: [PlayerInfo] { resources.players }
-    private(set) var visibility: LayerVisibility
+    let visibility: LayerVisibility
     let search: SearchModel
     let heatMap: HeatMapLayer
     let playerRecords: PlayerRecordsModel
@@ -73,23 +73,8 @@ final class WorldSession {
     /// Why another dimension's document couldn't open, until it's been shown.
     var openFailure: String?
 
-    var selectedDimensionID: String? {
-        didSet {
-            guard oldValue != selectedDimensionID else { return }
-            resources.activeDimensionID = selectedDimensionID
-            if !isNavigating, let oldValue, let map {
-                navigation.record(MapViewLocation(dimension: oldValue, viewport: map.viewport))
-            }
-            saveView(of: oldValue)   // the map still shows the dimension being left
-            if let selection, selection.dimension != selectedDimensionID { self.selection = nil }
-            visibility = LayerVisibility(world: url, dimension: selectedDimensionID, defaults: resources.defaults)
-            heatMap.dimension = selectedDimensionID
-            heatMap.restoreVisibility(from: visibility)
-            ruler.clear()
-            makeMapForSelection()
-        }
-    }
-    private(set) var map: MapModel?
+    let selectedDimensionID: String?
+    let map: MapModel?
     /// What the inspector shows, if it's open.
     var inspector: Inspector? {
         didSet {
@@ -110,7 +95,6 @@ final class WorldSession {
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
     private(set) var navigation = MapNavigationHistory()
-    @ObservationIgnored private var isNavigating = false
     var selection: MapSelection? {
         didSet {
             guard selection != oldValue else { return }
@@ -133,11 +117,9 @@ final class WorldSession {
         return .creature(selectedIndex.creatures.first { $0.id == marker.id } ?? marker)
     }
 
-    private var cacheRoot: URL? { resources.cacheRoot }
     private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
-    @ObservationIgnored private var retiringMaps: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
     convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
@@ -157,9 +139,9 @@ final class WorldSession {
         heatMap = HeatMapLayer(readers: resources.readers)
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
+        map = Self.initialMap(resources: resources, dimensionID: selected)
         heatMap.dimension = selected
         heatMap.restoreVisibility(from: visibility)
-        makeMapForSelection()
         resources.attach(self)
     }
 
@@ -184,13 +166,12 @@ final class WorldSession {
         playerRecords.close()
         map?.close()
         let search = search, heatMap = heatMap, playerRecords = playerRecords
-        let map = map, retiring = Array(retiringMaps.values)
+        let map = map
         let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
             await playerRecords.waitForReads()
             await map?.waitForRenders()
-            for task in retiring { await task.value }
         }
         closingTask = task
         resources.detach(self, draining: task)
@@ -233,18 +214,21 @@ final class WorldSession {
 
     /// The world spawn when it's in the selected dimension, otherwise the origin.
     var spawnPoint: CGPoint {
+        Self.spawnPoint(in: world, dimensionID: selectedDimensionID)
+    }
+
+    private static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
         guard let spawn = world.level.spawnPosition,
-              (world.level.spawnDimension ?? "minecraft:overworld") == selectedDimensionID else { return .zero }
+              (world.level.spawnDimension ?? "minecraft:overworld") == dimensionID else { return .zero }
         return CGPoint(x: spawn.x, y: spawn.z)
     }
 
-    /// Shows a location: switches to its dimension if needed, centers the map on it, and zooms in
+    /// Shows a location in its dimension document, centers the map, and zooms in
     /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
     func focus(on location: PlayerInfo.Location, keepingZoom: Bool = false) {
         guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
         if route(to: location.dimension, perform: { $0.focus(on: location, keepingZoom: keepingZoom) }) { return }
         navigate {
-            selectedDimensionID = location.dimension
             map?.viewport.center = CGPoint(x: location.x, y: location.z)
             if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
         }
@@ -256,7 +240,6 @@ final class WorldSession {
         guard !isClosed,
               let current = search.index.dimensions[pet.dimension]?.creatures.first(where: { $0.id == pet.id && $0.creature.owner == playerID }) else { return }
         if route(to: current.dimension, perform: { $0.showLinkedPet(current, ownedBy: playerID) }) { return }
-        selectedDimensionID = current.dimension
         sidebarSelection = .creature(current.id)
         choose(.creature(current.id))
         sidebarRevealRequest = UUID()
@@ -289,7 +272,6 @@ final class WorldSession {
         if route(to: place.dimension, perform: { $0.visit(place) }) { return }
         let scale = map?.viewport.scale ?? 1
         navigate {
-            selectedDimensionID = place.dimension
             map?.viewport = MapViewport(center: place.position, scale: scale)
         }
     }
@@ -306,21 +288,17 @@ final class WorldSession {
         ruler.mark(point)
     }
 
-    private var currentView: MapViewLocation? {
-        guard let map, let dimension = selectedDimensionID else { return nil }
-        return MapViewLocation(dimension: dimension, viewport: map.viewport)
-    }
+    private var currentView: MapViewport? { map?.viewport }
 
     func openDimension(_ id: String) {
         guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
-        if openDocument != nil { open(id, then: nil) }
-        else { selectedDimensionID = id }
+        open(id, then: nil)
     }
 
     /// Each dimension is its own document; a jump to another dimension happens in that
     /// dimension's document, once it's open.
     private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
-        guard !isClosed, dimension != selectedDimensionID, openDocument != nil else { return false }
+        guard !isClosed, dimension != selectedDimensionID else { return false }
         open(dimension, then: perform)
         return true
     }
@@ -341,14 +319,11 @@ final class WorldSession {
         }
     }
 
-    /// Capture a whole jump once, even when it also switches dimensions or fits a map.
+    /// History belongs to this document. A routed jump records its destination's viewport.
     private func navigate(_ change: () -> Void) {
         guard !isClosed else { return }
-        if isNavigating { change(); return }
         let previous = currentView
-        isNavigating = true
         change()
-        isNavigating = false
         if let previous, previous != currentView { navigation.record(previous) }
     }
 
@@ -362,22 +337,15 @@ final class WorldSession {
         restore(destination)
     }
 
-    private func restore(_ location: MapViewLocation) {
-        isNavigating = true
-        selectedDimensionID = location.dimension
-        map?.viewport = location.viewport
-        isNavigating = false
-    }
+    private func restore(_ viewport: MapViewport) { map?.viewport = viewport }
 
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
-        let dimensions = Set(dimensions.map(\.id))
+        guard selectedDimensionID == previous.selectedDimensionID, map != nil,
+              let viewport = previous.currentView else { return }
         navigation = previous.navigation
-        navigation.retainDimensions(dimensions)
-        if let location = previous.currentView, dimensions.contains(location.dimension) {
-            restore(location)
-            ruler = previous.ruler
-        }
+        restore(viewport)
+        ruler = previous.ruler
     }
 
     var canFitWorld: Bool {
@@ -420,25 +388,14 @@ final class WorldSession {
         return content
     }
 
-    private func makeMapForSelection() {
-        guard !isClosed else { return }
-        if let old = map {
-            old.close()
-            let id = UUID()
-            retiringMaps[id] = Task { [weak self] in
-                await old.waitForRenders()
-                self?.retiringMaps[id] = nil
-            }
-        }
-        guard let dimension = selectedDimension else {
-            map = nil
-            return
-        }
+    private static func initialMap(resources: WorldResources, dimensionID: String?) -> MapModel? {
+        guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        map = MapModel(dimension: dimension, center: spawnPoint,
-                       cacheDirectory: TileCache.directory(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot))
-        if let viewport = views.viewport(for: dimension.id) { map?.viewport = viewport }
+        let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+                           cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
+        if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
+        return map
     }
 
     /// Shows what a sidebar row stands for, making its layer visible on the map.
@@ -560,8 +517,8 @@ final class WorldSession {
 
     /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is
     /// showing: the selected one, except while switching away from it.
-    func saveView(of dimensionID: String? = nil) {
-        guard let map, let id = dimensionID ?? selectedDimensionID else { return }
+    func saveView() {
+        guard let map, let id = selectedDimensionID else { return }
         views.save(map.viewport, for: id, selected: resources.activeDimensionID)
     }
 

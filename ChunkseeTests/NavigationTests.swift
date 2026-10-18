@@ -5,11 +5,8 @@ import Testing
 @testable import Chunksee
 
 @Suite struct NavigationTests {
-    private func openWorld(withNether: Bool = false) async throws -> (URL, WorldSession) {
+    private func openWorld() async throws -> (URL, WorldSession) {
         let url = try TestWorld.make(chunks: [])
-        if withNether {
-            try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-        }
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
@@ -57,32 +54,6 @@ import Testing
         #expect(!session.navigation.canGoForward)
         session.goBack()
         #expect(map.viewport == original)
-        session.close()
-        await session.waitUntilClosed()
-    }
-
-    @Test func dimensionsAndSavedPlacesParticipateInTheSameHistory() async throws {
-        let (url, session) = try await openWorld(withNether: true)
-        defer { session.close(); try? FileManager.default.removeItem(at: url) }
-        let original = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
-        session.map?.viewport = original
-        session.ruler.isEnabled = true
-        session.ruler.mark(.zero)
-        session.ruler.mark(CGPoint(x: 3, y: 4))
-        let place = try #require(session.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: -12, y: 9)))
-        session.visit(place)
-        #expect(session.selectedDimensionID == "minecraft:the_nether")
-        #expect(session.map?.viewport == MapViewport(center: place.position, scale: 4))
-        #expect(session.ruler.start == nil && session.ruler.end == nil)
-        #expect(session.mapContent.savedPlaces == [place])
-        session.goBack()
-        #expect(session.selectedDimensionID == "minecraft:overworld" && session.map?.viewport == original)
-        #expect(session.mapContent.savedPlaces.isEmpty)
-        session.goForward()
-        #expect(session.selectedDimensionID == "minecraft:the_nether" && session.map?.viewport.center == place.position)
-        session.selectedDimensionID = "minecraft:overworld" // direct sidebar navigation
-        session.goBack()
-        #expect(session.selectedDimensionID == "minecraft:the_nether")
         session.close()
         await session.waitUntilClosed()
     }
