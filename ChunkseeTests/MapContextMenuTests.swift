@@ -150,7 +150,7 @@ import Testing
                 return MapContextMenuContent(at: point, session: session, map: map, content: MapContent(), size: size)
             })
             own.contentView = view
-            func event(_ window: NSWindow, at point: CGPoint, control: Bool = false) throws -> NSEvent {
+            @MainActor func event(_ window: NSWindow, at point: CGPoint, control: Bool = false) throws -> NSEvent {
                 try #require(NSEvent.mouseEvent(with: control ? .leftMouseDown : .rightMouseDown, location: point,
                                                modifierFlags: control ? .control : [], timestamp: 0, windowNumber: window.windowNumber,
                                                context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
