@@ -43,21 +43,24 @@ struct MapContent {
 
     /// The surface biome of the chunk under a block, once the dimension has been read.
     func biome(at block: CGPoint) -> String? {
-        biomes[Self.chunk(at: block)]
+        guard let chunk = Self.chunk(at: block) else { return nil }
+        return biomes[chunk]
     }
 
     /// The hover readout's biomes: the surface biome, then any cave biomes below it, as in
     /// "Plains · Deep Dark below".
     func biomeDescription(at block: CGPoint) -> String? {
+        guard let chunk = Self.chunk(at: block) else { return nil }
         let surface = biome(at: block).map(ReadableName.from)
-        let caves = (caveBiomes[Self.chunk(at: block)] ?? []).map(ReadableName.from)
+        let caves = (caveBiomes[chunk] ?? []).map(ReadableName.from)
         let below = caves.isEmpty ? nil : String(localized: "\(caves.formatted(.list(type: .and))) below")
         let parts = [surface, below].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private static func chunk(at block: CGPoint) -> ChunkCoordinate {
-        ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
+    private static func chunk(at block: CGPoint) -> ChunkCoordinate? {
+        guard let point = MapCoordinates(point: block) else { return nil }
+        return ChunkCoordinate(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
     }
 
     func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
@@ -82,24 +85,32 @@ struct MapContent {
         // Ids and names are built only for locations in view: a world can have thousands of
         // spawners and other places off screen.
         func add(_ id: @autoclosure () -> String, _ name: @autoclosure () -> String, _ position: CGPoint,
-                 anchor: CGPoint? = nil,
+                 y: Double? = nil, anchor: CGPoint? = nil,
                  target: @autoclosure () -> MapTarget? = nil) {
             guard bounds.contains(viewport.viewPoint(for: anchor ?? position, in: size)) else { return }
-            locations.append(.init(id: id(), name: name(), position: position, target: target(), anchor: anchor))
+            locations.append(.init(id: id(), name: name(), position: position, y: y, target: target(), anchor: anchor))
         }
-        for marker in structures { add("structure-" + marker.id, marker.name, marker.position, target: .row(.structure(marker.id))) }
+        for marker in structures {
+            add("structure-" + marker.id, marker.name, marker.position, y: marker.y.map(Double.init), target: .row(.structure(marker.id)))
+        }
         for marker in nearbyPlaces(viewport: viewport, size: size) {
-            add("place-" + marker.id, marker.name, marker.position, target: .row(.place(marker.id)))
+            add("place-" + marker.id, marker.name, marker.position, y: Double(marker.y), target: .row(.place(marker.id)))
         }
         for marker in nearbyCreatures(viewport: viewport, size: size) {
-            add("creature-" + marker.id, marker.name, marker.position, target: .row(.creature(marker.id)))
+            add("creature-" + marker.id, marker.name, marker.position, y: marker.creature.y, target: .row(.creature(marker.id)))
         }
         for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position, target: .row(.biome(area.id))) }
         for hit in hits {
-            if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position, target: .searchHit(hit.id)) }
+            if let position = hit.position {
+                add("search-" + hit.id, hit.title + ", " + hit.detail, position, y: hit.y.map(Double.init), target: .searchHit(hit.id))
+            }
         }
-        for marker in players { add("player-" + marker.id, marker.label, marker.position, anchor: marker.anchor, target: .row(.player(marker.playerID))) }
-        for place in savedPlaces { add("saved-" + place.id.uuidString, place.name, place.position, target: .row(.savedPlace(place.id))) }
+        for marker in players {
+            add("player-" + marker.id, marker.label, marker.position, y: marker.y, anchor: marker.anchor, target: .row(.player(marker.playerID)))
+        }
+        for place in savedPlaces {
+            add("saved-" + place.id.uuidString, place.name, place.position, anchor: place.mapPosition, target: .row(.savedPlace(place.id)))
+        }
         return locations
     }
 
@@ -121,7 +132,7 @@ struct MapContent {
             }
             return best
         }
-        if let place = nearest(savedPlaces, within: { _ in MarkerGeometry.savedPlace.hitRadius }, position: \.position) {
+        if let place = nearest(savedPlaces, within: { _ in MarkerGeometry.savedPlace.hitRadius }, position: \.mapPosition) {
             return MapHit(target: .row(.savedPlace(place.id)), position: place.position)
         }
         if let player = nearest(players, within: { MarkerGeometry.player($0.kind).hitRadius }, position: \.anchor) {
@@ -164,6 +175,7 @@ struct AccessibleMapLocation: Identifiable {
     var id: String
     var name: String
     var position: CGPoint
+    var y: Double?
     var target: MapTarget?
     var anchor: CGPoint? = nil
 }
@@ -256,17 +268,20 @@ struct MapView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)"))
+        .accessibilityValue(Text("Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                 Button(location.name) {
                     isFocused = true
-                    session.goToCoordinates(location.anchor ?? location.position)
+                    session.center(on: location.anchor ?? location.position, keepingZoom: true)
                     onSelect(location.target)
                 }
-                .accessibilityValue(Text("X \(Int(location.position.x)), Z \(Int(location.position.y))"))
+                .accessibilityValue(Text(Coordinates.text(location.position, y: location.y)))
                 .accessibilityHint(Text("Center the map on this location"))
+                .accessibilityAction(named: Text("Copy Coordinates")) {
+                    MapClipboard.copy(location.position, y: location.y, on: map)
+                }
             }
         }
         .accessibilityAction(named: Text("Zoom In")) { map.zoom(by: 2) }
@@ -406,7 +421,7 @@ struct MapView: View {
         }
         for place in content.savedPlaces {
             Self.drawBadge(style: .savedPlace, name: place.name, scale: map.viewport.scale,
-                           at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds, symbol: symbol)
+                           at: map.viewport.viewPoint(for: place.mapPosition, in: size), in: context, bounds: bounds, symbol: symbol)
         }
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
     }

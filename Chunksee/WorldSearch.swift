@@ -210,11 +210,11 @@ nonisolated enum WorldSearch {
         switch filter {
         case .structure: hits = layerHits(index.structures, words: words, y: \.y) { .structure($0.group) }
         case .place: hits = layerHits(index.places, words: words, y: { $0.y }) { .place($0.group) }
-        case .creature: hits = layerHits(index.creatures, words: words, y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+        case .creature: hits = layerHits(index.creatures, words: words, y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words,
-                                   y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+                                   y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words,
-                                        y: { Int($0.creature.y.rounded(.down)) }) { .creature($0.group) }
+                                        y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
         case .trade: hits = tradeHits(index.creatures, words: words)
         case .block: hits = blockHits(index, words: words)
         case .biome:
@@ -267,7 +267,7 @@ nonisolated enum WorldSearch {
                 return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
             }.joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group)),
-                             dimension: entry.dimension, position: entry.value.position, y: Int(entry.value.creature.y.rounded(.down)),
+                             dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: title, detail: detail, count: matching.count)
         }
     }
@@ -329,10 +329,10 @@ nonisolated enum WorldSearch {
         for player in players {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
-            let location = PlayerPresentation.isMappable(player) ? player.position : nil
+            let location = PlayerPresentation.position(of: player)
             if let found = summary(of: player.inventory + player.equipment.values, words: words) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
-                                      position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.map { Int($0.y.rounded(.down)) },
+                                      position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
                                       title: who.inventory, detail: found.text, count: found.count))
             }
             if let found = summary(of: player.enderChest, words: words) {
@@ -348,7 +348,7 @@ nonisolated enum WorldSearch {
             let title = container.customName.map { "“\($0)” \(kind)" } ?? kind
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
-                                  position: CGPoint(x: Double(container.x) + 0.5, y: Double(container.z) + 0.5), y: container.y,
+                                  position: MapCoordinates.center(of: CGPoint(x: container.x, y: container.z)), y: container.y,
                                   title: title, detail: found.text, count: found.count))
         }
         for entry in index.signs {
@@ -358,7 +358,7 @@ nonisolated enum WorldSearch {
             let lines = (sign.front + sign.back).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             guard contains(lines.joined(separator: " "), words: words) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(sign.kind)@\(sign.x),\(sign.y),\(sign.z)", source: .sign,
-                                  dimension: entry.dimension, position: CGPoint(x: Double(sign.x) + 0.5, y: Double(sign.z) + 0.5),
+                                  dimension: entry.dimension, position: MapCoordinates.center(of: CGPoint(x: sign.x, y: sign.z)),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
         }
         // Named creatures by name; `creature:` and `pet:` find the rest.
@@ -367,7 +367,7 @@ nonisolated enum WorldSearch {
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group)),
-                                  dimension: entry.dimension, position: entry.value.position, y: Int(creature.y.rounded(.down)),
+                                  dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(creature.y),
                                   title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }

@@ -65,11 +65,11 @@ import Testing
         #expect(content.target(at: CGPoint(x: center.x + 17.01, y: center.y), viewport: viewport, size: size) == nil)
 
         let place = SavedPlace(name: "Fixture", dimension: "minecraft:overworld", x: 0, z: 0)
-        content.players = []; content.savedPlaces = [place]; viewport.center = .zero
+        content.players = []; content.savedPlaces = [place]; viewport.center = place.mapPosition
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 13.5), viewport: viewport, size: size) == .row(.savedPlace(place.id)))
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 14.01), viewport: viewport, size: size) == nil)
         let structure = try structure()
-        content.savedPlaces = []; content.structures = [structure]
+        content.savedPlaces = []; content.structures = [structure]; viewport.center = structure.position
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 14.5), viewport: viewport, size: size) == .row(.structure(structure.id)))
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
     }

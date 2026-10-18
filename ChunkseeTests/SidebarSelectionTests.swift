@@ -30,7 +30,7 @@ import Testing
         let cases: [(CGPoint, SidebarItem)] = [
             (structure.position, .structure(structure.id)), (spawner.position, .place(spawner.id)),
             (portal.position, .place(portal.id)), (creature.position, .creature(creature.id)),
-            (place.position, .savedPlace(place.id)),
+            (place.mapPosition, .savedPlace(place.id)),
         ]
         for (position, row) in cases {
             let target = session.mapContent.target(at: viewport.viewPoint(for: position, in: CGSize(width: 800, height: 600)),

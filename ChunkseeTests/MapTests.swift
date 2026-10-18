@@ -49,12 +49,12 @@ import Testing
 }
 
 @Suite struct MapAccessibilityTests {
-    @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() {
+    @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() throws {
         let playerID = UUID()
         var content = MapContent()
         content.players = [
             .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, label: "Friend", isOutdated: false),
-            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), label: "Where Friend last died", isOutdated: false),
+            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, label: "Where Friend last died", isOutdated: false),
             .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), label: "Friend’s respawn point", isOutdated: false),
             .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), label: "Outside", isOutdated: false)
         ]
@@ -62,7 +62,9 @@ import Testing
                              position: CGPoint(x: 5, y: 6), y: 64, title: "Chest", detail: "3 Diamond", count: 3)]
         let locations = content.accessibleLocations(viewport: .init(center: .zero, scale: 1), size: .init(width: 400, height: 300))
         #expect(Set(locations.map(\.name)) == ["Friend", "Where Friend last died", "Friend’s respawn point", "Chest, 3 Diamond"])
-        #expect(locations.first { $0.name == "Where Friend last died" }?.position == CGPoint(x: 10, y: 20))
+        let death = try #require(locations.first { $0.name == "Where Friend last died" })
+        #expect(death.position == CGPoint(x: 10, y: 20) && death.y == 64)
+        #expect(death.anchor == CGPoint(x: 10.5, y: 20.5))
         #expect(Set(locations.map(\.id)).count == locations.count)
     }
 }

@@ -219,16 +219,18 @@ final class WorldSession {
     private static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
         guard let spawn = world.level.spawnPosition,
               (world.level.spawnDimension ?? "minecraft:overworld") == dimensionID else { return .zero }
-        return CGPoint(x: spawn.x, y: spawn.z)
+        return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
     }
 
     /// Shows a location in its dimension document, centers the map, and zooms in
     /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
-    func focus(on location: PlayerInfo.Location, keepingZoom: Bool = false) {
-        guard dimensions.contains(where: { $0.id == location.dimension }) else { return }
-        if route(to: location.dimension, perform: { $0.focus(on: location, keepingZoom: keepingZoom) }) { return }
+    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
+        guard dimensions.contains(where: { $0.id == location.dimension }),
+              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
+        if route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
         navigate {
-            map?.viewport.center = CGPoint(x: location.x, y: location.z)
+            let point = CGPoint(x: location.x, y: location.z)
+            map?.viewport.center = blockPosition ? MapCoordinates.center(of: point) : point
             if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
         }
     }
@@ -252,7 +254,8 @@ final class WorldSession {
 
     /// Coordinate entry changes only the center, keeping the chosen zoom.
     func goToCoordinates(_ point: CGPoint) {
-        navigate { map?.viewport.center = point }
+        guard let coordinates = MapCoordinates(point: point) else { return }
+        navigate { map?.viewport.center = coordinates.center }
     }
 
     func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
@@ -271,7 +274,7 @@ final class WorldSession {
         if route(to: place.dimension, perform: { $0.visit(place) }) { return }
         let scale = map?.viewport.scale ?? 1
         navigate {
-            map?.viewport = MapViewport(center: place.position, scale: scale)
+            map?.viewport = MapViewport(center: place.mapPosition, scale: scale)
         }
     }
 
@@ -507,7 +510,7 @@ final class WorldSession {
 
     /// Whether choosing a player's row can center the map on their current position.
     func canFocus(_ player: PlayerInfo) -> Bool {
-        guard PlayerPresentation.isMappable(player), let position = player.position else { return false }
+        guard let position = PlayerPresentation.position(of: player) else { return false }
         return dimensions.contains { $0.id == position.dimension }
     }
 

@@ -121,11 +121,11 @@ import Testing
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
         #expect(!overworld.navigation.canGoBack && overworld.ruler.distance == 5 && nether.ruler.start == nil)
-        #expect(nether.map?.viewport == MapViewport(center: place.position, scale: 4))
+        #expect(nether.map?.viewport == MapViewport(center: place.mapPosition, scale: 4))
         nether.goBack()
         #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
         nether.goForward()
-        #expect(nether.map?.viewport.center == place.position && !nether.navigation.canGoForward)
+        #expect(nether.map?.viewport.center == place.mapPosition && !nether.navigation.canGoForward)
         nether.goBack()
         overworld.openDimension("minecraft:the_nether")
         let menuOpened = await opened.next(isolation: #isolation)
@@ -176,7 +176,7 @@ import Testing
         let endOpened = await opened.next(isolation: #isolation)
         #expect(endOpened == resources.documentURL(for: "minecraft:the_end"))
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center == place.position)
+        #expect(end.map?.viewport.center == CGPoint(x: 900.5, y: -399.5))
         // A later document for the same dimension doesn't replay the jump.
         end.map?.viewport.center = .zero
         end.close()
@@ -196,7 +196,7 @@ import Testing
         for await failure in Observations({ overworld.openFailure }) where failure != nil { break }
         // Opening the End normally later keeps its own view, without the failed jump.
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center != place.position && !end.navigation.canGoBack)
+        #expect(end.map?.viewport.center != CGPoint(x: 900.5, y: -399.5) && !end.navigation.canGoBack)
         resources.close()
         await resources.waitUntilClosed()
     }
