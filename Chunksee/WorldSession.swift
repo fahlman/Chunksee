@@ -735,4 +735,3 @@ enum WorldOpenError: LocalizedError, Equatable {
         }
     }
 }
-
