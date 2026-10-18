@@ -81,11 +81,11 @@ import Testing
         let readers = try ids.map { id in RegionReader(dimension: try #require(dimensions.first { $0.id == id }), cache: .off) }
         let gate = AsyncReadGate<DimensionIndex>()
         let index = WorldIndexStore(readers: readers, firstDimension: nil,
-                                    readDimension: { await gate.read($0.dimension.id) })
+                                    readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
-        index.rebuild(firstDimension: nil, dimensions: [ids[0]])
+        index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
         if full { index.rebuild(firstDimension: nil) }
-        index.rebuild(firstDimension: nil, dimensions: [ids[1]])
+        index.rebuild(firstDimension: nil, changes: [ids[1]: .all])
         for id in ids {
             await gate.waitForRequest(id)
             await gate.finish(id, with: DimensionIndex())
@@ -109,9 +109,9 @@ import Testing
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionIndex>()
         let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], firstDimension: nil,
-                                    readDimension: { await gate.read($0.dimension.id) })
+                                    readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
-        index.rebuild(firstDimension: nil, dimensions: [ids[0]])
+        index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
         index.cancel()
         await gate.waitForCancellation(ids[0])
         await gate.finish(ids[0], with: DimensionIndex())

@@ -119,7 +119,11 @@ nonisolated enum BiomeScanner {
             }
             let middleX = Double(chunks.map(\.x).reduce(0, +)) / Double(chunks.count)
             let middleZ = Double(chunks.map(\.z).reduce(0, +)) / Double(chunks.count)
-            let inside = chunks.min { hypot(Double($0.x) - middleX, Double($0.z) - middleZ) < hypot(Double($1.x) - middleX, Double($1.z) - middleZ) }!
+            let inside = chunks.min {
+                let a = hypot(Double($0.x) - middleX, Double($0.z) - middleZ)
+                let b = hypot(Double($1.x) - middleX, Double($1.z) - middleZ)
+                return a == b ? ($0.x, $0.z) < ($1.x, $1.z) : a < b
+            }!
             // Outline the edges between this area's chunks and anything else.
             var fill = Path(), outline = Path()
             let members = Set(chunks)
