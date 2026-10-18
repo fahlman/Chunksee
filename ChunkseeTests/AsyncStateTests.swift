@@ -211,7 +211,7 @@ import Testing
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], players: [player], names: names, singleplayerUUID: nil, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
-                                 execute: { await gate.read($0.playerNames[uuid]!) })
+                                 execute: { await gate.read($0.playerNames[uuid]!.text) })
         search.text = "diamond"
         await gate.waitForRequest(unknown)
         await names.lookUp([uuid])

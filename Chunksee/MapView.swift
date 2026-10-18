@@ -16,8 +16,19 @@ struct MapContent {
     /// Whether chunk and region lines are drawn.
     var showsGrid = false
     var structures: [StructureMarker] = []
-    var places: [PlaceMarker] = []
-    var creatures: [CreatureMarker] = []
+    var placePoints = PointMarkers<PlaceMarker>()
+    var creaturePoints = PointMarkers<CreatureMarker>()
+    /// Nil means all groups (standalone map snapshots); a document supplies its own visibility.
+    var shownPlaceGroups: Set<PlaceGroup>?
+    var shownCreatureGroups: Set<CreatureGroup>?
+    var places: [PlaceMarker] {
+        get { placePoints.all.filter { shownPlaceGroups?.contains($0.group) ?? true } }
+        set { placePoints = PointMarkers(newValue) }
+    }
+    var creatures: [CreatureMarker] {
+        get { creaturePoints.all.filter { shownCreatureGroups?.contains($0.group) ?? true } }
+        set { creaturePoints = PointMarkers(newValue) }
+    }
     /// Search results, drawn as pins.
     var hits: [SearchHit] = []
     var selectedHitID: SearchHit.ID?
@@ -32,21 +43,38 @@ struct MapContent {
 
     /// The surface biome of the chunk under a block, once the dimension has been read.
     func biome(at block: CGPoint) -> String? {
-        biomes[Self.chunk(at: block)]
+        guard let chunk = Self.chunk(at: block) else { return nil }
+        return biomes[chunk]
     }
 
     /// The hover readout's biomes: the surface biome, then any cave biomes below it, as in
     /// "Plains · Deep Dark below".
     func biomeDescription(at block: CGPoint) -> String? {
+        guard let chunk = Self.chunk(at: block) else { return nil }
         let surface = biome(at: block).map(ReadableName.from)
-        let caves = (caveBiomes[Self.chunk(at: block)] ?? []).map(ReadableName.from)
+        let caves = (caveBiomes[chunk] ?? []).map(ReadableName.from)
         let below = caves.isEmpty ? nil : String(localized: "\(caves.formatted(.list(type: .and))) below")
         let parts = [surface, below].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private static func chunk(at block: CGPoint) -> ChunkCoordinate {
-        ChunkCoordinate(x: Int(block.x.rounded(.down)) >> 4, z: Int(block.y.rounded(.down)) >> 4)
+    private static func chunk(at block: CGPoint) -> ChunkCoordinate? {
+        guard let point = MapCoordinates(point: block) else { return nil }
+        return ChunkCoordinate(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
+    }
+
+    func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
+        guard shownPlaceGroups?.isEmpty != true else { return [] }
+        return placePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
+                                      viewport: viewport, size: size)
+            .filter { (shownPlaceGroups?.contains($0.group) ?? true) && (viewport.scale >= 0.125 || $0.group == .portal) }
+    }
+
+    func nearbyCreatures(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [CreatureMarker] {
+        guard shownCreatureGroups?.isEmpty != true else { return [] }
+        return creaturePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
+                                         viewport: viewport, size: size)
+            .filter { (shownCreatureGroups?.contains($0.group) ?? true) && (viewport.scale >= 0.25 || selection == .creature($0)) }
     }
 
     /// The individual locations represented by Canvas. Names and actions remain available
@@ -57,23 +85,32 @@ struct MapContent {
         // Ids and names are built only for locations in view: a world can have thousands of
         // spawners and other places off screen.
         func add(_ id: @autoclosure () -> String, _ name: @autoclosure () -> String, _ position: CGPoint,
+                 y: Double? = nil, anchor: CGPoint? = nil,
                  target: @autoclosure () -> MapTarget? = nil) {
-            guard bounds.contains(viewport.viewPoint(for: position, in: size)) else { return }
-            locations.append(.init(id: id(), name: name(), position: position, target: target()))
+            guard bounds.contains(viewport.viewPoint(for: anchor ?? position, in: size)) else { return }
+            locations.append(.init(id: id(), name: name(), position: position, y: y, target: target(), anchor: anchor))
         }
-        for marker in structures { add("structure-" + marker.id, marker.name, marker.position, target: .row(.structure(marker.id))) }
-        for marker in places where viewport.scale >= 0.125 || marker.group == .portal {
-            add("place-" + marker.id, marker.name, marker.position, target: .row(.place(marker.id)))
+        for marker in structures {
+            add("structure-" + marker.id, marker.name, marker.position, y: marker.y.map(Double.init), target: .row(.structure(marker.id)))
         }
-        for marker in creatures where viewport.scale >= 0.25 || selection == .creature(marker) {
-            add("creature-" + marker.id, marker.name, marker.position, target: .row(.creature(marker.id)))
+        for marker in nearbyPlaces(viewport: viewport, size: size) {
+            add("place-" + marker.id, marker.name, marker.position, y: Double(marker.y), target: .row(.place(marker.id)))
+        }
+        for marker in nearbyCreatures(viewport: viewport, size: size) {
+            add("creature-" + marker.id, marker.name, marker.position, y: marker.creature.y, target: .row(.creature(marker.id)))
         }
         for area in biomeAreas { add("biome-" + area.id, area.group.name, area.position, target: .row(.biome(area.id))) }
         for hit in hits {
-            if let position = hit.position { add("search-" + hit.id, hit.title + ", " + hit.detail, position, target: .searchHit(hit.id)) }
+            if let position = hit.position {
+                add("search-" + hit.id, hit.title + ", " + hit.detail, position, y: hit.y.map(Double.init), target: .searchHit(hit.id))
+            }
         }
-        for marker in players { add("player-" + marker.id, marker.label, marker.position, target: .row(.player(marker.playerID))) }
-        for place in savedPlaces { add("saved-" + place.id.uuidString, place.name, place.position, target: .row(.savedPlace(place.id))) }
+        for marker in players {
+            add("player-" + marker.id, marker.label, marker.position, y: marker.y, anchor: marker.anchor, target: .row(.player(marker.playerID)))
+        }
+        for place in savedPlaces {
+            add("saved-" + place.id.uuidString, place.name, place.position, anchor: place.mapPosition, target: .row(.savedPlace(place.id)))
+        }
         return locations
     }
 
@@ -84,36 +121,41 @@ struct MapContent {
     }
 
     func hit(at point: CGPoint, viewport: MapViewport, size: CGSize) -> MapHit? {
-        func nearest<Item>(_ items: some Sequence<Item>, within reach: CGFloat = 12,
+        func nearest<Item>(_ items: some Sequence<Item>, within reach: (Item) -> CGFloat,
                            position: (Item) -> CGPoint) -> Item? {
             var best: Item?
-            var distance = reach
+            var distance = CGFloat.infinity
             for item in items {
                 let location = viewport.viewPoint(for: position(item), in: size)
                 let candidate = hypot(location.x - point.x, location.y - point.y)
-                if candidate <= distance { best = item; distance = candidate }
+                if candidate <= reach(item), candidate <= distance { best = item; distance = candidate }
             }
             return best
         }
-        if let place = nearest(savedPlaces, position: \.position) {
+        if let place = nearest(savedPlaces, within: { _ in MarkerGeometry.savedPlace.hitRadius }, position: \.mapPosition) {
             return MapHit(target: .row(.savedPlace(place.id)), position: place.position)
         }
-        if let player = nearest(players, position: { CGPoint(x: $0.position.x + 0.5, y: $0.position.y + 0.5) }) {
+        if let player = nearest(players, within: { MarkerGeometry.player($0.kind).hitRadius }, position: \.anchor) {
             return MapHit(target: .row(.player(player.playerID)), position: player.position, y: player.y)
         }
-        if let hit = nearest(hits.lazy.filter { $0.position != nil }, position: { $0.position! }) {
+        if let hit = nearest(hits.lazy.filter { $0.position != nil },
+                             within: { MarkerGeometry.search(selected: $0.id == selectedHitID).hitRadius }, position: { $0.position! }) {
             return MapHit(target: .searchHit(hit.id), position: hit.position!, y: hit.y.map(Double.init))
         }
-        if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: 14, position: \.position) {
+        let reach = max(MarkerGeometry.place(isPortal: true).hitRadius, MarkerGeometry.creature(selected: true).hitRadius)
+        let bounds = CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
+        let places = nearbyPlaces(viewport: viewport, size: size, bounds: bounds)
+        if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: { _ in MarkerGeometry.place(isPortal: true).hitRadius }, position: \.position) {
             return MapHit(target: .row(.place(portal.id)), position: portal.position, y: Double(portal.y))
         }
-        if let creature = nearest(creatures.lazy.filter { viewport.scale >= 0.25 || selection == .creature($0) }, position: \.position) {
+        if let creature = nearest(nearbyCreatures(viewport: viewport, size: size, bounds: bounds),
+                                  within: { MarkerGeometry.creature(selected: selection == .creature($0)).hitRadius }, position: \.position) {
             return MapHit(target: .row(.creature(creature.id)), position: creature.position, y: creature.creature.y)
         }
-        if viewport.scale >= 0.125, let place = nearest(places, position: \.position) {
+        if let place = nearest(places, within: { MarkerGeometry.place(isPortal: $0.group == .portal).hitRadius }, position: \.position) {
             return MapHit(target: .row(.place(place.id)), position: place.position, y: Double(place.y))
         }
-        if let structure = nearest(structures, position: \.position) {
+        if let structure = nearest(structures, within: { _ in MarkerGeometry.structure.hitRadius }, position: \.position) {
             return MapHit(target: .row(.structure(structure.id)), position: structure.position, y: structure.y.map(Double.init))
         }
         // Biomes draw areas, not badges at their representative position. They remain available
@@ -133,7 +175,9 @@ struct AccessibleMapLocation: Identifiable {
     var id: String
     var name: String
     var position: CGPoint
+    var y: Double?
     var target: MapTarget?
+    var anchor: CGPoint? = nil
 }
 
 /// The pannable, zoomable top-down map of one dimension.
@@ -224,17 +268,20 @@ struct MapView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text("Centered on X \(Int(map.viewport.center.x)), Z \(Int(map.viewport.center.y)); zoom \(zoomPercentage)"))
+        .accessibilityValue(Text("Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                 Button(location.name) {
                     isFocused = true
-                    session.goToCoordinates(location.position)
+                    session.center(on: location.anchor ?? location.position, keepingZoom: true)
                     onSelect(location.target)
                 }
-                .accessibilityValue(Text("X \(Int(location.position.x)), Z \(Int(location.position.y))"))
+                .accessibilityValue(Text(Coordinates.text(location.position, y: location.y)))
                 .accessibilityHint(Text("Center the map on this location"))
+                .accessibilityAction(named: Text("Copy Coordinates")) {
+                    MapClipboard.copy(location.position, y: location.y, on: map)
+                }
             }
         }
         .accessibilityAction(named: Text("Zoom In")) { map.zoom(by: 2) }
@@ -262,26 +309,19 @@ struct MapView: View {
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
     /// 1/2×) and, for strongholds, the End portal room.
     private static func draw(_ structure: StructureMarker, viewport: MapViewport, in context: GraphicsContext,
-                             size: CGSize, bounds: CGRect) {
+                             size: CGSize, bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         let topLeft = viewport.viewPoint(for: structure.bounds.origin, in: size)
         let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
                                                            height: structure.bounds.height * viewport.scale))
         guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return }
-        let color = Color(hex: structure.group.color)
+        let style = MarkerStyle.structure(structure.group), color = style.fill
         if viewport.scale >= 0.25 {
             let path = Path(outline)
             context.fill(path, with: .color(color.opacity(0.12)))
             context.stroke(path, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
         }
         let center = CGPoint(x: outline.midX, y: outline.midY)
-        let radius: CGFloat = 9
-        let disc = Path(roundedRect: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2),
-                        cornerRadius: 4)
-        context.fill(disc, with: .color(color))
-        context.stroke(disc, with: .color(.white.opacity(0.9)), lineWidth: 1)
-        var symbol = context.resolve(Image(systemName: structure.group.symbol))
-        symbol.shading = .color(.white)
-        context.draw(symbol, in: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12))
+        style.drawBody(at: center, in: context, symbol: symbol)
 
         if viewport.scale >= 0.25, let room = structure.portalRoom {
             let p = viewport.viewPoint(for: room, in: size)
@@ -291,13 +331,7 @@ struct MapView: View {
             sparkle.shading = .color(.mint)
             context.draw(sparkle, in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
         }
-        guard viewport.scale >= 0.5 else { return }
-        let text = context.resolve(Text(structure.name).font(.caption2.weight(.semibold)).foregroundStyle(.white))
-        let textSize = text.measure(in: CGSize(width: 240, height: 40))
-        let label = CGRect(x: center.x - textSize.width / 2 - 5, y: center.y + radius + 2,
-                           width: textSize.width + 10, height: textSize.height + 2)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        style.drawName(structure.name, at: center, scale: viewport.scale, in: context)
     }
 
     /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
@@ -350,21 +384,19 @@ struct MapView: View {
             let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
             context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
         }
-        for structure in content.structures {
-            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds)
-        }
-        // Each badge's symbol is resolved once per draw rather than once per marker: thousands of
-        // spawners can be in view at once.
-        var symbols: [String: GraphicsContext.ResolvedImage] = [:]
-        func symbol(_ name: String) -> GraphicsContext.ResolvedImage {
-            if let image = symbols[name] { return image }
-            var image = context.resolve(Image(systemName: name))
-            image.shading = .color(.white)
-            symbols[name] = image
+        var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
+        func symbol(_ key: MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage {
+            if let image = symbols[key] { return image }
+            var image = context.resolve(Image(systemName: key.name))
+            image.shading = .color(key.color)
+            symbols[key] = image
             return image
         }
+        for structure in content.structures {
+            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol)
+        }
         // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
-        for place in content.places where map.viewport.scale >= 0.125 || place.group == .portal {
+        for place in content.nearbyPlaces(viewport: map.viewport, size: size) {
             let point = map.viewport.viewPoint(for: place.position, in: size)
             Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
             if let portal = place.portal {
@@ -372,26 +404,24 @@ struct MapView: View {
             }
         }
         // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
-        for creature in content.creatures {
+        for creature in content.nearbyCreatures(viewport: map.viewport, size: size) {
             let selected = content.selection == .creature(creature)
-            guard map.viewport.scale >= 0.25 || selected else { continue }
             Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
                       scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
         }
         for hit in content.hits {
             guard let position = hit.position else { continue }
             Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
-                         in: context, bounds: bounds)
+                         in: context, bounds: bounds, symbol: symbol)
         }
         for marker in content.players {
             Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
-                      at: map.viewport.viewPoint(for: CGPoint(x: marker.position.x + 0.5, y: marker.position.y + 0.5), in: size),
-                      in: context, bounds: bounds)
+                      at: map.viewport.viewPoint(for: marker.anchor, in: size),
+                      in: context, bounds: bounds, symbol: symbol)
         }
         for place in content.savedPlaces {
-            Self.drawBadge(symbol: symbol("mappin"), color: .accentColor, radius: 8, name: place.name,
-                           showsName: map.viewport.scale >= 2, opacity: 1, selected: false,
-                           at: map.viewport.viewPoint(for: place.position, in: size), in: context, bounds: bounds)
+            Self.drawBadge(style: .savedPlace, name: place.name, scale: map.viewport.scale,
+                           at: map.viewport.viewPoint(for: place.mapPosition, in: size), in: context, bounds: bounds, symbol: symbol)
         }
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
     }
@@ -439,79 +469,40 @@ struct MapView: View {
         context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
     }
 
-    /// A yellow search-result pin; the selected one is larger with a ring.
-    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect) {
+    /// A yellow search-result pin; the selected one has the larger shared geometry.
+    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect,
+                                symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        let radius: CGFloat = selected ? 10 : 7
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        context.fill(circle, with: .color(.yellow))
-        context.stroke(circle, with: .color(.black.opacity(0.6)), lineWidth: selected ? 2 : 1)
-        var symbol = context.resolve(Image(systemName: "magnifyingglass"))
-        symbol.shading = .color(.black)
-        let side = radius * 1.1
-        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
+        MarkerStyle.search(selected: selected).drawBody(at: point, in: context, symbol: symbol)
     }
 
-    /// A small round marker; its name appears from 2× zoom. Claimed beds and workstations are dimmed.
     private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect,
-                             symbol: (String) -> GraphicsContext.ResolvedImage) {
-        drawBadge(symbol: symbol(place.group.symbol), color: Color(hex: place.group.color), radius: place.group == .portal ? 8 : 6, name: place.name,
-                  showsName: scale >= 2, opacity: place.isClaimed ? 0.65 : 1, selected: false, at: point, in: context, bounds: bounds)
+                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
+        drawBadge(style: .place(place.group, claimed: place.isClaimed), name: place.name, scale: scale,
+                  at: point, in: context, bounds: bounds, symbol: symbol)
     }
 
-    /// Creatures look like places; a selected one is larger and always named.
     private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext,
-                             bounds: CGRect, symbol: (String) -> GraphicsContext.ResolvedImage) {
-        drawBadge(symbol: symbol(creature.group.symbol), color: Color(hex: creature.group.color), radius: selected ? 9 : 6, name: creature.name,
-                  showsName: selected || scale >= 2, opacity: 1, selected: selected, at: point, in: context, bounds: bounds)
+                             bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
+        drawBadge(style: .creature(creature.group, selected: selected), name: creature.name, scale: scale,
+                  at: point, in: context, bounds: bounds, symbol: symbol)
     }
 
-    /// The symbol, color and name are evaluated only for a badge in view, and the name only when it's shown.
-    private static func drawBadge(symbol: @autoclosure () -> GraphicsContext.ResolvedImage, color: @autoclosure () -> Color,
-                                  radius: CGFloat, name: @autoclosure () -> String, showsName: Bool, opacity: Double,
-                                  selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+    private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String, scale: CGFloat,
+                                  at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+                                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        let color = color()
-        var context = context
-        context.opacity = opacity
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(selected ? .accentColor : .white.opacity(0.9)), lineWidth: selected ? 2 : 1)
-        let side = radius * 1.2
-        context.draw(symbol(), in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-        guard showsName else { return }
-        let text = context.resolve(Text(name()).font(.caption2.weight(.medium)).foregroundStyle(.white))
-        let size = text.measure(in: CGSize(width: 200, height: 30))
-        let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + radius + 2, width: size.width + 8, height: size.height + 2)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(color.opacity(0.85)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        let style = style()
+        style.drawBody(at: point, in: context, symbol: symbol)
+        style.drawName(name(), at: point, scale: scale, in: context)
     }
 
-    /// Markers keep a constant size at every zoom; players also get a name label.
-    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect) {
+    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
         guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return }
-        var context = context
-        context.opacity = marker.isOutdated ? 0.55 : 1
-        let radius: CGFloat = marker.kind == .player ? 11 : 9
-        let circle = Path(ellipseIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        let (symbolName, color): (String, Color) = switch marker.kind {
-        case .player: ("person.fill", .blue)
-        case .death: ("xmark", .red)
-        case .respawn: ("bed.double.fill", .purple)
-        }
-        context.fill(circle, with: .color(color))
-        context.stroke(circle, with: .color(selected ? .accentColor : .white), lineWidth: selected ? 2.5 : 1.5)
-        var symbol = context.resolve(Image(systemName: symbolName))
-        symbol.shading = .color(.white)
-        let side = radius * 1.15
-        context.draw(symbol, in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
-        guard marker.kind == .player else { return }
-        let text = context.resolve(Text(marker.label).font(.caption.weight(.semibold)).foregroundStyle(.white))
-        let textSize = text.measure(in: CGSize(width: 240, height: 40))
-        let label = CGRect(x: point.x - textSize.width / 2 - 6, y: point.y + radius + 3,
-                           width: textSize.width + 12, height: textSize.height + 4)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color(.black.opacity(0.6)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        let style = MarkerStyle.player(marker.kind, outdated: marker.isOutdated, selected: selected)
+        style.drawBody(at: point, in: context, symbol: symbol)
+        style.drawName(marker.label, at: point, scale: 1, in: context)
     }
 
     private var statusBar: some View {

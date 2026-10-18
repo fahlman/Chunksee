@@ -52,7 +52,7 @@ enum MapClipboard {
             pasteboard.setString("\(coordinates.x) \(y) \(coordinates.z)", forType: .string)
         }
         if let y {
-            finish(Int(exactly: y.rounded(.down)))
+            finish(Coordinates.block(y))
         } else {
             map.readTopBlock(at: coordinates.position) { finish($0?.y) }
         }

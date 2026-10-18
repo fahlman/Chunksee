@@ -9,33 +9,74 @@ final class WorldIndexStore {
     private(set) var portals: [String: [NetherPortal]] = [:]
     private(set) var revision = 0
     private(set) var isIndexing = false
-    private let readers: [RegionReader]
+    /// The world's canonical reader catalog. Resources derive their dimension views from it.
+    private(set) var readers: [RegionReader]
+    private let readDimension: @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex
     @ObservationIgnored private var indexTask: Task<Void, Never>?
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
     /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
-    @ObservationIgnored private var queuedPass: String??
+    @ObservationIgnored private var queuedPass: Pass?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var isClosed = false
 
-    init(readers: [RegionReader], firstDimension: String?) {
+    private struct Pass {
+        var firstDimension: String?
+        /// Nil means a complete world pass. A complete request dominates queued subsets.
+        var changes: [String: RegionChange]?
+
+        mutating func merge(_ next: Pass) {
+            firstDimension = next.firstDimension
+            if var current = changes, let added = next.changes {
+                current.merge(added) { old, new in var merged = old; merged.merge(new); return merged }
+                changes = current
+            } else { changes = nil }
+        }
+    }
+
+    init(readers: [RegionReader], firstDimension: String?,
+         readDimension: @escaping @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex = DimensionIndex.read) {
         self.readers = readers
+        self.readDimension = readDimension
         rebuild(firstDimension: firstDimension)
     }
 
-    func rebuild(firstDimension: String?) {
+    /// Missing results mean loading only when an actual reader is still due to publish them.
+    /// An absent/unsupported dimension cannot finish a read that was never scheduled.
+    func isWaitingForPortals(in dimension: String) -> Bool {
+        !isClosed && indexTask != nil && portals[dimension] == nil &&
+            readers.contains { $0.dimension.id == dimension }
+    }
+
+    /// A freshly validated document can discover a dimension created since the world opened.
+    /// Keep existing readers, and finish a running pass before indexing the expanded catalog.
+    func include(_ additions: [RegionReader], firstDimension: String?) {
         guard !isClosed else { return }
+        var known = Set(readers.map { $0.dimension.id })
+        let added = additions.filter { known.insert($0.dimension.id).inserted }
+        guard !added.isEmpty else { return }
+        readers += added
+        rebuild(firstDimension: firstDimension)
+    }
+
+    func rebuild(firstDimension: String?, changes: [String: RegionChange]? = nil) {
+        guard !isClosed, changes?.isEmpty != true else { return }
+        let pass = Pass(firstDimension: firstDimension, changes: changes)
         if indexTask != nil {
-            queuedPass = .some(firstDimension)
+            if queuedPass != nil { queuedPass?.merge(pass) }
+            else { queuedPass = pass }
             return
         }
         isIndexing = index.dimensions.isEmpty
-        let readers = readers.sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
+        let readers = readers.filter { changes?[$0.dimension.id] != nil || changes == nil }
+            .sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
+        let readDimension = readDimension
         let id = UUID()
         let task = Task(priority: .utility) { [weak self] in
             defer { self?.tasks[id] = nil }
             for reader in readers {
-                guard !Task.isCancelled else { return }
-                let part = await DimensionIndex.read(reader)
+                guard !Task.isCancelled, self?.isClosed == false else { return }
+                let previous = self?.index.dimensions[reader.dimension.id]
+                let part = await readDimension(reader, previous, changes?[reader.dimension.id] ?? .all)
                 guard let self, !Task.isCancelled, !self.isClosed else { return }
                 self.index.dimensions[reader.dimension.id] = part
                 self.portals = self.index.dimensions.mapValues { $0.places.compactMap(\.portal) }
@@ -46,7 +87,7 @@ final class WorldIndexStore {
             self.indexTask = nil
             if let next = self.queuedPass {
                 self.queuedPass = nil
-                self.rebuild(firstDimension: next)
+                self.rebuild(firstDimension: next.firstDimension, changes: next.changes)
             }
         }
         indexTask = task
