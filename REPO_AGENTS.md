@@ -135,6 +135,10 @@ resolved document-path lookup. Additions queue a complete pass behind an unfinis
 world closure cancels/drains all readers. Discovery happens when a dimension is opened or freshly
 validated; this does not add automatic directory discovery to the navigation menu or remove
 already-open dimensions. DocumentGroup still owns document/window behavior.
+The portal inspector only shows loading while the index has an actual pending reader for its
+matching target dimension and no published portal result. Missing/unsupported/closed targets show
+an unavailable message, without fabricating an empty list. Known-empty indexed targets retain
+ChunkseeKit's normal prediction. The prediction footer appears only with an actual link result.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
