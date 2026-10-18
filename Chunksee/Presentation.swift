@@ -1,3 +1,4 @@
+import ChunkseeKit
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -14,7 +15,7 @@ nonisolated enum ReadableName {
 /// Block coordinates as lists and readouts show them: "X 10  Z -2".
 nonisolated enum Coordinates {
     /// Unreadable saved positions have no block coordinate; conversion must never trap.
-    static func block(_ value: Double) -> Int? { Int(exactly: value.rounded(.down)) }
+    static func block(_ value: Double) -> Int? { BlockPosition.coordinate(containing: value) }
 
     static func canLocate(x: Double, y: Double, z: Double) -> Bool {
         MapCoordinates(point: CGPoint(x: x, y: z)) != nil && block(y) != nil

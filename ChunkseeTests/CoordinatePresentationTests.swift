@@ -49,6 +49,37 @@ import Testing
         #expect(content.accessibleLocations(viewport: viewport, size: size).first?.anchor == blockCenter)
     }
 
+    @Test func upgradingTheParserDiscardsPreviouslyTruncatedContainerCoordinates() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(World(contentsOf: url).dimension("overworld"))
+        let entity = NBT.compound(["id": .string("minecraft:chest_minecart"),
+            "Pos": .list([.double(-8.7), .double(-0.1), .double(-16.1)]),
+            "Items": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(1)])])])
+        let nbt = NBT.compound(["DataVersion": .int(5023), "Entities": .list([entity])])
+        try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
+        let file = dimension.entitiesDirectory.appendingPathComponent("r.-1.-1.mca")
+        try Data(TestWorld.regionFile([.init(x: -1, z: -2, nbt: nbt)])).write(to: file)
+        let cache = ScanCache(directory: url.appendingPathComponent("cache"))
+        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.-1.-1.mca"), file])
+        var oldContainer = try #require(ItemContainer.containers(inEntityChunk: nbt).first)
+        oldContainer.x = -8; oldContainer.y = 0; oldContainer.z = -16
+        let oldFile = try #require(cache.directory).appendingPathComponent("contents.-1.-1.\(fingerprint).v12")
+        try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let data = try encoder.encode(SearchContents(containers: [oldContainer]))
+        try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        let contents = await reader.contents(RegionCoordinate(x: -1, z: -1))
+        await reader.close()
+        let container = try #require(contents.containers.first)
+        #expect(container.x == -9 && container.y == -1 && container.z == -17)
+        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        let saved: SearchContents? = cache.load("contents", region: RegionCoordinate(x: -1, z: -1), fingerprint: fingerprint)
+        #expect(saved?.containers == contents.containers)
+    }
+
     @Test(arguments: ["nan", "infinity", "negative infinity", "out of range"])
     func malformedSavedPositionsStayUnmappableThroughTheRealSearchPath(_ value: String) async throws {
         let invalid: Double = switch value {
@@ -87,6 +118,8 @@ import Testing
                                        "Inventory": .list([diamond])])
             try Data(Compression.deflate(player.serialized(), gzip: true))
                 .write(to: world.playerDataDirectory.appendingPathComponent("\(UUID().uuidString.lowercased()).dat"))
+            entities.append(.compound(["id": .string("minecraft:chest_minecart"), "Pos": .list(pos.map(NBT.double)),
+                "Items": .list([.compound(["id": .string("minecraft:gold_ingot"), "count": .int(1)])])]))
             for villager in [false, true] {
                 entities.append(entity(pos, named: axis < 3 ? "Broken" : "Valid", villager: villager))
             }
@@ -103,6 +136,11 @@ import Testing
             await session.search.waitForSearch()
             #expect(session.search.results.count == count, "\(query), \(value)")
         }
+        session.search.text = "gold_ingot"
+        await session.search.waitForSearch()
+        #expect(session.search.results.count == 1)
+        #expect(session.search.results.first?.position == CGPoint(x: -8.5, y: -16.5))
+        #expect(session.search.results.first?.y == -1)
         session.search.text = "diamond"
         await session.search.waitForSearch()
         let results = session.search.results

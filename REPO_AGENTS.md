@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.27.0`, resolved to `0.27.0` (`62995297f72a9b52ee7ec937413caa4911e4da1d`).
+  minor" from `0.28.0`, resolved to `0.28.0` (`63508ececf6143fccd5e85a63a0ce51c008ed0e3`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -78,7 +78,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
-| `Presentation.swift`, `GoToCoordinatesView.swift` | Checked block conversion and coordinate labels, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
+| `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
@@ -174,7 +174,7 @@ Marker hit testing supplies saved heights; terrain and two-dimensional saved pla
 renderer/hover reader's actual block height. `MapModel` owns, cancels and drains those background
 reads before world access ends. A late result cannot replace a newer copy or another clipboard change.
 Map accessibility locations expose the same Copy Coordinates action and saved heights. Coordinate
-readouts use containing-block flooring, including negative fractions; unreadable saved positions
+readouts use ChunkseeKit’s `BlockPosition` containing-block conversion, including negative fractions; unreadable saved positions
 are unavailable for mapping. Player/creature positions remain exact, while death/respawn points,
 saved places and coordinate-entry destinations use the center of their block for drawing and focus.
 
@@ -210,8 +210,9 @@ retain the saved coordinates. Marker zoom growth stays separate.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 12 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
-preserved legacy item wear, structure heights and corrected cave-biome membership. A marker uses its saved
+Scan-cache version 13 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+preserved legacy item wear, structure heights, cave-biome membership, checked entity-container
+positions and missing villager-level defaults. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
