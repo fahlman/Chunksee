@@ -49,14 +49,11 @@ nonisolated enum PlayerEffectText {
 
     static func accessibleDuration(_ effect: StatusEffect, locale: Locale = .current) -> String {
         guard let saved = savedDuration(effect) else { return String(localized: "Infinite", locale: locale) }
-        return saved.formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide).locale(locale))
+        return GameDuration.units(saved, locale: locale)
     }
 
     private static func savedDuration(_ effect: StatusEffect) -> Duration? {
         guard effect.durationTicks != -1 else { return nil }
-        // Show the saved snapshot, rounding positive partial seconds up. Divide first so a
-        // long saved duration cannot overflow during addition.
-        let seconds = effect.durationTicks / 20 + (effect.durationTicks % 20 == 0 ? 0 : 1)
-        return .seconds(seconds)
+        return GameDuration.fromTicks(effect.durationTicks, roundingUp: true)
     }
 }

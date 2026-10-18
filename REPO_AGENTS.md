@@ -250,6 +250,9 @@ Player health shows the actual saved maximum when available; active effects show
 not a live countdown. Effect names have their own vanilla exceptions, independent of enchantment
 names; both share level numeral presentation. Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
+`GameDuration` owns saved tick conversion and localized elapsed units. World Age and Time Played
+show completed seconds/minutes/hours rather than dropping every duration below an hour; effects
+keep rounding partial seconds up. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
 

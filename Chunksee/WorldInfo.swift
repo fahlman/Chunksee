@@ -55,6 +55,7 @@ nonisolated struct WorldDetails: Sendable {
 struct WorldInfoView: View {
     let session: WorldSession
     @State private var showsSeed = false
+    @Environment(\.locale) private var locale
 
     private var level: LevelInfo { session.world.level }
     private var details: WorldDetails { session.details }
@@ -83,8 +84,8 @@ struct WorldInfoView: View {
                 Text(session.displayName).font(.headline)
             }
             Section("Time and Weather") {
-                if let ticks = level.time {
-                    LabeledContent("World Age", value: String(localized: "\(ticks / 72_000) hours"))
+                if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks, locale: locale) {
+                    LabeledContent("World Age", value: elapsed)
                         .help("Time the world has been running in the game, at 20 ticks a second")
                 }
                 if let ticks = details.dayTime {
