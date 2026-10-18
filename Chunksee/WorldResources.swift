@@ -37,7 +37,7 @@ final class WorldResources {
     @ObservationIgnored private var isRefreshScheduled = false
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
-    @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo] = { await WorldResources.readPlayers($0) }
+    @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0) }
 
     private final class WeakSession {
         weak var value: WorldSession?
@@ -157,7 +157,8 @@ final class WorldResources {
                 // A broad notification can cover several dimension folders under this world.
                 pendingDimensions.formUnion(dimensions.map(\.id))
                 pendingPlayers = true
-            } else if path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+            } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path ||
+                        path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
                 pendingPlayers = true
             } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
                 .max(by: { $0.url.path.count < $1.url.path.count }) {
@@ -209,11 +210,17 @@ final class WorldResources {
             playerReadGeneration += 1
             let generation = playerReadGeneration
             let updated = await readPlayers(world)
-            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration else { return }
+            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
             players = updated
             for session in sessions.values.compactMap(\.value) { session.search.players = updated }
         }
     }
 
-    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo] { world.players() }
+    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo]? {
+        // World keeps its opening level.dat snapshot, including the single-player fallback.
+        // Reopen through Kit so a save updates that record too. An unreadable save must not
+        // clear the last good players; a successful read with no players does clear them.
+        guard !Task.isCancelled, let current = try? World(contentsOf: world.url) else { return nil }
+        return current.players()
+    }
 }

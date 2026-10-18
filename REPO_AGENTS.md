@@ -128,6 +128,9 @@ Live index refreshes read only the known changed dimensions, retaining every oth
 snapshot. Queued dimension sets merge while a pass runs; an explicit full request dominates
 subsets. Initial and manual indexing still cover the whole world. Broad world/dimension folder
 notifications request the appropriate full dimension reads; region-specific retention is separate.
+Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
+single-player record when `level.dat` changes. An unreadable save retains the last good players;
+a successful empty read clears them. Opening metadata for the world details stays read-on-open.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
