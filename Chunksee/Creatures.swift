@@ -135,7 +135,7 @@ struct CreatureDetailView: View {
 nonisolated enum TradeText {
     /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
     static func describe(_ item: ItemStack) -> String {
-        let base = "\(item.count) \(ReadableName.from(item.id))"
+        let base = ItemAppearance.name(of: item, includingOne: true)
         let enchantments = item.enchantments.sorted { $0.key < $1.key }.map { enchantmentName($0.key, level: $0.value) }
         return enchantments.isEmpty ? base : "\(base) (\(enchantments.joined(separator: ", ")))"
     }
@@ -148,7 +148,7 @@ nonisolated enum TradeText {
     /// The text trade search matches: every item's name and id, and the enchantments' names.
     static func searchText(of trade: Trade) -> String {
         let items = [trade.buy, trade.sell] + (trade.buyB.map { [$0] } ?? [])
-        return items.flatMap { [ReadableName.from($0.id), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
+        return items.flatMap { [ItemAppearance.label(of: $0), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
             .joined(separator: " ")
     }
 

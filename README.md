@@ -40,6 +40,9 @@ It shows a top-down view of a world, the structures and places found in it, and 
 8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")
    or a custom name to list every chest, barrel, shulker box, minecart and player inventory holding it,
    most items first. Each dimension lists the results in it; choose one to jump there. They show as yellow pins.
+   Item names keep their kind beside a custom name, such as `Diamond Sword “Excalibur”`, in
+   search, equipment and trades. Trade searches also match custom names on either cost or the
+   item for sale. Written books retain their title and author.
    Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
    ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
    where its eye button keeps its pins on the map.

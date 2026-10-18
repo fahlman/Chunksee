@@ -165,7 +165,7 @@ import Testing
         let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
         #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
         #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")
-        #expect(hits.first { $0.title == "Lectern" }?.detail == "1 “Travels” by fahlman")
+        #expect(hits.first { $0.title == "Lectern" }?.detail == "1 Written Book “Travels” by fahlman")
         #expect(WorldSearch.search("written book", in: index, players: []) { _ in .named("") }.map(\.title) == ["Lectern"])
         #expect(WorldSearch.search("exit", in: index, players: []) { _ in .named("") }.map(\.title) == ["Hanging Sign"])
     }

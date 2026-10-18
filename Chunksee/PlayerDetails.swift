@@ -51,10 +51,26 @@ nonisolated enum ItemAppearance {
         return text
     }
 
-    static func name(of item: ItemStack) -> String {
-        var text = ReadableName.from(item.id)
-        if let name = item.customName { text += " “\(name)”" }
-        return item.count > 1 ? "\(item.count) \(text)" : text
+    /// The kind is always retained, even when an item or container has a custom name.
+    static func label(kind: String, customName: String?) -> String {
+        let kind = ReadableName.from(kind)
+        return customName.map { String(localized: "\(kind) “\($0)”") } ?? kind
+    }
+
+    static func label(of item: ItemStack) -> String {
+        let base = label(kind: item.id, customName: item.customName)
+        guard item.customName == nil, let book = item.book, let title = book.title else { return base }
+        let titled = label(kind: item.id, customName: title)
+        return book.author.map { String(localized: "\(titled) by \($0)") } ?? titled
+    }
+
+    static func name(of item: ItemStack, includingOne: Bool = false, locale: Locale = .current) -> String {
+        counted(label(of: item), count: item.count, includingOne: includingOne, locale: locale)
+    }
+
+    static func counted(_ label: String, count: Int, includingOne: Bool = false, locale: Locale = .current) -> String {
+        guard includingOne || count != 1 else { return label }
+        return String(localized: "\(count, format: .number.locale(locale)) \(label)", locale: locale)
     }
 
     static func details(of item: ItemStack) -> String {
