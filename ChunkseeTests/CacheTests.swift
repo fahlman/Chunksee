@@ -144,6 +144,40 @@ import Testing
 }
 
 @Suite struct CacheRootTests {
+    @Test(.timeLimit(.minutes(1))) func closingWaitsForStartupMaintenanceBeforeCacheCleanup() async throws {
+        let world = try TestWorld.make(chunks: [])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID())")
+        defer {
+            try? FileManager.default.removeItem(at: world)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let gate = AsyncReadGate<Void>()
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
+                                       maintainCache: { _, folder in
+            await gate.read("maintenance")
+            // A disk operation already underway can still finish after cancellation.
+            TileCache.markUsed(worldFolder: folder)
+        })
+        await gate.waitForRequest("maintenance")
+        await resources.index.waitForIndex()
+        var finishedClosing = false
+        let closing = Task {
+            resources.close()
+            await resources.waitUntilClosed()
+            finishedClosing = true
+        }
+        await gate.waitForCancellation("maintenance")
+        #expect(resources.isClosed && !finishedClosing)
+        await gate.finish("maintenance", with: ())
+        await closing.value
+        #expect(finishedClosing && FileManager.default.fileExists(atPath: root.path))
+        try FileManager.default.removeItem(at: root)
+        await resources.waitUntilClosed()
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test func sessionsCacheOnlyUnderTheirRoot() async throws {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID().uuidString)")

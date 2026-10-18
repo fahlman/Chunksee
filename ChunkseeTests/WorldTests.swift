@@ -250,24 +250,30 @@ import Testing
 }
 
 @Suite struct RememberedViewTests {
-    @Test func reopensInTheLastDimensionAtTheSamePlace() async throws {
+    @Test func reopensEachDocumentAtItsOwnViewAndRemembersTheFrontDimension() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let nether = WorldSession(resources: first.resources, dimensionID: "minecraft:the_nether")
         first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
-        first.selectedDimensionID = "minecraft:the_nether"   // leaving the Overworld remembers it
-        first.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
-        first.close()
+        first.becameActive()
+        nether.map?.viewport = MapViewport(center: CGPoint(x: 7, y: 8), scale: 4)
+        nether.becameActive()
+        first.close(); nether.close()
+        await first.waitUntilClosed(); await nether.waitUntilClosed()
 
         let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        defer { second.close() }
+        let overworld = WorldSession(resources: second.resources, dimensionID: "minecraft:overworld")
+        defer { second.close(); overworld.close() }
         #expect(second.selectedDimensionID == "minecraft:the_nether")
         #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 7, y: 8), scale: 4))
-        second.selectedDimensionID = "minecraft:overworld"
-        #expect(second.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        #expect(overworld.selectedDimensionID == "minecraft:overworld")
+        #expect(overworld.map?.viewport == MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5))
+        second.close(); overworld.close()
+        await second.waitUntilClosed(); await overworld.waitUntilClosed()
     }
 }
 
@@ -295,8 +301,8 @@ import Testing
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
         let index = SearchIndex.overworld(DimensionIndex(structures: [village],
-                                places: [bed],
-                                creatures: [wolf, cat, farmer]))
+                                placePoints: PointMarkers([bed]),
+                                creaturePoints: PointMarkers([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         #expect(search("structure:village").map(\.detail) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
@@ -326,7 +332,7 @@ import Testing
             ])]),
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
+        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian, Master"])

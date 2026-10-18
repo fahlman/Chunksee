@@ -187,11 +187,31 @@ final class WorldDocument: ReadableDocument {
         /// remembers the world's access and lists those, for its window to open instead.
         @concurrent
         func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending FolderSnapshot {
-            if let world = try? World(contentsOf: source) {
+            try await readFolder(source)
+        }
+
+        @concurrent
+        func readFolder(_ source: URL) async throws -> FolderSnapshot {
+            try Task.checkCancellation()
+            do {
+                let world = try World(contentsOf: source)
+                let dimensions = world.dimensions().map { $0.documentURL(inWorldAt: source) }
+                try Task.checkCancellation()
                 folders.remember(source)
-                return .world(dimensions: world.dimensions().map { $0.documentURL(inWorldAt: source) })
+                return .world(dimensions: dimensions)
+            } catch WorldError.missingLevelDat {
+                do {
+                    return .dimension(try await DimensionSnapshot.read(source, folders: folders))
+                } catch WorldOpenError.needsWorldFolder {
+                    // Without a containing world, an arbitrary folder isn't known to be a
+                    // dimension. Ask for a world instead of diagnosing lost access to one.
+                    throw WorldOpenError.notAWorld
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw WorldOpenError.unreadable
             }
-            return .dimension(try await DimensionSnapshot.read(source, folders: folders))
         }
     }
 
@@ -234,6 +254,7 @@ final class WorldDocument: ReadableDocument {
         if let oldSession, oldSession.url != worldURL {
             oldSession.savedPlaces.relocate(to: worldURL)
             oldSession.resources.views.relocate(to: worldURL)
+            oldSession.visibility.relocate(to: worldURL)
         }
         let opened = WorldSession(resources: model.resources(for: current.world), dimensionID: current.dimensionID)
         if let oldSession { opened.restoreView(from: oldSession) }
