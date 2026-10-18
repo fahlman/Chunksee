@@ -77,7 +77,7 @@ import Testing
     @Test(.timeLimit(.minutes(1)), arguments: [false, true]) func queuedChangesAccumulateAndFullRequestsDominate(full: Bool) async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
-        let dimensions = try World(contentsOf: url).dimensions
+        let dimensions = try World(contentsOf: url).dimensions()
         let readers = try ids.map { id in RegionReader(dimension: try #require(dimensions.first { $0.id == id }), cache: .off) }
         let gate = AsyncReadGate<DimensionIndex>()
         let index = WorldIndexStore(readers: readers, firstDimension: nil,
