@@ -136,11 +136,10 @@ final class WorldSession {
         search = SearchModel(readers: [], players: resources.players, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
-        heatMap = HeatMapLayer(readers: resources.readers)
+        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] })
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
         map = Self.initialMap(resources: resources, dimensionID: selected)
-        heatMap.dimension = selected
         heatMap.restoreVisibility(from: visibility)
         resources.attach(self)
     }
@@ -348,6 +347,7 @@ final class WorldSession {
               let viewport = previous.currentView else { return }
         navigation = previous.navigation
         restore(viewport)
+        if let depth = previous.map?.depth { map?.setDepth(depth) }
         ruler = previous.ruler
     }
 
@@ -400,6 +400,7 @@ final class WorldSession {
         let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
+        map.setDepth(resources.views.depth(for: dimension.id))
         return map
     }
 
@@ -524,7 +525,7 @@ final class WorldSession {
     /// showing: the selected one, except while switching away from it.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        views.save(map.viewport, for: id, selected: resources.activeDimensionID)
+        views.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
     }
 
     // MARK: Search results, portals and in-game maps

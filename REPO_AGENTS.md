@@ -81,7 +81,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Checked block conversion and coordinate labels, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
-| `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
+| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -139,6 +139,19 @@ The portal inspector only shows loading while the index has an actual pending re
 matching target dimension and no published portal result. Missing/unsupported/closed targets show
 an unavailable message, without fabricating an empty list. Known-empty indexed targets retain
 ChunkseeKit's normal prediction. The prediction footer appears only with an actual link result.
+
+`MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
+share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
+and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
+The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
+for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
+writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
+cache writer survives that drain.
+Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
+Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
+plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at
+−64...319 and expands to include numeric entry; it does not constrain custom dimension generation.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
@@ -221,6 +234,8 @@ Existing app-wide preferences seed a new scope once; later tab changes never wri
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
+It holds only that document's fixed region reader, heat images, pending task and reread flag;
+there is no mutable dimension selector or per-dimension image/task store inside the layer.
 
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer

@@ -14,7 +14,7 @@ import Testing
     }
 
     private func map(_ url: URL, dimensionID: String = "overworld",
-                     read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+                     read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
         if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
         return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)

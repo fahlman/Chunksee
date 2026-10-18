@@ -268,7 +268,7 @@ struct MapView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(map.dimension.displayName)"))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text("Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage)"))
+        .accessibilityValue(Text("Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)"))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in

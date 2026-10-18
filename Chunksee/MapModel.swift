@@ -8,6 +8,7 @@ import Observation
 final class MapModel {
     let dimension: ChunkseeKit.Dimension
     var viewport: MapViewport
+    private(set) var depth = MapDepth()
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
     private(set) var tiles: [RegionCoordinate: CGImage] = [:]
@@ -20,6 +21,10 @@ final class MapModel {
 
     private var failed: Set<RegionCoordinate> = []
     private let renderer: RegionTileRenderer
+    @ObservationIgnored private var cacheWrites: [Int: Task<Void, Never>] = [:]
+    @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
+    var unfinishedCacheWrites: Int { cacheWrites.count }
+    @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int
@@ -34,10 +39,15 @@ final class MapModel {
     init(dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
-         readTopBlocks: @escaping @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> TopBlockRead?
-            = { await MapModel.readTopBlocks(of: $0, in: $1, ceilingY: $2, cached: $3) }) {
+         writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
+         renderTile: @escaping @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
+            = { try await $0.tile(for: $1) },
+         readTopBlocks: @escaping @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
+            = { await MapModel.readTopBlocks(of: $0, in: $1, depth: $2, cached: $3) }) {
         self.dimension = dimension
         self.readTopBlocksFor = readTopBlocks
+        self.renderTile = renderTile
+        self.writeCache = writeCache
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
@@ -105,16 +115,17 @@ final class MapModel {
     private func startQueued() {
         while inFlight.count < regionConcurrency, !queue.isEmpty {
             let region = queue.removeFirst()
-            let renderer = renderer
+            var renderer = renderer
+            renderer.cutawayY = depth.cutawayY
             nextJobID += 1
-            let id = nextJobID
+            let id = nextJobID, render = renderTile
             let task = Task { [weak self] in
                 // Await into a local before using `region` again: Swift 6.4 release builds miscompile
                 // `(region, try await …, true)` so `region` reads back as (0, 0) after the suspension
                 // (fahlman/Chunksee#6 has a standalone reproduction).
                 let result: Result<RegionTileRenderer.RenderedTile?, any Error>
                 do {
-                    let tile = try await renderer.tile(for: region)
+                    let tile = try await render(renderer, region)
                     result = .success(tile)
                 } catch {
                     result = .failure(error)
@@ -135,6 +146,13 @@ final class MapModel {
         switch result {
         case .success(let tile?):
             store(tile, for: region)
+            if let operation = tile.cacheWrite {
+                let write = writeCache
+                cacheWrites[id] = Task(priority: .utility) { [weak self] in
+                    if !Task.isCancelled { await write(operation) }
+                    self?.cacheWrites[id] = nil
+                }
+            }
         case .success(nil):
             failed.insert(region)  // no region file any more
         case .failure(let error):
@@ -229,6 +247,7 @@ final class MapModel {
 
     func waitForRenders() async {
         for task in renders.values { await task.value }
+        while let task = cacheWrites.values.first { await task.value }
         await waitForTopBlocks()
         await waitForCoordinateReads()
     }
@@ -237,6 +256,7 @@ final class MapModel {
         isClosed = true
         hoverReads.values.forEach { $0.cancel() }
         coordinateReads.values.forEach { $0.cancel() }
+        cacheWrites.values.forEach { $0.cancel() }
         cancel()
     }
 
@@ -262,7 +282,7 @@ final class MapModel {
     @ObservationIgnored private var regionGenerations: [RegionCoordinate: Int] = [:]
     /// The region file last read for the readout, reused while the pointer stays in its region.
     @ObservationIgnored private var hoverRegion: RegionFile?
-    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, Int?, RegionFile?) async -> TopBlockRead?
+    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
     private static let maxHoverChunks = 64
 
     /// Hover reads not yet finished, cancelled or not.
@@ -283,9 +303,9 @@ final class MapModel {
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
         let chunk = ChunkCoordinate(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
         let index = (Int(coordinates.z) & 15) * 16 + (Int(coordinates.x) & 15), id = UUID()
-        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion, read = readTopBlocksFor
+        let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
         coordinateReads[id] = Task { [weak self] in
-            let result = await read(chunk, dimension, ceilingY, cached)
+            let result = await read(chunk, dimension, depth, cached)
             guard let self else { return }
             self.coordinateReads[id] = nil
             guard !Task.isCancelled, !self.isClosed else { return }
@@ -313,9 +333,9 @@ final class MapModel {
     private func startHoverRead(of chunk: ChunkCoordinate) {
         if let active = activeHoverRead { hoverReads[active.id]?.cancel() }
         let region = Self.region(of: chunk), generation = regionGenerations[region, default: 0], id = UUID()
-        let dimension = dimension, ceilingY = renderer.ceilingY, cached = hoverRegion, read = readTopBlocksFor
+        let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
         hoverReads[id] = Task { [weak self] in
-            let result = await read(chunk, dimension, ceilingY, cached)
+            let result = await read(chunk, dimension, depth, cached)
             guard let self else { return }
             self.hoverReads[id] = nil
             if self.activeHoverRead?.id == id { self.activeHoverRead = nil }
@@ -335,14 +355,14 @@ final class MapModel {
     }
 
     @concurrent
-    nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, ceilingY: Int?,
+    nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, depth: MapDepth,
                                           cached: RegionFile?) async -> TopBlockRead? {
         guard !Task.isCancelled else { return nil }   // before any file I/O
         let region = region(of: chunk)
         guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
                 ?? (try? dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
-              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.x & 31, localZ: chunk.z & 31, ceilingY: ceilingY)
+              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.x & 31, localZ: chunk.z & 31, ceilingY: RegionTileRenderer(dimension: dimension).ceilingY, cutawayY: depth.cutawayY)
         else { return nil }
         return (file, blocks)
     }
@@ -365,6 +385,28 @@ final class MapModel {
             activeHoverRead = nil
         }
         if !isClosed, let chunk = hoveredChunk, changed(chunk) { startHoverRead(of: chunk) }
+    }
+
+    /// A depth change invalidates pixels and named columns together. Cancelled tasks remain
+    /// tracked for close/drain, but their old job IDs and cancellation prevent publication.
+    func setDepth(_ value: MapDepth) {
+        guard !isClosed, value != depth else { return }
+        let previous = depth.cutawayY
+        depth = value
+        guard previous != value.cutawayY else { return }
+        cancel()
+        tiles = [:]
+        previews = [:]
+        failed = []
+        stale = []
+        hoverReads.values.forEach { $0.cancel() }
+        coordinateReads.values.forEach { $0.cancel() }
+        activeHoverRead = nil
+        topBlocks = [:]
+        topBlockOrder = []
+        hoverRegion = nil
+        if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
+        if let hoveredChunk { startHoverRead(of: hoveredChunk) }
     }
 
     func zoom(by factor: CGFloat) {
