@@ -127,8 +127,8 @@ invalidate it. Callers that need completion await `waitForSearch()`.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 11 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
-preserved legacy item wear and structure heights. A marker uses its saved
+Scan-cache version 12 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+preserved legacy item wear, structure heights and corrected cave-biome membership. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
@@ -159,6 +159,11 @@ through File > Open and Open Recent. Opening folders from within the app and nat
 restoration are required; Finder and Dock opening are not required. The old app-owned
 recent/open-world preferences are removed; users reopen each old world once to establish
 native history and restoration state.
+
+Cave membership uses ChunkseeKit's paletteCounts() and only referenced entries; palettes without
+cave candidates skip cell counting. Unused names never create cave areas/hover membership, while
+all actually used areas and the full per-dimension vanilla-biome catalog remain. Scan-cache
+version 12 invalidates earlier false membership; surface sampling and area grouping stay unchanged.
 
 ## Build and test
 
