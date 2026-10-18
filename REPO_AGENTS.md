@@ -149,7 +149,8 @@ cover that reach. Player drawing, picking and VoiceOver visibility/centering sha
 anchor; labels and coordinate copying retain the saved coordinates. Marker zoom growth stays separate.
 MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
 layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
-cache keys the actual symbol and tint. Structure outlines/portal rooms, bounds culling and marker
+cache keys the actual symbol, tint and resolution opacity (outdated player glyphs were resolved in
+their faded context). Structure outlines/portal rooms, bounds culling and marker
 ordering remain in MapView. Hidden captions do not format names or resolve text; semantic caption
 fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
 map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player

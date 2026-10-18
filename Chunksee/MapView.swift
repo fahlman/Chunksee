@@ -372,7 +372,9 @@ struct MapView: View {
         var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
         func symbol(_ key: MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage {
             if let image = symbols[key] { return image }
-            var image = context.resolve(Image(systemName: key.name))
+            var resolving = context
+            resolving.opacity = key.opacity
+            var image = resolving.resolve(Image(systemName: key.name))
             image.shading = .color(key.color)
             symbols[key] = image
             return image

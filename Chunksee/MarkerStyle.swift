@@ -7,6 +7,13 @@ struct MarkerStyle {
     nonisolated struct Symbol: Hashable, Sendable {
         let name: String
         let color: Color
+        let opacity: Double
+
+        init(name: String, color: Color, opacity: Double = 1) {
+            self.name = name
+            self.color = color
+            self.opacity = opacity
+        }
     }
 
     enum Shape {
@@ -92,7 +99,9 @@ struct MarkerStyle {
     static func player(_ kind: MapMarker.Kind, outdated: Bool, selected: Bool) -> MarkerStyle {
         let appearance = playerAppearance(kind)
         return MarkerStyle(geometry: .player(kind), shape: .circle,
-            symbol: Symbol(name: appearance.symbol, color: .white), fill: appearance.color,
+            // Player glyphs were resolved in their faded context, unlike the shared place
+            // glyphs. Preserve that resolution state as well as the final drawing opacity.
+            symbol: Symbol(name: appearance.symbol, color: .white, opacity: outdated ? 0.55 : 1), fill: appearance.color,
             stroke: selected ? .accentColor : .white, lineWidth: selected ? 2.5 : 1.5,
             opacity: outdated ? 0.55 : 1,
             caption: kind == .player ? playerCaption : nil)
