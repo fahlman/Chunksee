@@ -1,4 +1,5 @@
 import ChunkseeKit
+import CoreGraphics
 import Foundation
 import ImageIO
 import Testing
@@ -95,7 +96,7 @@ import Testing
         }
     }
 
-    @Test func exportPixelsMatchAFullScanClippedReference() throws {
+    @Test func exportPixelsAndCandidatesMatchAFullScanClippedReference() throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(World(contentsOf: world).dimension("overworld"))
@@ -110,10 +111,62 @@ import Testing
             reference.selection = content.selection
             reference.places = places.filter { (scale >= 0.125 || $0.group == .portal) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }
             reference.creatures = creatures.filter { (scale >= 0.25 || content.selection == .creature($0)) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }
-            let rendered = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
-            let expected = try #require(MapImage.render(map, content: reference, portalStatus: { _ in nil }, size: size, scale: 2))
-            #expect(rendered.data == expected.data)
+            // Identity, order, position and label inputs must agree exactly, regardless of how
+            // SwiftUI rasterizes their edges. Check the actual drawing candidates, too.
+            #expect(content.nearbyPlaces(viewport: map.viewport, size: size).filter {
+                bounds.contains(map.viewport.viewPoint(for: $0.position, in: size))
+            } == reference.places)
+            #expect(content.nearbyCreatures(viewport: map.viewport, size: size).filter {
+                bounds.contains(map.viewport.viewPoint(for: $0.position, in: size))
+            } == reference.creatures)
+            let rendered = try exportPixels(map, content: content)
+            let expected = try exportPixels(map, content: reference)
+            // Repeated exports of identical content can differ by one 8-bit premultiplied
+            // channel at antialiased badge/symbol/text edges (PR #177, Claude-F4). Compare every
+            // decoded channel, allowing only that rounding step; keep labels and selection on.
+            #expect(largestDifference(rendered, expected) <= 1)
+
+            // Prove that the allowance still rejects missing markers, a one-point displacement,
+            // and a changed label. These use real exports rather than synthetic pixel arrays.
+            var missing = reference
+            missing.creatures = []
+            #expect(largestDifference(rendered, try exportPixels(map, content: missing)) > 1)
+
+            map.viewport.center.x += 1 / scale
+            let moved = try exportPixels(map, content: reference)
+            map.viewport.center = .zero
+            #expect(largestDifference(rendered, moved) > 1)
+
+            var renamed = reference
+            renamed.creatures = reference.creatures.map {
+                var marker = $0
+                marker.creature.customName = "Different name"
+                return marker
+            }
+            renamed.selection = renamed.creatures.first { $0.id == creatures[3].id }.map(MapSelection.creature)
+            #expect(largestDifference(rendered, try exportPixels(map, content: renamed)) > 1)
         }
+    }
+
+    private func exportPixels(_ map: MapModel, content: MapContent) throws -> [UInt8] {
+        let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+        let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        try #require(decoded.width == Int(size.width * 2) && decoded.height == Int(size.height * 2))
+        var pixels = [UInt8](repeating: 0, count: decoded.width * decoded.height * 4)
+        try pixels.withUnsafeMutableBytes { buffer in
+            let context = try #require(CGContext(data: buffer.baseAddress, width: decoded.width, height: decoded.height,
+                bitsPerComponent: 8, bytesPerRow: decoded.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+            context.draw(decoded, in: CGRect(x: 0, y: 0, width: decoded.width, height: decoded.height))
+        }
+        #expect(pixels.contains { $0 != 0 })
+        return pixels
+    }
+
+    private func largestDifference(_ left: [UInt8], _ right: [UInt8]) -> Int {
+        // exportPixels requires the same dimensions and normalizes both to premultiplied sRGB.
+        zip(left, right).reduce(0) { max($0, abs(Int($1.0) - Int($1.1))) }
     }
 
     @Test func liveIndexReplacementMovesAddsAndRemovesBucketsWithoutCrossingDimensions() async throws {
