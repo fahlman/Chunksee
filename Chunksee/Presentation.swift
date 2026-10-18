@@ -1,3 +1,4 @@
+import ChunkseeKit
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -11,17 +12,41 @@ nonisolated enum ReadableName {
     }
 }
 
+/// The same level numerals for equipment and effects; each caller decides when to show a level.
+nonisolated enum LevelText {
+    static func numeral(_ level: Int) -> String {
+        let numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+        return (1...numerals.count).contains(level) ? numerals[level - 1] : String(level)
+    }
+}
+
 /// Block coordinates as lists and readouts show them: "X 10  Z -2".
 nonisolated enum Coordinates {
-    static func text(x: Double, z: Double) -> String {
-        "X \(Int(x.rounded(.down)))  Z \(Int(z.rounded(.down)))"
+    /// Unreadable saved positions have no block coordinate; conversion must never trap.
+    static func block(_ value: Double) -> Int? { BlockPosition.coordinate(containing: value) }
+
+    static func canLocate(x: Double, y: Double, z: Double) -> Bool {
+        MapCoordinates(point: CGPoint(x: x, y: z)) != nil && block(y) != nil
     }
 
-    static func text(_ point: CGPoint) -> String { text(x: point.x, z: point.y) }
+    static func text(x: Double, z: Double) -> String {
+        text(CGPoint(x: x, y: z))
+    }
+
+    static func text(_ point: CGPoint, y: Double? = nil, dimension: String? = nil) -> String {
+        guard let x = block(point.x), let z = block(point.y) else { return String(localized: "Location unknown") }
+        var value = "X \(x)"
+        if let y {
+            guard let y = block(y) else { return String(localized: "Location unknown") }
+            value += "  Y \(y)"
+        }
+        value += "  Z \(z)"
+        return dimension.map { "\($0) · \(value)" } ?? value
+    }
 
     /// X, Y and Z together, in Minecraft's order.
-    static func text(_ point: CGPoint, y: Int) -> String {
-        "X \(Int(point.x.rounded(.down)))  Y \(y)  Z \(Int(point.y.rounded(.down)))"
+    static func text(_ point: CGPoint, y: Int, dimension: String? = nil) -> String {
+        text(point, y: Double(y), dimension: dimension)
     }
 }
 

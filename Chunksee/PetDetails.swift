@@ -1,30 +1,6 @@
 import ChunkseeKit
 import SwiftUI
 
-struct CreatureHealthRows: View {
-    let creature: Creature
-
-    var body: some View {
-        if let health = creature.health, health.isFinite, health >= 0 {
-            LabeledContent("Health") {
-                if let maximum = creature.maxHealth, maximum.isFinite, maximum > 0 {
-                    Text("\(health / 2, format: .number.precision(.fractionLength(0...2))) of \(maximum / 2, format: .number.precision(.fractionLength(0...2))) hearts")
-                        .monospacedDigit()
-                } else {
-                    Text("\(health / 2, format: .number.precision(.fractionLength(0...2))) hearts")
-                        .monospacedDigit()
-                }
-            }
-            .help("Health recorded when Minecraft last saved this creature")
-        } else if let maximum = creature.maxHealth, maximum.isFinite, maximum > 0 {
-            LabeledContent("Maximum Health") {
-                Text("\(maximum / 2, format: .number.precision(.fractionLength(0...2))) hearts")
-                    .monospacedDigit()
-            }
-        }
-    }
-}
-
 struct PetDetailRows: View {
     let creature: Creature
 
@@ -38,7 +14,7 @@ struct PetDetailRows: View {
         if let color = creature.collarColor {
             LabeledContent("Collar Color", value: PetDetailText.name(color))
         }
-        if let equipment = creature.equipment, equipment.isEmpty {
+        if let equipment = creature.equipment, EquipmentPresentation.rows(equipment).isEmpty {
             LabeledContent("Equipment", value: String(localized: "None"))
         }
     }
@@ -55,21 +31,6 @@ nonisolated enum PetDetailText {
         }
         guard let markings = appearance.markings else { return variant }
         return "\(variant), \(name(markings))"
-    }
-
-    static func slot(_ slot: String) -> String {
-        switch slot {
-        case "body": String(localized: "Body")
-        case "saddle": String(localized: "Saddle")
-        case "storage": String(localized: "Storage")
-        case "head": String(localized: "Head")
-        case "chest": String(localized: "Chest")
-        case "legs": String(localized: "Legs")
-        case "feet": String(localized: "Feet")
-        case "mainhand": String(localized: "Main Hand")
-        case "offhand": String(localized: "Off Hand")
-        default: ReadableName.from(slot)
-        }
     }
 
     static func name(_ id: String) -> String {

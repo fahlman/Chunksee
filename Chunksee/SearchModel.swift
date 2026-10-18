@@ -15,10 +15,9 @@ nonisolated struct SearchRequest: Sendable {
 final class SearchModel {
     var text = "" {
         didSet {
-            if text != oldValue { selectedHitID = nil; updateQueries() }
+            if text != oldValue { updateQueries() }
         }
     }
-    var selectedHitID: SearchHit.ID?
     var playerSnapshot: PlayerSnapshot {
         didSet { if playerSnapshot !== oldValue { updateQueries() } }
     }

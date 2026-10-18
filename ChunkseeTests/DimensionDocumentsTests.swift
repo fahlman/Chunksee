@@ -5,11 +5,11 @@ import Testing
 @testable import Chunksee
 
 @Suite struct DimensionDocumentsTests {
-    private func makeResources() async throws -> (URL, WorldResources) {
+    private func makeResources(defaults suppliedDefaults: UserDefaults? = nil) async throws -> (URL, WorldResources) {
         let url = try TestWorld.make(chunks: [])
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM1/region"), withIntermediateDirectories: true)
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = suppliedDefaults ?? UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         return (url, resources)
@@ -20,6 +20,54 @@ import Testing
         let (requests, continuation) = AsyncStream.makeStream(of: URL.self)
         session.openDocument = { continuation.yield($0) }
         return requests.makeAsyncIterator()
+    }
+
+    @Test(arguments: ["menu", "location", "saved place"])
+    func aDimensionDoesNotChangeWithoutTheNativeOpener(_ action: String) async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let map = try #require(source.map), visibility = source.visibility
+        let original = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
+        map.viewport = original
+        source.ruler.isEnabled = true
+        source.ruler.mark(.zero)
+        source.ruler.mark(CGPoint(x: 3, y: 4))
+        let place = try #require(source.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
+        switch action {
+        case "menu": source.openDimension(place.dimension)
+        case "location": source.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
+        default: source.visit(place)
+        }
+        #expect(source.selectedDimensionID == "minecraft:overworld")
+        #expect(source.map === map && source.map?.viewport == original)
+        #expect(source.visibility === visibility && source.ruler.distance == 5)
+        #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
+        // A later normal opening must not replay an action that could not invoke its opener.
+        let target = WorldSession(resources: resources, dimensionID: place.dimension)
+        #expect(target.map?.viewport.center != place.position && !target.navigation.canGoBack)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test func restoringAnotherDimensionKeepsTheTargetDocumentIdentity() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        source.map?.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
+        source.goToCoordinates(CGPoint(x: 500, y: 600))
+        source.ruler.isEnabled = true
+        source.ruler.mark(.zero)
+        source.ruler.mark(CGPoint(x: 3, y: 4))
+        let target = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let map = try #require(target.map), original = map.viewport
+        target.restoreView(from: source)
+        #expect(target.selectedDimensionID == "minecraft:the_nether")
+        #expect(target.map === map && target.map?.viewport == original)
+        #expect(!target.navigation.canGoBack && !target.navigation.canGoForward)
+        #expect(target.ruler.start == nil && target.ruler.end == nil)
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
     @Test func dimensionsKeepIndependentViewsHistoriesRulersAndSearches() async throws {
@@ -62,6 +110,9 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: 12, y: 24), scale: 4)
         overworld.map?.viewport = sourceView
         nether.map?.viewport = targetView
+        overworld.ruler.isEnabled = true
+        overworld.ruler.mark(.zero)
+        overworld.ruler.mark(CGPoint(x: 3, y: 4))
         var opened = recordOpens(of: overworld)
         let netherDocument = resources.documentURL(for: "minecraft:the_nether")
         let place = try #require(overworld.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
@@ -69,10 +120,13 @@ import Testing
         let jumpOpened = await opened.next(isolation: #isolation)
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
-        #expect(!overworld.navigation.canGoBack)
-        #expect(nether.map?.viewport == MapViewport(center: place.position, scale: 4))
+        #expect(!overworld.navigation.canGoBack && overworld.ruler.distance == 5 && nether.ruler.start == nil)
+        #expect(nether.map?.viewport == MapViewport(center: place.mapPosition, scale: 4))
         nether.goBack()
-        #expect(nether.map?.viewport == targetView)
+        #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
+        nether.goForward()
+        #expect(nether.map?.viewport.center == place.mapPosition && !nether.navigation.canGoForward)
+        nether.goBack()
         overworld.openDimension("minecraft:the_nether")
         let menuOpened = await opened.next(isolation: #isolation)
         #expect(menuOpened == netherDocument && nether.map?.viewport == targetView)
@@ -122,7 +176,7 @@ import Testing
         let endOpened = await opened.next(isolation: #isolation)
         #expect(endOpened == resources.documentURL(for: "minecraft:the_end"))
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center == place.position)
+        #expect(end.map?.viewport.center == CGPoint(x: 900.5, y: -399.5))
         // A later document for the same dimension doesn't replay the jump.
         end.map?.viewport.center = .zero
         end.close()
@@ -142,7 +196,7 @@ import Testing
         for await failure in Observations({ overworld.openFailure }) where failure != nil { break }
         // Opening the End normally later keeps its own view, without the failed jump.
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
-        #expect(end.map?.viewport.center != place.position && !end.navigation.canGoBack)
+        #expect(end.map?.viewport.center != CGPoint(x: 900.5, y: -399.5) && !end.navigation.canGoBack)
         resources.close()
         await resources.waitUntilClosed()
     }
@@ -176,7 +230,7 @@ import Testing
         #expect(documents.map(\.lastPathComponent).sorted() == ["DIM-1", "region"])
         let overworld = try await DimensionSnapshot.read(url.appendingPathComponent("region"), folders: folders)
         #expect(overworld.dimensionID == "minecraft:overworld")
-        overworld.world.access.release()
+        overworld.discardUnused()
     }
 
     @Test func aDimensionDocumentReadsItsWorldThroughTheRememberedFolder() async throws {
@@ -193,7 +247,8 @@ import Testing
         folders.remember(url) // remembering again keeps one bookmark
         #expect((defaults.array(forKey: "worldFolderBookmarks") ?? []).count == 1)
         let snapshot = try await DimensionSnapshot.read(nether, folders: folders)
-        #expect(snapshot.dimensionID == "minecraft:the_nether" && snapshot.world.world.level.name == "Test")
+        guard case .snapshot(let world) = snapshot.source else { Issue.record("A fresh read reused an opening"); return }
+        #expect(snapshot.dimensionID == "minecraft:the_nether" && world.world.level.name == "Test")
         let overworld = try await DimensionSnapshot.read(url.appendingPathComponent("dimensions/minecraft/overworld"), folders: folders)
         #expect(overworld.dimensionID == "minecraft:overworld")
         await #expect(throws: WorldOpenError.notADimension) {
@@ -202,16 +257,72 @@ import Testing
 
         // Dimensions of one open world share its resources until the last one closes.
         let model = AppModel(defaults: defaults)
-        let first = model.resources(for: snapshot.world)
-        #expect(model.resources(for: overworld.world) === first)
-        let view = WorldSession(resources: first, dimensionID: snapshot.dimensionID)
+        let view = try snapshot.makeSession(in: model)
+        let other = try overworld.makeSession(in: model)
+        let first = view.resources
+        #expect(other.resources === first)
         view.close()
+        other.close()
         await view.waitUntilClosed()
+        await other.waitUntilClosed()
         let again = try await DimensionSnapshot.read(nether, folders: folders)
-        let second = model.resources(for: again.world)
+        let next = try again.makeSession(in: model)
+        let second = next.resources
         #expect(second !== first)
-        second.close()
+        next.close()
         await second.waitUntilClosed()
+    }
+
+    @Test func openingAnUnrecognizedFolderAsksForAWorldInsteadOfDiagnosingADimension() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
+        for path in ["minecraft/vanilla/release/saves", "unrelated"] {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        for path in ["minecraft", "unrelated"] {
+            await #expect(throws: WorldOpenError.notAWorld) { try await reader.readFolder(url.appendingPathComponent(path)) }
+        }
+        #expect(defaults.array(forKey: "worldFolderBookmarks")?.isEmpty ?? true)
+    }
+
+    @Test func aCorruptWorldIsNotRetriedAsADimension() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("not a level file".utf8).write(to: url.appendingPathComponent("level.dat"))
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
+        await #expect(throws: WorldOpenError.unreadable) { try await reader.readFolder(url) }
+        #expect(defaults.array(forKey: "worldFolderBookmarks") == nil)
+    }
+
+    @Test func theFolderReaderRemembersAWorldAndReadsItsDimensionDocuments() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let folders = WorldFolders(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!)
+        let reader = WorldDocument.Reader(folders: folders)
+        let expected = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
+        guard case .world(let documents) = try await reader.readFolder(url) else {
+            Issue.record("A world folder should open its dimensions")
+            return
+        }
+        #expect(documents == expected && !documents.isEmpty)
+        for document in documents {
+            guard case .dimension(let snapshot) = try await reader.readFolder(document) else {
+                Issue.record("A remembered dimension should read through its world")
+                continue
+            }
+            defer { snapshot.discardUnused() }
+            guard case .snapshot(let world) = snapshot.source else {
+                Issue.record("A reader without an AppModel should own its opening snapshot")
+                continue
+            }
+            #expect(world.world.level.name == "Test" && snapshot.documentURL == document)
+        }
+        await #expect(throws: WorldOpenError.notADimension) {
+            try await reader.readFolder(url.appendingPathComponent("dimensions"))
+        }
     }
 
     @Test func liveChangesRefreshTheMatchingDimensionViews() async throws {
@@ -301,6 +412,57 @@ import Testing
         #expect(session.search.players.first?.position?.x == 200)
         resources.close()
         await resources.waitUntilClosed()
+    }
+
+    @Test func focusedDocumentsSetPriorityAndInactiveSavesKeepTheFrontDimension() async throws {
+        let (url, resources) = try await makeResources()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
+        overworld.map?.viewport = MapViewport(center: CGPoint(x: 120, y: 240), scale: 2)
+        nether.map?.viewport = MapViewport(center: CGPoint(x: 15, y: 30), scale: 4)
+        nether.becameActive()
+        #expect(resources.activeDimensionID == "minecraft:the_nether")
+        #expect(resources.views.lastDimension == "minecraft:the_nether")
+        overworld.becameActive(isTerminating: true)
+        #expect(resources.activeDimensionID == "minecraft:the_nether")
+        #expect(resources.views.lastDimension == "minecraft:the_nether")
+        overworld.saveView()
+        #expect(resources.views.lastDimension == "minecraft:the_nether")
+        #expect(resources.views.viewport(for: "minecraft:overworld") == overworld.map?.viewport)
+        overworld.close()
+        await overworld.waitUntilClosed()
+        overworld.becameActive() // a late focus update for a closed document is ignored
+        #expect(resources.activeDimensionID == "minecraft:the_nether")
+        end.becameActive()
+        #expect(resources.views.lastDimension == "minecraft:the_end")
+        nether.saveView()
+        resources.close()
+        await resources.waitUntilClosed()
+        nether.becameActive()
+        #expect(resources.views.lastDimension == "minecraft:the_end")
+        let reopened = WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
+                                      savedSearches: resources.savedSearches, defaults: resources.defaults, cacheRoot: nil)
+        #expect(reopened.defaultDimensionID == "minecraft:the_end")
+        #expect(reopened.activeDimensionID == "minecraft:the_end")
+        reopened.close()
+        await reopened.waitUntilClosed()
+    }
+
+    @Test func focusKeepsEachWorldsRememberedSelectionIndependent() async throws {
+        let (a, first) = try await makeResources()
+        let (b, second) = try await makeResources(defaults: first.defaults)
+        defer { try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
+        let one = WorldSession(resources: first, dimensionID: "minecraft:the_nether")
+        let two = WorldSession(resources: second, dimensionID: "minecraft:the_end")
+        one.becameActive()
+        two.becameActive()
+        #expect(first.views.lastDimension == "minecraft:the_nether")
+        #expect(second.views.lastDimension == "minecraft:the_end")
+        #expect(first.activeDimensionID == "minecraft:the_nether" && second.activeDimensionID == "minecraft:the_end")
+        first.close(); second.close()
+        await first.waitUntilClosed(); await second.waitUntilClosed()
     }
 
     @Test func movingAWorldRetainsAllDimensionViews() {

@@ -7,7 +7,7 @@ nonisolated enum ItemAppearance {
     static func symbol(for id: String) -> String {
         let name = id.split(separator: ":").last.map(String.init) ?? id
         func any(_ parts: [String]) -> Bool { parts.contains { name.hasSuffix($0) || name == $0 } }
-        if any(["_helmet", "_chestplate", "_leggings", "_boots", "elytra", "_horse_armor"]) { return "tshirt.fill" }
+        if any(["_helmet", "_chestplate", "_leggings", "_boots", "elytra", "_horse_armor", "wolf_armor"]) { return "tshirt.fill" }
         if any(["shield"]) { return "shield.fill" }
         if any(["_sword", "bow", "crossbow", "trident", "mace", "arrow"]) { return "scope" }
         if any(["_pickaxe", "_axe", "_shovel", "_hoe", "shears", "flint_and_steel", "brush"]) { return "hammer.fill" }
@@ -51,17 +51,38 @@ nonisolated enum ItemAppearance {
         return text
     }
 
-    static func name(of item: ItemStack) -> String {
-        var text = ReadableName.from(item.id)
-        if let name = item.customName { text += " “\(name)”" }
-        return item.count > 1 ? "\(item.count) \(text)" : text
+    /// The kind is always retained, even when an item or container has a custom name.
+    static func label(kind: String, customName: String?) -> String {
+        let kind = ReadableName.from(kind)
+        return customName.map { String(localized: "\(kind) “\($0)”") } ?? kind
+    }
+
+    static func label(of item: ItemStack) -> String {
+        let base = label(kind: item.id, customName: item.customName)
+        guard item.customName == nil, let book = item.book, let title = book.title else { return base }
+        let titled = label(kind: item.id, customName: title)
+        return book.author.map { String(localized: "\(titled) by \($0)") } ?? titled
+    }
+
+    static func name(of item: ItemStack, includingOne: Bool = false, locale: Locale = .current) -> String {
+        counted(label(of: item), count: item.count, includingOne: includingOne, locale: locale)
+    }
+
+    static func counted(_ label: String, count: Int, includingOne: Bool = false, locale: Locale = .current) -> String {
+        guard includingOne || count != 1 else { return label }
+        return String(localized: "\(count, format: .number.locale(locale)) \(label)", locale: locale)
     }
 
     static func details(of item: ItemStack) -> String {
-        var lines = [name(of: item)]
+        var lines = [description(of: item)]
         lines += item.enchantments.sorted { $0.key < $1.key }.map { TradeText.enchantmentName($0.key, level: $0.value) }
-        if let wear = item.durability { lines.append(String(localized: "Durability: \(wear.remaining) of \(wear.maximum)")) }
+        if let wear = item.durability { lines.append(durability(wear)) }
         return lines.joined(separator: "\n")
+    }
+
+    static func durability(_ wear: ItemDurability, locale: Locale = .current) -> String {
+        let format = IntegerFormatStyle<Int>.number.locale(locale)
+        return String(localized: "Durability: \(wear.remaining, format: format) of \(wear.maximum, format: format)", locale: locale)
     }
 
     static func isEnchanted(_ item: ItemStack) -> Bool { !item.enchantments.isEmpty }
@@ -81,6 +102,7 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
+    @Environment(\.locale) private var locale
     private var records: PlayerRecords? {
         session.playerRecords.uuid == player.uuid ? session.playerRecords.records : nil
     }
@@ -94,19 +116,20 @@ struct PlayerDetailView: View {
                     LabeledContent("Last Saved") { Text(saved, format: .dateTime.year().month().day().hour().minute()) }
                 }
             } header: {
-                Text(session.name(of: player)).font(.headline)
+                Label(session.name(of: player), systemImage: "person.fill").font(.headline)
             }
-            if PlayerPresentation.isMappable(player) {
+            if PlayerPresentation.isMappable(player),
+               player.position != nil || player.lastDeath != nil || player.respawn != nil {
                 Section("Locations") {
                     if let location = player.position { locationButton("Last Position", location) }
-                    if let location = player.lastDeath { locationButton("Last Death", location) }
-                    if let location = player.respawn { locationButton("Respawn Point", location) }
+                    if let location = player.lastDeath { locationButton("Last Death", location, blockPosition: true) }
+                    if let location = player.respawn { locationButton("Respawn Point", location, blockPosition: true) }
                 }
             }
             Section("Status") {
-                PlayerHealthRow(player: player)
-                if let absorption = player.absorption, absorption > 0 {
-                    LabeledContent("Absorption", value: String(localized: "\(absorption / 2, format: .number.precision(.fractionLength(0...1))) hearts"))
+                HealthRow(health: player.health, maximum: player.maxHealth)
+                if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption, locale: locale) {
+                    LabeledContent("Absorption", value: text)
                 }
                 if let food = player.foodLevel {
                     LabeledContent("Hunger") {
@@ -126,7 +149,7 @@ struct PlayerDetailView: View {
                 }
             }
             PlayerEffectsSection(effects: player.activeEffects)
-            PlayerEquipmentSection(player: player)
+            EquipmentSection(items: EquipmentPresentation.items(for: player))
             LinkedPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
                 SlotGrid(slots: ItemAppearance.slots(player.inventory, count: 9), selected: player.selectedSlot)
@@ -164,11 +187,16 @@ struct PlayerDetailView: View {
         }
     }
 
-    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location) -> some View {
-        Button { session.focus(on: location) } label: {
-            LabeledContent(title, value: String(localized: "\(session.dimensionName(location.dimension)): X \(Int(location.x)), Y \(Int(location.y)), Z \(Int(location.z))"))
+    @ViewBuilder
+    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location, blockPosition: Bool = false) -> some View {
+        if Coordinates.canLocate(x: location.x, y: location.y, z: location.z) {
+            Button { session.focus(on: location, blockPosition: blockPosition) } label: {
+                LabeledContent(title, value: Coordinates.text(CGPoint(x: location.x, y: location.z), y: location.y,
+                                                             dimension: session.dimensionName(location.dimension)))
+                    .monospacedDigit()
+            }
+            .disabled(!session.dimensions.contains { $0.id == location.dimension })
         }
-        .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }
 
 }
