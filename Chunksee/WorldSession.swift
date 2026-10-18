@@ -344,6 +344,7 @@ final class WorldSession {
               let viewport = previous.currentView else { return }
         navigation = previous.navigation
         restore(viewport)
+        if let depth = previous.map?.depth { map?.setDepth(depth) }
         ruler = previous.ruler
     }
 
@@ -394,6 +395,7 @@ final class WorldSession {
         let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
+        map.setDepth(resources.views.depth(for: dimension.id))
         return map
     }
 
@@ -518,7 +520,7 @@ final class WorldSession {
     /// showing: the selected one, except while switching away from it.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        views.save(map.viewport, for: id, selected: resources.activeDimensionID)
+        views.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
     }
 
     // MARK: Search results, portals and in-game maps

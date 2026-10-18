@@ -74,7 +74,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
-| `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
+| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -111,6 +111,15 @@ route only through the native document opener; an unavailable opener cannot repl
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,
 ruler and history only when the dimension identity matches. No in-session dimension switching
 or retired replacement maps are kept.
+
+`MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
+share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
+and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
+Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
+Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
+plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at
+−64...319 and expands to include numeric entry; it does not constrain custom dimension generation.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
