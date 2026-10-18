@@ -137,19 +137,23 @@ import Testing
                 position: CGPoint(x: 30, y: 20), y: 64, label: "Death", isOutdated: true),
             MapMarker(id: "respawn", playerID: UUID(), kind: .respawn,
                 position: CGPoint(x: -40, y: -30), y: 64, label: "Bed", isOutdated: false)]
+        content.places.append(PlaceMarker(PointOfInterest(type: "minecraft:home", x: 70, y: 64, z: -45, freeTickets: 0)))
+        content.players.append(MapMarker(id: "outdated", playerID: UUID(), kind: .player,
+            position: CGPoint(x: -70, y: -40), y: 64, label: "Old Friend", isOutdated: true))
         content.savedPlaces = [SavedPlace(name: "Fixture", dimension: dimension.id, x: 50, z: 35)]
-        for scale in [0.0625, 0.125, 0.25, 0.5, 2, 32] {
+        for scale in [0.0625, 0.125, 0.25, 0.49, 0.5, 1, 1.99, 2, 4, 32] {
             map.viewport.scale = scale
-            for selected in [false, true] {
+            for variant in [0, 1, 2] {
+                let selected = variant != 0
                 content.selection = selected ? .creature(pet) : nil
                 content.selectedHitID = selected ? search.id : nil
-                content.selectedPlayerID = selected ? content.players.first?.playerID : nil
+                content.selectedPlayerID = selected ? (variant == 1 ? content.players.first?.playerID : content.players.last?.playerID) : nil
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
                 #expect(image.data.count > 1_000)
                 let digest = SHA256.hash(data: image.data).map { String(format: "%02x", $0) }.joined()
                 // This bounded baseline/candidate comparison is evidence, not a portable golden
                 // image assertion: system symbol/font rasterization can change with macOS.
-                print("Marker geometry image \(scale) selected=\(selected): \(digest)")
+                print("Marker presentation image \(scale) variant=\(variant): \(digest)")
             }
         }
     }
