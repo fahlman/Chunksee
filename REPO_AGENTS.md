@@ -144,8 +144,9 @@ a successful empty read clears them. Opening metadata for the world details stay
 Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
 tolerance beyond the body. Labels, structure outlines and portal status decorations do not
 enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
-cover that reach. Player drawing, picking and VoiceOver visibility/centering share their half-block
-anchor; labels and coordinate copying retain the saved coordinates. Marker zoom growth stays separate.
+cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
+retain the saved coordinates. Marker zoom growth stays separate.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected

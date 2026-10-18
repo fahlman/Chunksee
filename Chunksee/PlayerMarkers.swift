@@ -15,9 +15,9 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     var position: CGPoint
     var y: Double?
     var label: String
-    /// The existing half-block map offset, shared by drawing, picking and VoiceOver. Saved
-    /// coordinates remain separate so copying a marker never copies its visual adjustment.
-    var anchor: CGPoint { CGPoint(x: position.x + 0.5, y: position.y + 0.5) }
+    /// Entity positions are exact; death and respawn positions identify whole blocks. Drawing,
+    /// picking and VoiceOver share this anchor, while copying retains the saved coordinates.
+    var anchor: CGPoint { kind == .player ? position : CGPoint(x: position.x + 0.5, y: position.y + 0.5) }
     /// True when the player's file predates the world's current version: they haven't been seen
     /// since, so the position is old.
     var isOutdated: Bool
