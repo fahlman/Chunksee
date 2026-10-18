@@ -58,7 +58,7 @@ import Testing
                                position: CGPoint(x: -20, y: -30), y: 64, label: "Friend", isOutdated: false)
         var content = MapContent()
         content.players = [player]
-        var viewport = MapViewport(center: CGPoint(x: -19.5, y: -29.5), scale: 32)
+        var viewport = MapViewport(center: player.position, scale: 32)
         let hit = content.hit(at: CGPoint(x: center.x + 16.5, y: center.y), viewport: viewport, size: size)
         #expect(hit?.target == .row(.player(id)))
         #expect(hit?.position == player.position && hit?.y == 64)
@@ -77,17 +77,17 @@ import Testing
     @Test func voiceOverUsesTheDrawnPlayerAnchorForEdgeVisibility() {
         var content = MapContent()
         let viewport = MapViewport(center: .zero, scale: 32)
-        // A half-block is 16 points here: the left marker is visible, the right one is outside
-        // the existing 20-point accessibility margin once the drawing offset is included.
+        // Live entities have no half-block adjustment: the left marker is outside the existing
+        // 20-point accessibility margin, while the right marker is inside it.
         content.players = [-25.0, size.width + 15].enumerated().map { index, x in
             MapMarker(id: "edge-\(index)", playerID: UUID(), kind: .player,
                       position: viewport.blockPoint(at: CGPoint(x: x, y: size.height / 2), in: size),
                       y: 64, label: "Edge \(index)", isOutdated: false)
         }
         let locations = content.accessibleLocations(viewport: viewport, size: size)
-        #expect(locations.map(\.id) == ["player-edge-0"])
-        #expect(locations.first?.position == content.players.first?.position)
-        #expect(locations.first?.anchor == content.players.first?.anchor)
+        #expect(locations.map(\.id) == ["player-edge-1"])
+        #expect(locations.first?.position == content.players.last?.position)
+        #expect(locations.first?.anchor == content.players.last?.anchor)
     }
 
     @Test func selectedReachCrossesRegionBucketsAndStillChoosesTheClosestMarker() throws {
@@ -119,7 +119,24 @@ import Testing
         #expect(content.target(at: CGPoint(x: center.x + 15.01, y: center.y), viewport: viewport, size: size) == nil)
     }
 
-    @Test func unchangedMarkerRenderingProducesComparableImages() throws {
+    @Test(arguments: [MapMarker.Kind.player, .death, .respawn])
+    func entityAndBlockLocationsUseTheirPhysicalAnchors(_ kind: MapMarker.Kind) throws {
+        let position = kind == .player ? CGPoint(x: -8.7, y: -16.2) : CGPoint(x: -9, y: -17)
+        let expected = kind == .player ? position : CGPoint(x: -8.5, y: -16.5)
+        let marker = MapMarker(id: "negative-location", playerID: UUID(), kind: kind,
+                               position: position, y: 64, label: "Friend", isOutdated: false)
+        var content = MapContent(); content.players = [marker]
+        let viewport = MapViewport(center: expected, scale: 32)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let hit = try #require(content.hit(at: center, viewport: viewport, size: size))
+        #expect(hit.target == .row(.player(marker.playerID)))
+        #expect(hit.position == position && hit.y == 64)
+        let accessible = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
+        #expect(accessible.anchor == expected && accessible.position == position)
+        #expect(marker.anchor == expected)
+    }
+
+    @Test func markerRenderingProducesComparableImages() throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))

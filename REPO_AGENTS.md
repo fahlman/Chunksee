@@ -131,8 +131,10 @@ Live index refreshes replace only the notified terrain/entity/POI region contrib
 the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
 biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
 merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
-world. Broad directory notifications reconcile full dimension contents and terrain availability;
-entity/POI file saves leave terrain images and inhabited-time reads alone.
+world. Exact world, dimension or region-directory notifications reconcile full dimension contents
+and terrain availability. Other files beneath a dimension, including saved data such as raids and
+chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
+and inhabited-time reads alone.
 Places/creature point collections own their arrays and immutable region buckets. MapContent
 shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
 arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,
@@ -145,8 +147,9 @@ a successful empty read clears them. Opening metadata for the world details stay
 Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
 tolerance beyond the body. Labels, structure outlines and portal status decorations do not
 enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
-cover that reach. Player drawing, picking and VoiceOver visibility/centering share their half-block
-anchor; labels and coordinate copying retain the saved coordinates. Marker zoom growth stays separate.
+cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
+retain the saved coordinates. Marker zoom growth stays separate.
 MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
 layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
 cache keys the actual symbol and tint. Structure outlines/portal rooms, bounds culling and marker
