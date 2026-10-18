@@ -1,4 +1,5 @@
 import AppKit
+import ChunkseeKit
 import SwiftUI
 
 /// SwiftUI has no map-point argument for contextMenu. AppKit captures the native event point;
