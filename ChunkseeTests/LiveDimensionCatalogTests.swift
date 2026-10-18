@@ -25,7 +25,7 @@ import Testing
 
         func open(_ document: URL) async throws -> WorldSession {
             let reader = WorldDocument.Reader(folders: model.worldFolders, model: model)
-            guard case .dimension(let snapshot) = try await reader.readFolder( document) else { throw WorldOpenError.notADimension }
+            guard case .dimension(let snapshot) = try await reader.readFolder(document) else { throw WorldOpenError.notADimension }
             let session = try snapshot.makeSession(in: model)
             sessions.append(session)
             return session

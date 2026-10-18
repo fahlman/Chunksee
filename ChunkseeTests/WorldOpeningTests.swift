@@ -48,7 +48,7 @@ import Testing
         func start(_ document: URL) -> Task<DimensionSnapshot, any Error> {
             let reader = reader
             let task = Task {
-                guard case .dimension(let snapshot) = try await reader.readFolder( document) else { throw WorldOpenError.notADimension }
+                guard case .dimension(let snapshot) = try await reader.readFolder(document) else { throw WorldOpenError.notADimension }
                 return snapshot
             }
             tasks.append(task)
@@ -198,7 +198,7 @@ import Testing
             #expect(resource.isClosed)
             await resource.waitUntilClosed()
             @MainActor func readAndDrop() async throws -> WorldResources {
-                guard case .dimension(let snapshot) = try await f.reader.readFolder( f.documents[1]),
+                guard case .dimension(let snapshot) = try await f.reader.readFolder(f.documents[1]),
                       case .opening(let opening) = snapshot.source, let resource = opening.resources else { throw WorldOpenError.unreadable }
                 return resource
             }
@@ -217,11 +217,11 @@ import Testing
             // Reuse the same reader across the phase change, as well as the same document owner.
             let reader = WorldDocument.Reader(folders: f.model.worldFolders, model: f.model,
                                                reuseOpenWorld: { f.sessions.isEmpty })
-            guard case .dimension(let initial) = try await reader.readFolder( f.documents[0]) else { Issue.record("Missing dimension"); return }
+            guard case .dimension(let initial) = try await reader.readFolder(f.documents[0]) else { Issue.record("Missing dimension"); return }
             let session = try f.attach(initial)
             #expect(await f.probe.count == 2)
             try f.writePlayer(health: 9)
-            guard case .dimension(let fresh) = try await reader.readFolder( f.documents[0]),
+            guard case .dimension(let fresh) = try await reader.readFolder(f.documents[0]),
                   case .snapshot(let snapshot) = fresh.source else { Issue.record("Reread reused initial resources"); return }
             #expect(snapshot.players.first?.health == 9 && snapshot.access !== session.resources.access)
             fresh.discardUnused()
@@ -235,7 +235,7 @@ import Testing
 
     @Test func aWorldFolderStillRedirectsToItsNativeDocumentsWithoutStartingAFullWorldRead() async throws {
         try await withFixture { f in
-            guard case .world(let urls) = try await f.reader.readFolder( f.url) else { Issue.record("World did not redirect"); return }
+            guard case .world(let urls) = try await f.reader.readFolder(f.url) else { Issue.record("World did not redirect"); return }
             #expect(Set(urls) == Set(f.documents))
             #expect(await f.probe.count == 0 && f.model.openingRequestCount == 0)
         }
@@ -273,7 +273,7 @@ import Testing
             #expect(await f.probe.count == 1)
             let newDimension = f.url.appendingPathComponent("dimensions/example/new_dimension")
             try FileManager.default.createDirectory(at: newDimension.appendingPathComponent("region"), withIntermediateDirectories: true)
-            guard case .dimension(let value) = try await f.reader.readFolder( newDimension),
+            guard case .dimension(let value) = try await f.reader.readFolder(newDimension),
                   case .snapshot(let fresh) = value.source else { Issue.record("Unknown catalog path was not freshly validated"); return }
             #expect(value.dimensionID == "example:new_dimension" && fresh.dimensions.contains { $0.id == value.dimensionID })
             value.discardUnused()
