@@ -9,8 +9,16 @@ nonisolated struct DimensionIndex: Sendable {
     var storage: [StoredItem] = []
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
-    var places: [PlaceMarker] = []
-    var creatures: [CreatureMarker] = []
+    var placePoints = PointMarkers<PlaceMarker>()
+    var creaturePoints = PointMarkers<CreatureMarker>()
+    var places: [PlaceMarker] {
+        get { placePoints.all }
+        set { placePoints = PointMarkers(newValue) }
+    }
+    var creatures: [CreatureMarker] {
+        get { creaturePoints.all }
+        set { creaturePoints = PointMarkers(newValue) }
+    }
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
@@ -50,13 +58,14 @@ nonisolated struct DimensionIndex: Sendable {
         part.regions.merge(replacements) { $1 }
         var points: [PointOfInterest] = []
         var spawners: [Spawner] = []
+        var creatures: [CreatureMarker] = []
         for coordinate in part.regions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
             let region = part.regions[coordinate]!
             part.containers += region.contents.containers
             part.signs += region.contents.signs
             spawners += region.contents.spawners
             part.structures += region.structures
-            part.creatures += region.creatures
+            creatures += region.creatures
             part.biomes.merge(region.biomes) { $1 }
             part.caveBiomes.merge(region.caveBiomes) { $1 }
             part.blocks += region.blocks.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
@@ -65,7 +74,7 @@ nonisolated struct DimensionIndex: Sendable {
         }
         part.storage = StoredItem.totals(in: part.containers)
         part.structures.sort { $0.id < $1.id }
-        part.creatures.sort { $0.id < $1.id }
+        part.creatures = creatures.sorted { $0.id < $1.id }
         part.places = PlaceScanner.markers(from: points, in: reader.dimension.id) + spawners.map(PlaceMarker.init)
         part.biomeAreas = BiomeScanner.areas(surface: part.biomes, caves: part.caveBiomes)
         part.blocks.sort { $0.deposit.count > $1.deposit.count }
