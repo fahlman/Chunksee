@@ -76,6 +76,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance and jumps waiting for a dimension to open; closing its last dimension drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
+| `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `MarkerGeometry.swift`, `MarkerStyle.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
@@ -183,6 +184,13 @@ replacing an in-game map overlay; a marker without details or an empty click clo
 without a mappable position keep selectable rows for their details. Any player marker drawn in this
 dimension shows its player, including a death or respawn point of somebody listed in another
 dimension or with no current position; it selects a row only when this dimension lists them.
+
+Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
+fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, grid and Time Spent.
+Existing app-wide preferences seed a new scope once; later tab changes never write the old keys
+or another dimension's entry. Native world moves migrate every dimension's saved controls.
+HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
+through that dimension scope; there is no second editable flag in LayerVisibility.
 
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
