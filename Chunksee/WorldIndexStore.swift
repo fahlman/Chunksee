@@ -23,6 +23,13 @@ final class WorldIndexStore {
         rebuild(firstDimension: firstDimension)
     }
 
+    /// Missing results mean loading only when an actual reader is still due to publish them.
+    /// An absent/unsupported dimension cannot finish a read that was never scheduled.
+    func isWaitingForPortals(in dimension: String) -> Bool {
+        !isClosed && indexTask != nil && portals[dimension] == nil &&
+            readers.contains { $0.dimension.id == dimension }
+    }
+
     /// A freshly validated document can discover a dimension created since the world opened.
     /// Keep existing readers, and finish a running pass before indexing the expanded catalog.
     func include(_ additions: [RegionReader], firstDimension: String?) {
