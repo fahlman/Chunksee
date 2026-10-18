@@ -135,7 +135,10 @@ index and open/select in the destination dimension document. No owner is inferre
 Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
-not a live countdown. Equipment includes the selected main hand, durability and named enchantments.
+not a live countdown. Effect names have their own vanilla exceptions, independent of enchantment
+names; both share level numeral presentation. Saved effect durations use native localized clocks
+and explicit localized units for accessibility, rounding partial seconds up in both readouts.
+Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
 
 Selecting a player works like selecting a pet (Ryan, 2026-10-16, fahlman/Chunksee#157): their row,
