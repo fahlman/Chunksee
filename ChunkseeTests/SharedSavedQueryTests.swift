@@ -39,11 +39,8 @@ import Testing
 
         first.text = "diamond"
         second.text = "ancient debris"
-        first.selectedHitID = "one"
-        second.selectedHitID = "two"
         for model in [first, second] { await model.waitForSearch() }
         #expect(first.text == "diamond" && second.text == "ancient debris")
-        #expect(first.selectedHitID == "one" && second.selectedHitID == "two")
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         for model in [first, second, third, later] { model.cancel(); await model.waitForTasks() }
         index.cancel()
@@ -230,7 +227,7 @@ import Testing
         saved.add("diamond")
         let resources = WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                        savedSearches: saved, defaults: defaults, cacheRoot: nil)
-        var sessions = resources.dimensions.prefix(2).map { WorldSession(resources: resources, dimensionID: $0.id) }
+        var sessions = ["minecraft:overworld", "minecraft:the_nether"].map { WorldSession(resources: resources, dimensionID: $0) }
         let originalPlayers = resources.playerSnapshot
         #expect(resources.dimensions.count == 3 && sessions.count == 2)
         for session in sessions {
@@ -242,6 +239,14 @@ import Testing
             #expect(found.count == 1 && found.first?.source == .inventory(player.uuid))
             #expect(found.first?.count == 4 && found.first?.dimension == "minecraft:the_nether")
         }
+
+        let overworld = sessions[0], nether = sessions[1]
+        let sharedHit = try #require(nether.search.results(for: "diamond").first)
+        nether.choose(.hit(query: "diamond", id: sharedHit.id))
+        overworld.choose(.worldInfo)
+        #expect(nether.selectedHitID == sharedHit.id && overworld.selectedHitID == nil)
+        #expect(nether.sidebarSelection == .hit(query: "diamond", id: sharedHit.id))
+        #expect(overworld.sidebarSelection == .worldInfo)
 
         // Same UUID, save date and roster size, but a different inventory. All documents must
         // switch to one new publication and expose real updated results, including a later opener.
