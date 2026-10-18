@@ -12,6 +12,14 @@ nonisolated enum ReadableName {
     }
 }
 
+/// The same level numerals for equipment and effects; each caller decides when to show a level.
+nonisolated enum LevelText {
+    static func numeral(_ level: Int) -> String {
+        let numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+        return (1...numerals.count).contains(level) ? numerals[level - 1] : String(level)
+    }
+}
+
 /// Block coordinates as lists and readouts show them: "X 10  Z -2".
 nonisolated enum Coordinates {
     /// Unreadable saved positions have no block coordinate; conversion must never trap.

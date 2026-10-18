@@ -152,11 +152,9 @@ nonisolated enum TradeText {
             .joined(separator: " ")
     }
 
-    /// "Mending", "Sharpness V": the game shows a level only when an enchantment can have more than one.
     static func enchantmentName(_ id: String, level: Int) -> String {
-        let numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
         guard level > 1 else { return ReadableName.from(id) }
-        return ReadableName.from(id) + " " + (level <= numerals.count ? numerals[level - 1] : String(level))
+        return ReadableName.from(id) + " " + LevelText.numeral(level)
     }
 
 }
