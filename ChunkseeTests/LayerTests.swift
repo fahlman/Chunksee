@@ -532,8 +532,7 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionData>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(readers: [dimension.id: reader])
-        layer.dimension = dimension.id
+        let layer = HeatMapLayer(reader: reader)
         layer.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
@@ -567,8 +566,7 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionData>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(readers: [dimension.id: reader])
-        layer.dimension = dimension.id
+        let layer = HeatMapLayer(reader: reader)
         layer.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)

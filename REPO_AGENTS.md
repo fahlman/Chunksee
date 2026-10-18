@@ -165,6 +165,8 @@ Existing app-wide preferences seed a new scope once; later tab changes never wri
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
+It holds only that document's fixed region reader, heat images, pending task and reread flag;
+there is no mutable dimension selector or per-dimension image/task store inside the layer.
 
 Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
