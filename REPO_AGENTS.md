@@ -124,6 +124,11 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
+Live index refreshes read only the known changed dimensions, retaining every other published
+snapshot. Queued dimension sets merge while a pass runs; an explicit full request dominates
+subsets. Initial and manual indexing still cover the whole world. Broad world/dimension folder
+notifications request the appropriate full dimension reads; region-specific retention is separate.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.

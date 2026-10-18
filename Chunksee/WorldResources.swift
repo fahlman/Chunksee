@@ -153,9 +153,13 @@ final class WorldResources {
         guard !isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
             let path = file.path
-            if path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+            if path == url.standardizedFileURL.path {
+                // A broad notification can cover several dimension folders under this world.
+                pendingDimensions.formUnion(dimensions.map(\.id))
                 pendingPlayers = true
-            } else if let dimension = dimensions.filter({ path.hasPrefix($0.url.standardizedFileURL.path + "/") })
+            } else if path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+                pendingPlayers = true
+            } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
                 .max(by: { $0.url.path.count < $1.url.path.count }) {
                 // Nether, End and custom dimension folders can sit inside the Overworld folder.
                 pendingDimensions.insert(dimension.id)
@@ -198,7 +202,7 @@ final class WorldResources {
                 session.heatMap.load(reread: true)
             }
         }
-        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID) }
+        if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, dimensions: changed) }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
             // an older, slower read finishing later must not put old positions back.
