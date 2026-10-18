@@ -128,8 +128,10 @@ Live index refreshes replace only the notified terrain/entity/POI region contrib
 the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
 biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
 merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
-world. Broad directory notifications reconcile full dimension contents and terrain availability;
-entity/POI file saves leave terrain images and inhabited-time reads alone.
+world. Exact world, dimension or region-directory notifications reconcile full dimension contents
+and terrain availability. Other files beneath a dimension, including saved data such as raids and
+chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
+and inhabited-time reads alone.
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
