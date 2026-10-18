@@ -7,7 +7,7 @@ nonisolated enum ItemAppearance {
     static func symbol(for id: String) -> String {
         let name = id.split(separator: ":").last.map(String.init) ?? id
         func any(_ parts: [String]) -> Bool { parts.contains { name.hasSuffix($0) || name == $0 } }
-        if any(["_helmet", "_chestplate", "_leggings", "_boots", "elytra", "_horse_armor"]) { return "tshirt.fill" }
+        if any(["_helmet", "_chestplate", "_leggings", "_boots", "elytra", "_horse_armor", "wolf_armor"]) { return "tshirt.fill" }
         if any(["shield"]) { return "shield.fill" }
         if any(["_sword", "bow", "crossbow", "trident", "mace", "arrow"]) { return "scope" }
         if any(["_pickaxe", "_axe", "_shovel", "_hoe", "shears", "flint_and_steel", "brush"]) { return "hammer.fill" }
@@ -58,10 +58,15 @@ nonisolated enum ItemAppearance {
     }
 
     static func details(of item: ItemStack) -> String {
-        var lines = [name(of: item)]
+        var lines = [description(of: item)]
         lines += item.enchantments.sorted { $0.key < $1.key }.map { TradeText.enchantmentName($0.key, level: $0.value) }
-        if let wear = item.durability { lines.append(String(localized: "Durability: \(wear.remaining) of \(wear.maximum)")) }
+        if let wear = item.durability { lines.append(durability(wear)) }
         return lines.joined(separator: "\n")
+    }
+
+    static func durability(_ wear: ItemDurability, locale: Locale = .current) -> String {
+        let format = IntegerFormatStyle<Int>.number.locale(locale)
+        return String(localized: "Durability: \(wear.remaining, format: format) of \(wear.maximum, format: format)", locale: locale)
     }
 
     static func isEnchanted(_ item: ItemStack) -> Bool { !item.enchantments.isEmpty }
@@ -104,9 +109,9 @@ struct PlayerDetailView: View {
                 }
             }
             Section("Status") {
-                PlayerHealthRow(player: player)
-                if let absorption = player.absorption, absorption > 0 {
-                    LabeledContent("Absorption", value: String(localized: "\(absorption / 2, format: .number.precision(.fractionLength(0...1))) hearts"))
+                HealthRow(health: player.health, maximum: player.maxHealth)
+                if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption) {
+                    LabeledContent("Absorption", value: text)
                 }
                 if let food = player.foodLevel {
                     LabeledContent("Hunger") {
@@ -126,7 +131,7 @@ struct PlayerDetailView: View {
                 }
             }
             PlayerEffectsSection(effects: player.activeEffects)
-            PlayerEquipmentSection(player: player)
+            EquipmentSection(items: EquipmentPresentation.items(for: player))
             LinkedPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
                 SlotGrid(slots: ItemAppearance.slots(player.inventory, count: 9), selected: player.selectedSlot)

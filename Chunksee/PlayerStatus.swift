@@ -1,29 +1,6 @@
 import ChunkseeKit
 import SwiftUI
 
-struct PlayerHealthRow: View {
-    let player: PlayerInfo
-
-    var body: some View {
-        let maximum = player.maxHealth
-        if let health = player.health, health.isFinite, health >= 0 {
-            LabeledContent("Health") {
-                if let maximum, maximum.isFinite, maximum > 0 {
-                    Gauge(value: min(health, maximum), in: 0...maximum) { EmptyView() } currentValueLabel: {
-                        Text("\(health / 2, format: .number.precision(.fractionLength(0...1))) of \(maximum / 2, format: .number.precision(.fractionLength(0...1))) hearts")
-                    }
-                    .tint(.red)
-                } else {
-                    Text("\(health / 2, format: .number.precision(.fractionLength(0...1))) hearts")
-                }
-            }
-            .help("Health recorded when Minecraft last saved this player")
-        } else if let maximum, maximum.isFinite, maximum > 0 {
-            LabeledContent("Maximum Health", value: String(localized: "\(maximum / 2, format: .number.precision(.fractionLength(0...1))) hearts"))
-        }
-    }
-}
-
 struct PlayerEffectsSection: View {
     let effects: [StatusEffect]
 
