@@ -9,8 +9,16 @@ nonisolated struct DimensionIndex: Sendable {
     var storage: [StoredItem] = []
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
-    var places: [PlaceMarker] = []
-    var creatures: [CreatureMarker] = []
+    var placePoints = PointMarkers<PlaceMarker>()
+    var creaturePoints = PointMarkers<CreatureMarker>()
+    var places: [PlaceMarker] {
+        get { placePoints.all }
+        set { placePoints = PointMarkers(newValue) }
+    }
+    var creatures: [CreatureMarker] {
+        get { creaturePoints.all }
+        set { creaturePoints = PointMarkers(newValue) }
+    }
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkCoordinate: String] = [:]
@@ -19,37 +27,57 @@ nonisolated struct DimensionIndex: Sendable {
     var blocks: [ChunkDeposit] = []
     /// Readable and pre-1.18 chunks across the dimension.
     var formats = ChunkFormats()
+    /// Inputs are replaced per region; all cross-region aggregates derive from these.
+    var regions: [RegionCoordinate: RegionIndex] = [:]
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
-    static func read(_ reader: RegionReader) async -> DimensionIndex {
+    static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
         var part = DimensionIndex()
-        var spawners: [Spawner] = []
-        for region in await reader.everyRegion({ await $0.contents($1) }) {
-            guard !Task.isCancelled else { return part }
-            part.containers += region.value.containers
-            part.signs += region.value.signs
-            spawners += region.value.spawners
+        let available = Set(ChunkseeKit.Dimension.Folder.allCases.flatMap { reader.dimension.regionFiles($0) }
+            .map { RegionCoordinate(x: $0.x, z: $0.z) })
+        let changed: Set<RegionCoordinate>
+        if let previous, case .regions(let selected) = change {
+            part.regions = previous.regions
+            for removed in selected.subtracting(available) { part.regions[removed] = nil }
+            changed = selected.intersection(available)
+        } else { changed = available }
+        let replacements = await withTaskGroup(of: (RegionCoordinate, RegionIndex).self) { group in
+            for region in changed {
+                guard !Task.isCancelled else { break }
+                group.addTask {
+                    let value = await RegionIndex.read(reader, region: region)
+                    return (region, value)
+                }
+            }
+            var values: [RegionCoordinate: RegionIndex] = [:]
+            for await (region, value) in group { values[region] = value }
+            return values
         }
         guard !Task.isCancelled else { return part }
+        part.regions.merge(replacements) { $1 }
+        var points: [PointOfInterest] = []
+        var spawners: [Spawner] = []
+        var creatures: [CreatureMarker] = []
+        for coordinate in part.regions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
+            let region = part.regions[coordinate]!
+            part.containers += region.contents.containers
+            part.signs += region.contents.signs
+            spawners += region.contents.spawners
+            part.structures += region.structures
+            creatures += region.creatures
+            part.biomes.merge(region.biomes) { $1 }
+            part.caveBiomes.merge(region.caveBiomes) { $1 }
+            part.blocks += region.blocks.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
+            part.formats = part.formats + region.formats
+            points += region.pointsOfInterest
+        }
         part.storage = StoredItem.totals(in: part.containers)
-        async let structures = StructureScanner.scan(reader)
-        async let places = PlaceScanner.scan(reader.dimension, cache: reader.cache)
-        async let creatures = CreatureScanner.scan(reader)
-        async let biomes = BiomeScanner.scan(reader)
-        async let blocks = reader.everyRegion { await $0.blocks($1) }
-        async let formats = reader.everyRegion { await $0.formats($1) }
-        part.formats = await formats.reduce(ChunkFormats()) { $0 + $1.value }
-        part.structures = await structures
-        part.places = await places + spawners.map(PlaceMarker.init)
-        part.creatures = await creatures
-        let biomeScan = await biomes
-        part.biomeAreas = biomeScan.areas
-        part.biomes = biomeScan.biomes
-        part.caveBiomes = biomeScan.caveBiomes
-        part.blocks = await blocks.flatMap { region in
-            region.value.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
-        }.sorted { $0.deposit.count > $1.deposit.count }
+        part.structures.sort { $0.id < $1.id }
+        part.creatures = creatures.sorted { $0.id < $1.id }
+        part.places = PlaceScanner.markers(from: points, in: reader.dimension.id) + spawners.map(PlaceMarker.init)
+        part.biomeAreas = BiomeScanner.areas(surface: part.biomes, caves: part.caveBiomes)
+        part.blocks.sort { $0.deposit.count > $1.deposit.count }
         return part
     }
 }

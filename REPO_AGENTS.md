@@ -54,6 +54,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     can't name locally to `sessionserver.mojang.com` and keeps the returned names in its
     preferences.
   - Rendered tiles are kept in the app's Caches folder (about 1 GB at most).
+    Tile and scan directories share a SHA-256 key of the full dimension ID; punctuation and
+    nested paths must not alias another dimension. Older lossy dimension directories are not
+    read or migrated because their contents may belong to a different dimension. Dimensions
+    rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
   minor" from `0.27.0`, resolved to `0.27.0` (`62995297f72a9b52ee7ec937413caa4911e4da1d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
@@ -74,6 +78,9 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
+| `MarkerGeometry.swift`, `MarkerStyle.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols |
+| `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
+| `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -81,7 +88,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
-| `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
+| `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
 | `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
@@ -147,11 +154,43 @@ starts a synchronous scan. Each query retains its previous snapshot until its re
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
 
+Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining
+the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
+biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
+merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
+world. Exact world, dimension or region-directory notifications reconcile full dimension contents
+and terrain availability. Other files beneath a dimension, including saved data such as raids and
+chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
+and inhabited-time reads alone.
+Places/creature point collections own their arrays and immutable region buckets. MapContent
+shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
+arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,
+then retain their exact bounds/zoom/distance checks. Fit World visits occupied buckets rather than
+empty space. Structure areas and the smaller player/search/saved-place lists keep their existing paths.
+Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
+single-player record when `level.dat` changes. An unreadable save retains the last good players;
+a successful empty read clears them. Opening metadata for the world details stays read-on-open.
+
+Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
+tolerance beyond the body. Labels, structure outlines and portal status decorations do not
+enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
+cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
+retain the saved coordinates. Marker zoom growth stays separate.
+MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
+layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
+cache keys the actual symbol and tint. Structure outlines/portal rooms, bounds culling and marker
+ordering remain in MapView. Hidden captions do not format names or resolve text; semantic caption
+fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
+map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player
+and saved-place sidebar icons share their presentation owner, and the portal inspector uses its
+group's symbol while retaining its singular title. No zoom-growth or visibility policy changes.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Scan-cache version 11 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
-preserved legacy item wear and structure heights. A marker uses its saved
+Scan-cache version 12 rereads earlier entries for corrected pet maximums, stable creature UUIDs,
+preserved legacy item wear, structure heights and corrected cave-biome membership. A marker uses its saved
 entity UUID across movement and shared positions, with the older position fallback only when
 no UUID exists. The player inspector's pet links match saved owner UUIDs in this world's shared
 index and open/select in the destination dimension document. No owner is inferred from a name.
@@ -191,6 +230,11 @@ through File > Open and Open Recent. Opening folders from within the app and nat
 restoration are required; Finder and Dock opening are not required. The old app-owned
 recent/open-world preferences are removed; users reopen each old world once to establish
 native history and restoration state.
+
+Cave membership uses ChunkseeKit's paletteCounts() and only referenced entries; palettes without
+cave candidates skip cell counting. Unused names never create cave areas/hover membership, while
+all actually used areas and the full per-dimension vanilla-biome catalog remain. Scan-cache
+version 12 invalidates earlier false membership; surface sampling and area grouping stay unchanged.
 
 ## Build and test
 

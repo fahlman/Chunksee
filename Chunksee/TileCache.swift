@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Rendered region pixels kept on disk, so reopening a world draws from the cache instead of
@@ -38,8 +39,10 @@ nonisolated struct TileCache: Sendable {
 
     /// The cache directory for one dimension of one world, by default inside the app's Caches folder.
     static func directory(forWorldAt world: URL, dimensionID: String, root: URL? = TileCache.root) -> URL? {
-        let dimension = String(dimensionID.map { $0.isLetter || $0.isNumber ? $0 : "_" })
-        return worldFolder(forWorldAt: world, root: root)?.appendingPathComponent(dimension, isDirectory: true)
+        // Replacing punctuation with underscores aliases valid IDs such as ice-caves/ice_caves.
+        // Old folders may contain another dimension's data, so don't migrate their contents.
+        let dimension = SHA256.hash(data: Data(dimensionID.utf8)).map { String(format: "%02x", $0) }.joined()
+        return worldFolder(forWorldAt: world, root: root)?.appendingPathComponent("dimension-" + dimension, isDirectory: true)
     }
 
     /// The folder holding every world's tiles.
