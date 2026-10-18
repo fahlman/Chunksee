@@ -78,6 +78,8 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Checked block conversion and coordinate labels, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
+| `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
+| `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement and the narrow AppKit context-menu/pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -85,7 +87,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
-| `WorldSearch.swift` | The world index (each dimension's containers, signs, structures, places, creatures and biomes) and answering searches against it |
+| `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
 | `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
@@ -132,6 +134,30 @@ saved places and coordinate-entry destinations use the center of their block for
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
 ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
 invalidate it. Callers that need completion await `waitForSearch()`.
+
+Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining
+the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
+biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
+merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
+world. Exact world, dimension or region-directory notifications reconcile full dimension contents
+and terrain availability. Other files beneath a dimension, including saved data such as raids and
+chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
+and inhabited-time reads alone.
+Places/creature point collections own their arrays and immutable region buckets. MapContent
+shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
+arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,
+then retain their exact bounds/zoom/distance checks. Fit World visits occupied buckets rather than
+empty space. Structure areas and the smaller player/search/saved-place lists keep their existing paths.
+Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
+single-player record when `level.dat` changes. An unreadable save retains the last good players;
+a successful empty read clears them. Opening metadata for the world details stays read-on-open.
+
+Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
+tolerance beyond the body. Labels, structure outlines and portal status decorations do not
+enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
+cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
+retain the saved coordinates. Marker zoom growth stays separate.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected

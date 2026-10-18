@@ -295,8 +295,8 @@ import Testing
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
         let index = SearchIndex.overworld(DimensionIndex(structures: [village],
-                                places: [bed],
-                                creatures: [wolf, cat, farmer]))
+                                placePoints: PointMarkers([bed]),
+                                creaturePoints: PointMarkers([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         #expect(search("structure:village").map(\.detail) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
@@ -326,7 +326,7 @@ import Testing
             ])]),
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creatures: [marker]))
+        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian, Master"])

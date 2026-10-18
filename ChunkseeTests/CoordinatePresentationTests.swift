@@ -37,16 +37,16 @@ import Testing
                                    label: "Location", isOutdated: false)
             var content = MapContent()
             content.players = [player]
-            #expect(player.mapPosition == blockCenter)
+            #expect(player.anchor == blockCenter)
             #expect(content.hit(at: center, viewport: viewport, size: size)?.target == .row(.player(player.playerID)))
-            #expect(content.accessibleLocations(viewport: viewport, size: size).first?.position == blockCenter)
+            #expect(content.accessibleLocations(viewport: viewport, size: size).first?.anchor == blockCenter)
         }
         let saved = SavedPlace(name: "Base", dimension: "minecraft:overworld", x: -9, z: -17)
         var content = MapContent()
         content.savedPlaces = [saved]
         #expect(saved.position == block && saved.mapPosition == blockCenter)
         #expect(content.hit(at: center, viewport: viewport, size: size)?.target == .row(.savedPlace(saved.id)))
-        #expect(content.accessibleLocations(viewport: viewport, size: size).first?.position == blockCenter)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).first?.anchor == blockCenter)
     }
 
     @Test(arguments: ["nan", "infinity", "negative infinity", "out of range"])

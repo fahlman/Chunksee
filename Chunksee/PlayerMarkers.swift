@@ -13,9 +13,11 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     var kind: Kind
     /// World X/Z of the marker.
     var position: CGPoint
-    var mapPosition: CGPoint { kind == .player ? position : MapCoordinates.center(of: position) }
     var y: Double?
     var label: String
+    /// Entity positions are exact; death and respawn positions identify whole blocks. Drawing,
+    /// picking and VoiceOver share this anchor, while copying retains the saved coordinates.
+    var anchor: CGPoint { kind == .player ? position : CGPoint(x: position.x + 0.5, y: position.y + 0.5) }
     /// True when the player's file predates the world's current version: they haven't been seen
     /// since, so the position is old.
     var isOutdated: Bool

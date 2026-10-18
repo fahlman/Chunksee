@@ -406,8 +406,10 @@ final class WorldSession {
         content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
         content.showsGrid = visibility.showsGrid
         content.structures = index.structures.filter { visibility.structures.contains($0.group) }
-        content.places = index.places.filter { visibility.places.contains($0.group) }
-        content.creatures = index.creatures.filter { visibility.creatures.contains($0.group) }
+        content.placePoints = index.placePoints
+        content.shownPlaceGroups = visibility.places
+        content.creaturePoints = index.creaturePoints
+        content.shownCreatureGroups = visibility.creatures
         content.hits = pinnedHits.filter { $0.dimension == id && $0.position != nil }
         content.selectedHitID = search.selectedHitID
         content.players = PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
