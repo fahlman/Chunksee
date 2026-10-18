@@ -130,8 +130,10 @@ Live index refreshes replace only the notified terrain/entity/POI region contrib
 the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
 biome areas, deposits and whole-portal grouping derive from the retained inputs. Queued changes
 merge while a pass runs; broad requests dominate subsets. Initial/manual indexing covers the whole
-world. Broad directory notifications reconcile full dimension contents and terrain availability;
-entity/POI file saves leave terrain images and inhabited-time reads alone.
+world. Exact world, dimension or region-directory notifications reconcile full dimension contents
+and terrain availability. Other files beneath a dimension, including saved data such as raids and
+chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
+and inhabited-time reads alone.
 Places/creature point collections own their arrays and immutable region buckets. MapContent
 shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
 arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,

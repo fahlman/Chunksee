@@ -1,4 +1,5 @@
 import ChunkseeKit
+import CoreGraphics
 import Foundation
 import Testing
 @testable import Chunksee
@@ -11,6 +12,7 @@ import Testing
             y == 3 && z == 0 && bx < Int(count) ? 1 : 0
         }
         var root = try #require(spec.nbt.compound)
+        root["InhabitedTime"] = .long(2400)
         let blockX = Int32(x * 16)
         root["block_entities"] = .list([
             .compound(["id": .string("minecraft:chest"), "x": .int(blockX), "y": .int(64), "z": .int(0),
@@ -171,6 +173,96 @@ import Testing
         await changed([url], in: resources)
         #expect(session.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
         try await matchesCompleteRead(resources, dimension: dimension)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test(arguments: [false, true]) func savedDataEventsKeepIndexTerrainAndHeatImages(legacy: Bool) async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        if legacy {
+            try FileManager.default.moveItem(at: url.appendingPathComponent("dimensions/minecraft/overworld/region"),
+                                             to: url.appendingPathComponent("region"))
+            try FileManager.default.removeItem(at: url.appendingPathComponent("dimensions"))
+        }
+        let reads = Reads(), resources = try await self.resources(url, reads: reads)
+        let dimension = try #require(resources.dimensions.first { $0.id == overworld })
+        let session = WorldSession(resources: resources, dimensionID: overworld)
+        let map = try #require(session.map)
+        map.viewport.center = CGPoint(x: 512, y: 8)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
+        await map.waitUntilIdle()
+        session.heatMap.isShown = true
+        await session.heatMap.waitForReads()
+        let regions = [RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: 1, z: 0)]
+        let tiles = try regions.map { try #require(map.tiles[$0]) }
+        let heat = try regions.map { try #require(session.heatMap.visibleImages?[$0]) }
+        for relative in ["data/minecraft/raids.dat", "data/minecraft/chunk_tickets.dat",
+                         "data/minecraft/ender_dragon_fight.dat", "data",
+                         "region/r.0.0.mca.tmp", "region/notes.txt"] {
+            await reads.reset()
+            await changed([dimension.url.appendingPathComponent(relative)], in: resources)
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            #expect(await reads.requested.isEmpty, "Unconsumed file: \(relative)")
+            for (i, region) in regions.enumerated() {
+                #expect(map.tiles[region] === tiles[i], "Terrain retained after \(relative)")
+                #expect(session.heatMap.visibleImages?[region] === heat[i], "Time Spent retained after \(relative)")
+            }
+        }
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test(arguments: [false, true]) func mixedSavedDataAndTerrainEventsKeepOtherRegions(dataFirst: Bool) async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let reads = Reads(), resources = try await self.resources(url, reads: reads)
+        let dimension = try #require(resources.dimensions.first { $0.id == overworld })
+        let session = WorldSession(resources: resources, dimensionID: overworld)
+        let map = try #require(session.map)
+        map.viewport.center = CGPoint(x: 512, y: 8)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
+        await map.waitUntilIdle()
+        let unchanged = RegionCoordinate(x: 0, z: 0), changedRegion = RegionCoordinate(x: 1, z: 0)
+        let firstTile = try #require(map.tiles[unchanged]), secondTile = try #require(map.tiles[changedRegion])
+        let file = try write([terrain(32, count: 5)], in: dimension, folder: .terrain, region: 1)
+        let data = dimension.url.appendingPathComponent("data/minecraft/raids.dat")
+        await reads.reset()
+        await changed(dataFirst ? [data, file] : [file, data], in: resources)
+        await map.waitUntilIdle()
+        #expect(await reads.requested == ["\(overworld)@1,0"])
+        #expect(map.tiles[unchanged] === firstTile)
+        #expect(map.tiles[changedRegion] !== secondTile)
+        #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 6)
+        try await matchesCompleteRead(resources, dimension: dimension)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test(arguments: ["world", "dimension", "region", "entities", "poi"])
+    func exactDirectoryEventsStillReconcileIndexTerrainAndHeat(directory: String) async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let reads = Reads(), resources = try await self.resources(url, reads: reads)
+        let dimension = try #require(resources.dimensions.first { $0.id == overworld })
+        let session = WorldSession(resources: resources, dimensionID: overworld)
+        let map = try #require(session.map)
+        map.viewport.center = CGPoint(x: 512, y: 8)
+        map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
+        await map.waitUntilIdle()
+        session.heatMap.isShown = true
+        await session.heatMap.waitForReads()
+        let region = RegionCoordinate(x: 0, z: 0)
+        let tile = try #require(map.tiles[region]), heat = try #require(session.heatMap.visibleImages?[region])
+        let event = directory == "world" ? url : directory == "dimension" ? dimension.url : dimension.url.appendingPathComponent(directory)
+        await reads.reset()
+        await changed([event], in: resources)
+        await map.waitUntilIdle()
+        await session.heatMap.waitForReads()
+        #expect(Set(await reads.requested) == ["\(overworld)@0,0", "\(overworld)@1,0"])
+        #expect(map.tiles[region] !== tile)
+        #expect(session.heatMap.visibleImages?[region] !== heat)
         resources.close()
         await resources.waitUntilClosed()
     }
