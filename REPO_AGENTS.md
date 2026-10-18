@@ -65,6 +65,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
 
+`ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
+well as items. Structures retain their variant word order; the three vanilla dimension labels
+remain localized. Names do not replace identifiers or native document folder titles.
+
 | File | Owns |
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |

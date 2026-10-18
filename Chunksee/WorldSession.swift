@@ -225,7 +225,7 @@ final class WorldSession {
 
     /// A dimension's name as players know it, by id.
     func dimensionName(_ id: String) -> String {
-        dimensions.first { $0.id == id }?.displayName ?? id
+        dimensions.first { $0.id == id }?.displayName ?? ReadableName.from(id)
     }
 
     /// The world spawn when it's in the selected dimension, otherwise the origin.
@@ -732,7 +732,7 @@ extension ChunkseeKit.Dimension {
         case "minecraft:overworld": String(localized: "Overworld")
         case "minecraft:the_nether": String(localized: "The Nether")
         case "minecraft:the_end": String(localized: "The End")
-        default: id
+        default: ReadableName.from(id)
         }
     }
 }
