@@ -4,6 +4,7 @@ import Foundation
 /// Tests wait for entry/cancellation handshakes, then release the precise pending operation.
 actor AsyncReadGate<Value: Sendable> {
     private var reads: [String: [CheckedContinuation<Value, Never>]] = [:]
+    private var releasedValue: Value?
     private(set) var requested: [String] = []
     private var entered: [String: [CheckedContinuation<Void, Never>]] = [:]
     private var cancelled: Set<String> = []
@@ -12,7 +13,8 @@ actor AsyncReadGate<Value: Sendable> {
     func read(_ key: String) async -> Value {
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                reads[key, default: []].append(continuation)
+                if let value = releasedValue { continuation.resume(returning: value) }
+                else { reads[key, default: []].append(continuation) }
                 requested.append(key)
                 for waiter in entered.removeValue(forKey: key) ?? [] { waiter.resume() }
             }
@@ -29,6 +31,15 @@ actor AsyncReadGate<Value: Sendable> {
     func finish(_ key: String, with value: Value) {
         precondition(reads[key]?.isEmpty == false, "Release only an entered read")
         reads[key]!.removeFirst().resume(returning: value)
+    }
+
+    /// Release queued and subsequent reads while still recording every request. Coalescing
+    /// tests can finish both the old repeated-read behavior and the shared-read candidate.
+    func releaseAllAndFuture(with value: Value) {
+        releasedValue = value
+        let pending = reads.values.flatMap { $0 }
+        reads = [:]
+        for continuation in pending { continuation.resume(returning: value) }
     }
 
     private func noteCancellation(_ key: String) {

@@ -70,6 +70,47 @@ import Testing
     }
 }
 
+@Suite struct SharedNameReadTests {
+    @Test func overlappingLocalRequestsShareTheReadAndOneCanceledDocumentCannotLoseIt() async throws {
+        let gate = AsyncReadGate<[UUID: String]>()
+        let folder = try TestWorld.make(chunks: []), uuid = UUID()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let names = PlayerNames(defaults: defaults, readCaches: { await gate.read($0.path) })
+        let first = Task.immediate { await names.chooseMinecraftFolder(folder) }
+        await gate.waitForRequest(folder.path)
+        // Run this MainActor caller through its first suspension before releasing the source.
+        let second = Task.immediate { await names.reloadLocal() }
+        second.cancel()
+        await gate.releaseAllAndFuture(with: [uuid: "Shared Local Name"])
+        await first.value
+        await second.value
+        #expect(names.name(for: uuid) == "Shared Local Name")
+        #expect(await gate.requested == [folder.path])
+        await names.reloadLocal() // a later, nonoverlapping reload still rereads the chosen source
+        #expect(await gate.requested == [folder.path, folder.path])
+        names.forgetMinecraftFolder()
+    }
+
+    @Test func closingTheRequestingDocumentDoesNotDiscardTheGloballyDeduplicatedProfile() async {
+        let uuid = UUID(), gate = AsyncReadGate<(Data, Int)>()
+        let key = MojangProfiles.profileURL(for: uuid).lastPathComponent
+        let names = PlayerNames(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!,
+                                mojang: MojangProfiles(fetch: { await gate.read($0.lastPathComponent) }))
+        names.looksUpOnline = true
+        let first = Task.immediate { await names.lookUp([uuid]) }
+        await gate.waitForRequest(key)
+        let second = Task.immediate { await names.lookUp([uuid]) }
+        await second.value // the second document has already joined the shared attempt policy
+        first.cancel()
+        await gate.finish(key, with: (Data(#"{"name":"Shared Online Name"}"#.utf8), 200))
+        await first.value
+        #expect(names.name(for: uuid) == "Shared Online Name")
+        #expect(await gate.requested == [key])
+        names.looksUpOnline = false
+    }
+}
+
 @Suite struct InspectorReadLifetimeTests {
     @Test func thePreviousPlayerCannotReplaceTheCurrentPlayersRecords() async throws {
         let url = try TestWorld.make(chunks: [])
