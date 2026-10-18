@@ -54,7 +54,6 @@ import Testing
         disclosure.places.remove(.spawner)
         disclosure.selectOnMap(.row(.place(spawner.id)), in: session)
         #expect(!disclosure.collapsedLayers.contains(.places) && disclosure.places.contains(.spawner))
-        session.sidebarSelection = .worldInfo
         session.choose(.worldInfo)
         session.mapClicked(.row(.place(portal.id)))
         #expect(session.inspector == .selection && session.selection == portal.portal.map(MapSelection.portal))
@@ -81,7 +80,7 @@ import Testing
         var disclosure = SidebarDisclosure()
         disclosure.selectOnMap(.searchHit(hit.id), in: session)
         #expect(session.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
-        #expect(session.search.selectedHitID == hit.id && session.map?.viewport == viewport)
+        #expect(session.selectedHitID == hit.id && session.map?.viewport == viewport)
         session.saveSearch()
         session.search.text = ""
         await session.search.waitForSearch()
@@ -90,7 +89,7 @@ import Testing
         #expect(session.sidebarSelection == row)
         #expect(disclosure.savedSearches == Set(session.savedSearches.all.map(\.id)))
         session.mapClicked(nil)
-        #expect(session.search.selectedHitID == nil && session.sidebarSelection == nil)
+        #expect(session.selectedHitID == nil && session.sidebarSelection == nil)
         session.close()
         await session.waitUntilClosed()
     }
@@ -113,15 +112,21 @@ import Testing
         let hit = try #require(session.search.results.first)
         session.show(map)
         let viewport = session.map?.viewport
-        let targets: [MapTarget?] = [.row(.structure(structure.id)), .row(.place(spawner.id)), .row(.biome(biome.id)),
-            .row(.savedPlace(place.id)), .searchHit(hit.id), nil,
-            .row(.structure("gone")), .row(.place("gone")), .row(.creature("gone")),
-            .row(.player(missingDimensionPlayerID)), .searchHit("gone")]
+        let targets: [(MapTarget?, SidebarItem?)] = [
+            (.row(.structure(structure.id)), .structure(structure.id)),
+            (.row(.place(spawner.id)), .place(spawner.id)), (.row(.biome(biome.id)), .biome(biome.id)),
+            (.row(.savedPlace(place.id)), .savedPlace(place.id)),
+            (.searchHit(hit.id), .hit(query: "place:spawner", id: hit.id)), (nil, nil),
+            (.row(.structure("gone")), nil), (.row(.place("gone")), nil), (.row(.creature("gone")), nil),
+            (.row(.player(missingDimensionPlayerID)), nil), (.searchHit("gone"), nil),
+        ]
         var disclosure = SidebarDisclosure()
-        for target in targets {
+        for (target, row) in targets {
             disclosure.selectOnMap(target, in: session)
             #expect(session.mapContent.inGameMap?.map.id == map.id && session.selection == .inGameMap(map))
             #expect(session.inspector == .selection && session.map?.viewport == viewport)
+            #expect(session.sidebarSelection == row)
+            #expect(session.selectedHitID == (row == .hit(query: "place:spawner", id: hit.id) ? hit.id : nil))
         }
         for target in [MapTarget.row(.place(portal.id)), .row(.creature(creature.id))] {
             session.show(map)
@@ -142,7 +147,7 @@ import Testing
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         for row in [SidebarItem.worldInfo, .storage] {
-            session.sidebarSelection = row; session.choose(row)
+            session.choose(row)
             let inspector = session.inspector
             session.mapClicked(nil)
             #expect(session.sidebarSelection == row && session.inspector == inspector)
@@ -220,7 +225,6 @@ import Testing
         let structure = try #require(session.selectedIndex.structures.first)
         let position = try #require(session.listedPlayers.first { $0.uuid == playerID }?.position)
         // Choosing the row centers the map on them and shows their details, highlighted on the map.
-        session.sidebarSelection = .player(playerID)
         session.choose(.player(playerID))
         #expect(session.inspector == .player(playerID) && session.mapContent.selectedPlayerID == playerID)
         #expect(session.map?.viewport.center == CGPoint(x: position.x, y: position.z))
@@ -237,10 +241,167 @@ import Testing
         // Without a mappable position, their row still shows their details and leaves the map alone.
         let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
         #expect(!session.canFocus(unavailable))
-        session.sidebarSelection = .player(unavailable.uuid)
         session.choose(.player(unavailable.uuid))
         #expect(session.inspector == .player(unavailable.uuid) && session.map?.viewport == viewport)
         session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func sidebarChoicesReplaceOldDetailsAndPinHighlightTogether() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "place:spawner"
+        await session.search.waitForSearch()
+        let index = session.selectedIndex
+        let creature = try #require(index.creatures.first), portal = try #require(index.places.first { $0.portal != nil })
+        let spawner = try #require(index.places.first { $0.group == .spawner }), structure = try #require(index.structures.first)
+        let biome = try #require(index.biomeAreas.first), hit = try #require(session.search.results.first)
+        let saved = try #require(session.savedPlaces.add(name: "Base", dimension: "minecraft:overworld", at: .zero))
+        let detailRows: [SidebarItem] = [.creature(creature.id), .place(portal.id), .player(playerID)]
+        let plainRows: [SidebarItem] = [.structure(structure.id), .place(spawner.id), .biome(biome.id),
+                                        .savedPlace(saved.id), .hit(query: session.search.text, id: hit.id)]
+        for detail in detailRows {
+            for plain in plainRows {
+                session.mapClicked(.searchHit(hit.id))
+                session.choose(detail)
+                #expect(session.sidebarSelection == detail && session.inspector != nil && session.selectedHitID == nil)
+                session.choose(plain)
+                #expect(session.sidebarSelection == plain && session.inspector == nil && session.selection == nil)
+                #expect(session.mapContent.selectedPlayerID == nil && session.mapContent.selection == nil)
+                #expect(session.selectedHitID == (plain == .hit(query: session.search.text, id: hit.id) ? hit.id : nil))
+            }
+        }
+        // A retained overlay is independent of the row and survives every nondetail choice.
+        let map = try #require(session.inGameMaps.first)
+        for row in plainRows {
+            session.show(map, keepingZoom: true)
+            session.choose(row)
+            #expect(session.sidebarSelection == row && session.selection == .inGameMap(map))
+            #expect(session.inspector == .selection && session.mapContent.inGameMap?.map.id == map.id)
+        }
+        session.show(map, keepingZoom: true)
+        session.mapClicked(nil)
+        #expect(session.sidebarSelection == .inGameMap(map.id) && session.selection == .inGameMap(map))
+        session.mapClicked(.searchHit(hit.id))
+        session.mapClicked(nil)
+        #expect(session.sidebarSelection == nil && session.selectedHitID == nil && session.selection == .inGameMap(map))
+        session.choose(.player(playerID))
+        session.inspector = nil
+        #expect(session.sidebarSelection == .player(playerID) && session.inspector == nil)
+        #expect(session.mapContent.selectedPlayerID == nil && session.selection == nil)
+        let missing = try #require(session.savedPlaces.add(name: "Missing", dimension: "missing:dimension", at: .zero))
+        let viewport = session.map?.viewport
+        #expect(!session.canVisit(missing) && session.listedPlaces.contains { $0.id == missing.id })
+        session.choose(.savedPlace(missing.id))
+        #expect(session.map?.viewport == viewport && session.sidebarSelection == .player(playerID))
+        session.search.text = " diamond "
+        #expect(session.canSaveSearch)
+        session.saveSearch()
+        #expect(session.savedSearches.contains("diamond") && !session.canSaveSearch)
+        session.search.text = "diamond "
+        #expect(!session.canSaveSearch)
+        session.close()
+        await session.waitUntilClosed()
+    }
+
+    @Test func searchPinsAlwaysHaveAListedRowWithinTheirOwnDimensionsLimit() async throws {
+        func spawners() -> TestWorld.ChunkSpec {
+            var chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+            var nbt = chunk.nbt.compound!
+            nbt["block_entities"] = .list((0..<205).map { i in .compound([
+                "id": .string("minecraft:mob_spawner"), "x": .int(Int32(i % 16)), "y": .int(12), "z": .int(Int32(i / 16)),
+                "SpawnData": .compound(["entity": .compound(["id": .string("minecraft:zombie")])]),
+            ]) })
+            chunk.nbt = .compound(nbt)
+            return chunk
+        }
+        let chunk = spawners(), url = try TestWorld.make(chunks: [chunk])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let nether = url.appendingPathComponent("dimensions/minecraft/the_nether/region")
+        try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
+        try Data(TestWorld.regionFile([chunk])).write(to: nether.appendingPathComponent("r.0.0.mca"))
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let sessions = [WorldSession(resources: resources, dimensionID: "minecraft:overworld"),
+                        WorldSession(resources: resources, dimensionID: "minecraft:the_nether")]
+        defer { sessions.forEach { $0.close() } }
+        for session in sessions {
+            await session.search.waitForIndex()
+            session.search.text = "place:spawner"
+            await session.search.waitForSearch()
+            let listed = session.listedHits(for: session.search.text)
+            #expect(listed.total == 205 && listed.rows.count == 200)
+            #expect(session.search.results.count == 410)
+            #expect(Set(session.mapContent.hits.map(\.id)) == Set(listed.rows.map(\.id)))
+            let viewport = session.map?.viewport
+            for hit in session.mapContent.hits {
+                session.mapClicked(.searchHit(hit.id))
+                #expect(session.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
+                #expect(session.selectedHitID == hit.id && session.map?.viewport == viewport)
+            }
+            let unlisted = try #require(session.listed(session.search.results).dropFirst(200).first)
+            session.mapClicked(.searchHit(unlisted.id))
+            #expect(session.sidebarSelection == nil && session.selectedHitID == nil)
+            session.saveSearch()
+            session.search.text = ""
+            await session.search.waitForSearch()
+            #expect(Set(session.mapContent.hits.map(\.id)) == Set(listed.rows.map(\.id)))
+            let hit = try #require(session.mapContent.hits.first)
+            session.mapClicked(.searchHit(hit.id))
+            #expect(session.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
+            // The ordinary Places layer still contains every spawner, independently of search.
+            session.visibility.places.insert(.spawner)
+            #expect(session.mapContent.places.filter { $0.group == .spawner }.count == 205)
+        }
+        sessions.forEach { $0.close() }
+        for session in sessions { await session.waitUntilClosed() }
+    }
+
+    @Test func selectedPortalAndCreatureUseLiveDataAndDisappearWhenRemoved() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        session.refreshDelay = .zero
+        await session.search.waitForIndex()
+        let portal = try #require(session.selectedIndex.places.first { $0.portal != nil })
+        session.choose(.place(portal.id))
+        let file = url.appendingPathComponent("dimensions/minecraft/overworld/poi/r.0.0.mca")
+        func savePortal(at heights: [Int32]) throws {
+            let records: [NBT] = heights.map { .compound([
+                "type": .string("minecraft:nether_portal"), "pos": .intArray([11, $0, 5]), "free_tickets": .int(0),
+            ]) }
+            let nbt = NBT.compound(["DataVersion": .int(5023), "Sections": .compound(["4": .compound([
+                "Valid": .byte(1), "Records": .list(records),
+            ])])])
+            try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: nbt)])).write(to: file)
+        }
+        try savePortal(at: [64, 65])
+        session.worldChanged([file])
+        await session.waitForRefresh()
+        let updated = try #require(session.selectedIndex.places.first { $0.id == portal.id }?.portal)
+        #expect(updated != portal.portal && session.selection == .portal(updated))
+        #expect(session.sidebarSelection == .place(portal.id) && session.inspector == .selection)
+        try savePortal(at: [])
+        session.worldChanged([file])
+        await session.waitForRefresh()
+        #expect(session.selection == nil && session.sidebarSelection == nil && session.inspector == nil)
+        let creature = try #require(session.selectedIndex.creatures.first)
+        session.choose(.creature(creature.id))
+        let entities = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
+        try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: .compound([
+            "DataVersion": .int(5023), "Entities": .list([]),
+        ]))])).write(to: entities)
+        session.worldChanged([entities])
+        await session.waitForRefresh()
+        #expect(session.selection == nil && session.sidebarSelection == nil && session.inspector == nil)
+        session.close()
+        await session.waitUntilClosed()
     }
 
     @Test func hitTestingMatchesVisibleBadgesAndPlayerDrawingCoordinates() throws {

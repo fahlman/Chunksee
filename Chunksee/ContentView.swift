@@ -175,9 +175,7 @@ struct WorldView: View {
     /// Only input through the native List binding navigates and requests sidebar focus.
     private var sidebarSelection: Binding<SidebarItem?> {
         Binding { session.sidebarSelection } set: { item in
-            session.sidebarSelection = item
-            guard let item else { return }
-            isSidebarFocused = true
+            if item != nil { isSidebarFocused = true }
             session.choose(item)
         }
     }
@@ -305,7 +303,7 @@ private struct SearchResultsSection: View {
     var body: some View {
         let search = session.search
         Section {
-            HitList(session: session, query: search.text, hits: session.listed(search.results))
+            HitList(session: session, query: search.text)
         } header: {
             HStack {
                 Text("Search Results")
@@ -313,7 +311,7 @@ private struct SearchResultsSection: View {
                 Button("Save Search", systemImage: "plus.circle") { session.saveSearch() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(session.savedSearches.contains(search.text.trimmingCharacters(in: .whitespaces)))
+                    .disabled(!session.canSaveSearch)
                     .help("Keep this search in the sidebar")
             }
         }
@@ -329,16 +327,16 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.listed(session.search.results(for: saved.query))
+                let hits = session.listedHits(for: saved.query)
                 DisclosureGroup(isExpanded: Binding {
                     expanded.contains(saved.id)
                 } set: {
                     if $0 { expanded.insert(saved.id) } else { expanded.remove(saved.id) }
                 }) {
-                    HitList(session: session, query: saved.query, hits: hits)
+                    HitList(session: session, query: saved.query)
                 } label: {
                     HStack {
-                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.count))", systemImage: "magnifyingglass")
+                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.total))", systemImage: "magnifyingglass")
                         Spacer()
                         VisibilityButton(isShown: Binding {
                             saved.isShown
@@ -360,21 +358,20 @@ private struct SavedSearchesSection: View {
 private struct HitList: View {
     let session: WorldSession
     let query: String
-    let hits: [SearchHit]
-
     var body: some View {
         let search = session.search
-        if (search.isIndexing || search.isSearching) && hits.isEmpty {
+        let hits = session.listedHits(for: query)
+        if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
             Label {
                 Text("Searching the world…")
             } icon: {
                 ProgressView().controlSize(.small)
             }
             .foregroundStyle(.secondary)
-        } else if hits.isEmpty {
+        } else if hits.rows.isEmpty {
             Text("No matches").foregroundStyle(.secondary)
         } else {
-            ForEach(hits.prefix(200)) { hit in
+            ForEach(hits.rows) { hit in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(hit.detail).lineLimit(2)
                     Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -384,8 +381,8 @@ private struct HitList: View {
                 .id(SidebarItem.hit(query: query, id: hit.id))
                 .selectionDisabled(hit.position == nil)
             }
-            if hits.count > 200 {
-                Text("Showing the first 200 of \(hits.count)").font(.caption).foregroundStyle(.secondary)
+            if hits.total > hits.rows.count {
+                Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)
             }
         }
     }

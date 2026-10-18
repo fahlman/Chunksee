@@ -94,7 +94,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector, pet appearance/collar labels and saved current/maximum health in hearts; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `PlayerEquipment.swift`, `LinkedPets.swift` | Native player inspector, saved effect duration/equipment presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
-| `SidebarDisclosure.swift` | Each dimension view's expanded sidebar groups and revealing a map marker's ancestors |
+| `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -145,13 +145,21 @@ without a mappable position keep selectable rows for their details. Any player m
 dimension shows its player, including a death or respawn point of somebody listed in another
 dimension or with no current position; it selects a row only when this dimension lists them.
 
-Map clicks and VoiceOver marker actions select the corresponding native sidebar row. Only user
+WorldSession owns one selected item identity. The selected row, map/pin highlight and inspector
+content are derived from current indexed data; portals and creatures do not retain stale detail
+snapshots. The native inspector visibility and an in-game map retained under nondetail markers
+are separate presentation state. Sidebar, pointer, VoiceOver and linked-pet input share that
+selection transition. Selecting an item without details closes previous pet/player/portal details
+(Ryan, 2026-10-17, fahlman/Chunksee#167). Empty/stale map input clears transient row/pin selection
+while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
+VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
 one action shared with the behavioral tests. Search pins
-select an existing result row (the active query first, then a shown saved query); the 200-row limit
-and per-dimension listing rules still apply.
+select an existing result row (the active query first, then a shown saved query); one listed-hits function owns the 200-row limit and per-dimension policy for the sidebar, drawn
+search pins and their resolver. Every drawn search pin has a reachable row. Save Search enablement
+uses the same trimmed-query rule in the sidebar and Navigate menu.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening

@@ -136,8 +136,8 @@ import Testing
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
-        session.show(session.search.results[0])
-        #expect(session.search.selectedHitID == session.search.results[0].id)
+        session.choose(.hit(query: session.search.text, id: session.search.results[0].id))
+        #expect(session.selectedHitID == session.search.results[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
@@ -320,7 +320,7 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.visibility.biomes.isEmpty)
-        session.show(hit)
+        session.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
         #expect(session.mapContent.biomeAreas.count == 1)
     }

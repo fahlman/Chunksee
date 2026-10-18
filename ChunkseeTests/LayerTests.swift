@@ -297,11 +297,10 @@ enum StructureTestWorld {
         // The map centers on it but keeps the zoom the user chose.
         #expect(session.map?.viewport == MapViewport(center: summer.position, scale: 0.25))
         // World Info stays selected in the sidebar only while the inspector shows it.
-        session.sidebarSelection = .worldInfo
         session.choose(.worldInfo)
         #expect(session.inspector == .world && session.selection == nil)
         session.inspector = .storage
-        #expect(session.sidebarSelection == nil)
+        #expect(session.sidebarSelection == .storage)
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
         session.center(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
