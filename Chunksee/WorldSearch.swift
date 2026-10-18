@@ -264,28 +264,31 @@ nonisolated enum WorldSearch {
 
     /// Whether an item matches every word in its readable name, id, custom name or book text.
     static func matches(_ item: ItemStack, words: [String]) -> Bool {
-        var text = [ReadableName.from(item.id), item.id, item.customName ?? ""]
+        var text = [ItemAppearance.label(of: item), item.id]
         if let book = item.book { text += [book.title ?? "", book.author ?? ""] + book.pages }
         return contains(text.joined(separator: "\n"), words: words)
     }
 
-    /// How a matching item is listed: its custom name, a written book's title and author, or its
-    /// readable name.
-    static func label(of item: ItemStack) -> String {
-        if let name = item.customName { return "“\(name)”" }
-        if let book = item.book, let title = book.title {
-            return book.author.map { String(localized: "“\(title)” by \($0)") } ?? "“\(title)”"
+    private struct ItemLabel: Hashable {
+        var id: String
+        var text: String
+
+        init(_ item: ItemStack) {
+            id = item.id
+            text = ItemAppearance.label(of: item)
         }
-        return ReadableName.from(item.id)
     }
 
     /// Matching items summarized as "64 Diamond, 3 Diamond Sword", with nested contents included.
     static func summary(of items: [ItemStack], words: [String]) -> (text: String, count: Int)? {
         let hits = items.flatMap(\.allItems).filter { matches($0, words: words) }
         guard !hits.isEmpty else { return nil }
-        let grouped = Dictionary(grouping: hits, by: label).mapValues { $0.reduce(0) { $0 + $1.count } }
-        let text = grouped.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-            .map { "\($0.value) \($0.key)" }.joined(separator: ", ")
+        let grouped = Dictionary(grouping: hits, by: ItemLabel.init).mapValues { $0.reduce(0) { $0 + $1.count } }
+        let text = grouped.sorted {
+            if $0.value != $1.value { return $0.value > $1.value }
+            if $0.key.text != $1.key.text { return $0.key.text < $1.key.text }
+            return $0.key.id < $1.key.id
+        }.map { ItemAppearance.counted($0.key.text, count: $0.value, includingOne: true) }.joined(separator: ", ")
         return (text, hits.reduce(0) { $0 + $1.count })
     }
 
@@ -315,8 +318,7 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let container = entry.value
             guard let found = summary(of: container.items, words: words) else { continue }
-            let kind = ReadableName.from(container.kind)
-            let title = container.customName.map { "“\($0)” \(kind)" } ?? kind
+            let title = ItemAppearance.label(kind: container.kind, customName: container.customName)
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
                                   position: CGPoint(x: Double(container.x) + 0.5, y: Double(container.z) + 0.5), y: container.y,
