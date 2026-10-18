@@ -221,7 +221,7 @@ import Testing
             "Inventory": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(4)])]),
         ]))
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
-                                     players: [player], details: original.details)
+                                     dimensionDocuments: original.dimensionDocuments, players: [player], details: original.details)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let saved = SavedSearches(defaults: defaults)
         saved.add("diamond")
