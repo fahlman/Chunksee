@@ -79,6 +79,7 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
+| `MarkerGeometry.swift`, `MarkerStyle.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
@@ -206,6 +207,14 @@ enlarge the body target. Selected pets/search pins use their larger radius; near
 cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
 retain the saved coordinates. Marker zoom growth stays separate.
+MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
+layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
+cache keys the actual symbol and tint. Structure outlines/portal rooms, bounds culling and marker
+ordering remain in MapView. Hidden captions do not format names or resolve text; semantic caption
+fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
+map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player
+and saved-place sidebar icons share their presentation owner, and the portal inspector uses its
+group's symbol while retaining its singular title. No zoom-growth or visibility policy changes.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected

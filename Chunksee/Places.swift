@@ -214,7 +214,7 @@ struct PortalDetailView: View {
                         .monospacedDigit()
                 }
             } header: {
-                Label("Nether Portal", systemImage: "oval.portrait.fill").font(.headline)
+                Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }
             Section {
                 switch link {

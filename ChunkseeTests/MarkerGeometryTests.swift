@@ -2,6 +2,7 @@ import ChunkseeKit
 import CoreGraphics
 import CryptoKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Chunksee
 
@@ -154,20 +155,50 @@ import Testing
                 position: CGPoint(x: 30, y: 20), y: 64, label: "Death", isOutdated: true),
             MapMarker(id: "respawn", playerID: UUID(), kind: .respawn,
                 position: CGPoint(x: -40, y: -30), y: 64, label: "Bed", isOutdated: false)]
+        content.places.append(PlaceMarker(PointOfInterest(type: "minecraft:home", x: 70, y: 64, z: -45, freeTickets: 0)))
+        content.players.append(MapMarker(id: "outdated", playerID: UUID(), kind: .player,
+            position: CGPoint(x: -70, y: -40), y: 64, label: "Old Friend", isOutdated: true))
         content.savedPlaces = [SavedPlace(name: "Fixture", dimension: dimension.id, x: 50, z: 35)]
-        for scale in [0.0625, 0.125, 0.25, 0.5, 2, 32] {
+        for scale in [0.0625, 0.125, 0.25, 0.49, 0.5, 1, 1.99, 2, 4, 32] {
             map.viewport.scale = scale
-            for selected in [false, true] {
+            for variant in [0, 1, 2] {
+                let selected = variant != 0
                 content.selection = selected ? .creature(pet) : nil
                 content.selectedHitID = selected ? search.id : nil
-                content.selectedPlayerID = selected ? content.players.first?.playerID : nil
+                content.selectedPlayerID = selected ? (variant == 1 ? content.players.first?.playerID : content.players.last?.playerID) : nil
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
                 #expect(image.data.count > 1_000)
                 let digest = SHA256.hash(data: image.data).map { String(format: "%02x", $0) }.joined()
                 // This bounded baseline/candidate comparison is evidence, not a portable golden
                 // image assertion: system symbol/font rasterization can change with macOS.
-                print("Marker geometry image \(scale) selected=\(selected): \(digest)")
+                print("Marker presentation image \(scale) variant=\(variant): \(digest)")
             }
         }
+    }
+
+    @Test func captionsFormatNamesOnlyWhenTheyAreShown() throws {
+        let probe = NameProbe()
+        let cases: [(MarkerStyle, CGFloat, Bool)] = [
+            (.place(.spawner, claimed: false), 1, false),
+            (.structure(try structure().group), 0.49, false),
+            (.player(.death, outdated: true, selected: false), 4, false),
+            (.search(selected: true), 4, false),
+            (.place(.spawner, claimed: false), 2, true),
+            (.creature(try pet().group, selected: true), 0.0625, true),
+            (.player(.player, outdated: true, selected: true), 0.0625, true),
+        ]
+        for (style, scale, expected) in cases {
+            let before = probe.calls
+            let renderer = ImageRenderer(content: Canvas { context, _ in
+                style.drawName(probe.name(), at: CGPoint(x: 120, y: 30), scale: scale, in: context)
+            }.frame(width: 240, height: 100))
+            _ = try #require(renderer.cgImage)
+            #expect((probe.calls > before) == expected)
+        }
+    }
+
+    private final class NameProbe {
+        var calls = 0
+        func name() -> String { calls += 1; return "Fixture label" }
     }
 }

@@ -217,9 +217,9 @@ private struct PlayerRow: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "person.fill")
+                Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
-            .opacity(canFocus && !session.isOutdated(player) ? 1 : 0.6)
+            .opacity(canFocus && !session.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: Binding {
