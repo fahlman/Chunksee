@@ -177,7 +177,10 @@ final class WorldResources {
                         if pendingTerrain[dimension.id] != nil { pendingTerrain[dimension.id]?.merge(change) }
                         else { pendingTerrain[dimension.id] = change }
                     }
-                } else {
+                } else if path == dimension.url.standardizedFileURL.path ||
+                            ChunkseeKit.Dimension.Folder.allCases.contains(where: { path == dimension.directory($0).standardizedFileURL.path }) {
+                    // Only broad region/dimension events need reconciliation. Saved data such as
+                    // raids.dat and chunk_tickets.dat does not feed the index, terrain or heat map.
                     pendingIndex[dimension.id] = .all
                     pendingTerrain[dimension.id] = .all
                 }
