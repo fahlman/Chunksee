@@ -260,8 +260,7 @@ nonisolated enum WorldSearch {
             guard let villager = entry.value.creature.villager else { return nil }
             let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
             guard !matching.isEmpty else { return nil }
-            let job = villager.profession.flatMap { $0 == "minecraft:none" ? nil : ReadableName.from($0) } ?? entry.value.name
-            let title = villager.level.map { "\(job), \(TradeText.levelName($0))" } ?? job
+            let title = VillagerText.description(villager) ?? entry.value.name
             let detail = matching.map { trade in
                 let offer = String(localized: "\(TradeText.describe(trade.sell)) for \(TradeText.cost(of: trade))")
                 return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
