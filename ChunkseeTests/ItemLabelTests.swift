@@ -38,7 +38,7 @@ import Testing
         let plain = ItemStack(id: "minecraft:diamond", count: 1234)
         #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "en_US")) == "1,234 Diamond")
         #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "fr_FR")) == "1\u{202f}234 Diamond")
-        #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "ar")) == "١٬٢٣٤ Diamond")
+        #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "ar_EG")) == "١٬٢٣٤ Diamond")
     }
 
     @Test func tradeSearchFindsCustomNamesOnEveryCostAndRetainsEnchantments() throws {
