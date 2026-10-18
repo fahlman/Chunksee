@@ -59,6 +59,13 @@ import Testing
     @Test func linkedPetJumpOpensAndSelectsInTheDestinationDocument() async throws {
         let url = try makeWorld()
         defer { try? FileManager.default.removeItem(at: url) }
+        let directory = url.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let player = NBT.compound(["DataVersion": .int(5023), "Health": .float(20),
+                                  "Dimension": .string("minecraft:overworld"),
+                                  "Pos": .list([.double(100), .double(64), .double(200)])])
+        try Data(Compression.deflate(player.serialized(), gzip: true))
+            .write(to: directory.appendingPathComponent("\(owner.uuidString).dat"))
         let source = try await open(url)
         let target = WorldSession(resources: source.resources, dimensionID: "minecraft:the_nether")
         defer { source.close(); target.close() }
@@ -66,7 +73,8 @@ import Testing
         let targetInitial = MapViewport(center: CGPoint(x: 20, y: 30), scale: 4)
         source.map?.viewport = initial
         target.map?.viewport = targetInitial
-        source.inspector = .player(owner)
+        source.choose(.player(owner))
+        #expect(source.inspector == .player(owner))
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
         source.openDocument = { continuation.yield($0) }
         var opened = opens.makeAsyncIterator()
