@@ -57,10 +57,13 @@ import Testing
         ])]))
     }
 
-    private func resources(_ url: URL, reads: Reads) async throws -> WorldResources {
+    // These tests drive notifications explicitly. A real watcher would deliver them again after
+    // its coalescing delay, making exact read counts depend on the test's speed.
+    private func resources(_ url: URL, reads: Reads,
+                           watchWorld: (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
                                        readRegion: { dimension, region in
                                            await reads.record(dimension.id, region)
                                            return await RegionData.read(dimension, region: region)
@@ -92,6 +95,38 @@ import Testing
         #expect(incremental.biomeAreas.map(\.chunkCount).sorted() == complete.biomeAreas.map(\.chunkCount).sorted())
         #expect(incremental.blocks.sorted { $0.chunk.x < $1.chunk.x } == complete.blocks.sorted { $0.chunk.x < $1.chunk.x })
         #expect(incremental.formats == complete.formats)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func realFileNotificationsRefreshTheWorldWithoutInjectedChanges() async throws {
+        let url = try TestWorld.make(chunks: [terrain(0)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(World(contentsOf: url).dimension("overworld"))
+        let reads = Reads()
+        let (events, continuation) = AsyncStream.makeStream(of: [URL].self)
+        defer { continuation.finish() }
+        var watching = false
+        let resources = try await self.resources(url, reads: reads, watchWorld: { folder, notify in
+            let watcher = WorldWatcher(folder: folder) { files in
+                notify(files)
+                continuation.yield(files)
+            }
+            watching = watcher != nil
+            return watcher
+        })
+        defer { resources.close() }
+        try #require(watching)
+        #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 1)
+        await reads.reset()
+        let file = try write([terrain(0, count: 9)], in: dimension, folder: .terrain, region: 0)
+        for await files in events {
+            if files.contains(where: { $0.resolvingSymlinksInPath() == file.resolvingSymlinksInPath() }) { break }
+        }
+        await resources.waitForRefresh()
+        await resources.index.waitForIndex()
+        #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 9)
+        #expect(await reads.requested.contains("\(overworld)@0,0"))
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
     @Test func terrainEntitiesAndPOIReuseOtherRegionsAndPreserveWholeDimensionAggregates() async throws {
