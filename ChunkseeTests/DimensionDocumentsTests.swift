@@ -313,8 +313,12 @@ import Testing
                 Issue.record("A remembered dimension should read through its world")
                 continue
             }
-            #expect(snapshot.world.world.level.name == "Test" && snapshot.documentURL == document)
-            snapshot.world.access.release()
+            defer { snapshot.discardUnused() }
+            guard case .snapshot(let world) = snapshot.source else {
+                Issue.record("A reader without an AppModel should own its opening snapshot")
+                continue
+            }
+            #expect(world.world.level.name == "Test" && snapshot.documentURL == document)
         }
         await #expect(throws: WorldOpenError.notADimension) {
             try await reader.readFolder(url.appendingPathComponent("dimensions"))

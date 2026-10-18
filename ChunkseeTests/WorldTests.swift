@@ -53,7 +53,7 @@ import Testing
         }
         let original = try await WorldSnapshot.read(url)
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
-                                     players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
+                                     dimensionDocuments: original.dimensionDocuments, players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
         let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
         let session = WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
