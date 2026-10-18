@@ -40,8 +40,9 @@ final class WorldResources {
     let views: RememberedViews
     let defaults: UserDefaults
     let cacheRoot: URL?
+    private(set) var playerSnapshot: PlayerSnapshot
+    var players: [PlayerInfo] { playerSnapshot.players }
     private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData
-    private(set) var players: [PlayerInfo]
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -85,7 +86,7 @@ final class WorldResources {
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
-        players = snapshot.players
+        playerSnapshot = PlayerSnapshot(snapshot.players)
         self.names = names
         self.savedSearches = savedSearches
         self.defaults = defaults
@@ -288,8 +289,8 @@ final class WorldResources {
             let generation = playerReadGeneration
             let updated = await readPlayers(world)
             guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
-            players = updated
-            for session in sessions.values.compactMap(\.value) { session.search.players = updated }
+            playerSnapshot = PlayerSnapshot(updated)
+            for session in sessions.values.compactMap(\.value) { session.search.playerSnapshot = playerSnapshot }
         }
     }
 

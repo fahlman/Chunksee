@@ -387,6 +387,8 @@ import Testing
     @Test func anOlderPlayerReadCannotOverwriteANewerOne() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let session = WorldSession(resources: resources)
+        let originalPlayers = resources.playerSnapshot
         resources.refreshDelay = .zero
         let gate = AsyncReadGate<[PlayerInfo]>()
         let reads = ReadCounter()
@@ -405,6 +407,11 @@ import Testing
         await gate.finish("read0", with: [player(atX: 100)])
         await resources.waitForRefresh()
         #expect(resources.players.first?.position?.x == 200)
+        #expect(resources.playerSnapshot !== originalPlayers)
+        #expect(session.search.playerSnapshot === resources.playerSnapshot)
+        #expect(session.search.players.first?.position?.x == 200)
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
     @Test func focusedDocumentsSetPriorityAndInactiveSavesKeepTheFrontDimension() async throws {

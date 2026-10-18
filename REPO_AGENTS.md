@@ -80,7 +80,7 @@ remain localized. Names do not replace identifiers or native document folder tit
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, players, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
+| `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, immutable player publication, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
@@ -97,7 +97,7 @@ remain localized. Names do not replace identifiers or native document folder tit
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
-| `SearchModel.swift` | Independent per-dimension queries against the shared world index, current immutable result snapshots, and shared saved searches |
+| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
@@ -195,8 +195,15 @@ does not supply that point. Held menus disable/guard commands when their documen
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
-ready. Unchanged saved queries reuse completed or pending work; index, player and name changes
-invalidate it. Callers that need completion await `waitForSearch()`.
+ready. Each world's `WorldIndexStore.savedQueries` shares identical pending/completed saved-query
+work across dimension documents, keyed by index revision, the shared player-snapshot identity and
+player-name presentation. `WorldResources` publishes one immutable `PlayerSnapshot` per completed
+player read; current and later documents share that instance. Checking query sources never compares
+player NBT. A newly published read invalidates saved results even if its data happens to be equal;
+names can invalidate independently. Typed unsaved queries remain per document. Removing a saved query retires its cached
+work; an active typed waiter can still finish. Closing one document releases its wait without
+cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
+retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
 
 `PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
 share one pending read; later reloads still reread the source. Closing one caller does not cancel

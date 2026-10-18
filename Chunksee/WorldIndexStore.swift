@@ -5,6 +5,7 @@ import Observation
 /// One index pass per world, shared by every dimension's independent search controls.
 @Observable
 final class WorldIndexStore {
+    let savedQueries = SavedQueryResults()
     private(set) var index = SearchIndex()
     private(set) var portals: [String: [NetherPortal]] = [:]
     private(set) var revision = 0
@@ -103,11 +104,15 @@ final class WorldIndexStore {
     /// still drains the cancelled reads.
     func cancel() {
         isClosed = true
+        savedQueries.cancel()
         tasks.values.forEach { $0.cancel() }
         indexTask = nil
         queuedPass = nil
         isIndexing = false
     }
 
-    func waitForTasks() async { for task in tasks.values { await task.value } }
+    func waitForTasks() async {
+        for task in tasks.values { await task.value }
+        await savedQueries.waitForTasks()
+    }
 }
