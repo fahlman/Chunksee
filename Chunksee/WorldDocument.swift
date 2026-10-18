@@ -30,6 +30,8 @@ nonisolated struct WorldSnapshot: Sendable {
     let access: WorldReadAccess
     let world: World
     let dimensions: [ChunkseeKit.Dimension]
+    /// Resolved document paths to dimension IDs, prepared off-main with the opening metadata.
+    let dimensionDocuments: [String: String]
     let players: [PlayerInfo]
     let details: WorldDetails
 
@@ -56,7 +58,13 @@ nonisolated struct WorldSnapshot: Sendable {
         do {
             try Task.checkCancellation()
             let world = try World(contentsOf: url)
-            let snapshot = WorldSnapshot(access: access, world: world, dimensions: world.dimensions(),
+            let dimensions = world.dimensions()
+            var documents: [String: String] = [:]
+            for dimension in dimensions {
+                let path = dimension.documentURL(inWorldAt: url).resolvingSymlinksInPath().path
+                if documents[path] == nil { documents[path] = dimension.id }
+            }
+            let snapshot = WorldSnapshot(access: access, world: world, dimensions: dimensions, dimensionDocuments: documents,
                                          players: world.players(), details: WorldDetails.read(world))
             try Task.checkCancellation()
             return snapshot
@@ -128,7 +136,12 @@ extension ChunkseeKit.Dimension {
 
 /// A dimension document's opening read: its world's metadata, read through the world's access.
 nonisolated struct DimensionSnapshot: Sendable {
-    let world: WorldSnapshot
+    enum Source: Sendable {
+        case snapshot(WorldSnapshot)
+        case opening(WorldOpening)
+    }
+    let source: Source
+    let worldURL: URL
     let dimensionID: String
     let documentURL: URL
 
@@ -154,13 +167,34 @@ nonisolated struct DimensionSnapshot: Sendable {
         guard let worldURL = folders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
         let world = try WorldSnapshot.readContents(worldURL)
         let path = url.resolvingSymlinksInPath().path
-        guard let dimension = world.dimensions.first(where: {
-            $0.documentURL(inWorldAt: worldURL).resolvingSymlinksInPath().path == path
-        }) else {
+        guard let dimensionID = world.dimensionDocuments[path] else {
             world.access.release()
             throw WorldOpenError.notADimension
         }
-        return DimensionSnapshot(world: world, dimensionID: dimension.id, documentURL: url)
+        return DimensionSnapshot(source: .snapshot(world), worldURL: world.access.url,
+                                 dimensionID: dimensionID, documentURL: url)
+    }
+
+    @MainActor
+    func discardUnused() {
+        switch source {
+        case .snapshot(let world): world.access.release()
+        case .opening(let opening): opening.finish()
+        }
+    }
+
+    /// Attach before finishing the opening, so closing the previous last view cannot end access.
+    @MainActor
+    func makeSession(in model: AppModel) throws -> WorldSession {
+        switch source {
+        case .snapshot(let world):
+            return WorldSession(resources: model.resources(for: world), dimensionID: dimensionID)
+        case .opening(let opening):
+            guard let resources = opening.resources, !resources.isClosed else { throw CancellationError() }
+            let session = WorldSession(resources: resources, dimensionID: dimensionID)
+            opening.finish()
+            return session
+        }
     }
 }
 
@@ -182,14 +216,31 @@ final class WorldDocument: ReadableDocument {
 
     nonisolated struct Reader: DocumentReader {
         let folders: WorldFolders
+        var model: AppModel?
+        var reuseOpenWorld = true
 
         /// A world folder isn't itself a document: it holds one for each dimension. Reading it
         /// remembers the world's access and lists those, for its window to open instead.
         @concurrent
         func read(from source: sending URL, progress: consuming Subprogress) async throws -> sending FolderSnapshot {
+            try await readContents(from: source)
+        }
+
+        @concurrent
+        func readContents(from source: URL) async throws -> FolderSnapshot {
+            try Task.checkCancellation()
             if let world = try? World(contentsOf: source) {
+                try Task.checkCancellation()
                 folders.remember(source)
                 return .world(dimensions: world.dimensions().map { $0.documentURL(inWorldAt: source) })
+            }
+            if reuseOpenWorld, let model {
+                guard let worldURL = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
+                if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: worldURL) {
+                    do { try Task.checkCancellation() }
+                    catch { await snapshot.discardUnused(); throw error }
+                    return .dimension(snapshot)
+                }
             }
             return .dimension(try await DimensionSnapshot.read(source, folders: folders))
         }
@@ -203,40 +254,48 @@ final class WorldDocument: ReadableDocument {
     /// The dimension documents to open in place of this one, when it's a world folder.
     private(set) var worldDimensions: [URL]?
 
-    func reader(configuration: sending ReadConfiguration) -> sending Reader { Reader(folders: model.worldFolders) }
+    func reader(configuration: sending ReadConfiguration) -> sending Reader {
+        Reader(folders: model.worldFolders, model: model, reuseOpenWorld: session == nil)
+    }
 
     func apply(snapshot: sending FolderSnapshot, previous: sending FolderSnapshot?) async throws {
         let generation = UUID()
         applyGeneration = generation
         switch snapshot {
         case .dimension(let dimension): try await replaceSession(dimension, generation: generation)
-        case .world(let dimensions): worldDimensions = dimensions
+        case .world(let dimensions):
+            try Task.checkCancellation()
+            worldDimensions = dimensions
         }
     }
 
     private func replaceSession(_ snapshot: DimensionSnapshot, generation: UUID) async throws {
         var current = snapshot
+        var adopted = false
+        defer { if !adopted { current.discardUnused() } }
+        try Task.checkCancellation()
         while let url = configuration.fileURL,
               url.resolvingSymlinksInPath() != current.documentURL.resolvingSymlinksInPath() {
             // A move was reported while the snapshot was being read.
-            current.world.access.release()
+            current.discardUnused()
             current = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
             try Task.checkCancellation()
-            guard generation == applyGeneration else { current.world.access.release(); return }
+            guard generation == applyGeneration else { return }
         }
-        guard generation == applyGeneration else { current.world.access.release(); return }
+        guard generation == applyGeneration else { return }
         let oldSession = session
         oldSession?.close()
         await oldSession?.waitUntilClosed()
         try Task.checkCancellation()
-        guard generation == applyGeneration else { current.world.access.release(); return }
-        let worldURL = current.world.access.url
+        guard generation == applyGeneration else { return }
+        let worldURL = current.worldURL
         if let oldSession, oldSession.url != worldURL {
             oldSession.savedPlaces.relocate(to: worldURL)
             oldSession.resources.views.relocate(to: worldURL)
             oldSession.visibility.relocate(to: worldURL)
         }
-        let opened = WorldSession(resources: model.resources(for: current.world), dimensionID: current.dimensionID)
+        let opened = try current.makeSession(in: model)
+        adopted = true
         if let oldSession { opened.restoreView(from: oldSession) }
         session = opened
     }
@@ -249,7 +308,7 @@ final class WorldDocument: ReadableDocument {
         applyGeneration = generation
         let snapshot = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
         try Task.checkCancellation()
-        guard generation == applyGeneration else { snapshot.world.access.release(); return }
+        guard generation == applyGeneration else { snapshot.discardUnused(); return }
         try await replaceSession(snapshot, generation: generation)
     }
 
