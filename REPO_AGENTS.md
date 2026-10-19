@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.32.0`, resolved to `0.32.0` (`0c0c3a93617e86733bae3a4085e59353297de67b`).
+  minor" from `0.33.0`, resolved to `0.33.0` (`f16d21690f6048213ec11e6d048911ddd47696bf`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -208,6 +208,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
 Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
 dimension alongside the viewport, including moves.
 Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
@@ -217,8 +218,16 @@ number field receives SwiftUI focus on opening or switching from Surface.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
-popover discards an unfinished drag. Actual dimension-type bounds remain tracked in #248; the
-displayed slider endpoints describe its travel, not verified world-generation limits.
+popover discards an unfinished drag. WorldDetails reads dimension types through Kit 0.33.0 in the
+existing off-main metadata pass. DimensionPresentation supplies the current dimension’s verified
+build range to the slider; logical height and ceiling metadata do not define the slider or renderer.
+Numeric entry and its stepper accept any Int, without extending the slider’s limits. The slider
+thumb clamps to those limits until the user chooses a new value; its accessibility value describes
+that thumb. The number field handles SwiftUI's exit command directly so Escape dismisses the
+popover even before an edit is submitted; the native Done button supplies dismissal elsewhere.
+Missing/unreadable/unresolved types show “Height range unavailable” in place of the
+slider while retaining numeric entry. Newly discovered dimensions adopt their fresh type metadata;
+existing documents’ metadata and remembered heights are not replaced by that catalog extension.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
@@ -233,8 +242,8 @@ generations and active handles still own replacement and selective cancellation;
 stay in the common registry until they return. World close rejects late pixels and copy results.
 Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
 Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
-plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at
-−64...319 and expands to include numeric entry; it does not constrain custom dimension generation.
+plus the latest cutaway per region, rather than every slider intermediate. Slider limits come from
+the saved dimension type, including custom definitions, without changing terrain or roof behavior.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;

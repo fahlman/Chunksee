@@ -35,6 +35,8 @@ with a link to this guide. Help opens only when requested.
    Choose **Surface** to return to the normal map. **View ▸ Map Height…** (**⇧⌘Y**) opens these
    controls from the keyboard; **View ▸ Surface** (**⌥⌘Y**) switches between Surface and Cutaway.
    In Cutaway mode, type the height and press Return. Each dimension remembers its height and mode.
+   The slider follows that dimension’s known build limits; the number field accepts any Y coordinate.
+   If Chunksee cannot read the dimension’s height range, use the number field and stepper.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.

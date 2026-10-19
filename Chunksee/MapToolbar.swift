@@ -55,7 +55,7 @@ struct MapToolbar: ToolbarContent {
             .help("Choose a zoom level or fit the world")
         }
         ToolbarItem {
-            MapDepthControl(map: map, showsPopover: $showsHeightPopover)
+            MapDepthControl(map: map, heightRange: session.presentation.heightRange, showsPopover: $showsHeightPopover)
         }
         ToolbarItem {
             Toggle("Measure Distance", systemImage: "ruler", isOn: Binding {

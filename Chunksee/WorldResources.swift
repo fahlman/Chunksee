@@ -32,7 +32,7 @@ final class WorldResources {
     let world: World
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
-    let details: WorldDetails
+    private(set) var details: WorldDetails
     let names: PlayerNames
     let savedSearches: SavedSearches
     let savedPlaces: SavedPlaces
@@ -121,6 +121,7 @@ final class WorldResources {
         let added = snapshot.dimensions.filter { !known.contains($0.id) }
         guard !added.isEmpty else { return }
         let newIDs = Set(added.map(\.id))
+        for id in newIDs { details.dimensionTypes[id] = snapshot.details.dimensionTypes[id] }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
         index.include(added.map { dimension in
             RegionReader(dimension: dimension,

@@ -201,7 +201,5 @@ import Testing
         #expect(target.depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
         #expect(target.depth(for: "minecraft:the_nether") == MapDepth(y: 40, isSurface: true))
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
-        #expect(MapDepth(y: 900, isSurface: false).sliderRange.contains(900))
-        #expect(MapDepth(y: -900, isSurface: false).sliderRange.contains(-900))
     }
 }
