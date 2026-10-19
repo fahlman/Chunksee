@@ -419,3 +419,10 @@ the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLay
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
 change the seed rule. Closing cancels and drains mask generation. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
+
+Player listing uses the session's one dimension-listing fallback, shared with saved places and
+search results. Map content and map-click validation consume the same drawn-player marker
+collection, including hidden-player filtering. PlayerPresentation supplies the valid saved
+locations to both the map and inspector; Bukkit/invalid coordinates are excluded consistently,
+while readable locations in unavailable dimensions remain inspectable with navigation disabled.
+Personal phrases and absent-owner names stay with PlayerPresentation, preserving their wording.

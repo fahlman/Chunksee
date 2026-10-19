@@ -429,9 +429,7 @@ final class WorldSession {
         content.shownCreatureGroups = visibility.creatures
         content.hits = pinnedHits.filter { $0.dimension == id && $0.position != nil }
         content.selectedHitID = selectedHitID
-        content.players = PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
-                                                     singleplayerUUID: world.level.singleplayerUUID,
-                                                     worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
+        content.players = drawnPlayerMarkers
         content.selection = currentSelection
         content.selectedPlayerID = if case .player(let uuid)? = inspector { uuid } else { nil }
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
@@ -561,10 +559,14 @@ final class WorldSession {
     /// Whether this dimension's map draws one of the player's markers: their position, last death
     /// or respawn point. A stale target, such as a hidden or removed player, draws none.
     private func drawsMarker(for playerID: UUID) -> Bool {
-        guard let id = selectedDimensionID, !visibility.hiddenPlayers.contains(playerID),
-              let player = players.first(where: { $0.uuid == playerID }) else { return false }
-        return !PlayerPresentation.markers(for: [player], in: id, singleplayerUUID: world.level.singleplayerUUID,
-                                           worldDataVersion: world.level.dataVersion).isEmpty
+        drawnPlayerMarkers.contains { $0.playerID == playerID }
+    }
+
+    private var drawnPlayerMarkers: [MapMarker] {
+        guard map != nil, let id = selectedDimensionID else { return [] }
+        return PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
+                                          singleplayerUUID: world.level.singleplayerUUID,
+                                          worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
     }
 
     /// Whether choosing a player's row can center the map on their current position.
@@ -682,7 +684,7 @@ final class WorldSession {
     /// A name for a player who may not have a file in this world, such as a pet's owner.
     func name(ofPlayerWith uuid: UUID) -> String {
         if let player = players.first(where: { $0.uuid == uuid }) { return name(of: player) }
-        return names.name(for: uuid) ?? String(localized: "a player not in this world (\(uuid.uuidString.prefix(8).lowercased())…)")
+        return PlayerPresentation.absentPlayerName(uuid, knownName: names.name(for: uuid))
     }
 
     /// Whether this dimension's sidebar lists something in `dimension`. Each dimension lists only
@@ -702,8 +704,7 @@ final class WorldSession {
 
     /// The players this dimension's sidebar lists.
     var listedPlayers: [PlayerInfo] {
-        guard let id = selectedDimensionID else { return [] }
-        return PlayerPresentation.listed(players, in: id, dimensions: dimensions.map(\.id))
+        players.filter { lists(PlayerPresentation.position(of: $0)?.dimension) }
     }
 
     /// Whether any player still has no real name.
