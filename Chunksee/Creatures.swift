@@ -50,6 +50,8 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     var creature: Creature
     var group: CreatureGroup
     var dimension: String
+    /// Present only for a player-carried pet; this is independent of its saved owner.
+    var carrier: UUID?
 
     var position: CGPoint { CGPoint(x: creature.x, y: creature.z) }
 
@@ -98,6 +100,9 @@ struct CreatureDetailView: View {
                 if let owner = marker.creature.owner {
                     LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                     PetDetailRows(creature: marker.creature)
+                }
+                if let carrier = marker.carrier {
+                    LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }
                 if let villager = marker.creature.villager {
                     if let job = VillagerText.description(villager) {

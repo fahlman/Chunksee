@@ -142,6 +142,7 @@ struct PlayerDetailView: View {
             PlayerEffectsSection(effects: player.activeEffects)
             EquipmentSection(items: EquipmentPresentation.items(for: player))
             LinkedPetsSection(session: session, playerID: player.uuid)
+            ShoulderPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
                 SlotGrid(slots: player.inventorySlots(in: .hotbar), selected: player.selectedSlot)
             }

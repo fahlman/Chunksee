@@ -21,7 +21,7 @@ final class SearchModel {
     let playerRoster: PlayerRoster
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
-    var index: SearchIndex { indexStore.index }
+    var index: SearchIndex { indexStore.index(including: playerSnapshot) }
     var portals: [String: [NetherPortal]] { indexStore.portals }
     var isIndexing: Bool { indexStore.isIndexing }
     private(set) var isSearching = false
