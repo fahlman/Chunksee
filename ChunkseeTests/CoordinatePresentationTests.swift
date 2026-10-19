@@ -149,7 +149,7 @@ import Testing
         #expect(results.contains { $0.position == CGPoint(x: -8.7, y: -16.1) && $0.y == -1 })
         for player in session.players where PlayerPresentation.position(of: player) == nil {
             let viewport = session.map?.viewport
-            #expect(!session.canFocus(player))
+            #expect(!session.routing.canFocus(player))
             session.selection.choose(.player(player.uuid))
             #expect(session.map?.viewport == viewport)
         }

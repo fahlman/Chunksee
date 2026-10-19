@@ -180,7 +180,7 @@ struct PlayerDetailView: View {
 
     private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
         let location = saved.position
-        return Button { session.focus(on: location, blockPosition: saved.isBlockPosition) } label: {
+        return Button { session.routing.focus(on: location, blockPosition: saved.isBlockPosition) } label: {
             LabeledContent(saved.title, value: Coordinates.text(CGPoint(x: location.x, y: location.z), y: location.y,
                                                                dimension: session.dimensionName(location.dimension)))
                 .monospacedDigit()

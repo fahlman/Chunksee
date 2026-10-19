@@ -36,7 +36,7 @@ import Testing
         let place = try #require(source.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
         switch action {
         case "menu": source.routing.openDimension(place.dimension)
-        case "location": source.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
+        case "location": source.routing.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
         default: source.annotations.visit(place)
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")

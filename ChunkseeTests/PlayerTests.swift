@@ -59,7 +59,7 @@ import Testing
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         #expect(Set(overworld.listedPlayers.map(\.uuid)) == [you, friend, legacy, missingID])
         #expect(nether.listedPlayers.isEmpty) // a death marker does not move the player's row
-        #expect(!overworld.canFocus(missing))
+        #expect(!overworld.routing.canFocus(missing))
         for player in resources.players {
             #expect(overworld.listedPlayers.contains { $0.uuid == player.uuid }
                     == overworld.lists(PlayerPresentation.position(of: player)?.dimension))

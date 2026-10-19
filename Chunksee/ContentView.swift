@@ -249,7 +249,7 @@ private struct PlayerRow: View {
     }
 
     private var canFocus: Bool {
-        session.canFocus(player)
+        session.routing.canFocus(player)
     }
 
     private var detail: String {

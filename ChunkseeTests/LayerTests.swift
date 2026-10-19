@@ -302,7 +302,7 @@ enum StructureTestWorld {
         session.selection.inspector = .storage
         #expect(session.selection.sidebarSelection == .storage)
         #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
-        session.center(on: CGPoint(x: 10, y: 20))
+        session.navigation.focus(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
         #expect(session.spawnPoint == .zero)   // the test world has no spawn
         session.search.text = "summer"

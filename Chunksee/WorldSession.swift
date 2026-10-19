@@ -160,21 +160,6 @@ final class WorldSession {
         return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
     }
 
-    /// Shows a location in its dimension document, centers the map, and zooms in
-    /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
-    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
-        guard dimensions.contains(where: { $0.id == location.dimension }),
-              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-        if routing.route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
-        navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition, keepingZoom: keepingZoom)
-    }
-
-    /// Centers the map on a point in the selected dimension.
-    func center(on point: CGPoint, keepingZoom: Bool = false) {
-        guard let id = selectedDimensionID else { return }
-        focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y), keepingZoom: keepingZoom)
-    }
-
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
         guard !isClosed, selectedDimensionID == previous.selectedDimensionID, map != nil, previous.map != nil else { return }
@@ -200,12 +185,6 @@ final class WorldSession {
         return PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
                                           singleplayerUUID: world.level.singleplayerUUID,
                                           worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
-    }
-
-    /// Whether choosing a player's row can center the map on their current position.
-    func canFocus(_ player: PlayerInfo) -> Bool {
-        guard let position = PlayerPresentation.position(of: player) else { return false }
-        return dimensions.contains { $0.id == position.dimension }
     }
 
     /// The native front dimension can change without this session switching dimensions.
