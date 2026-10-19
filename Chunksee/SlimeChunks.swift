@@ -59,10 +59,15 @@ nonisolated enum SlimeChunks {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var visibility: LayerVisibility?
     private var isClosed = false
+    private let work: BackgroundWork
+    private let readImages: @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage]
 
-    init(dimensionID: String?, seed: Int64?, regions: Set<RegionPosition>) {
+    init(dimensionID: String?, seed: Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
+         readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
         self.seed = dimensionID == "minecraft:overworld" ? seed : nil
         self.regions = regions
+        self.work = work
+        self.readImages = readImages
     }
 
     func restoreVisibility(from visibility: LayerVisibility) {
@@ -79,13 +84,15 @@ nonisolated enum SlimeChunks {
     }
 
     private func load() {
-        guard !isClosed, isShown, let seed, task == nil else { return }
+        guard !isClosed, !work.isClosed, isShown, let seed, task == nil else { return }
         let missing = regions.subtracting(completed)
         guard !missing.isEmpty else { return }
-        task = Task { [weak self] in
+        let readImages = readImages, work = work
+        task = work.start(priority: Task.currentPriority) { [weak self] in
             defer { self?.task = nil; self?.load() }
-            let images = await SlimeChunks.images(regions: missing, seed: seed)
-            guard let self, !Task.isCancelled, !self.isClosed else { return }
+            guard !Task.isCancelled, !work.isClosed else { return }
+            let images = await readImages(missing, seed)
+            guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed else { return }
             self.images.merge(images.filter { self.regions.contains($0.key) }) { _, new in new }
             self.completed.formUnion(missing.intersection(self.regions))
         }
