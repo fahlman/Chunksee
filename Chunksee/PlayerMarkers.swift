@@ -88,7 +88,7 @@ nonisolated enum PlayerPresentation {
     /// Whether the player's locations can be placed on this world's map. Bukkit servers share
     /// player files across worlds, so their positions may be somewhere else entirely.
     static func isMappable(_ player: PlayerInfo) -> Bool {
-        !player.isFromBukkitServer
+        player.locationsBelongToWorld
     }
 
     /// Keeps raw saved positions out of the UI when they are invalid or may belong to a

@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.29.0`, resolved to `0.29.0` (`5ad021215bfced0191b3d25cd6805413eff467c0`).
+  minor" from `0.30.0`, resolved to `0.30.0` (`4936a9a5f19adc7c5984f26eea7c8ff11d507de9`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -426,3 +426,7 @@ collection, including hidden-player filtering. PlayerPresentation supplies the v
 locations to both the map and inspector; Bukkit/invalid coordinates are excluded consistently,
 while readable locations in unavailable dimensions remain inspectable with navigation disabled.
 Personal phrases and absent-owner names stay with PlayerPresentation, preserving their wording.
+The player-location policy comes from Kit's `PlayerInfo.locationsBelongToWorld`; the app only
+checks coordinate availability and presentation. Scan-cache version 16 rereads data after Kit
+0.30's identifier validation. Typed positions, RegionFacts and shoulder-pet presentation are
+adopted in separate changes; publishing these APIs does not enable their app features by itself.

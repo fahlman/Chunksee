@@ -98,7 +98,7 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct ScanCacheTests {
-    @Test func oldCreatureCacheIsRereadWithTheEntityChunksHealthDefaults() async throws {
+    @Test(arguments: [13, 15]) func oldCreatureCacheIsRereadWithTheEntityChunksHealthDefaults(version: Int) async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
@@ -113,7 +113,7 @@ import Testing
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: entitiesFile)
         let cache = ScanCache(directory: world.appendingPathComponent("test-cache"))
         let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
-        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v13")
+        let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v\(version)")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let stale = [Creature(id: "minecraft:cat", x: 4, y: 64, z: 4, owner: NBT.intArray([1, 2, 3, 4]).uuid, health: 6)]
         let encoded = try PropertyListEncoder().encode(stale)
