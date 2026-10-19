@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.30.0`, resolved to `0.30.0` (`4936a9a5f19adc7c5984f26eea7c8ff11d507de9`).
+  minor" from `0.31.0`, resolved to `0.31.0` (`22530aa2a2981abbb6e9f31e8111d103052d7c7a`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -86,7 +86,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
+| `WorldSession.swift` | Composes one dimension document's map, navigation and search models; owns routing, ruler, selection and inspector until their separate extraction |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types |
@@ -94,7 +94,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
-| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
+| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -134,6 +134,13 @@ observation reapplies the model’s display name if native restoration resets it
 the view ends that observation. The adapter never edits a file URL or document contents.
 The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
 Each dimension's map position is remembered in `RememberedViews`.
+`MapNavigation` applies local focus, coordinate jumps, Fit World and Back/Forward through the
+document's existing MapModel, which remains the only viewport/depth owner. It owns history but
+has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
+Native reread/move restoration copies history, viewport and depth into the new model, including
+from an already closed source, without sharing that source's map or history. Cross-dimension
+validation and routing remain in WorldSession for their separate extraction. Native commands and
+the toolbar call the navigation model directly for local actions.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,
@@ -176,6 +183,10 @@ previous index and heat contributions; successful empty reads and deleted files 
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+Slider dragging holds an unfinished height in the view and commits it only when released
+(Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
+during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
+control discards an unfinished drag. The native control redesign remains tracked separately.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
@@ -393,6 +404,11 @@ remain with the models that validate their results. Startup cache maintenance al
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
+
+WorldResources uses that common drain for detached tabs too; it keeps no retiring-view task
+table or cleanup tasks. Each WorldSession retains its own closing join because a native document
+reread or move must await that session before replacing it. DocumentGroup still owns document
+closure, and the world releases folder access only after its readers and registered work finish.
 
 WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
 tracks overlapping player reads and supplies the refresh-only drain; world close cancels and

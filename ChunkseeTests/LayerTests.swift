@@ -596,6 +596,31 @@ enum StructureTestWorld {
         #expect(InGameMapImage.fittingScale(for: try #require(MapItem(id: 2, nbt: mapNBT(dimension: .byte(0))))) == 4)
     }
 
+    @Test func fittingAnAlreadyCenteredMapIsASingleHistoryStep() async throws {
+        let world = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let directory = world.appendingPathComponent("data/minecraft/maps")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let nbt = mapNBT(dimension: .string("minecraft:overworld"), scale: 3, x: 128, z: -256)
+        try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: directory.appendingPathComponent("3.dat"))
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let item = try #require(session.inGameMaps.first)
+        let map = try #require(session.map)
+        let original = MapViewport(center: CGPoint(x: item.centerX, y: item.centerZ), scale: 8)
+        map.viewport = original
+        session.show(item)
+        #expect(map.viewport == MapViewport(center: original.center, scale: 0.5))
+        session.navigation.goBack()
+        #expect(map.viewport == original && !session.navigation.canGoBack)
+        session.navigation.goForward()
+        #expect(map.viewport == MapViewport(center: original.center, scale: 0.5))
+        #expect(!session.navigation.canGoForward)
+        session.close()
+        await session.waitUntilClosed()
+    }
+
     @Test func sessionListsDrawnMapsAndShowsOne() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
