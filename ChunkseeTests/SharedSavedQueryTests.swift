@@ -11,15 +11,16 @@ import Testing
     }
 
     @Test func threeDocumentsReusePendingAndCompletedSavedQueries() async {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let players = PlayerSnapshot([])
         func document() -> SearchModel {
-            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -48,15 +49,16 @@ import Testing
     }
 
     @Test func closingTheRequesterStopsItsWaitWithoutCancellingTheSharedPass() async {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let players = PlayerSnapshot([])
         func document() -> SearchModel {
-            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -78,14 +80,15 @@ import Testing
     }
 
     @Test func removingTheLastUseCancelsAndWorldClosureDrainsARetiredPass() async throws {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, indexStore: index)
         await gate.waitForRequest("saved")
@@ -105,12 +108,13 @@ import Testing
     }
 
     @Test func removingASavedQueryKeepsAnActiveTypedWaiterAndDoesNotCacheItAfterwards() async throws {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) })
         await gate.waitForRequest("saved")
@@ -134,17 +138,18 @@ import Testing
     }
 
     @Test func sameCountPlayerUpdatesAndNewlyOpenedDocumentsShareOnlyMatchingSources() async {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make(), uuid = UUID()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func player(_ revision: Int32) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
         }
         func document(_ players: PlayerSnapshot) -> SearchModel {
-            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read(String($0.players[0].nbt["Revision"]!.int!)) }, indexStore: index)
         }
@@ -173,6 +178,7 @@ import Testing
     }
 
     @Test func sharedNamesInvalidateOnceAndKeepPreviousSnapshotsWhileSearching() async {
+        let work = BackgroundWork()
         let defaults = TestDefaults.make(), uuid = UUID()
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"Known"}"#.utf8), 200) }))
         names.looksUpOnline = true
@@ -180,12 +186,12 @@ import Testing
         saved.add("saved")
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let players = PlayerSnapshot([player])
         func document() -> SearchModel {
-            SearchModel(readers: [], playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.playerNames[uuid]!.text) }, indexStore: index)
         }
@@ -299,7 +305,7 @@ import Testing
     }
 
     @Test func closingTheWorldReleasesWaitersButWaitsForTheUnderlyingPass() async {
-        let index = WorldIndexStore(readers: [], firstDimension: nil)
+        let index = WorldIndexStore(readers: [], work: BackgroundWork(), firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<SavedQueryResults.Results>()
         let request = SearchRequest(queries: ["saved"], index: SearchIndex(), players: [], playerNames: [:])
