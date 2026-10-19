@@ -68,26 +68,24 @@ final class PlayerRecordsModel {
     private(set) var uuid: UUID?
     private(set) var records: PlayerRecords?
     @ObservationIgnored private var generation = UUID()
-    @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    private let work: BackgroundWork.Scope
     private let read: @Sendable (UUID, String?) async -> PlayerRecords
-    private var isClosed = false
 
-    init(world: World, read: (@Sendable (UUID, String?) async -> PlayerRecords)? = nil) {
+    init(world: World, work: BackgroundWork, read: (@Sendable (UUID, String?) async -> PlayerRecords)? = nil) {
+        self.work = work.makeScope()
         self.read = read ?? { await PlayerRecords.load(from: world, uuid: $0, name: $1) }
     }
 
     func load(_ uuid: UUID, name: String?) async {
-        guard !isClosed, !Task.isCancelled else { return }
+        guard !work.isClosed, !Task.isCancelled else { return }
         cancel()
         self.uuid = uuid
         let id = generation, read = read
-        let task = Task { [weak self] in
-            defer { self?.tasks[id] = nil }
+        guard let task = work.start(priority: nil, operation: { [weak self] in
             let records = await read(uuid, name)
             guard !Task.isCancelled, let self, self.generation == id, self.uuid == uuid else { return }
             self.records = records
-        }
-        tasks[id] = task
+        }) else { return }
         await withTaskCancellationHandler {
             await task.value
         } onCancel: { task.cancel() }
@@ -95,18 +93,18 @@ final class PlayerRecordsModel {
 
     func cancel() {
         generation = UUID()
-        tasks.values.forEach { $0.cancel() }
+        work.cancel()
         uuid = nil
         records = nil
     }
 
     func waitForReads() async {
-        for task in tasks.values { await task.value }
+        await work.waitUntilFinished()
     }
 
     func close() {
-        isClosed = true
         cancel()
+        work.close()
     }
 }
 
