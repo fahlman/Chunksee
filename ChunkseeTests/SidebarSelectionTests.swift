@@ -113,7 +113,7 @@ import Testing
         session.map?.setDepth(MapDepth(y: 101, isSurface: false))
         let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
         let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([.compound([
-            "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "CustomName": .string("Map Fox"),
+            "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Map Fox"),
             "Pos": .list([.double(13), .double(32), .double(13)]),
         ])])])
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: moved)])).write(to: file)
