@@ -2,10 +2,6 @@ import SwiftUI
 
 /// An on-demand introduction; opening documents still belongs to DocumentGroup.
 struct HelpView: View {
-    @Environment(\.openDocument) private var openDocument
-    @State private var errorMessage: String?
-    @State private var isOpeningSample = false
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -13,18 +9,6 @@ struct HelpView: View {
                     .font(.largeTitle)
                     .accessibilityAddTraits(.isHeader)
                 Text("Chunksee shows the terrain, places, pets and players in a saved Java Edition world. It only reads your world; it never changes it.")
-
-                Text("No world handy? The sample has a small island, a cabin, two pets and a chest of diamonds. Minecraft isn’t needed to explore it.")
-                HStack {
-                    Button("Open Sample World") { isOpeningSample = true }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityLabel("Open Sample World")
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(isOpeningSample)
-                    if isOpeningSample { ProgressView().controlSize(.small) }
-                    Spacer()
-                    Link("User Guide", destination: URL(string: "https://github.com/fahlman/Chunksee#using-chunksee")!)
-                }
 
                 GroupBox("Open a World") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -48,35 +32,12 @@ struct HelpView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
+
+                Link("User Guide", destination: URL(string: "https://github.com/fahlman/Chunksee#using-chunksee")!)
             }
             .padding(24)
         }
         .frame(minWidth: 440, idealWidth: 520, minHeight: 440, idealHeight: 600)
-        .task(id: isOpeningSample) {
-            if isOpeningSample { await openSample() }
-        }
-        .alert("Couldn’t Open Sample World", isPresented: Binding {
-            errorMessage != nil
-        } set: { if !$0 { errorMessage = nil } }) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(errorMessage ?? "") }
-    }
-
-    private func openSample() async {
-        defer { isOpeningSample = false }
-        guard let url = SampleWorld.url(in: .main) else {
-            errorMessage = String(localized: "The sample world couldn’t be found in this copy of Chunksee.")
-            return
-        }
-        do { try await openDocument(at: url) }
-        catch is CancellationError {}
-        catch { errorMessage = error.localizedDescription }
-    }
-}
-
-enum SampleWorld {
-    static func url(in bundle: Bundle) -> URL? {
-        bundle.url(forResource: "SampleWorld", withExtension: nil)
     }
 }
 
