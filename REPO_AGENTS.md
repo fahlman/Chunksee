@@ -181,6 +181,12 @@ The renderer returns immutable pending cache writes with its tiles. MapModel sta
 for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
 writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
 cache writer survives that drain.
+MapModel registers render jobs, accepted cache writes, hover reads and coordinate copies in four
+scopes of the world's BackgroundWork owner. Separate scopes preserve depth-change cancellation
+without canceling an already accepted cache write. Their combined drain includes work added
+while another map task finishes, and never waits for a sibling tab. Per-region render IDs, hover
+generations and active handles still own replacement and selective cancellation; canceled tasks
+stay in the common registry until they return. World close rejects late pixels and copy results.
 Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
 Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
 plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at

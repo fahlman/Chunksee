@@ -35,7 +35,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let chunk = ChunkPosition(x: -33, z: -1)
-        let map = MapModel(dimension: dimension, center: CGPoint(x: -527.5, y: -15.5))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -527.5, y: -15.5))
         map.loadTopBlocks(at: map.viewport.center)
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: map.viewport.center)?.id == "minecraft:gold_block")

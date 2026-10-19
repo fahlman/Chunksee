@@ -443,7 +443,7 @@ final class WorldSession {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+        let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.views.depth(for: dimension.id))
