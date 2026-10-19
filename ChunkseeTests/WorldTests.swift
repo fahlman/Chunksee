@@ -139,7 +139,7 @@ import Testing
     @Test func blockSearchKeepsOnlyTheRichestChunks() {
         // More chunks with diamonds than the limit: only the richest are listed, richest first.
         let deposits = (0..<(WorldSearch.blockResultLimit + 500)).map { i in
-            ChunkDeposit(chunk: ChunkCoordinate(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
+            ChunkDeposit(chunk: ChunkPosition(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
         }.sorted { $0.deposit.count > $1.deposit.count }
         let index = SearchIndex.overworld(DimensionIndex(blocks: deposits))
         let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }
@@ -349,10 +349,10 @@ import Testing
 
 @Suite(.isolatedStores) struct BiomeSearchTests {
     func index() -> SearchIndex {
-        var biomes: [ChunkCoordinate: String] = [:]
-        for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
-        for z in 5..<9 { biomes[ChunkCoordinate(x: 0, z: z)] = "minecraft:pale_garden" }                       // 4 chunks
-        for z in 5..<9 { biomes[ChunkCoordinate(x: 3, z: z)] = "minecraft:plains" }
+        var biomes: [ChunkPosition: String] = [:]
+        for x in 0..<3 { for z in 0..<2 { biomes[ChunkPosition(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
+        for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:pale_garden" }                       // 4 chunks
+        for z in 5..<9 { biomes[ChunkPosition(x: 3, z: z)] = "minecraft:plains" }
         return SearchIndex.overworld(DimensionIndex(biomeAreas: BiomeScanner.areas(from: biomes)))
     }
 

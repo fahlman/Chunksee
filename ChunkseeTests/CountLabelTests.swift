@@ -1,3 +1,4 @@
+import ChunkseeKit
 import Foundation
 import Testing
 @testable import ChunkseeTestHost
@@ -7,12 +8,12 @@ import Testing
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)
             let areas = BiomeScanner.areas(from: Dictionary(uniqueKeysWithValues: (0..<count).map {
-                (ChunkCoordinate(x: $0, z: 0), "minecraft:plains")
+                (ChunkPosition(x: $0, z: 0), "minecraft:plains")
             }))
             #expect(areas.count == 1)
             #expect(areas.first?.name == "\(number) \(count == 1 ? "chunk" : "chunks")")
             let index = SearchIndex.overworld(DimensionIndex(blocks: [
-                ChunkDeposit(chunk: ChunkCoordinate(x: 0, z: 0),
+                ChunkDeposit(chunk: ChunkPosition(x: 0, z: 0),
                              deposit: BlockDeposit(block: .diamond, count: count, minY: -64, maxY: -49)),
             ]))
             let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }

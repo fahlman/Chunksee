@@ -61,7 +61,7 @@ import Testing
 
     @Test func cachedHeightsAndSurfaceStayIndependentAcrossFileChanges() async throws {
         try await withFixture { f in
-            let dimension = try f.dimension(), region = RegionCoordinate(x: 0, z: 0)
+            let dimension = try f.dimension(), region = RegionPosition(x: 0, z: 0)
             let cache = TileCache(directory: f.url.appendingPathComponent("test-cache"))
             let file = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
             var keys: [TileCache.Key] = []
@@ -83,7 +83,7 @@ import Testing
 
     @Test func aLateSurfaceRenderCannotReplaceTheChosenCutaway() async throws {
         try await withFixture { f in
-            let dimension = try f.dimension(), region = RegionCoordinate(x: 0, z: 0)
+            let dimension = try f.dimension(), region = RegionPosition(x: 0, z: 0)
             let surface = try await RegionTileRenderer(dimension: dimension).tile(for: region)
             let cutaway = try await RegionTileRenderer(dimension: dimension, cutawayY: 7).tile(for: region)
             let gate = f.tiles

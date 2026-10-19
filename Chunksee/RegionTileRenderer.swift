@@ -7,7 +7,8 @@ import ChunkseeKit
 /// Rendering reads and decodes up to 1,024 chunks, so it runs off the main actor and checks for
 /// cancellation between chunks. With `chunkConcurrency` above 1, chunks decode in parallel.
 nonisolated struct RegionTileRenderer: Sendable {
-    static let side = RegionCoordinate.blockSize
+    /// The one-pixel-per-block canvas used by terrain, overlays and viewport geometry.
+    static let side = 512
 
     let dimension: ChunkseeKit.Dimension
     /// How many chunks of one region decode at the same time.
@@ -23,7 +24,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
     @concurrent
-    func pixels(for region: RegionCoordinate) async throws -> [UInt8]? {
+    func pixels(for region: RegionPosition) async throws -> [UInt8]? {
         guard let file = try dimension.region(x: region.x, z: region.z) else { return nil }
         let coordinates = file.chunkCoordinates
         var canvas = Canvas()
@@ -58,7 +59,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     @concurrent
-    func image(for region: RegionCoordinate) async throws -> CGImage? {
+    func image(for region: RegionPosition) async throws -> CGImage? {
         try await pixels(for: region).flatMap { Self.makeImage($0, side: Self.side) }
     }
 
@@ -85,7 +86,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Runs off the caller's actor: with approachable concurrency a plain nonisolated `async`
     /// method would otherwise run on the main actor when called from the map model.
     @concurrent
-    func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
+    func tile(for region: RegionPosition) async throws -> RenderedTile? {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
         let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, cutawayY: cutawayY)

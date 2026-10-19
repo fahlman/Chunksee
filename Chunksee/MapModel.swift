@@ -11,20 +11,20 @@ final class MapModel {
     private(set) var depth = MapDepth()
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
-    private(set) var tiles: [RegionCoordinate: CGImage] = [:]
+    private(set) var tiles: [RegionPosition: CGImage] = [:]
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
-    private(set) var previews: [RegionCoordinate: CGImage] = [:]
+    private(set) var previews: [RegionPosition: CGImage] = [:]
     /// Regions that have a region file. Others are never requested.
-    private(set) var availableRegions: Set<RegionCoordinate>
+    private(set) var availableRegions: Set<RegionPosition>
     private(set) var isLoading = false
 
-    private var failed: Set<RegionCoordinate> = []
+    private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
     @ObservationIgnored private var cacheWrites: [Int: Task<Void, Never>] = [:]
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWrites.count }
-    @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
+    @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int
@@ -40,9 +40,9 @@ final class MapModel {
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
-         renderTile: @escaping @Sendable (RegionTileRenderer, RegionCoordinate) async throws -> RegionTileRenderer.RenderedTile?
+         renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
-         readTopBlocks: @escaping @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
+         readTopBlocks: @escaping @Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
             = { await MapModel.readTopBlocks(of: $0, in: $1, depth: $2, cached: $3) }) {
         self.dimension = dimension
         self.readTopBlocksFor = readTopBlocks
@@ -54,17 +54,17 @@ final class MapModel {
         self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
         self.viewport = MapViewport(center: center, scale: 1)
-        self.availableRegions = Set(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
+        self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
     /// more than a preview's 256 pixels, at the display's pixel density.
     func needsFullResolution(displayScale: CGFloat) -> Bool {
-        viewport.scale * CGFloat(RegionCoordinate.blockSize) * displayScale > CGFloat(RegionTileRenderer.previewSide)
+        viewport.scale * CGFloat(RegionTileRenderer.side) * displayScale > CGFloat(RegionTileRenderer.previewSide)
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
-    func image(for region: RegionCoordinate, fullResolution: Bool) -> CGImage? {
+    func image(for region: RegionPosition, fullResolution: Bool) -> CGImage? {
         fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
     }
 
@@ -104,8 +104,8 @@ final class MapModel {
     }
 
     /// Regions waiting to render, nearest to the view center first.
-    private var queue: [RegionCoordinate] = []
-    private var inFlight: [RegionCoordinate: Job] = [:]
+    private var queue: [RegionPosition] = []
+    private var inFlight: [RegionPosition: Job] = [:]
     /// Cancelled renders still own file reads until their tasks return.
     @ObservationIgnored private var renders: [Int: Task<Void, Never>] = [:]
     private var nextJobID = 0
@@ -137,7 +137,7 @@ final class MapModel {
         }
     }
 
-    private func finish(_ region: RegionCoordinate, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
+    private func finish(_ region: RegionPosition, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
         renders[id] = nil
         // A job cancelled because its region left the view was already removed (and may have been
         // replaced by a newer job for the same region); its result is dropped.
@@ -178,13 +178,13 @@ final class MapModel {
     var shownSize: (size: CGSize, displayScale: CGFloat)? { lastView }
     /// Regions the game saved since their tiles were drawn. Their old images stay on screen until
     /// the new ones are ready, so a redraw doesn't flicker.
-    private var stale: Set<RegionCoordinate> = []
+    private var stale: Set<RegionPosition> = []
 
     /// Redraws regions whose files the game saved, and shows regions it just created.
-    func regionsChanged(_ regions: Set<RegionCoordinate>? = nil) {
+    func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
-        let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
+        let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
         for region in regions {
             let file = dimension.regionURL(.terrain, x: region.x, z: region.z)
             if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
@@ -200,7 +200,7 @@ final class MapModel {
     }
 
     /// Regions in the view at the last request; never evicted.
-    private var visibleRegions: Set<RegionCoordinate> = []
+    private var visibleRegions: Set<RegionPosition> = []
     /// Whether the last request needed full-resolution tiles. When it didn't, rendered full tiles
     /// are dropped and only previews kept: fully zoomed out, keeping both cost about 1 GB.
     private var wantsFullResolution = true
@@ -212,7 +212,7 @@ final class MapModel {
         }
     }
 
-    private func store(_ tile: RegionTileRenderer.RenderedTile, for region: RegionCoordinate) {
+    private func store(_ tile: RegionTileRenderer.RenderedTile, for region: RegionPosition) {
         let wasStale = stale.remove(region) != nil
         if wantsFullResolution {
             tiles[region] = tile.full
@@ -229,8 +229,8 @@ final class MapModel {
     }
 
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
-    private static func regionsToEvict(from cached: Set<RegionCoordinate>, keeping limit: Int,
-                                       visible: Set<RegionCoordinate>, viewport: MapViewport) -> [RegionCoordinate] {
+    private static func regionsToEvict(from cached: Set<RegionPosition>, keeping limit: Int,
+                                       visible: Set<RegionPosition>, viewport: MapViewport) -> [RegionPosition] {
         guard cached.count > limit else { return [] }
         let candidates = cached.subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
@@ -267,22 +267,22 @@ final class MapModel {
     /// The top block of each column (index `z * 16 + x`) in recently hovered chunks, read on demand.
     /// Tiles keep only colors, and naming every column of every region would cost far more than
     /// reading the one chunk under the pointer.
-    private(set) var topBlocks: [ChunkCoordinate: [RegionTileRenderer.TopBlock?]] = [:]
-    @ObservationIgnored private var topBlockOrder: [ChunkCoordinate] = []
+    private(set) var topBlocks: [ChunkPosition: [RegionTileRenderer.TopBlock?]] = [:]
+    @ObservationIgnored private var topBlockOrder: [ChunkPosition] = []
     /// The chunk under the pointer, so a save of its region can be read again without the pointer moving.
-    @ObservationIgnored private var hoveredChunk: ChunkCoordinate?
+    @ObservationIgnored private var hoveredChunk: ChunkPosition?
     /// The read for the hovered chunk, if one is under way.
-    @ObservationIgnored private var activeHoverRead: (chunk: ChunkCoordinate, id: UUID)?
+    @ObservationIgnored private var activeHoverRead: (chunk: ChunkPosition, id: UUID)?
     /// Every hover read until it finishes, cancelled or not, so closing can drain them all before
     /// the world's access ends, as `renders` does for tiles.
     @ObservationIgnored private var hoverReads: [UUID: Task<Void, Never>] = [:]
     /// Explicit coordinate copies must finish reading even if the pointer moves to another chunk.
     @ObservationIgnored private var coordinateReads: [UUID: Task<Void, Never>] = [:]
     /// Bumped when the game saves a region, so a read of the old file doesn't publish after it.
-    @ObservationIgnored private var regionGenerations: [RegionCoordinate: Int] = [:]
+    @ObservationIgnored private var regionGenerations: [RegionPosition: Int] = [:]
     /// The region file last read for the readout, reused while the pointer stays in its region.
     @ObservationIgnored private var hoverRegion: RegionFile?
-    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
+    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
     private static let maxHoverChunks = 64
 
     /// Hover reads not yet finished, cancelled or not.
@@ -293,7 +293,7 @@ final class MapModel {
     func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
         guard let coordinates = MapCoordinates(point: block) else { return nil }
         let x = Int(coordinates.x), z = Int(coordinates.z)
-        return topBlocks[ChunkCoordinate(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
+        return topBlocks[ChunkPosition(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
     }
 
     /// Uses the same reader and cached columns as hover, while keeping this request independent
@@ -301,7 +301,7 @@ final class MapModel {
     func readTopBlock(at block: CGPoint, completion: @escaping (RegionTileRenderer.TopBlock?) -> Void) {
         guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
-        let chunk = ChunkCoordinate(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
+        let chunk = ChunkPosition(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
         let index = (Int(coordinates.z) & 15) * 16 + (Int(coordinates.x) & 15), id = UUID()
         let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
         coordinateReads[id] = Task { [weak self] in
@@ -321,7 +321,7 @@ final class MapModel {
     /// that chunk matters, so a read for one the pointer has left is cancelled.
     func loadTopBlocks(at block: CGPoint) {
         guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
-        let chunk = ChunkCoordinate(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
+        let chunk = ChunkPosition(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
         hoveredChunk = chunk
         guard topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
         startHoverRead(of: chunk)
@@ -330,9 +330,9 @@ final class MapModel {
     /// The pointer left the map: nothing needs reading again after a save.
     func endHover() { hoveredChunk = nil }
 
-    private func startHoverRead(of chunk: ChunkCoordinate) {
+    private func startHoverRead(of chunk: ChunkPosition) {
         if let active = activeHoverRead { hoverReads[active.id]?.cancel() }
-        let region = Self.region(of: chunk), generation = regionGenerations[region, default: 0], id = UUID()
+        let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
         let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
         hoverReads[id] = Task { [weak self] in
             let result = await read(chunk, dimension, depth, cached)
@@ -355,31 +355,27 @@ final class MapModel {
     }
 
     @concurrent
-    nonisolated static func readTopBlocks(of chunk: ChunkCoordinate, in dimension: ChunkseeKit.Dimension, depth: MapDepth,
+    nonisolated static func readTopBlocks(of chunk: ChunkPosition, in dimension: ChunkseeKit.Dimension, depth: MapDepth,
                                           cached: RegionFile?) async -> TopBlockRead? {
         guard !Task.isCancelled else { return nil }   // before any file I/O
-        let region = region(of: chunk)
+        let region = chunk.region
         guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
                 ?? (try? dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
-              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.x & 31, localZ: chunk.z & 31, ceilingY: RegionTileRenderer(dimension: dimension).ceilingY, cutawayY: depth.cutawayY)
+              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ, ceilingY: RegionTileRenderer(dimension: dimension).ceilingY, cutawayY: depth.cutawayY)
         else { return nil }
         return (file, blocks)
-    }
-
-    nonisolated private static func region(of chunk: ChunkCoordinate) -> RegionCoordinate {
-        RegionCoordinate(x: chunk.x >> 5, z: chunk.z >> 5)
     }
 
     /// The game saved these regions, so what was read from them may be out of date. A read elsewhere
     /// carries on; the hovered chunk, if it's in one of them, is read again without waiting for the
     /// pointer to move.
-    private func forgetTopBlocks(in regions: Set<RegionCoordinate>) {
-        func changed(_ chunk: ChunkCoordinate) -> Bool { regions.contains(Self.region(of: chunk)) }
+    private func forgetTopBlocks(in regions: Set<RegionPosition>) {
+        func changed(_ chunk: ChunkPosition) -> Bool { regions.contains(chunk.region) }
         for region in regions { regionGenerations[region, default: 0] += 1 }
         topBlocks = topBlocks.filter { !changed($0.key) }
         topBlockOrder.removeAll(where: changed)
-        if let file = hoverRegion, regions.contains(RegionCoordinate(x: file.x, z: file.z)) { hoverRegion = nil }
+        if let file = hoverRegion, regions.contains(RegionPosition(x: file.x, z: file.z)) { hoverRegion = nil }
         if let active = activeHoverRead, changed(active.chunk) {
             hoverReads[active.id]?.cancel()
             activeHoverRead = nil

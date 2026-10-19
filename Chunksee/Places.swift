@@ -145,7 +145,7 @@ nonisolated enum PlaceScanner {
             for file in dimension.regionFiles(.pointsOfInterest) {
                 guard !Task.isCancelled else { break }
                 group.addTask {
-                    await Self.blocks(dimension, region: RegionCoordinate(x: file.x, z: file.z), cache: cache)
+                    await Self.blocks(dimension, region: RegionPosition(x: file.x, z: file.z), cache: cache)
                 }
             }
             var all: [PointOfInterest] = []
@@ -157,7 +157,7 @@ nonisolated enum PlaceScanner {
     }
 
     @concurrent
-    static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate, cache: ScanCache) async -> [PointOfInterest] {
+    static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionPosition, cache: ScanCache) async -> [PointOfInterest] {
         guard !Task.isCancelled else { return [] }
         let file = dimension.regionURL(.pointsOfInterest, x: region.x, z: region.z)
         return cache.value("places", region: region, sources: [file]) {

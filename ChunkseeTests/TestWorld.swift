@@ -37,7 +37,7 @@ enum TestWorld {
         try FileManager.default.createDirectory(at: regionDir, withIntermediateDirectories: true)
         let level = NBT.compound(["Data": .compound(["LevelName": .string("Test"), "DataVersion": .int(5023)])])
         try Data(Compression.deflate(level.serialized(), gzip: true)).write(to: root.appendingPathComponent("level.dat"))
-        for (region, regionChunks) in Dictionary(grouping: chunks, by: { RegionCoordinate(x: $0.x >> 5, z: $0.z >> 5) }) {
+        for (region, regionChunks) in Dictionary(grouping: chunks, by: { ChunkPosition(x: $0.x, z: $0.z).region }) {
             try Data(regionFile(regionChunks)).write(to: regionDir.appendingPathComponent("r.\(region.x).\(region.z).mca"))
         }
         return root

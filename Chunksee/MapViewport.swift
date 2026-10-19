@@ -1,12 +1,5 @@
+import ChunkseeKit
 import CoreGraphics
-
-/// A region file's coordinates. Each region covers 512×512 blocks.
-nonisolated struct RegionCoordinate: Hashable, Sendable {
-    var x: Int
-    var z: Int
-
-    static let blockSize = 512
-}
 
 /// Maps between view points and world block coordinates for the top-down map.
 nonisolated struct MapViewport: Equatable, Sendable {
@@ -19,6 +12,9 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// (3,200%): each block's one-pixel tile color is drawn unsmoothed, so closer zoom adds no detail.
     static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 32
     static let minimumManualScale: CGFloat = 1.0 / 16
+    /// Continuous map geometry needs a divisor; tested against Kit's checked region origin.
+    /// This is measured in blocks, independently of a rendered tile's pixel resolution.
+    static let regionSideInBlocks: CGFloat = 512
     var canZoomOut: Bool { scale > Self.minimumManualScale }
     var isValid: Bool {
         Coordinates.block(center.x) != nil && Coordinates.block(center.y) != nil &&
@@ -43,10 +39,11 @@ nonisolated struct MapViewport: Equatable, Sendable {
     }
 
     /// Where a region's tile is drawn in a view of `size`.
-    func viewRect(for region: RegionCoordinate, in size: CGSize) -> CGRect {
-        let side = CGFloat(RegionCoordinate.blockSize)
-        return CGRect(x: (CGFloat(region.x) * side - center.x) * scale + size.width / 2,
-                      y: (CGFloat(region.z) * side - center.y) * scale + size.height / 2,
+    func viewRect(for region: RegionPosition, in size: CGSize) -> CGRect? {
+        guard let origin = region.blockOrigin else { return nil }
+        let side = Self.regionSideInBlocks
+        return CGRect(x: (CGFloat(origin.x) - center.x) * scale + size.width / 2,
+                      y: (CGFloat(origin.z) - center.y) * scale + size.height / 2,
                       width: side * scale, height: side * scale)
     }
 
@@ -61,7 +58,7 @@ nonisolated struct MapViewport: Equatable, Sendable {
               size.width >= 0, size.height >= 0 else { return nil }
         let topLeft = blockPoint(at: .zero, in: size)
         let bottomRight = blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
-        let side = Double(RegionCoordinate.blockSize)
+        let side = Self.regionSideInBlocks
         guard let minX = Coordinates.block(topLeft.x / side), let maxX = Coordinates.block(bottomRight.x / side),
               let minZ = Coordinates.block(topLeft.y / side), let maxZ = Coordinates.block(bottomRight.y / side),
               minX <= maxX, minZ <= maxZ else { return nil }
@@ -69,29 +66,29 @@ nonisolated struct MapViewport: Equatable, Sendable {
     }
 
     /// Enumerate only saved regions, so fitting distant terrain never walks the empty space.
-    func visibleRegions(in size: CGSize, among available: Set<RegionCoordinate>) -> [RegionCoordinate] {
+    func visibleRegions(in size: CGSize, among available: Set<RegionPosition>) -> [RegionPosition] {
         guard let range = visibleRegionRange(in: size) else { return [] }
-        return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) }
+        return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) && $0.blockOrigin != nil }
             .sorted { distanceToCenter($0) < distanceToCenter($1) }
     }
 
     /// Region headers locate all saved terrain without reading individual chunks.
-    static func fitting(_ regions: Set<RegionCoordinate>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
-        guard !regions.isEmpty, size.width > padding * 2, size.height > padding * 2,
-              let minX = regions.map(\.x).min(), let maxX = regions.map(\.x).max(),
-              let minZ = regions.map(\.z).min(), let maxZ = regions.map(\.z).max() else { return nil }
-        let side = CGFloat(RegionCoordinate.blockSize)
-        let left = CGFloat(minX) * side, top = CGFloat(minZ) * side
-        let width = (CGFloat(maxX) - CGFloat(minX) + 1) * side
-        let height = (CGFloat(maxZ) - CGFloat(minZ) + 1) * side
+    static func fitting(_ regions: Set<RegionPosition>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
+        let origins = regions.compactMap(\.blockOrigin)
+        guard size.width.isFinite, size.height.isFinite, size.width > padding * 2, size.height > padding * 2,
+              let minX = origins.map(\.x).min(), let maxX = origins.map(\.x).max(),
+              let minZ = origins.map(\.z).min(), let maxZ = origins.map(\.z).max() else { return nil }
+        let left = CGFloat(minX), top = CGFloat(minZ)
+        let width = CGFloat(maxX) - left + Self.regionSideInBlocks
+        let height = CGFloat(maxZ) - top + Self.regionSideInBlocks
         return MapViewport(center: CGPoint(x: left + width / 2, y: top + height / 2),
                            scale: min((size.width - padding * 2) / width, (size.height - padding * 2) / height))
     }
 
-    func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {
-        let half = CGFloat(RegionCoordinate.blockSize) / 2
-        return hypot(CGFloat(region.x) * CGFloat(RegionCoordinate.blockSize) + half - center.x,
-                     CGFloat(region.z) * CGFloat(RegionCoordinate.blockSize) + half - center.y)
+    func distanceToCenter(_ region: RegionPosition) -> CGFloat {
+        guard let origin = region.blockOrigin else { return .greatestFiniteMagnitude }
+        let half = Self.regionSideInBlocks / 2
+        return hypot(CGFloat(origin.x) + half - center.x, CGFloat(origin.z) + half - center.y)
     }
 
     /// Moves the map with the pointer, so content follows a drag.

@@ -21,7 +21,7 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: world.appendingPathComponent("test-cache"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
         let oldFile = cache.directory.appendingPathComponent("r.0.0.surface.\(key.fileSize).\(key.modified).v6.lzfse")
@@ -49,7 +49,7 @@ import Testing
             try? FileManager.default.removeItem(at: cacheDir)
         }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: cacheDir), savesInBackground: false)
         let regionFile = dimension.regionDirectory.appendingPathComponent("r.0.0.mca")
 
@@ -102,7 +102,7 @@ import Testing
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let entitiesFile = dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")
         let entity = NBT.compound([
             "id": .string("minecraft:cat"), "Health": .float(6), "Owner": .intArray([1, 2, 3, 4]),
@@ -131,7 +131,7 @@ import Testing
         let world = try TestWorld.make(chunks: StructureTestWorld.chunks())
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionCoordinate(x: -1, z: 0)
+        let region = RegionPosition(x: -1, z: 0)
         let cache = ScanCache(directory: world.appendingPathComponent("cache"))
         let fingerprint = ScanCache.fingerprint([
             dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
@@ -162,7 +162,7 @@ import Testing
         let cache = ScanCache(directory: dir.appendingPathComponent("scans"))
         var reads = 0
         func value() -> [String] {
-            cache.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source, dir.appendingPathComponent("missing.mca")]) {
+            cache.value("test", region: RegionPosition(x: 0, z: 0), sources: [source, dir.appendingPathComponent("missing.mca")]) {
                 reads += 1
                 return ["read \(reads)"]
             }
@@ -173,8 +173,8 @@ import Testing
         // Only the newest entry is kept.
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("scans").path).count == 1)
         var offReads = 0
-        _ = ScanCache.off.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
-        _ = ScanCache.off.value("test", region: RegionCoordinate(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
+        _ = ScanCache.off.value("test", region: RegionPosition(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
+        _ = ScanCache.off.value("test", region: RegionPosition(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
         #expect(offReads == 2)
     }
 
@@ -199,8 +199,8 @@ import Testing
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         let reader = RegionReader(dimension: dimension, cache: cache)
         #expect(await BiomeScanner.scan(reader).areas.map(\.chunkCount) == [4])
-        #expect(await reader.inhabitedTimes(RegionCoordinate(x: 0, z: 0)).count == 1024)
-        #expect(await reader.biomes(RegionCoordinate(x: 0, z: 0)).count == 4)
+        #expect(await reader.inhabitedTimes(RegionPosition(x: 0, z: 0)).count == 1024)
+        #expect(await reader.biomes(RegionPosition(x: 0, z: 0)).count == 4)
         #expect(await BiomeScanner.scan(RegionReader(dimension: dimension, cache: .off)).areas.isEmpty)
     }
 }
@@ -311,8 +311,8 @@ import Testing
             await gate.finish("write", with: ())
             await closing.value
             #expect(finished && map.unfinishedCacheWrites == 0)
-            let key = try #require(TileCache.key(for: RegionCoordinate(x: 0, z: 0), regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
-            let bytes = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)]?.dataProvider?.data as Data?)
+            let key = try #require(TileCache.key(for: RegionPosition(x: 0, z: 0), regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
+            let bytes = try #require(map.tiles[RegionPosition(x: 0, z: 0)]?.dataProvider?.data as Data?)
             #expect(TileCache(directory: f.cache).load(key) == Array(bytes))
             try FileManager.default.removeItem(at: f.cache)
             #expect(!FileManager.default.fileExists(atPath: f.cache.path))
