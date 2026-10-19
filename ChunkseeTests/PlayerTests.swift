@@ -37,13 +37,60 @@ import Testing
         #expect(!markers.contains { $0.position == CGPoint(x: -12, y: 241) })
     }
 
-    @Test func eachDimensionListsThePlayersLastSeenInIt() {
-        let dimensions = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"]
-        func listed(_ id: String) -> [UUID] { PlayerPresentation.listed(players, in: id, dimensions: dimensions).map(\.uuid) }
-        // The Bukkit player's position may be in another world, so they're listed with the Overworld.
-        #expect(listed("minecraft:overworld") == [you, friend, bukkit])
-        #expect(listed("minecraft:the_nether").isEmpty)   // your last death there doesn't list you
-        #expect(listed("minecraft:the_end").isEmpty)
+    @Test func eachDimensionListsThePlayersLastSeenInIt() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        for id in ["the_nether", "the_end"] {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/\(id)/region"), withIntermediateDirectories: true)
+        }
+        let playerDirectory = url.appendingPathComponent("players/data")
+        try FileManager.default.createDirectory(at: playerDirectory, withIntermediateDirectories: true)
+        let missingID = UUID(), missing = PlayerInfo(uuid: missingID, nbt: .compound([
+            "Dimension": .string("example:missing"), "Pos": pos(1, 2),
+        ]))
+        for player in players + [missing] {
+            try Data(Compression.deflate(player.nbt.serialized(), gzip: true))
+                .write(to: playerDirectory.appendingPathComponent(player.uuid.uuidString.lowercased() + ".dat"))
+        }
+        let defaults = TestDefaults.make()
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        #expect(Set(overworld.listedPlayers.map(\.uuid)) == [you, friend, bukkit, missingID])
+        #expect(nether.listedPlayers.isEmpty) // a death marker does not move the player's row
+        #expect(!overworld.canFocus(missing))
+        for player in resources.players {
+            #expect(overworld.listedPlayers.contains { $0.uuid == player.uuid }
+                    == overworld.lists(PlayerPresentation.position(of: player)?.dimension))
+        }
+        #expect(nether.mapContent.players.contains { $0.playerID == you && $0.kind == .death })
+        nether.mapClicked(.row(.player(you)))
+        #expect(nether.inspector == .player(you))
+        nether.visibility.hiddenPlayers.insert(you)
+        #expect(!nether.mapContent.players.contains { $0.playerID == you })
+        nether.mapClicked(.row(.player(you)))
+        #expect(nether.inspector == nil)
+        overworld.close(); nether.close()
+        await overworld.waitUntilClosed(); await nether.waitUntilClosed()
+    }
+
+    @Test func inspectorAndMarkersShareValidLocationsWithoutLosingMissingDimensionDetails() {
+        let locations = PlayerPresentation.locations(of: players[0])
+        #expect(locations.map(\.kind) == [.player, .death, .respawn])
+        #expect(locations.map(\.title) == ["Last Position", "Last Death", "Respawn Point"])
+        #expect(locations.map(\.isBlockPosition) == [false, true, true])
+        #expect(PlayerPresentation.locations(of: players[2]).isEmpty) // Bukkit world is unknown
+        let invalid = PlayerInfo(uuid: UUID(), nbt: .compound([
+            "Dimension": .string("minecraft:overworld"), "Pos": pos(.nan, 0),
+            "LastDeathLocation": .compound(["dimension": .string("example:missing"), "pos": .intArray([1, 64, 2])]),
+        ]))
+        let valid = PlayerPresentation.locations(of: invalid)
+        #expect(valid.map(\.kind) == [.death])
+        #expect(valid.first?.position.dimension == "example:missing")
+        #expect(PlayerPresentation.position(of: invalid) == nil)
+        #expect(PlayerPresentation.absentPlayerName(friend, knownName: nil) == "a player not in this world (06d119da…)")
+        #expect(PlayerPresentation.absentPlayerName(friend, knownName: "Friend") == "Friend")
     }
 
     @Test func deathMarkerAppearsInItsOwnDimension() {

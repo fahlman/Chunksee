@@ -4,7 +4,7 @@ import ChunkseeKit
 
 /// A player's position, last death or respawn point on the map.
 nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
-    enum Kind: Sendable {
+    enum Kind: Hashable, Sendable {
         case player, death, respawn
     }
 
@@ -76,8 +76,7 @@ nonisolated enum PlayerPresentation {
     static func label(of player: PlayerInfo, singleplayerUUID: UUID?, knownName: String? = nil) -> Name {
         if let knownName { return .named(knownName) }
         if player.uuid == singleplayerUUID { return .you }
-        let short = player.uuid.uuidString.lowercased().prefix(8)
-        return .named(String(localized: "Player \(String(short))"))
+        return .named(String(localized: "Player \(shortID(player.uuid))"))
     }
 
     /// Whether the player hasn't joined since the world was last upgraded.
@@ -92,23 +91,45 @@ nonisolated enum PlayerPresentation {
         !player.isFromBukkitServer
     }
 
-    static func position(of player: PlayerInfo) -> PlayerInfo.Location? {
-        guard isMappable(player), let location = player.position,
+    /// Keeps raw saved positions out of the UI when they are invalid or may belong to a
+    /// different Bukkit world. Whether a known dimension is openable remains the session's rule.
+    private static func usable(_ location: PlayerInfo.Location?, of player: PlayerInfo) -> PlayerInfo.Location? {
+        guard isMappable(player), let location,
               Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return nil }
         return location
     }
 
-    /// The players a dimension's sidebar lists: those last seen in it. Players with no usable
-    /// position in this world are listed in its first dimension, the Overworld, so each player
-    /// is listed once.
-    static func listed(_ players: [PlayerInfo], in dimensionID: String, dimensions: [String]) -> [PlayerInfo] {
-        players.filter { player in
-            if let position = position(of: player), dimensions.contains(position.dimension) {
-                return position.dimension == dimensionID
+    static func position(of player: PlayerInfo) -> PlayerInfo.Location? { usable(player.position, of: player) }
+
+    struct Location: Identifiable, Sendable {
+        let kind: MapMarker.Kind
+        let position: PlayerInfo.Location
+        var id: MapMarker.Kind { kind }
+        var isBlockPosition: Bool { kind != .player }
+        var title: String {
+            switch kind {
+            case .player: String(localized: "Last Position")
+            case .death: String(localized: "Last Death")
+            case .respawn: String(localized: "Respawn Point")
             }
-            return dimensionID == dimensions.first
         }
     }
+
+    /// The inspector and map consume the same valid saved locations.
+    static func locations(of player: PlayerInfo) -> [Location] {
+        let candidates: [(MapMarker.Kind, PlayerInfo.Location?)] = [
+            (.player, player.position), (.death, player.lastDeath), (.respawn, player.respawn),
+        ]
+        return candidates.compactMap { kind, location in
+            usable(location, of: player).map { Location(kind: kind, position: $0) }
+        }
+    }
+
+    static func absentPlayerName(_ uuid: UUID, knownName: String?) -> String {
+        knownName ?? String(localized: "a player not in this world (\(shortID(uuid))…)")
+    }
+
+    private static func shortID(_ uuid: UUID) -> String { String(uuid.uuidString.lowercased().prefix(8)) }
 
     /// Markers for one dimension: each mappable player's last position, last death and respawn point.
     static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,
@@ -118,15 +139,18 @@ nonisolated enum PlayerPresentation {
             let name = label(of: player, singleplayerUUID: singleplayerUUID, knownName: knownName(player.uuid))
             let outdated = isOutdated(player, worldDataVersion: worldDataVersion)
             let id = player.uuid.uuidString
-            func add(_ kind: MapMarker.Kind, _ location: PlayerInfo.Location?, _ label: String) {
-                guard let location, location.dimension == dimensionID,
-                      Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-                markers.append(MapMarker(id: "\(id)-\(kind)", playerID: player.uuid, kind: kind, position: CGPoint(x: location.x, y: location.z),
-                                         y: location.y, label: label, isOutdated: outdated))
+            // Keep the live-position badge last, matching the existing overlap priority.
+            for saved in locations(of: player).reversed() where saved.position.dimension == dimensionID {
+                let location = saved.position
+                let label = switch saved.kind {
+                case .player: name.text
+                case .death: name.lastDeath
+                case .respawn: name.respawn
+                }
+                markers.append(MapMarker(id: "\(id)-\(saved.kind)", playerID: player.uuid, kind: saved.kind,
+                                         position: CGPoint(x: location.x, y: location.z), y: location.y,
+                                         label: label, isOutdated: outdated))
             }
-            add(.respawn, player.respawn, name.respawn)
-            add(.death, player.lastDeath, name.lastDeath)
-            add(.player, player.position, name.text)
         }
         return markers
     }

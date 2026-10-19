@@ -118,12 +118,12 @@ struct PlayerDetailView: View {
             } header: {
                 Label(session.name(of: player), systemImage: "person.fill").font(.headline)
             }
-            if PlayerPresentation.isMappable(player),
-               player.position != nil || player.lastDeath != nil || player.respawn != nil {
+            let locations = PlayerPresentation.locations(of: player)
+            if !locations.isEmpty {
                 Section("Locations") {
-                    if let location = player.position { locationButton("Last Position", location) }
-                    if let location = player.lastDeath { locationButton("Last Death", location, blockPosition: true) }
-                    if let location = player.respawn { locationButton("Respawn Point", location, blockPosition: true) }
+                    ForEach(locations) { location in
+                        locationButton(location)
+                    }
                 }
             }
             Section("Status") {
@@ -187,16 +187,14 @@ struct PlayerDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func locationButton(_ title: LocalizedStringKey, _ location: PlayerInfo.Location, blockPosition: Bool = false) -> some View {
-        if Coordinates.canLocate(x: location.x, y: location.y, z: location.z) {
-            Button { session.focus(on: location, blockPosition: blockPosition) } label: {
-                LabeledContent(title, value: Coordinates.text(CGPoint(x: location.x, y: location.z), y: location.y,
-                                                             dimension: session.dimensionName(location.dimension)))
-                    .monospacedDigit()
-            }
-            .disabled(!session.dimensions.contains { $0.id == location.dimension })
+    private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
+        let location = saved.position
+        return Button { session.focus(on: location, blockPosition: saved.isBlockPosition) } label: {
+            LabeledContent(saved.title, value: Coordinates.text(CGPoint(x: location.x, y: location.z), y: location.y,
+                                                               dimension: session.dimensionName(location.dimension)))
+                .monospacedDigit()
         }
+        .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }
 
 }
