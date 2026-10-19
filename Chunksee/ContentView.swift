@@ -6,6 +6,7 @@ struct WorldView: View {
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
+    @State private var showsCoordinateSheet = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
 
@@ -168,7 +169,7 @@ struct WorldView: View {
                 }
             }
         }
-        .sheet(isPresented: $session.showsCoordinateSheet) {
+        .sheet(isPresented: $showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
         .sheet(item: $annotations.draft) { draft in
@@ -179,8 +180,9 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
         .background { WorldKeyboardShortcuts(session: session) }
     }
 

@@ -18,7 +18,16 @@ private struct MapHeightPopoverKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+private struct CoordinateSheetKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var coordinateSheet: Binding<Bool>? {
+        get { self[CoordinateSheetKey.self] }
+        set { self[CoordinateSheetKey.self] = newValue }
+    }
+
     var mapHeightPopover: Binding<Bool>? {
         get { self[MapHeightPopoverKey.self] }
         set { self[MapHeightPopoverKey.self] = newValue }
@@ -40,6 +49,7 @@ struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
+    @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -105,9 +115,9 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("]")
                 .disabled(session?.navigation.canGoForward != true)
             Divider()
-            Button("Go to Coordinates…") { session?.showsCoordinateSheet = true }
+            Button("Go to Coordinates…") { showsCoordinateSheet = true }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(session?.map == nil)
+                .disabled(session?.map == nil || showsCoordinateSheet == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") {
                 guard let session, let spawn = session.world.level.spawnPosition,

@@ -142,6 +142,10 @@ observation reapplies the model’s display name if native restoration resets it
 the view ends that observation. The adapter never edits a file URL or document contents.
 The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
 Each dimension's map position is remembered in `RememberedViews`.
+WorldView owns the transient Go to Coordinates sheet flag. Navigate's command uses the focused
+scene binding, while the sheet keeps its existing native controls and calls MapNavigation.
+Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
+existing per-session view identity resets this transient state on a native reread or move.
 `MapNavigation` applies local focus, coordinate jumps, Fit World and Back/Forward through the
 document's existing MapModel, which remains the only viewport/depth owner. It owns history but
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.

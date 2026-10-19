@@ -28,7 +28,6 @@ final class WorldSession {
 
     let selectedDimensionID: String?
     let map: MapModel?
-    var showsCoordinateSheet = false
     let navigation: MapNavigation
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
     var portalsByDimension: [String: [NetherPortal]] { search.portals }
