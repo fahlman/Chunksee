@@ -127,7 +127,8 @@ import Testing
             let carried = try #require(snapshot.shoulderPets.first)
             #expect(snapshot.shoulderPets.count == 1 && carried.name == "Gray" && carried.creature.owner == owner)
             var part = DimensionIndex()
-            part.creatures = [try #require(CreatureMarker(try #require(Creature(parrot(bird))), dimension: overworld))]
+            let regionCreature = try #require(Creature(parrot(bird)))
+            part.creatures = [try #require(CreatureMarker(regionCreature, dimension: overworld))]
             let projected = SearchIndex(dimensions: [overworld: part]).including(snapshot.shoulderPets)
             #expect(projected.creatures.isEmpty)
             #expect(projected.dimensions.keys.sorted() == [overworld])
