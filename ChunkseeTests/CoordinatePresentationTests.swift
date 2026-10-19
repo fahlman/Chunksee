@@ -150,7 +150,7 @@ import Testing
         for player in session.players where PlayerPresentation.position(of: player) == nil {
             let viewport = session.map?.viewport
             #expect(!session.canFocus(player))
-            session.choose(.player(player.uuid))
+            session.selection.choose(.player(player.uuid))
             #expect(session.map?.viewport == viewport)
         }
         #expect(session.mapContent.players.count == 1)

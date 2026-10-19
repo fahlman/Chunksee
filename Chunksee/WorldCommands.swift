@@ -75,9 +75,9 @@ struct WorldCommands: Commands {
                 .disabled(session?.map == nil)
             Divider()
             Toggle("World Info", isOn: Binding {
-                session?.inspector == .world
+                session?.selection.inspector == .world
             } set: { shown in
-                session?.inspector = shown ? .world : nil
+                session?.selection.inspector = shown ? .world : nil
             })
             .keyboardShortcut("i")
             .disabled(session == nil)
