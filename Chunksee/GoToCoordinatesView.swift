@@ -54,7 +54,7 @@ struct GoToCoordinatesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Go to Coordinates").font(.headline)
-            Text("Enter whole block coordinates in \(session.selectedDimensionID.map(session.dimensionName) ?? "").")
+            Text("Enter whole block coordinates in \(session.selectedDimensionID.map(session.presentation.dimensionName) ?? "").")
                 .foregroundStyle(.secondary)
             Grid(alignment: .leading) {
                 GridRow {

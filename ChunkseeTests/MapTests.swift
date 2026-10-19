@@ -424,7 +424,7 @@ import Testing
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        session.refreshDelay = .zero
+        session.resources.refreshDelay = .zero
         #expect(session.players.isEmpty)
 
         let regions = try #require(session.map?.dimension.regionDirectory)
@@ -436,8 +436,8 @@ import Testing
         let nbt = NBT.compound(["Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)])])
         try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: player)
 
-        session.worldChanged([newRegion, player, world.appendingPathComponent("session.lock")])
-        await session.waitForRefresh()
+        session.resources.worldChanged([newRegion, player, world.appendingPathComponent("session.lock")])
+        await session.resources.waitForRefresh()
         #expect(session.map?.availableRegions.contains(RegionPosition(x: -1, z: 0)) == true)
         #expect(session.players.count == 1)
     }

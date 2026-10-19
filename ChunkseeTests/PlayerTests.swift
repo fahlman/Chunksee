@@ -57,12 +57,12 @@ import Testing
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
-        #expect(Set(overworld.listedPlayers.map(\.uuid)) == [you, friend, legacy, missingID])
-        #expect(nether.listedPlayers.isEmpty) // a death marker does not move the player's row
-        #expect(!overworld.canFocus(missing))
+        #expect(Set(overworld.presentation.listedPlayers.map(\.uuid)) == [you, friend, legacy, missingID])
+        #expect(nether.presentation.listedPlayers.isEmpty) // a death marker does not move the player's row
+        #expect(!overworld.routing.canFocus(missing))
         for player in resources.players {
-            #expect(overworld.listedPlayers.contains { $0.uuid == player.uuid }
-                    == overworld.lists(PlayerPresentation.position(of: player)?.dimension))
+            #expect(overworld.presentation.listedPlayers.contains { $0.uuid == player.uuid }
+                    == overworld.presentation.lists(PlayerPresentation.position(of: player)?.dimension))
         }
         #expect(MapContent(session: nether).players.contains { $0.playerID == you && $0.kind == .death })
         nether.selection.mapClicked(.row(.player(you)))

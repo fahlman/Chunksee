@@ -18,7 +18,16 @@ private struct MapHeightPopoverKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+private struct CoordinateSheetKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var coordinateSheet: Binding<Bool>? {
+        get { self[CoordinateSheetKey.self] }
+        set { self[CoordinateSheetKey.self] = newValue }
+    }
+
     var mapHeightPopover: Binding<Bool>? {
         get { self[MapHeightPopoverKey.self] }
         set { self[MapHeightPopoverKey.self] = newValue }
@@ -40,6 +49,7 @@ struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
+    @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -105,14 +115,14 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("]")
                 .disabled(session?.navigation.canGoForward != true)
             Divider()
-            Button("Go to Coordinates…") { session?.showsCoordinateSheet = true }
+            Button("Go to Coordinates…") { showsCoordinateSheet = true }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(session?.map == nil)
+                .disabled(session?.map == nil || showsCoordinateSheet == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") {
                 guard let session, let spawn = session.world.level.spawnPosition,
                       let dimension = session.world.level.spawnDimension else { return }
-                session.focus(on: .init(dimension: dimension,
+                session.routing.focus(on: .init(dimension: dimension,
                                        x: Double(spawn.x), y: Double(spawn.y), z: Double(spawn.z)))
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
@@ -124,7 +134,7 @@ struct WorldCommands: Commands {
             Menu("Dimension") {
                 if let session {
                     ForEach(session.dimensions, id: \.id) { dimension in
-                        Toggle(session.dimensionName(dimension.id), isOn: Binding {
+                        Toggle(session.presentation.dimensionName(dimension.id), isOn: Binding {
                             session.selectedDimensionID == dimension.id
                         } set: { if $0 { session.routing.openDimension(dimension.id) } })
                     }

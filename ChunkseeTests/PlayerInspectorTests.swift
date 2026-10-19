@@ -47,11 +47,11 @@ import Testing
         try savePets([pet("Other World", owner: owner, x: 4)], in: secondURL)
         let first = try await open(firstURL), second = try await open(secondURL)
         defer { first.close(); second.close() }
-        #expect(Set(first.linkedPets(to: owner).map(\.name)) == ["Summer", "Nether Wolf"])
-        #expect(first.linkedPets(to: otherOwner).map(\.name) == ["Summer"])
-        #expect(first.linkedPets(to: UUID()).isEmpty)
-        #expect(second.linkedPets(to: owner).contains { $0.name == "Other World" })
-        #expect(!first.linkedPets(to: owner).contains { $0.name == "Other World" })
+        #expect(Set(first.presentation.linkedPets(to: owner).map(\.name)) == ["Summer", "Nether Wolf"])
+        #expect(first.presentation.linkedPets(to: otherOwner).map(\.name) == ["Summer"])
+        #expect(first.presentation.linkedPets(to: UUID()).isEmpty)
+        #expect(second.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })
+        #expect(!first.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed()
     }
@@ -78,7 +78,7 @@ import Testing
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
         source.routing.openDocument = { continuation.yield($0) }
         var opened = opens.makeAsyncIterator()
-        let pet = try #require(source.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
+        let pet = try #require(source.presentation.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
         source.selection.showLinkedPet(pet, ownedBy: owner)
         let requested = await opened.next(isolation: #isolation)
         #expect(requested == source.resources.documentURL(for: "minecraft:the_nether"))
@@ -105,7 +105,7 @@ import Testing
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
         source.routing.openDocument = { continuation.yield($0) }
         var opened = opens.makeAsyncIterator()
-        let pet = try #require(source.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
+        let pet = try #require(source.presentation.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
         source.selection.showLinkedPet(pet, ownedBy: owner)
         let requested = await opened.next(isolation: #isolation)
         #expect(requested == source.resources.documentURL(for: pet.dimension))
@@ -128,13 +128,13 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let session = try await open(url)
         defer { session.close() }
-        let old = try #require(session.linkedPets(to: owner).first { $0.dimension == "minecraft:overworld" })
+        let old = try #require(session.presentation.linkedPets(to: owner).first { $0.dimension == "minecraft:overworld" })
         let initial = session.map?.viewport
         let file = try savePets([pet("Summer", owner: otherOwner, x: 4, entityID: try #require(old.creature.uuid))], in: url)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: session.selectedDimensionID)
         await session.search.waitForIndex()
-        #expect(!session.linkedPets(to: owner).contains { $0.dimension == "minecraft:overworld" })
+        #expect(!session.presentation.linkedPets(to: owner).contains { $0.dimension == "minecraft:overworld" })
         session.selection.showLinkedPet(old, ownedBy: owner)
         #expect(session.selection.mapSelection == nil && session.map?.viewport == initial && session.selection.sidebarRevealRequest == nil)
         session.close()
@@ -164,8 +164,8 @@ import Testing
         try savePets([pet("Summer", owner: owner, x: 4, entityID: firstID), pet("Luna", owner: owner, x: 4, entityID: secondID)], in: url)
         let session = try await open(url)
         defer { session.close() }
-        let first = try #require(session.linkedPets(to: owner).first { $0.creature.uuid == firstID })
-        let second = try #require(session.linkedPets(to: owner).first { $0.creature.uuid == secondID })
+        let first = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == firstID })
+        let second = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == secondID })
         #expect(first.id != second.id && first.position == second.position)
         session.selection.showLinkedPet(second, ownedBy: owner)
         #expect(session.selection.mapSelection == .creature(second))
@@ -174,7 +174,7 @@ import Testing
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: session.selectedDimensionID)
         await session.search.waitForIndex()
-        let moved = try #require(session.linkedPets(to: owner).first { $0.creature.uuid == firstID })
+        let moved = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == firstID })
         #expect(moved.id == first.id && moved.position != first.position && moved.name == "Renamed")
         #expect(session.selection.mapSelection == .creature(moved))
         session.selection.showLinkedPet(first, ownedBy: owner)

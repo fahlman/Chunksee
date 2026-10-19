@@ -6,6 +6,7 @@ struct WorldView: View {
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
+    @State private var showsCoordinateSheet = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
 
@@ -54,34 +55,34 @@ struct WorldView: View {
                         SavedSearchesSection(session: session, expanded: $sidebarDisclosure.savedSearches)
                     }
                     SavedPlacesSection(session: session)
-                    let index = session.selectedIndex
-                    LayerSection(title: "Structures", markers: index.structures, origin: session.spawnPoint,
+                    let index = session.presentation.selectedIndex
+                    LayerSection(title: "Structures", markers: index.structures, origin: session.presentation.spawnPoint,
                                  shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
                                  isExpanded: layerExpanded(.structures), expandedGroups: $sidebarDisclosure.structures)
-                    LayerSection(title: "Places", markers: index.places, origin: session.spawnPoint,
+                    LayerSection(title: "Places", markers: index.places, origin: session.presentation.spawnPoint,
                                  shown: $visibility.places, item: { SidebarItem.place($0.id) },
                                  isExpanded: layerExpanded(.places), expandedGroups: $sidebarDisclosure.places)
-                    LayerSection(title: "Creatures", markers: index.creatures, origin: session.spawnPoint,
+                    LayerSection(title: "Creatures", markers: index.creatures, origin: session.presentation.spawnPoint,
                                  shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
                                  isExpanded: layerExpanded(.creatures), expandedGroups: $sidebarDisclosure.creatures)
                     // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
-                    LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.spawnPoint,
-                                 shown: $visibility.biomes, allGroups: session.possibleBiomes, item: { SidebarItem.biome($0.id) },
+                    LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.presentation.spawnPoint,
+                                 shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes, item: { SidebarItem.biome($0.id) },
                                  isExpanded: layerExpanded(.biomes), expandedGroups: $sidebarDisclosure.biomes)
-                    if !session.inGameMaps.isEmpty {
+                    if !session.presentation.inGameMaps.isEmpty {
                         Section("In-Game Maps", isExpanded: $sidebarDisclosure.showsInGameMaps) {
-                            ForEach(session.inGameMaps, id: \.id) { map in
+                            ForEach(session.presentation.inGameMaps, id: \.id) { map in
                                 InGameMapRow(session: session, map: map)
                             }
                         }
                     }
-                    if !session.listedPlayers.isEmpty {
+                    if !session.presentation.listedPlayers.isEmpty {
                         Section("Players") {
-                            ForEach(session.listedPlayers, id: \.uuid) { player in
+                            ForEach(session.presentation.listedPlayers, id: \.uuid) { player in
                                 PlayerRow(session: session, player: player)
                             }
                             // A row rather than a section footer: sidebar lists don't show footers.
-                            if session.hasUnnamedPlayers {
+                            if session.presentation.hasUnnamedPlayers {
                                 SettingsLink {
                                     Label("Find Player Names…", systemImage: "magnifyingglass")
                                 }
@@ -113,20 +114,20 @@ struct WorldView: View {
             .frame(minWidth: 180, idealWidth: 220)
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
-            if session.isSavedBeforeReadableFormat {
+            if session.presentation.isSavedBeforeReadableFormat {
                 ContentUnavailableView {
                     Label("Saved Before Minecraft 1.18", systemImage: "clock.arrow.circlepath")
                 } description: {
                     Text("Chunksee can show worlds saved by Minecraft 1.18 or later. To update this one, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again.")
                 }
-                .navigationSubtitle(session.displayName)
+                .navigationSubtitle(session.presentation.displayName)
             } else if let map = session.map {
-                MapView(session: session, map: map, content: MapContent(session: session), portalStatus: { session.linkStatus(for: $0) },
+                MapView(session: session, map: map, content: MapContent(session: session), portalStatus: { session.presentation.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
-                    .copyable([SharedMapImage { [session] in session.renderMapImage() }])
+                    .copyable([SharedMapImage { [session] in MapImage.render(session: session) }])
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
                         try? await Task.sleep(for: .seconds(1))
@@ -140,15 +141,15 @@ struct WorldView: View {
                     }
                     .toolbar {
                         ToolbarItem {
-                            ShareLink(item: SharedMapImage { [session] in session.renderMapImage() },
-                                      preview: SharePreview("Map of \(session.displayName)", image: Image(systemName: "map"))) {
+                            ShareLink(item: SharedMapImage { [session] in MapImage.render(session: session) },
+                                      preview: SharePreview("Map of \(session.presentation.displayName)", image: Image(systemName: "map"))) {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
                             .help("Share an image of the map as shown")
                         }
                     }
                     // The document's folder names the window, so the subtitle names the world.
-                    .navigationSubtitle(session.displayName)
+                    .navigationSubtitle(session.presentation.displayName)
             } else {
                 ContentUnavailableView("No Dimensions", systemImage: "questionmark.folder",
                                        description: Text("This world has no saved terrain yet."))
@@ -168,7 +169,7 @@ struct WorldView: View {
                 }
             }
         }
-        .sheet(isPresented: $session.showsCoordinateSheet) {
+        .sheet(isPresented: $showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
         .sheet(item: $annotations.draft) { draft in
@@ -179,8 +180,9 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
@@ -222,13 +224,13 @@ private struct PlayerRow: View {
         HStack {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.name(of: player))
+                    Text(session.presentation.name(of: player))
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
             } icon: {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
-            .opacity(canFocus && !session.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
+            .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: visibility)
@@ -249,16 +251,16 @@ private struct PlayerRow: View {
     }
 
     private var canFocus: Bool {
-        session.canFocus(player)
+        session.routing.canFocus(player)
     }
 
     private var detail: String {
         guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
-        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.dimensionName(position.dimension))
+        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.presentation.dimensionName(position.dimension))
     }
 
     private var help: String {
-        if session.isOutdated(player) {
+        if session.presentation.isOutdated(player) {
             return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
         }
         return canFocus ? String(localized: "Show this player’s details and center the map on their last location")
@@ -325,7 +327,7 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.search.listedHits(for: saved.query, where: session.lists)
+                let hits = session.search.listedHits(for: saved.query, where: session.presentation.lists)
                 let visibility = Binding {
                     session.savedSearches.all.first { $0.id == saved.id }?.isShown ?? false
                 } set: { session.savedSearches.setShown(saved.id, $0) }
@@ -359,7 +361,7 @@ private struct HitList: View {
     let query: String
     var body: some View {
         let search = session.search
-        let hits = session.search.listedHits(for: query, where: session.lists)
+        let hits = session.search.listedHits(for: query, where: session.presentation.lists)
         if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
             Label {
                 Text("Searching the world…")

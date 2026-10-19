@@ -23,7 +23,7 @@ import Testing
         map.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 0.125)
         session.navigation.goToCoordinates(CGPoint(x: -266, y: 71))
         #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
-        session.focus(on: .init(dimension: "minecraft:overworld", x: 10, y: 64, z: 20))
+        session.routing.focus(on: .init(dimension: "minecraft:overworld", x: 10, y: 64, z: 20))
         #expect(map.viewport.scale == 2)
         session.navigation.goBack()
         #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))

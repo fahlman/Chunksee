@@ -51,7 +51,7 @@ final class SelectionModel {
 
     var sidebarSelection: SidebarItem? {
         guard let source, let item = selectedItem, resolve(item) != nil else { return nil }
-        if case .player(let id) = item, !source.listedPlayers.contains(where: { $0.uuid == id }) { return nil }
+        if case .player(let id) = item, !source.presentation.listedPlayers.contains(where: { $0.uuid == id }) { return nil }
         return item
     }
 
@@ -68,14 +68,14 @@ final class SelectionModel {
             if let portal = marker.portal { return .portal(portal) }
         default: break
         }
-        guard let overlayID, let map = source.inGameMaps.first(where: { $0.id == overlayID }), source.canShow(map) else { return nil }
+        guard let overlayID, let map = source.presentation.inGameMaps.first(where: { $0.id == overlayID }), source.presentation.canShow(map) else { return nil }
         return .inGameMap(map)
     }
 
     /// Resolves every selectable identity without retaining the world or a data snapshot.
     func resolve(_ item: SidebarItem) -> ResolvedSidebarItem? {
         guard let source else { return nil }
-        let index = source.selectedIndex
+        let index = source.presentation.selectedIndex
         switch item {
         case .worldInfo: return .worldInfo
         case .storage: return .storage
@@ -84,11 +84,11 @@ final class SelectionModel {
         case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
         case .creature(let id): return index.creatures.first { $0.id == id }.map(ResolvedSidebarItem.creature)
         case .biome(let id): return index.biomeAreas.first { $0.id == id }.map(ResolvedSidebarItem.biome)
-        case .inGameMap(let id): return source.inGameMaps.first { $0.id == id }.map(ResolvedSidebarItem.inGameMap)
+        case .inGameMap(let id): return source.presentation.inGameMaps.first { $0.id == id }.map(ResolvedSidebarItem.inGameMap)
         case .player(let id): return source.players.first { $0.uuid == id }.map(ResolvedSidebarItem.player)
         case .hit(let query, let id):
             guard (source.search.isActive && query == source.search.text) || source.savedSearches.contains(query) else { return nil }
-            return source.search.listedHits(for: query, where: source.lists).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
+            return source.search.listedHits(for: query, where: source.presentation.lists).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
         }
     }
 
@@ -124,25 +124,25 @@ final class SelectionModel {
             source.annotations.visit(place)
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .place(let marker):
             source.visibility.places.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .creature(let marker):
             source.visibility.creatures.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .biome(let area):
             source.visibility.biomes.insert(area.group)
-            source.center(on: area.position, keepingZoom: true)
+            source.navigation.focus(on: area.position, keepingZoom: true)
         case .inGameMap(let map):
-            guard source.canShow(map) else { return }
+            guard source.presentation.canShow(map) else { return }
             show(map, keepingZoom: true)
         case .player(let player):
             source.visibility.hiddenPlayers.remove(player.uuid)
-            if source.canFocus(player), let position = player.position { source.focus(on: position, keepingZoom: true) }
+            if source.routing.canFocus(player), let position = player.position { source.routing.focus(on: position, keepingZoom: true) }
         case .hit(let hit):
             guard let dimension = hit.dimension, let position = hit.position else { return }
-            source.focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
+            source.routing.focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
             if case .layer(let layer) = hit.source {
                 switch layer {
                 case .structure(let group): source.visibility.structures.insert(group)
@@ -162,7 +162,7 @@ final class SelectionModel {
         case .searchHit(let id)?: item = searchRow(for: id)
         case .row(let row)?:
             switch row {
-            case .player(let id): item = source?.drawnPlayerMarkers.contains { $0.playerID == id } == true ? row : nil
+            case .player(let id): item = source?.presentation.drawnPlayerMarkers.contains { $0.playerID == id } == true ? row : nil
             case .savedPlace, .structure, .place, .creature, .biome, .hit:
                 item = resolve(row) == nil ? nil : row
             case .worldInfo, .storage, .inGameMap: item = nil
@@ -175,7 +175,7 @@ final class SelectionModel {
 
     private func searchRow(for id: SearchHit.ID) -> SidebarItem? {
         guard let source else { return nil }
-        for query in source.search.visibleSearchQueries where source.search.listedHits(for: query, where: source.lists).rows.contains(where: { $0.id == id }) {
+        for query in source.search.visibleSearchQueries where source.search.listedHits(for: query, where: source.presentation.lists).rows.contains(where: { $0.id == id }) {
             return .hit(query: query, id: id)
         }
         return nil
@@ -193,7 +193,7 @@ final class SelectionModel {
     func show(_ portal: NetherPortal, keepingZoom: Bool = false) {
         guard let source else { return }
         if source.routing.route(to: portal.dimension, perform: { $0.selection.show(portal, keepingZoom: keepingZoom) }) { return }
-        source.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
+        source.routing.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
                      keepingZoom: keepingZoom)
         select(.place(PlaceMarker(portal).id))
     }
@@ -208,7 +208,7 @@ final class SelectionModel {
 
     func show(_ map: MapItem, keepingZoom: Bool = false) {
         // Never draw a map from a missing dimension over another dimension's terrain.
-        guard let source, source.canShow(map), let dimension = map.dimension else { return }
+        guard let source, source.presentation.canShow(map), let dimension = map.dimension else { return }
         if source.routing.route(to: dimension, perform: { $0.selection.show(map, keepingZoom: keepingZoom) }) { return }
         source.navigation.focus(on: CGPoint(x: map.centerX, y: map.centerZ), keepingZoom: keepingZoom,
                                 fittingScale: InGameMapImage.fittingScale(for: map))

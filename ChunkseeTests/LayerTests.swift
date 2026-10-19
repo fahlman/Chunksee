@@ -72,9 +72,9 @@ import Testing
         defer { session.close() }
         await session.search.waitForIndex()
         // A placed temple remains visible even in taiga, and a stronghold has no HPos field.
-        #expect(session.selectedIndex.structures.map(\.structureID).sorted() == ["minecraft:jungle_pyramid", "minecraft:stronghold"])
+        #expect(session.presentation.selectedIndex.structures.map(\.structureID).sorted() == ["minecraft:jungle_pyramid", "minecraft:stronghold"])
         #expect(MapContent(session: session).structures.count == 2)
-        #expect(!session.selectedIndex.structures.contains { $0.position == CGPoint(x: -266, y: 71.5) })
+        #expect(!session.presentation.selectedIndex.structures.contains { $0.position == CGPoint(x: -266, y: 71.5) })
         session.search.text = "structure: jungle pyramid"
         await session.search.waitForSearch()
         #expect(session.search.results.count == 1)
@@ -226,7 +226,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
         defer { session.close() }
         await session.search.waitForIndex()
-        let pet = try #require(session.selectedIndex.creatures.first)
+        let pet = try #require(session.presentation.selectedIndex.creatures.first)
         #expect(pet.creature.health == 8 && !FileManager.default.fileExists(atPath: oldFile.path))
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
@@ -240,7 +240,7 @@ enum StructureTestWorld {
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: dimension.id)
         await session.search.waitForIndex()
-        let refreshed = try #require(session.selectedIndex.creatures.first)
+        let refreshed = try #require(session.presentation.selectedIndex.creatures.first)
         #expect(refreshed.creature.health == 4 && pet.creature.health == 8)
         #expect(refreshed.creature.sittingOrder == false && refreshed.creature.collarColor == "blue")
         #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
@@ -274,9 +274,9 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        #expect(session.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
+        #expect(session.presentation.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
         // Once read, the sidebar can list every Overworld biome, found or not.
-        #expect(session.possibleBiomes.count == 56 && session.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
+        #expect(session.presentation.possibleBiomes.count == 56 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
         #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
@@ -301,10 +301,10 @@ enum StructureTestWorld {
         #expect(session.selection.inspector == .world && session.selection.mapSelection == nil)
         session.selection.inspector = .storage
         #expect(session.selection.sidebarSelection == .storage)
-        #expect(session.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
-        session.center(on: CGPoint(x: 10, y: 20))
+        #expect(session.presentation.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
+        session.navigation.focus(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
-        #expect(session.spawnPoint == .zero)   // the test world has no spawn
+        #expect(session.presentation.spawnPoint == .zero)   // the test world has no spawn
         session.search.text = "summer"
         await session.search.waitForIndex()
         await session.search.waitForSearch()
@@ -329,7 +329,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        let spawners = session.selectedIndex.places.filter { $0.group == .spawner }
+        let spawners = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
         #expect(spawners.map(\.name).sorted() == ["Empty Spawner", "Zombie Spawner"])
         #expect(spawners.first { $0.mob == "minecraft:zombie" }?.position == CGPoint(x: 3.5, y: 5.5))
         #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
@@ -371,8 +371,8 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        #expect(session.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
-        #expect(session.selectedIndex.biomeAreas.first?.group.name == "Plains")
+        #expect(session.presentation.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
+        #expect(session.presentation.selectedIndex.biomeAreas.first?.group.name == "Plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.
@@ -403,7 +403,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        let areas = session.selectedIndex.biomeAreas
+        let areas = session.presentation.selectedIndex.biomeAreas
         #expect(Set(areas.map(\.group.id)) == ["minecraft:plains", "minecraft:deep_dark", "minecraft:sulfur_caves"])
         #expect(areas.first { $0.group.id == "minecraft:deep_dark" }?.chunkCount == 4)
         // The surface is unchanged; the readout adds what's below.
@@ -437,7 +437,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        #expect(session.selectedIndex.biomeAreas.map(\.group.id) == ["minecraft:plains"])
+        #expect(session.presentation.selectedIndex.biomeAreas.map(\.group.id) == ["minecraft:plains"])
         #expect(MapContent(session: session).biome(at: CGPoint(x: 40, y: 8)) == nil)   // chunk (2, 0), unfinished
     }
 }
@@ -606,7 +606,7 @@ enum StructureTestWorld {
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        let item = try #require(session.inGameMaps.first)
+        let item = try #require(session.presentation.inGameMaps.first)
         let map = try #require(session.map)
         let original = MapViewport(center: CGPoint(x: item.centerX, y: item.centerZ), scale: 8)
         map.viewport = original
@@ -637,12 +637,12 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.
-        #expect(session.inGameMaps.map(\.id).sorted() == [3, 6])
-        let nether = try #require(session.inGameMaps.first { $0.id == 6 })
+        #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 6])
+        let nether = try #require(session.presentation.inGameMaps.first { $0.id == 6 })
         let before = session.map?.viewport
         session.selection.show(nether)
-        #expect(!session.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
-        session.selection.show(try #require(session.inGameMaps.first { $0.id == 3 }))
+        #expect(!session.presentation.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
+        session.selection.show(try #require(session.presentation.inGameMaps.first { $0.id == 3 }))
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
         #expect(session.selection.inspector == .selection)

@@ -130,7 +130,7 @@ import Testing
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
-        #expect(session.selectedIndex.creatures.count == 2)
+        #expect(session.presentation.selectedIndex.creatures.count == 2)
         for (query, count) in [("creature:", 2), ("pet:", 1), ("villager:", 1), ("trade:carrot", 1), ("Broken", 0)] {
             session.search.text = query
             await session.search.waitForSearch()
@@ -149,7 +149,7 @@ import Testing
         #expect(results.contains { $0.position == CGPoint(x: -8.7, y: -16.1) && $0.y == -1 })
         for player in session.players where PlayerPresentation.position(of: player) == nil {
             let viewport = session.map?.viewport
-            #expect(!session.canFocus(player))
+            #expect(!session.routing.canFocus(player))
             session.selection.choose(.player(player.uuid))
             #expect(session.map?.viewport == viewport)
         }

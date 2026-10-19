@@ -115,7 +115,7 @@ struct MapView: View {
         }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Map of \(session.dimensionName(map.dimension.id))"))
+        .accessibilityLabel(Text("Map of \(session.presentation.dimensionName(map.dimension.id))"))
         .accessibilityIdentifier("world-map")
         .accessibilityValue(Text(accessibilityReadout))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
@@ -124,7 +124,7 @@ struct MapView: View {
                 ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                     Button {
                         isFocused = true
-                        session.center(on: location.anchor ?? location.position, keepingZoom: true)
+                        session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
                         onSelect(location.target)
                     } label: {
                         Color.clear.frame(width: location.frame.width, height: location.frame.height)

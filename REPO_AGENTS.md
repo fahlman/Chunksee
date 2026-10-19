@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.32.0`, resolved to `0.32.0` (`0c0c3a93617e86733bae3a4085e59353297de67b`).
+  minor" from `0.33.0`, resolved to `0.33.0` (`f16d21690f6048213ec11e6d048911ddd47696bf`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -73,7 +73,7 @@ WorldDetails keeps game rules by saved ID and derives sorted display rows. Wande
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
 disables spawning. Rows use saved IDs so equal readable names remain distinct.
 
-`WorldSession.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
+`DimensionPresentation.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
 and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
@@ -90,7 +90,8 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search, selection and annotation models; supplies the remaining shared-world presentation |
+| `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
+| `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
@@ -99,7 +100,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
-| `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
+| `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
@@ -133,7 +134,7 @@ opens the dimension folders with SwiftUI's `openDocument` and then closes itself
 Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
 to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
 The opening action captures only `openDocument`, so a view never keeps its own document alive.
-Native window and tab titles use `WorldSession.dimensionName(_:)`, the same localized,
+Native window and tab titles use `DimensionPresentation.dimensionName(_:)`, the same localized,
 collision-safe name as the menus. URL-based DocumentGroup in macOS 27 retains folder titles
 with navigationTitle at the document root, split-view root or map detail (verified in Release).
 The small DocumentWindowTitle view sets only NSDocument.displayName through its existing
@@ -142,12 +143,18 @@ observation reapplies the model’s display name if native restoration resets it
 the view ends that observation. The adapter never edits a file URL or document contents.
 The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
 Each dimension's map position is remembered in `RememberedViews`.
+WorldView owns the transient Go to Coordinates sheet flag. Navigate's command uses the focused
+scene binding, while the sheet keeps its existing native controls and calls MapNavigation.
+Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
+existing per-session view identity resets this transient state on a native reread or move.
 `MapNavigation` applies local focus, coordinate jumps, Fit World and Back/Forward through the
 document's existing MapModel, which remains the only viewport/depth owner. It owns history but
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
 Native reread/move restoration copies history, viewport and depth into the new model, including
 from an already closed source, without sharing that source's map or history. Cross-dimension
-validation stays with the feature; DimensionRouting dispatches through the native opener. It refers
+location validation and player-focus availability belong to DimensionRouting, which dispatches
+through the native opener. Local marker centering calls MapNavigation directly with X/Z and does
+not invent a saved Y. DimensionRouting refers
 weakly to its source document for identity and closed state, without a second lifetime flag.
 WorldResources keeps the latest waiting app action per destination, shared across source documents;
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
@@ -201,6 +208,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
 Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
 dimension alongside the viewport, including moves.
 Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
@@ -210,8 +218,16 @@ number field receives SwiftUI focus on opening or switching from Surface.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
-popover discards an unfinished drag. Actual dimension-type bounds remain tracked in #248; the
-displayed slider endpoints describe its travel, not verified world-generation limits.
+popover discards an unfinished drag. WorldDetails reads dimension types through Kit 0.33.0 in the
+existing off-main metadata pass. DimensionPresentation supplies the current dimension’s verified
+build range to the slider; logical height and ceiling metadata do not define the slider or renderer.
+Numeric entry and its stepper accept any Int, without extending the slider’s limits. The slider
+thumb clamps to those limits until the user chooses a new value; its accessibility value describes
+that thumb. The number field handles SwiftUI's exit command directly so Escape dismisses the
+popover even before an edit is submitted; the native Done button supplies dismissal elsewhere.
+Missing/unreadable/unresolved types show “Height range unavailable” in place of the
+slider while retaining numeric entry. Newly discovered dimensions adopt their fresh type metadata;
+existing documents’ metadata and remembered heights are not replaced by that catalog extension.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
@@ -226,8 +242,8 @@ generations and active handles still own replacement and selective cancellation;
 stay in the common registry until they return. World close rejects late pixels and copy results.
 Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
 Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
-plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at
-−64...319 and expands to include numeric entry; it does not constrain custom dimension generation.
+plus the latest cutaway per region, rather than every slider intermediate. Slider limits come from
+the saved dimension type, including custom definitions, without changing terrain or roof behavior.
 
 The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
 remember its selection immediately. Native tab/window focus does not change a session's dimension;
@@ -483,6 +499,12 @@ selection and cross-dimension routing; SavedPlaces remains the sole persistent p
 Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
 MapContent constructs its value directly from the document’s live models for drawing and export.
 It keeps no document reference or separate cache; SwiftUI observation follows those same models.
+DimensionPresentation supplies the shared labels and listings directly from WorldResources,
+SearchModel and LayerVisibility. It holds only a weak document reference, with no copied snapshot,
+observation storage, task or lifetime flag; observation reaches the existing data owners. Linked
+pets use the same projection, while MapImage owns the export entry point. WorldSession retains
+composition, native document lifetime and view restoration/persistence, not presentation forwarding.
+Tests call WorldResources directly for live-refresh control.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
@@ -580,7 +602,7 @@ registered task and prevents late publication or a following pass. Closing one l
 siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
-Player listing uses the session's one dimension-listing fallback, shared with saved places and
+Player listing uses DimensionPresentation's one dimension-listing fallback, shared with saved places and
 search results. Map content and map-click validation consume the same drawn-player marker
 collection, including hidden-player filtering. PlayerPresentation supplies the valid saved
 locations to both the map and inspector; invalid coordinates are excluded consistently,

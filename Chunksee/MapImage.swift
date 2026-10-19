@@ -41,11 +41,13 @@ nonisolated struct SharedMapImage: Transferable {
     }
 }
 
-extension WorldSession {
-    /// The selected dimension's map as currently shown, or `nil` before it's laid out.
-    func renderMapImage() -> MapImage? {
-        guard let map, let shown = map.shownSize else { return nil }
-        return MapImage.render(map, content: MapContent(session: self), portalStatus: { [weak self] in self?.linkStatus(for: $0) },
-                               size: shown.size, scale: shown.displayScale)
+extension MapImage {
+    /// The document's map as currently shown, or `nil` before it is laid out.
+    @MainActor
+    static func render(session: WorldSession) -> MapImage? {
+        guard let map = session.map, let shown = map.shownSize else { return nil }
+        return render(map, content: MapContent(session: session),
+                      portalStatus: { [weak session] in session?.presentation.linkStatus(for: $0) },
+                      size: shown.size, scale: shown.displayScale)
     }
 }

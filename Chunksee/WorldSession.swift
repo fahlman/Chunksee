@@ -25,18 +25,11 @@ final class WorldSession {
     @ObservationIgnored private(set) lazy var routing = DimensionRouting(source: self)
     @ObservationIgnored private(set) lazy var selection = SelectionModel(source: self)
     @ObservationIgnored private(set) lazy var annotations = MapAnnotations(source: self)
+    @ObservationIgnored private(set) lazy var presentation = DimensionPresentation(source: self)
 
     let selectedDimensionID: String?
     let map: MapModel?
-    var showsCoordinateSheet = false
     let navigation: MapNavigation
-    /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
-    var portalsByDimension: [String: [NetherPortal]] { search.portals }
-    /// The selected dimension's part of the world index: what its sidebar lists and map show.
-    var selectedIndex: DimensionIndex {
-        selectedDimensionID.flatMap { search.index.dimensions[$0] } ?? DimensionIndex()
-    }
-
     private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
@@ -108,73 +101,6 @@ final class WorldSession {
         if resources.isClosed { await resources.waitUntilClosed() }
     }
 
-    // MARK: The map
-
-    var selectedDimension: ChunkseeKit.Dimension? {
-        dimensions.first { $0.id == selectedDimensionID }
-    }
-
-    var displayName: String { world.level.name ?? url.lastPathComponent }
-
-    /// Whether the selected dimension can't be drawn because it was saved before Minecraft 1.18, in the
-    /// format ChunkseeKit doesn't read: the whole world was last saved before then (its level data
-    /// predates `DataVersion.flatChunkRoot`), or, once read, every saved chunk here is still in the old
-    /// format, as in a world opened in a newer Minecraft without updating its unvisited chunks.
-    /// A dimension with some readable chunks shows those.
-    var isSavedBeforeReadableFormat: Bool {
-        (world.level.dataVersion ?? 0) < DataVersion.flatChunkRoot || selectedIndex.formats.isOnlyLegacy
-    }
-
-    /// The biome groups the selected dimension can have, once its part of the index is read; none
-    /// before then, or for a world Chunksee can't read, so the sidebar doesn't list biomes as missing.
-    var possibleBiomes: [BiomeGroup] {
-        // A world saved before 1.18 can't be read, so "0" would wrongly say a biome isn't there.
-        guard !isSavedBeforeReadableFormat, let dimension = selectedDimension, search.index.dimensions[dimension.id] != nil else { return [] }
-        return dimension.vanillaBiomes.map(BiomeGroup.init(id:))
-    }
-
-    /// A dimension's name as players know it, by id.
-    func dimensionName(_ id: String) -> String {
-        let name = Self.dimensionName(id)
-        let isAmbiguous = dimensions.contains { $0.id != id && Self.dimensionName($0.id) == name }
-        return isAmbiguous ? String(localized: "\(name) (\(id))") : name
-    }
-
-    private static func dimensionName(_ id: String) -> String {
-        switch id {
-        case "minecraft:overworld": String(localized: "Overworld")
-        case "minecraft:the_nether": String(localized: "The Nether")
-        case "minecraft:the_end": String(localized: "The End")
-        default: ReadableName.from(id)
-        }
-    }
-
-    /// The world spawn when it's in the selected dimension, otherwise the origin.
-    var spawnPoint: CGPoint {
-        Self.spawnPoint(in: world, dimensionID: selectedDimensionID)
-    }
-
-    private static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
-        guard let spawn = world.level.spawnPosition,
-              world.level.spawnDimension == dimensionID else { return .zero }
-        return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
-    }
-
-    /// Shows a location in its dimension document, centers the map, and zooms in
-    /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
-    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
-        guard dimensions.contains(where: { $0.id == location.dimension }),
-              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-        if routing.route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
-        navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition, keepingZoom: keepingZoom)
-    }
-
-    /// Centers the map on a point in the selected dimension.
-    func center(on point: CGPoint, keepingZoom: Bool = false) {
-        guard let id = selectedDimensionID else { return }
-        focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y), keepingZoom: keepingZoom)
-    }
-
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
         guard !isClosed, selectedDimensionID == previous.selectedDimensionID, map != nil, previous.map != nil else { return }
@@ -187,25 +113,12 @@ final class WorldSession {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+        let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            renderTile: renderTile)
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.views.depth(for: dimension.id))
         return map
-    }
-
-    var drawnPlayerMarkers: [MapMarker] {
-        guard map != nil, let id = selectedDimensionID else { return [] }
-        return PlayerPresentation.markers(for: players.filter { !visibility.hiddenPlayers.contains($0.uuid) }, in: id,
-                                          singleplayerUUID: world.level.singleplayerUUID,
-                                          worldDataVersion: world.level.dataVersion) { [names] in names.name(for: $0) }
-    }
-
-    /// Whether choosing a player's row can center the map on their current position.
-    func canFocus(_ player: PlayerInfo) -> Bool {
-        guard let position = PlayerPresentation.position(of: player) else { return false }
-        return dimensions.contains { $0.id == position.dimension }
     }
 
     /// The native front dimension can change without this session switching dimensions.
@@ -215,85 +128,11 @@ final class WorldSession {
         saveView()
     }
 
-    /// Remembers where the map is, to reopen there. `dimensionID` is the dimension the map is
-    /// showing: the selected one, except while switching away from it.
+    /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
         views.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
     }
-
-    // MARK: Search results, portals and in-game maps
-
-    /// Where a portal leads, or `nil` while its target's saved portals are pending or unavailable.
-    func link(for portal: NetherPortal) -> NetherPortal.Link? {
-        guard let target = NetherPortal.targetDimension(from: portal.dimension),
-              let candidates = portalsByDimension[target] else { return nil }
-        return portal.link(into: candidates)
-    }
-
-    func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
-        guard !isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
-        return resources.index.isWaitingForPortals(in: target)
-    }
-
-    /// Whether a portal links both ways, one way, or to nothing.
-    func linkStatus(for portal: NetherPortal) -> PortalLinkStatus? {
-        PortalLinkStatus.status(of: portal, portals: portalsByDimension)
-    }
-
-    /// Drawn maps made in the game that this dimension's sidebar lists: those drawn in it, and, in
-    /// the first dimension, those from a dimension this world doesn't have, by the shared rule.
-    var inGameMaps: [MapItem] {
-        details.maps.filter { lists($0.dimension) }
-    }
-
-    /// Whether a map was drawn in a dimension this world has, so it can be shown on the map.
-    func canShow(_ map: MapItem) -> Bool {
-        dimensions.contains { $0.id == map.dimension }
-    }
-
-    // MARK: Players
-
-    func name(of player: PlayerInfo) -> String {
-        PlayerPresentation.name(of: player, singleplayerUUID: world.level.singleplayerUUID, knownName: names.name(for: player.uuid))
-    }
-
-    /// A name for a player who may not have a file in this world, such as a pet's owner.
-    func name(ofPlayerWith uuid: UUID) -> String {
-        if let player = players.first(where: { $0.uuid == uuid }) { return name(of: player) }
-        return PlayerPresentation.absentPlayerName(uuid, knownName: names.name(for: uuid))
-    }
-
-    /// Whether this dimension's sidebar lists something in `dimension`. Each dimension lists only
-    /// what's in it (Ryan, 2026-10-13); something with no dimension in this world, such as an item
-    /// in a player's inventory, is listed with the first dimension, the Overworld.
-    func lists(_ dimension: String?) -> Bool {
-        guard let id = selectedDimensionID else { return false }
-        if let dimension, dimensions.contains(where: { $0.id == dimension }) { return dimension == id }
-        return id == dimensions.first?.id
-    }
-
-    /// The players this dimension's sidebar lists.
-    var listedPlayers: [PlayerInfo] {
-        players.filter { lists(PlayerPresentation.position(of: $0)?.dimension) }
-    }
-
-    /// Whether any player still has no real name.
-    var hasUnnamedPlayers: Bool { players.contains { names.name(for: $0.uuid) == nil } }
-
-    func isOutdated(_ player: PlayerInfo) -> Bool {
-        PlayerPresentation.isOutdated(player, worldDataVersion: world.level.dataVersion)
-    }
-
-    // MARK: Live updates shared by every dimension
-
-    var refreshDelay: Duration {
-        get { resources.refreshDelay }
-        set { resources.refreshDelay = newValue }
-    }
-    func worldChanged(_ files: [URL]) { resources.worldChanged(files) }
-    func waitForRefresh() async { await resources.waitForRefresh() }
-
 }
 
 enum WorldOpenError: LocalizedError, Equatable {
