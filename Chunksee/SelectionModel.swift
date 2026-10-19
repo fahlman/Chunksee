@@ -88,7 +88,7 @@ final class SelectionModel {
         case .player(let id): return source.players.first { $0.uuid == id }.map(ResolvedSidebarItem.player)
         case .hit(let query, let id):
             guard (source.search.isActive && query == source.search.text) || source.savedSearches.contains(query) else { return nil }
-            return source.listedHits(for: query).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
+            return source.search.listedHits(for: query, where: source.lists).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
         }
     }
 
@@ -175,7 +175,7 @@ final class SelectionModel {
 
     private func searchRow(for id: SearchHit.ID) -> SidebarItem? {
         guard let source else { return nil }
-        for query in source.visibleSearchQueries where source.listedHits(for: query).rows.contains(where: { $0.id == id }) {
+        for query in source.search.visibleSearchQueries where source.search.listedHits(for: query, where: source.lists).rows.contains(where: { $0.id == id }) {
             return .hit(query: query, id: id)
         }
         return nil

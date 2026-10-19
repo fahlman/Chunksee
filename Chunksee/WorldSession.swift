@@ -203,7 +203,7 @@ final class WorldSession {
         content.shownPlaceGroups = visibility.places
         content.creaturePoints = index.creaturePoints
         content.shownCreatureGroups = visibility.creatures
-        content.hits = pinnedHits.filter { $0.dimension == id && $0.position != nil }
+        content.hits = search.pinnedHits(where: lists).filter { $0.dimension == id && $0.position != nil }
         content.selectedHitID = selection.selectedHitID
         content.players = drawnPlayerMarkers
         content.selection = selection.mapSelection
@@ -256,31 +256,6 @@ final class WorldSession {
 
     // MARK: Search results, portals and in-game maps
 
-    /// The sidebar, map pins and click resolver share the same per-dimension 200-row limit.
-    func listedHits(for query: String) -> (rows: ArraySlice<SearchHit>, total: Int) {
-        let hits = listed(search.results(for: query))
-        return (hits.prefix(200), hits.count)
-    }
-
-    var visibleSearchQueries: [String] {
-        (search.isActive ? [search.text] : []) + savedSearches.all.filter(\.isShown).map(\.query)
-    }
-
-    var pinnedHits: [SearchHit] {
-        var seen = Set<SearchHit.ID>()
-        return visibleSearchQueries.flatMap { listedHits(for: $0).rows }.filter { seen.insert($0.id).inserted }
-    }
-
-    var canSaveSearch: Bool {
-        let query = search.text.trimmingCharacters(in: .whitespaces)
-        return !query.isEmpty && !savedSearches.contains(query)
-    }
-
-    /// Saves the search bar's query to the sidebar.
-    func saveSearch() {
-        savedSearches.add(search.text)
-    }
-
     /// Where a portal leads, or `nil` while its target's saved portals are pending or unavailable.
     func link(for portal: NetherPortal) -> NetherPortal.Link? {
         guard let target = NetherPortal.targetDimension(from: portal.dimension),
@@ -329,9 +304,6 @@ final class WorldSession {
         if let dimension, dimensions.contains(where: { $0.id == dimension }) { return dimension == id }
         return id == dimensions.first?.id
     }
-
-    /// A search's results that this dimension's sidebar lists.
-    func listed(_ hits: [SearchHit]) -> [SearchHit] { hits.filter { lists($0.dimension) } }
 
     /// The players this dimension's sidebar lists.
     var listedPlayers: [PlayerInfo] {

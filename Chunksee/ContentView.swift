@@ -306,10 +306,10 @@ private struct SearchResultsSection: View {
             HStack {
                 Text("Search Results")
                 Spacer()
-                Button("Save Search", systemImage: "plus.circle") { session.saveSearch() }
+                Button("Save Search", systemImage: "plus.circle") { session.search.saveSearch() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(!session.canSaveSearch)
+                    .disabled(!session.search.canSaveSearch)
                     .help("Keep this search in the sidebar")
             }
         }
@@ -325,7 +325,7 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.listedHits(for: saved.query)
+                let hits = session.search.listedHits(for: saved.query, where: session.lists)
                 let visibility = Binding {
                     session.savedSearches.all.first { $0.id == saved.id }?.isShown ?? false
                 } set: { session.savedSearches.setShown(saved.id, $0) }
@@ -359,7 +359,7 @@ private struct HitList: View {
     let query: String
     var body: some View {
         let search = session.search
-        let hits = session.listedHits(for: query)
+        let hits = session.search.listedHits(for: query, where: session.lists)
         if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
             Label {
                 Text("Searching the world…")
