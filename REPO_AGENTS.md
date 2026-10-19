@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.30.0`, resolved to `0.30.0` (`4936a9a5f19adc7c5984f26eea7c8ff11d507de9`).
+  minor" from `0.31.0`, resolved to `0.31.0` (`22530aa2a2981abbb6e9f31e8111d103052d7c7a`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -182,6 +182,10 @@ previous index and heat contributions; successful empty reads and deleted files 
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+Slider dragging holds an unfinished height in the view and commits it only when released
+(Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
+during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
+control discards an unfinished drag. The native control redesign remains tracked separately.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
