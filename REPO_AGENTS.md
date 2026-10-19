@@ -69,6 +69,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
 
+WorldDetails keeps game rules by saved ID and derives sorted display rows. Wandering-trader
+status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
+disables spawning. Rows use saved IDs so equal readable names remain distinct.
+
 `WorldSession.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
 and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
@@ -113,6 +117,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
+| `HelpView.swift` | On-demand native Help window, opening the original bundled sample through the existing document flow |
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
@@ -234,6 +239,11 @@ window restoration remain AppKit's. No tab/window focus bridge is used.
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
 File ▸ Open and Open Recent still use the native flow.
+Help ▸ Chunksee Help opens a separate SwiftUI window only when requested. Its sample-world button
+uses openDocument on the bundled original fixture; the ordinary world reader opens the dimension
+document and retains native recent/restoration behavior. The sample is read in place, never copied
+into or written over a user world. Its reproducible content recipe is in SampleWorldFixture, and
+tests check bundle packaging, opening, indexing, search, rendering and unchanged source files.
 
 `ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
 changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
@@ -352,7 +362,10 @@ The creature inspector shows saved current/maximum health in hearts and applicab
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
-the app keeps only presentation slot filtering, ordering and labels. Players and creatures share
+the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
+use Kit's `inventorySlots(in:)` for hotbar,
+storage and ender chest; saved slot numbers, empty slots and duplicate handling stay in Kit.
+The app owns only the grid and selected-hotbar styling. Players and creatures share
 the native equipment section and health row. Health uses up to two
 fractional digits in hearts, with a gauge when current and maximum are known and text for the
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
