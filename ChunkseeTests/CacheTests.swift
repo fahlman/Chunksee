@@ -192,6 +192,7 @@ import Testing
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
                                        maintainCache: { _, folder in
+            #expect(!Thread.isMainThread)
             await gate.read("maintenance")
             // A disk operation already underway can still finish after cancellation.
             TileCache.markUsed(worldFolder: folder)
