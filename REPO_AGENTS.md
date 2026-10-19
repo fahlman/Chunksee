@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.33.0`, resolved to `0.33.0` (`f16d21690f6048213ec11e6d048911ddd47696bf`).
+  minor" from `0.34.0`, resolved to `0.34.0` (`ca6a25d0360caab0c1d2dfd7304b33a4becad682`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -378,6 +378,15 @@ labels that overlap an accepted label's two-point margin are omitted. Existing z
 marker bodies, hit targets and VoiceOver names remain available. Labels draw after the marker
 bodies; the ruler keeps its existing topmost position. Caption text is measured once for layout
 and drawing, and a spatial lookup limits comparisons to nearby accepted labels.
+
+Unopened Loot reuses Places, its per-dimension hidden-by-default toggle, search, point buckets,
+selection, accessibility and coordinate copying. Sealed containers come from RegionFacts through
+ItemContainer.isSealedLoot and lootTable; the app names the saved table without predicting items
+or inferring surrounding structures. Chest minecarts retain their saved UUID through Kit 0.34.0,
+so colocated carts stay distinct and selection survives movement; only missing/unreadable IDs use
+the existing kind/position fallback policy. Block containers use their fixed block coordinates.
+Opened containers disappear from the group on the existing region refresh. Kit interpretation
+version 3 rereads cached containers for UUIDs; the app adds no second cache or file reader.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
