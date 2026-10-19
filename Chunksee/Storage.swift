@@ -42,7 +42,7 @@ struct StorageView: View {
     @State private var selection: StoredItem.ID?
 
     var body: some View {
-        let items = session.selectedIndex.storage
+        let items = session.presentation.selectedIndex.storage
         VStack(alignment: .leading, spacing: 8) {
             Text("Storage").font(.headline)
             if session.search.isIndexing && items.isEmpty {
@@ -50,7 +50,7 @@ struct StorageView: View {
             } else if items.isEmpty {
                 Text("Nothing is stored in this dimension’s containers.").foregroundStyle(.secondary)
             } else {
-                Text(StorageText.summary(kinds: items.count, containers: session.selectedIndex.containers.count, locale: locale))
+                Text(StorageText.summary(kinds: items.count, containers: session.presentation.selectedIndex.containers.count, locale: locale))
                     .font(.callout).foregroundStyle(.secondary)
                 Table(items.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("Item", value: \.name)

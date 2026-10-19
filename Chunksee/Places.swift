@@ -190,7 +190,7 @@ struct PortalDetailView: View {
     let portal: NetherPortal
 
     var body: some View {
-        let link = session.link(for: portal)
+        let link = session.presentation.link(for: portal)
         Form {
             Section {
                 LabeledContent("Position") {
@@ -203,19 +203,19 @@ struct PortalDetailView: View {
             Section {
                 switch link {
                 case .portal(let target, _)?:
-                    Text("Leads to the portal in \(session.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
-                    if session.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.link(for: target) {
+                    Text("Leads to the portal in \(session.presentation.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
+                    if session.presentation.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.presentation.link(for: target) {
                         Label("One-way: that portal leads back to a different one, at \(Coordinates.text(x: back.centerX, z: back.centerZ)).",
                               systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
                 case .wouldCreateNewPortal(let destination)?:
-                    Label("No portal in \(session.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
+                    Label("No portal in \(session.presentation.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 case nil:
-                    if session.isWaitingForPortalLink(portal) {
+                    if session.presentation.isWaitingForPortalLink(portal) {
                         ProgressView("Reading portal links…").controlSize(.small)
                     } else {
                         Text("Portal links aren’t available for this dimension.")

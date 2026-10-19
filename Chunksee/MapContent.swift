@@ -187,7 +187,7 @@ extension MapContent {
     init(session: WorldSession) {
         self.init()
         guard session.map != nil, let id = session.selectedDimensionID else { return }
-        let index = session.selectedIndex
+        let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         slimeChunks = session.slimeChunks.visibleImages
         slimeSeed = session.slimeChunks.visibleSeed
@@ -204,9 +204,9 @@ extension MapContent {
         shownPlaceGroups = session.visibility.places
         creaturePoints = index.creaturePoints
         shownCreatureGroups = session.visibility.creatures
-        hits = session.search.pinnedHits(where: session.lists).filter { $0.dimension == id && $0.position != nil }
+        hits = session.search.pinnedHits(where: session.presentation.lists).filter { $0.dimension == id && $0.position != nil }
         selectedHitID = session.selection.selectedHitID
-        players = session.drawnPlayerMarkers
+        players = session.presentation.drawnPlayerMarkers
         selection = session.selection.mapSelection
         selectedItem = session.selection.sidebarSelection
         selectedPlayerID = if case .player(let uuid)? = session.selection.inspector { uuid } else { nil }

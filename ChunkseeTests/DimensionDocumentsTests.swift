@@ -146,10 +146,10 @@ import Testing
         #expect(nether.selection.sidebarSelection == .savedPlace(base.id) && nether.map?.viewport == viewport)
         overworld.selection.mapClicked(.row(.savedPlace(base.id)))
         #expect(overworld.selection.sidebarSelection == nil && nether.selection.sidebarSelection == .savedPlace(base.id))
-        #expect(nether.lists("minecraft:the_nether") && !nether.lists("minecraft:overworld"))
+        #expect(nether.presentation.lists("minecraft:the_nether") && !nether.presentation.lists("minecraft:overworld"))
         // Something with no dimension in this world is listed once, with the Overworld.
-        #expect(overworld.lists(nil) && !nether.lists(nil))
-        #expect(overworld.lists("laurenland:world") && !nether.lists("laurenland:world"))
+        #expect(overworld.presentation.lists(nil) && !nether.presentation.lists(nil))
+        #expect(overworld.presentation.lists("laurenland:world") && !nether.presentation.lists("laurenland:world"))
         resources.close()
         await resources.waitUntilClosed()
     }

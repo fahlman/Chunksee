@@ -46,7 +46,7 @@ struct SavedPlaceEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(draft.existingID == nil ? "Save Place" : "Rename Place").font(.headline)
-            Text(Coordinates.text(draft.position, dimension: session.dimensionName(draft.dimension)))
+            Text(Coordinates.text(draft.position, dimension: session.presentation.dimensionName(draft.dimension)))
                 .foregroundStyle(.secondary)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)

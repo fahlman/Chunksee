@@ -90,7 +90,7 @@ struct WorldInfoView: View {
                     }
                 }
             } header: {
-                Text(session.displayName).font(.headline)
+                Text(session.presentation.displayName).font(.headline)
             }
             Section("Time and Weather") {
                 if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks, locale: locale) {
@@ -130,7 +130,7 @@ struct WorldInfoView: View {
             }
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
-                    LabeledContent(session.dimensionName(dimension.id), value: borderDescription(details.borders[dimension.id]))
+                    LabeledContent(session.presentation.dimensionName(dimension.id), value: borderDescription(details.borders[dimension.id]))
                 }
             }
             Section("Mods and Data Packs") {
