@@ -69,6 +69,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
 
+WorldDetails keeps game rules by saved ID and derives sorted display rows. Wandering-trader
+status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
+disables spawning. Rows use saved IDs so equal readable names remain distinct.
+
 `WorldSession.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
 and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
