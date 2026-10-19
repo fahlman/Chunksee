@@ -215,6 +215,11 @@ Native View-menu commands open the same popover (Shift-Command-Y) and toggle Sur
 (Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
 binding exposes the view-owned popover flag; MapDepth still owns the mode and height. The Cutaway
 number field receives SwiftUI focus on opening or switching from Surface.
+Selecting a known-height item updates MapDepth through SelectionModel. Cutaway renders at that
+height; Surface keeps its mode and pixels while remembering the height for the next switch.
+Pointer and accessibility actions carry the clicked marker's Y, including death/respawn markers
+whose player's current position differs. Unknown heights leave the current Y alone. Selection
+changes Y once, without following later live movement; linked pets affect the destination tab.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the

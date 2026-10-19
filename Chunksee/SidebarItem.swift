@@ -60,3 +60,19 @@ enum ResolvedSidebarItem {
     case player(PlayerInfo)
     case hit(SearchHit)
 }
+
+extension ResolvedSidebarItem {
+    /// Only a saved location in this dimension can supply its selected cutaway height.
+    func height(in dimension: String?) -> Int? {
+        switch self {
+        case .structure(let marker): return marker.y
+        case .place(let marker): return marker.y
+        case .creature(let marker): return BlockPosition.coordinate(containing: marker.creature.y)
+        case .player(let player):
+            guard let location = PlayerPresentation.position(of: player), location.dimension == dimension else { return nil }
+            return BlockPosition.coordinate(containing: location.y)
+        case .hit(let hit): return hit.dimension == dimension ? hit.y : nil
+        case .worldInfo, .storage, .savedPlace, .biome, .inGameMap: return nil
+        }
+    }
+}
