@@ -18,9 +18,9 @@ import Testing
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerSnapshot([])
+        let players = PlayerRoster([])
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -56,9 +56,9 @@ import Testing
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerSnapshot([])
+        let players = PlayerRoster([])
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index)
         }
@@ -88,7 +88,7 @@ import Testing
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, indexStore: index)
         await gate.waitForRequest("saved")
@@ -114,7 +114,7 @@ import Testing
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) })
         await gate.waitForRequest("saved")
@@ -148,22 +148,20 @@ import Testing
         func player(_ revision: Int32) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
         }
-        func document(_ players: PlayerSnapshot) -> SearchModel {
-            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
+        func document(_ players: PlayerRoster) -> SearchModel {
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read(String($0.players[0].nbt["Revision"]!.int!)) }, indexStore: index)
         }
-        let original = PlayerSnapshot([player(1)]), updated = PlayerSnapshot([player(2)])
-        let first = document(original), second = document(original)
+        let players = PlayerRoster([player(1)])
+        let first = document(players), second = document(players)
         await gate.waitForRequest("1")
-        first.playerSnapshot = updated
-        second.playerSnapshot = updated
+        players.publish([player(2)])
         await gate.waitForRequest("2")
         await gate.finish("2", with: ["saved": [hit("New")]])
         for model in [first, second] { await model.waitForSearch() }
-        let later = document(updated)
+        let later = document(players)
         await later.waitForSearch()
-        first.playerSnapshot = updated
         await first.waitForSearch()
         #expect(await gate.requested.filter { $0 == "1" }.count == 1)
         #expect(await gate.requested.filter { $0 == "2" }.count == 1)
@@ -175,6 +173,44 @@ import Testing
         }
         index.cancel()
         await index.waitForTasks()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func closedSearchDoesNotRestartWhenTheSharedRosterPublishes() async {
+        let work = BackgroundWork()
+        let defaults = TestDefaults.make(), uuid = UUID()
+        let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
+        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        func player(_ revision: Int32) -> PlayerInfo {
+            PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
+        }
+        let players = PlayerRoster([player(1)])
+        func document(_ label: String) -> SearchModel {
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+                        firstDimension: nil, savedSearches: saved,
+                        execute: { await gate.read("\(label)-\($0.players[0].nbt["Revision"]!.int!)") })
+        }
+        let first = document("first"), second = document("second")
+        await first.waitForIndex()
+        await second.waitForIndex()
+        first.text = "query"
+        second.text = "query"
+        await gate.waitForRequest("first-1")
+        await gate.waitForRequest("second-1")
+        first.cancel()
+        await gate.waitForCancellation("first-1")
+        players.publish([player(2)])
+        await gate.waitForRequest("second-2")
+        await gate.waitForCancellation("second-1")
+        await gate.finish("first-1", with: ["query": [hit("Obsolete")]])
+        await gate.finish("second-1", with: ["query": [hit("Obsolete")]])
+        await gate.finish("second-2", with: ["query": [hit("Current")]])
+        await first.waitForTasks()
+        await second.waitForSearch()
+        #expect(first.results.isEmpty)
+        #expect(second.results.map(\.title) == ["Current"])
+        #expect(Set(await gate.requested) == ["first-1", "second-1", "second-2"])
+        second.cancel()
+        await second.waitForTasks()
     }
 
     @Test func sharedNamesInvalidateOnceAndKeepPreviousSnapshotsWhileSearching() async {
@@ -189,9 +225,9 @@ import Testing
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerSnapshot([player])
+        let players = PlayerRoster([player])
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerSnapshot: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.playerNames[uuid]!.text) }, indexStore: index)
         }

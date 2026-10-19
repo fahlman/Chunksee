@@ -87,7 +87,7 @@ import Testing
             let surface = try await RegionTileRenderer(dimension: dimension).tile(for: region)
             let cutaway = try await RegionTileRenderer(dimension: dimension, cutawayY: 7).tile(for: region)
             let gate = f.tiles
-            let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+            let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
                 guard !Task.isCancelled else { return nil }
                 return await gate.read(renderer.cutawayY.map(String.init) ?? "surface")
             })
@@ -113,7 +113,7 @@ import Testing
     @Test func changingHeightCancelsPendingCopiesAndRereadsAStillPointer() async throws {
         try await withFixture { f in
             let dimension = try f.dimension(), gate = f.blocks
-            let map = MapModel(dimension: dimension, center: .zero, readTopBlocks: { chunk, dimension, depth, cached in
+            let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, dimension, depth, cached in
                 guard !Task.isCancelled else { return nil }
                 if depth.isSurface { return await gate.read("surface") }
                 return await MapModel.readTopBlocks(of: chunk, in: dimension, depth: depth, cached: cached)
@@ -143,7 +143,7 @@ import Testing
 
     @Test func exportedTerrainFollowsTheCutawayAndSurface() async throws {
         try await withFixture { f in
-            let map = MapModel(dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             let size = CGSize(width: 16, height: 16)
             map.requestTiles(visibleIn: size, displayScale: 1)

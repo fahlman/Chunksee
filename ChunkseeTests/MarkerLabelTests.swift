@@ -83,7 +83,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(dimension: dimension, center: .zero)
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         map.viewport.scale = 0.0625
         let markers = ["a", "b"].map {

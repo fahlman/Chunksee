@@ -13,7 +13,7 @@ struct SearchWorkTests {
     @Test(.timeLimit(.minutes(1))) func ownerClosureDrainsReplacedQueriesAndRejectsLateResults() async {
         let work = BackgroundWork(), defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]),
+        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]),
                                 names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                 execute: { await gate.read($0.queries[0]) })
@@ -48,7 +48,7 @@ struct SearchWorkTests {
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
         await index.waitForIndex()
         func document(_ key: String) -> SearchModel {
-            SearchModel(readers: [], work: work, playerSnapshot: PlayerSnapshot([]), names: names,
+            SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: names,
                         singleplayerUUID: nil, firstDimension: nil, savedSearches: saved,
                         execute: { _ in await gate.read(key) }, indexStore: index)
         }
