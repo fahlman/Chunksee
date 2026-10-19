@@ -37,7 +37,10 @@ struct MapDepthControl: View {
         .help("Choose Surface or a cutaway height")
         .popover(isPresented: $showsPopover) {
             MapDepthPopover(map: map, heightRange: heightRange)
-                .onExitCommand { showsPopover = false }
+                .onKeyPress(.escape) {
+                    showsPopover = false
+                    return .handled
+                }
         }
     }
 }
@@ -46,7 +49,8 @@ private struct MapDepthPopover: View {
     @Bindable var map: MapModel
     let heightRange: ClosedRange<Int>?
     @State private var draggedY: Int?
-    @FocusState private var isHeightFocused: Bool
+    private enum Field: Hashable { case mode, height }
+    @FocusState private var focusedField: Field?
 
     private var displayedY: Int { draggedY ?? map.depth.y }
 
@@ -74,6 +78,7 @@ private struct MapDepthPopover: View {
                 Text("Cutaway").tag(false)
             }
             .pickerStyle(.segmented)
+            .focused($focusedField, equals: .mode)
             .accessibilityIdentifier("cutaway-mode")
 
             if let heightRange {
@@ -86,7 +91,7 @@ private struct MapDepthPopover: View {
             HStack {
                 Text("Y")
                 TextField("Y", value: height, format: .number.grouping(.never))
-                    .focused($isHeightFocused)
+                    .focused($focusedField, equals: .height)
                     .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
                     .accessibilityLabel("Cutaway Y coordinate")
@@ -103,8 +108,8 @@ private struct MapDepthPopover: View {
             .disabled(map.depth.isSurface)
         }
         .padding()
-        .onAppear { isHeightFocused = !map.depth.isSurface }
-        .onChange(of: map.depth.isSurface) { _, isSurface in isHeightFocused = !isSurface }
+        .onAppear { focusedField = map.depth.isSurface ? .mode : .height }
+        .onChange(of: map.depth.isSurface) { _, isSurface in focusedField = isSurface ? .mode : .height }
         .onDisappear { draggedY = nil }
     }
 
