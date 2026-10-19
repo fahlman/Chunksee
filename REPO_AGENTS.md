@@ -396,3 +396,7 @@ and the project's settings. Xcode 27.2 and Swift snapshots are previews, not the
   - complete strict concurrency checking
 - **SDK:** macOS 27.0 SDK.
 - **Minimum macOS:** 27 (`MACOSX_DEPLOYMENT_TARGET = 27.0`). The app is Mac only, arm64.
+
+The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
+`ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
+frame/native split item both enforce a 180-point minimum. Native resizing remains in charge.

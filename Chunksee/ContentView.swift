@@ -81,7 +81,6 @@ struct WorldView: View {
                         }
                     }
                 }
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220)
                 .focused($isSidebarFocused)
                 // A new dimension can receive its jump before this view appears.
                 .onChange(of: session.sidebarRevealRequest, initial: true) {
@@ -101,6 +100,8 @@ struct WorldView: View {
                     await session.names.load(nameRequest)
                 }
             }
+            .frame(minWidth: 180, idealWidth: 220)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
             if session.isSavedBeforeReadableFormat {
                 ContentUnavailableView {
