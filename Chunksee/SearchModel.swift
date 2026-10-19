@@ -18,9 +18,8 @@ final class SearchModel {
             if text != oldValue { updateQueries() }
         }
     }
-    var playerSnapshot: PlayerSnapshot {
-        didSet { if playerSnapshot !== oldValue { updateQueries() } }
-    }
+    let playerRoster: PlayerRoster
+    var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     var index: SearchIndex { indexStore.index }
     var portals: [String: [NetherPortal]] { indexStore.portals }
@@ -44,13 +43,13 @@ final class SearchModel {
     @ObservationIgnored private var sources: SearchSources?
     @ObservationIgnored private var isClosed = false
 
-    init(readers: [RegionReader], playerSnapshot: PlayerSnapshot, names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil) {
         self.ownsIndex = indexStore == nil
         self.indexStore = indexStore ?? WorldIndexStore(readers: readers, firstDimension: firstDimension)
-        self.playerSnapshot = playerSnapshot
+        self.playerRoster = playerRoster
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
@@ -70,6 +69,7 @@ final class SearchModel {
             _ = names.online
             _ = savedSearches.all
             _ = indexStore.revision
+            _ = playerRoster.snapshot
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, !self.isClosed else { return }
@@ -121,7 +121,10 @@ final class SearchModel {
                 } else {
                     found = await execute(request)
                 }
+                // Observation schedules the replacement on the main actor; reject an older
+                // player publication even if that scheduled callback has not run yet.
                 guard !Task.isCancelled, let self, !self.isClosed,
+                      self.playerSnapshot === next.playerSnapshot,
                       self.sourceGeneration == generation, self.activeQueries[query] == id else { return }
                 self.activeQueries[query] = nil
                 guard let found else { self.isSearching = !self.activeQueries.isEmpty; return }

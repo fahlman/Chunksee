@@ -170,7 +170,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = SearchModel(readers: [], playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) })
         await gate.waitForRequest("saved")
         await gate.finish("saved", with: ["saved": [hit("Saved")]])
@@ -204,7 +204,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = SearchModel(readers: [], playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) })
         await gate.waitForRequest("saved")
         search.text = "first"
@@ -227,7 +227,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = SearchModel(readers: [], playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: saved,
                                  execute: { await gate.read("\($0.queries[0])-\($0.players.count)") })
         search.text = "query"
@@ -236,7 +236,7 @@ import Testing
             await gate.finish("\(query)-0", with: [query: [hit("Previous \(query)")]])
         }
         await search.waitForSearch()
-        search.playerSnapshot = PlayerSnapshot([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
+        search.playerRoster.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
         for query in ["saved", "query"] { await gate.waitForRequest("\(query)-1") }
         #expect(search.results.map(\.title) == ["Previous query"])
         #expect(search.results(for: "saved").map(\.title) == ["Previous saved"])
@@ -253,7 +253,7 @@ import Testing
     @Test func anOldQueryCannotPublishOverTheNewQuery() async {
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = SearchModel(readers: [], playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.queries[0]) })
         search.text = "old"
@@ -276,7 +276,7 @@ import Testing
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([player]), names: names, singleplayerUUID: nil, firstDimension: nil,
+        let search = SearchModel(readers: [], playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: nil, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.playerNames[uuid]!.text) })
         search.text = "diamond"

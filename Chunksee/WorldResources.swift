@@ -41,7 +41,8 @@ final class WorldResources {
     let views: RememberedViews
     let defaults: UserDefaults
     let cacheRoot: URL?
-    private(set) var playerSnapshot: PlayerSnapshot
+    let playerRoster: PlayerRoster
+    var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     private let readRegion: RegionReader.Read
     var activeDimensionID: String?
@@ -86,7 +87,7 @@ final class WorldResources {
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
-        playerSnapshot = PlayerSnapshot(snapshot.players)
+        playerRoster = PlayerRoster(snapshot.players)
         self.names = names
         self.savedSearches = savedSearches
         self.defaults = defaults
@@ -300,8 +301,7 @@ final class WorldResources {
             let generation = playerReadGeneration
             let updated = await readPlayers(world)
             guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
-            playerSnapshot = PlayerSnapshot(updated)
-            for session in sessions.values.compactMap(\.value) { session.search.playerSnapshot = playerSnapshot }
+            playerRoster.publish(updated)
         }
     }
 
