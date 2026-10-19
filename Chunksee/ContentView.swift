@@ -93,6 +93,9 @@ struct WorldView: View {
                     }
                 }
                 .focused($isSidebarFocused)
+                // Clicking the selected row need not change the List binding, but must still
+                // move keyboard input from the map to the sidebar. Keep native row/control actions.
+                .simultaneousGesture(TapGesture().onEnded { isSidebarFocused = true })
                 // A new dimension can receive its jump before this view appears.
                 .onChange(of: session.selection.sidebarRevealRequest, initial: true) {
                     guard session.selection.sidebarRevealRequest != nil, let item = session.selection.sidebarSelection else { return }
