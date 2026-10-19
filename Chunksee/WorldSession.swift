@@ -160,7 +160,7 @@ final class WorldSession {
         self.resources = resources
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
-        search = SearchModel(readers: [], work: resources.backgroundWork, playerSnapshot: resources.playerSnapshot, names: resources.names,
+        search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
         heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
@@ -443,7 +443,7 @@ final class WorldSession {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+        let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.views.depth(for: dimension.id))
