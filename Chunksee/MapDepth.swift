@@ -37,6 +37,7 @@ struct MapDepthControl: View {
         .help("Choose Surface or a cutaway height")
         .popover(isPresented: $showsPopover) {
             MapDepthPopover(map: map, heightRange: heightRange)
+                .onExitCommand { showsPopover = false }
         }
     }
 }

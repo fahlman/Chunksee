@@ -208,6 +208,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+SwiftUI’s exit command dismisses the popover through its existing presentation binding.
 Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
 dimension alongside the viewport, including moves.
 Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
