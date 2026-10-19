@@ -76,7 +76,7 @@ import Testing
         source.choose(.player(owner))
         #expect(source.inspector == .player(owner))
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
-        source.openDocument = { continuation.yield($0) }
+        source.routing.openDocument = { continuation.yield($0) }
         var opened = opens.makeAsyncIterator()
         let pet = try #require(source.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
         source.showLinkedPet(pet, ownedBy: owner)
@@ -103,7 +103,7 @@ import Testing
         let source = try await open(url)
         defer { source.close() }
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
-        source.openDocument = { continuation.yield($0) }
+        source.routing.openDocument = { continuation.yield($0) }
         var opened = opens.makeAsyncIterator()
         let pet = try #require(source.linkedPets(to: owner).first { $0.dimension == "minecraft:the_nether" })
         source.showLinkedPet(pet, ownedBy: owner)
