@@ -52,8 +52,9 @@ private struct MapDepthPopover: View {
 
     private var height: Binding<Int> {
         Binding { displayedY } set: {
-            draggedY = nil
-            map.setDepth(MapDepth(y: $0, isSurface: false))
+            // TextField writes its formatted value back as the slider draft changes too.
+            if draggedY != nil { draggedY = $0 }
+            else { map.setDepth(MapDepth(y: $0, isSurface: false)) }
         }
     }
 
@@ -123,7 +124,7 @@ private struct MapDepthPopover: View {
             Double(sliderY(in: range))
         } set: {
             guard let y = Int(exactly: $0.rounded()) else { return }
-            if draggedY != nil { draggedY = y } else { height.wrappedValue = y }
+            height.wrappedValue = y
         }, in: Double(range.lowerBound)...Double(range.upperBound)) {
             Text("Cutaway Height")
         } minimumValueLabel: {
@@ -135,6 +136,7 @@ private struct MapDepthPopover: View {
                 // The map keeps its committed depth while the native slider edits this draft.
                 draggedY = sliderY(in: range)
             } else if let y = draggedY {
+                draggedY = nil
                 height.wrappedValue = y
             }
         }
