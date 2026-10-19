@@ -291,7 +291,8 @@ final class MapModel {
     func topBlock(at block: CGPoint) -> RegionTileRenderer.TopBlock? {
         guard let coordinates = MapCoordinates(point: block) else { return nil }
         let x = Int(coordinates.x), z = Int(coordinates.z)
-        return topBlocks[ChunkPosition(x: x >> 4, z: z >> 4)]?[(z & 15) * 16 + (x & 15)] ?? nil
+        let chunk = ChunkPosition(containingBlockX: x, blockZ: z)
+        return topBlocks[chunk]?[ChunkPosition.localColumnIndex(blockX: x, blockZ: z)] ?? nil
     }
 
     /// Uses the same reader and cached columns as hover, while keeping this request independent
@@ -299,8 +300,8 @@ final class MapModel {
     func readTopBlock(at block: CGPoint, completion: @escaping (RegionTileRenderer.TopBlock?) -> Void) {
         guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
-        let chunk = ChunkPosition(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
-        let index = (Int(coordinates.z) & 15) * 16 + (Int(coordinates.x) & 15)
+        let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
+        let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
         coordinateWork.start(priority: nil) { [weak self] in
             let result = await read(chunk, dimension, depth, cached)
@@ -318,7 +319,7 @@ final class MapModel {
     /// that chunk matters, so a read for one the pointer has left is cancelled.
     func loadTopBlocks(at block: CGPoint) {
         guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
-        let chunk = ChunkPosition(x: Int(coordinates.x) >> 4, z: Int(coordinates.z) >> 4)
+        let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         hoveredChunk = chunk
         guard topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
         startHoverRead(of: chunk)
