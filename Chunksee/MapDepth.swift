@@ -75,6 +75,7 @@ private struct MapDepthPopover: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("cutaway-mode")
 
+            // Exact entry and the stepper provide one-block changes without dense slider ticks.
             Slider(value: Binding {
                 Double(displayedY)
             } set: {
@@ -84,14 +85,12 @@ private struct MapDepthPopover: View {
                 } else {
                     height.wrappedValue = y
                 }
-            }, in: map.depth.sliderRange, step: 1) {
+            }, in: map.depth.sliderRange) {
                 Text("Cutaway Height")
             } minimumValueLabel: {
                 Text(map.depth.sliderRange.lowerBound, format: .number.grouping(.never))
             } maximumValueLabel: {
                 Text(map.depth.sliderRange.upperBound, format: .number.grouping(.never))
-            } tick: { _ in
-                nil // Hundreds of one-block ticks merge into a solid line beneath the track.
             } onEditingChanged: { editing in
                 if editing {
                     // The map keeps its committed depth while the native slider edits this draft.
