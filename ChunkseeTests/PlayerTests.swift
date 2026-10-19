@@ -64,11 +64,11 @@ import Testing
             #expect(overworld.listedPlayers.contains { $0.uuid == player.uuid }
                     == overworld.lists(PlayerPresentation.position(of: player)?.dimension))
         }
-        #expect(nether.mapContent.players.contains { $0.playerID == you && $0.kind == .death })
+        #expect(MapContent(session: nether).players.contains { $0.playerID == you && $0.kind == .death })
         nether.selection.mapClicked(.row(.player(you)))
         #expect(nether.selection.inspector == .player(you))
         nether.visibility.hiddenPlayers.insert(you)
-        #expect(!nether.mapContent.players.contains { $0.playerID == you })
+        #expect(!MapContent(session: nether).players.contains { $0.playerID == you })
         nether.selection.mapClicked(.row(.player(you)))
         #expect(nether.selection.inspector == nil)
         overworld.close(); nether.close()
@@ -200,13 +200,13 @@ import Testing
         try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: players.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
         let defaults = TestDefaults.make()
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        #expect(!first.mapContent.players.isEmpty)
+        #expect(!MapContent(session: first).players.isEmpty)
         first.visibility.hiddenPlayers.insert(uuid)
-        #expect(first.mapContent.players.isEmpty)
+        #expect(MapContent(session: first).players.isEmpty)
         first.close()
         let second = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { second.close() }
-        #expect(second.visibility.hiddenPlayers == [uuid] && second.mapContent.players.isEmpty)
+        #expect(second.visibility.hiddenPlayers == [uuid] && MapContent(session: second).players.isEmpty)
     }
 }
 

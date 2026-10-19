@@ -65,7 +65,7 @@ import Testing
         let viewport = session.map?.viewport
         session.selection.choose(.hit(query: session.search.text, id: unknown.id))
         #expect(session.map?.viewport == viewport)
-        let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
+        let visible = MapContent(session: session).accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
                                                             size: CGSize(width: 400, height: 300))
         #expect(!visible.contains { $0.id == "search-" + unknown.id })
         #expect(visible.contains { $0.id == "search-" + local.id })
@@ -200,7 +200,7 @@ import Testing
         #expect(session.search.results.map(\.detail) == ["Orchard"])
         session.search.text = ""
         #expect(session.search.results.isEmpty)
-        #expect(session.mapContent.hits.isEmpty)
+        #expect(MapContent(session: session).hits.isEmpty)
 
         // A saved search keeps its results pinned on the map after the search bar is cleared, and
         // is remembered for every world.
@@ -208,11 +208,11 @@ import Testing
         await session.search.waitForSearch()
         session.search.saveSearch()
         session.search.text = ""
-        #expect(session.mapContent.hits.map(\.detail) == ["Orchard"])
+        #expect(MapContent(session: session).hits.map(\.detail) == ["Orchard"])
         let saved = try #require(session.savedSearches.all.first)
         #expect(SavedSearches(defaults: defaults).all == [saved])
         session.savedSearches.setShown(saved.id, false)
-        #expect(session.mapContent.hits.isEmpty)
+        #expect(MapContent(session: session).hits.isEmpty)
         session.savedSearches.remove(saved.id)
         #expect(SavedSearches(defaults: defaults).all.isEmpty)
     }
@@ -274,7 +274,7 @@ import Testing
         defer { session.close() }
         #expect(session.details.gameRuleRows.map(\.name) == ["Keep Inventory"])
         #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
-        #expect(session.mapContent.border?.size == 2000)
+        #expect(MapContent(session: session).border?.size == 2000)
         session.selection.inspector = .world
         #expect(session.selection.inspector == .world)
     }
@@ -414,7 +414,7 @@ import Testing
         #expect(session.visibility.biomes.isEmpty)
         session.selection.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
-        #expect(session.mapContent.biomeAreas.count == 1)
+        #expect(MapContent(session: session).biomeAreas.count == 1)
     }
 }
 

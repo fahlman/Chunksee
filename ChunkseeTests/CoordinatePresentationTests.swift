@@ -153,7 +153,7 @@ import Testing
             session.selection.choose(.player(player.uuid))
             #expect(session.map?.viewport == viewport)
         }
-        #expect(session.mapContent.players.count == 1)
+        #expect(MapContent(session: session).players.count == 1)
         #expect(Coordinates.text(CGPoint(x: invalid, y: 0), y: 64) == "Location unknown")
         #expect(Coordinates.text(.zero, y: invalid) == "Location unknown")
         let invalidPoint = CGPoint(x: invalid, y: 0)

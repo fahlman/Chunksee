@@ -73,7 +73,7 @@ import Testing
         await session.search.waitForIndex()
         // A placed temple remains visible even in taiga, and a stronghold has no HPos field.
         #expect(session.selectedIndex.structures.map(\.structureID).sorted() == ["minecraft:jungle_pyramid", "minecraft:stronghold"])
-        #expect(session.mapContent.structures.count == 2)
+        #expect(MapContent(session: session).structures.count == 2)
         #expect(!session.selectedIndex.structures.contains { $0.position == CGPoint(x: -266, y: 71.5) })
         session.search.text = "structure: jungle pyramid"
         await session.search.waitForSearch()
@@ -245,10 +245,10 @@ enum StructureTestWorld {
         #expect(refreshed.creature.sittingOrder == false && refreshed.creature.collarColor == "blue")
         #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
         #expect(refreshed.creature.equipment?["body"]?.id == "minecraft:wolf_armor")
-        #expect(session.selection.mapSelection == .creature(refreshed) && session.mapContent.selection == .creature(refreshed))
+        #expect(session.selection.mapSelection == .creature(refreshed) && MapContent(session: session).selection == .creature(refreshed))
         #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
         session.map?.viewport.scale = 0.125
-        let map = session.mapContent
+        let map = MapContent(session: session)
         let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
         let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
         var disclosure = SidebarDisclosure()
@@ -278,10 +278,10 @@ enum StructureTestWorld {
         // Once read, the sidebar can list every Overworld biome, found or not.
         #expect(session.possibleBiomes.count == 56 && session.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
-        #expect(session.mapContent.creatures.map(\.name) == ["Summer"])
-        let summer = try #require(session.mapContent.creatures.first)
+        #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
+        let summer = try #require(MapContent(session: session).creatures.first)
         session.selection.mapClicked(.row(.creature(summer.id)))
-        #expect(session.mapContent.selection == .creature(summer))
+        #expect(MapContent(session: session).selection == .creature(summer))
         #expect(session.selection.sidebarSelection == .creature(summer.id))
         #expect(session.selection.inspector == .selection)   // its details show in the inspector
         session.selection.mapClicked(nil)
@@ -373,13 +373,13 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         #expect(session.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
         #expect(session.selectedIndex.biomeAreas.first?.group.name == "Plains")
-        #expect(session.mapContent.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
-        #expect(session.mapContent.biome(at: CGPoint(x: -1, y: 0)) == nil)
+        #expect(MapContent(session: session).biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
+        #expect(MapContent(session: session).biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.
         session.visibility.biomes = []
-        #expect(session.mapContent.biomeAreas.isEmpty)
+        #expect(MapContent(session: session).biomeAreas.isEmpty)
         session.visibility.biomes = [BiomeGroup(id: "minecraft:plains")]
-        #expect(session.mapContent.biomeAreas.count == 1)
+        #expect(MapContent(session: session).biomeAreas.count == 1)
     }
 
     @Test func caveBiomesBelowTheSurfaceGetTheirOwnAreas() async throws {
@@ -407,9 +407,9 @@ enum StructureTestWorld {
         #expect(Set(areas.map(\.group.id)) == ["minecraft:plains", "minecraft:deep_dark", "minecraft:sulfur_caves"])
         #expect(areas.first { $0.group.id == "minecraft:deep_dark" }?.chunkCount == 4)
         // The surface is unchanged; the readout adds what's below.
-        #expect(session.mapContent.biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
-        #expect(session.mapContent.biomeDescription(at: CGPoint(x: 20.5, y: 3)) == "Plains · Deep Dark and Sulfur Caves below")
-        #expect(session.mapContent.biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
+        #expect(MapContent(session: session).biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
+        #expect(MapContent(session: session).biomeDescription(at: CGPoint(x: 20.5, y: 3)) == "Plains · Deep Dark and Sulfur Caves below")
+        #expect(MapContent(session: session).biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
         session.search.text = "biome:deep dark"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["Deep Dark"])
@@ -438,7 +438,7 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         #expect(session.selectedIndex.biomeAreas.map(\.group.id) == ["minecraft:plains"])
-        #expect(session.mapContent.biome(at: CGPoint(x: 40, y: 8)) == nil)   // chunk (2, 0), unfinished
+        #expect(MapContent(session: session).biome(at: CGPoint(x: 40, y: 8)) == nil)   // chunk (2, 0), unfinished
     }
 }
 
@@ -643,14 +643,14 @@ enum StructureTestWorld {
         session.selection.show(nether)
         #expect(!session.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
         session.selection.show(try #require(session.inGameMaps.first { $0.id == 3 }))
-        #expect(session.mapContent.inGameMap?.map.id == 3)
+        #expect(MapContent(session: session).inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
         #expect(session.selection.inspector == .selection)
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
         session.selection.mapClicked(nil)
-        #expect(session.mapContent.inGameMap?.map.id == 3)
+        #expect(MapContent(session: session).inGameMap?.map.id == 3)
         // Closing the inspector takes it away.
         session.selection.inspector = nil
-        #expect(session.selection.mapSelection == nil && session.mapContent.inGameMap == nil)
+        #expect(session.selection.mapSelection == nil && MapContent(session: session).inGameMap == nil)
     }
 }

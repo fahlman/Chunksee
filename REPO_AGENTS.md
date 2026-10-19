@@ -90,7 +90,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search, selection and annotation models; supplies the remaining map-content and shared-world presentation |
+| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search, selection and annotation models; supplies the remaining shared-world presentation |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
@@ -121,6 +121,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
+| `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
@@ -471,6 +472,8 @@ MapAnnotations owns each dimension’s draft sheet and ruler. Native document re
 measurement without reviving a draft. It refers weakly to the document for existing navigation,
 selection and cross-dimension routing; SavedPlaces remains the sole persistent per-world owner.
 Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
+MapContent constructs its value directly from the document’s live models for drawing and export.
+It keeps no document reference or separate cache; SwiftUI observation follows those same models.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
