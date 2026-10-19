@@ -160,7 +160,7 @@ final class WorldSession {
         self.resources = resources
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
-        search = SearchModel(readers: [], playerSnapshot: resources.playerSnapshot, names: resources.names,
+        search = SearchModel(readers: [], work: resources.backgroundWork, playerSnapshot: resources.playerSnapshot, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
         heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
@@ -168,7 +168,8 @@ final class WorldSession {
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
         map = initialMap
-        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed, regions: initialMap?.availableRegions ?? [])
+        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
+                                     regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
         heatMap.restoreVisibility(from: visibility)
         slimeChunks.restoreVisibility(from: visibility)
         resources.attach(self)

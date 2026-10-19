@@ -81,7 +81,7 @@ import Testing
         let player = PlayerInfo(uuid: uuid, nbt: .compound([
             "Inventory": .list([item("minecraft:diamond", 1)]), "EnderItems": .list([item("minecraft:diamond", 2)]),
         ]))
-        let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([player]), names: names, singleplayerUUID: uuid,
+        let search = SearchModel(readers: [], work: BackgroundWork(), playerSnapshot: PlayerSnapshot([player]), names: names, singleplayerUUID: uuid,
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults))
         search.text = "diamond"
         await search.waitForSearch()
