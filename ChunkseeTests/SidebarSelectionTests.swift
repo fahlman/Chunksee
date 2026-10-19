@@ -36,7 +36,7 @@ import Testing
         await session?.waitUntilClosed()
         selection.choose(.worldInfo)
         #expect(selection.inspector == .player(playerID) && session?.map?.viewport == viewport)
-        weak var released = session
+        weak let released = session
         session = nil
         #expect(released == nil)
         selection.choose(.worldInfo)
