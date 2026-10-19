@@ -12,6 +12,7 @@ struct WorldView: View {
     var body: some View {
         @Bindable var visibility = session.visibility
         @Bindable var search = session.search
+        @Bindable var annotations = session.annotations
         @Bindable var heatMap = session.heatMap
         @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
@@ -170,7 +171,7 @@ struct WorldView: View {
         .sheet(isPresented: $session.showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
-        .sheet(item: $session.placeDraft) { draft in
+        .sheet(item: $annotations.draft) { draft in
             SavedPlaceEditor(session: session, draft: draft)
         }
         .inspector(isPresented: inspectorShown) {
@@ -178,8 +179,8 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.placeDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
@@ -305,10 +306,10 @@ private struct SearchResultsSection: View {
             HStack {
                 Text("Search Results")
                 Spacer()
-                Button("Save Search", systemImage: "plus.circle") { session.saveSearch() }
+                Button("Save Search", systemImage: "plus.circle") { session.search.saveSearch() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .disabled(!session.canSaveSearch)
+                    .disabled(!session.search.canSaveSearch)
                     .help("Keep this search in the sidebar")
             }
         }
@@ -324,7 +325,7 @@ private struct SavedSearchesSection: View {
     var body: some View {
         Section("Saved Searches") {
             ForEach(session.savedSearches.all) { saved in
-                let hits = session.listedHits(for: saved.query)
+                let hits = session.search.listedHits(for: saved.query, where: session.lists)
                 let visibility = Binding {
                     session.savedSearches.all.first { $0.id == saved.id }?.isShown ?? false
                 } set: { session.savedSearches.setShown(saved.id, $0) }
@@ -358,7 +359,7 @@ private struct HitList: View {
     let query: String
     var body: some View {
         let search = session.search
-        let hits = session.listedHits(for: query)
+        let hits = session.search.listedHits(for: query, where: session.lists)
         if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
             Label {
                 Text("Searching the world…")

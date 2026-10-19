@@ -64,7 +64,7 @@ struct MapContent {
 
     private static func chunk(at block: CGPoint) -> ChunkPosition? {
         guard let point = MapCoordinates(point: block) else { return nil }
-        return ChunkPosition(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
+        return ChunkPosition(containingBlockX: Int(point.x), blockZ: Int(point.z))
     }
 
     func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
@@ -242,8 +242,8 @@ struct MapView: View {
         .simultaneousGesture(magnifyGesture)
         .simultaneousGesture(SpatialTapGesture().onEnded { value in
             isFocused = true   // clicking the map gives it the arrow keys again
-            if session.ruler.isEnabled {
-                session.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
+            if session.annotations.ruler.isEnabled {
+                session.annotations.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
             } else {
                 onSelect(content.target(at: value.location, viewport: map.viewport, size: size))
             }
@@ -270,8 +270,8 @@ struct MapView: View {
         .focusEffectDisabled()
         .focused($isFocused)
         .onKeyPress(.escape) {
-            guard session.ruler.isEnabled else { return .ignored }
-            session.ruler.escape()
+            guard session.annotations.ruler.isEnabled else { return .ignored }
+            session.annotations.ruler.escape()
             return .handled
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
@@ -545,16 +545,16 @@ struct MapView: View {
 
     private var statusBar: some View {
         HStack(spacing: 12) {
-            if session.ruler.isEnabled {
+            if session.annotations.ruler.isEnabled {
                 Image(systemName: "ruler")
-                if let distance = session.ruler.distance {
+                if let distance = session.annotations.ruler.distance {
                     Text("\(distance.formatted(.number.precision(.fractionLength(0...2)))) blocks")
                         .monospacedDigit()
                 } else {
-                    Text(session.ruler.start == nil ? "Click the first point" : "Click the second point")
+                    Text(session.annotations.ruler.start == nil ? "Click the first point" : "Click the second point")
                 }
-                if session.ruler.start != nil {
-                    Button("Clear") { session.ruler.clear() }
+                if session.annotations.ruler.start != nil {
+                    Button("Clear") { session.annotations.ruler.clear() }
                         .help("Clear this measurement; Escape also clears it")
                 }
             }
@@ -583,7 +583,7 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.ruler.isEnabled && !session.slimeChunks.isLoading ? 0 : 1)
+        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.annotations.ruler.isEnabled && !session.slimeChunks.isLoading ? 0 : 1)
     }
 
     /// Blocks are named from 100% zoom, where a block is at least a point across.

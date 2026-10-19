@@ -24,7 +24,14 @@ struct ChunkseeApp: App {
             SidebarCommands()
             InspectorCommands()
             WorldCommands()
+            HelpCommands()
         }
+
+        Window("Chunksee Help", id: "help") {
+            HelpView()
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 520, height: 600)
 
         Settings {
             SettingsView(names: model.names)

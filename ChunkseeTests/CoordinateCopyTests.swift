@@ -139,7 +139,7 @@ import Testing
             await session.search.waitForSearch()
             for saved in [false, true] {
                 if saved {
-                    session.saveSearch()
+                    session.search.saveSearch()
                     session.search.text = ""
                     await session.search.waitForSearch()
                 }

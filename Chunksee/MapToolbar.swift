@@ -59,8 +59,8 @@ struct MapToolbar: ToolbarContent {
         }
         ToolbarItem {
             Toggle("Measure Distance", systemImage: "ruler", isOn: Binding {
-                session.ruler.isEnabled
-            } set: { session.setRulerEnabled($0) })
+                session.annotations.ruler.isEnabled
+            } set: { session.annotations.setRulerEnabled($0) })
             .toggleStyle(.button)
             .help("Measure the distance between two points on the map")
         }

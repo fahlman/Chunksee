@@ -19,13 +19,13 @@ struct SavedPlaceMenu: View {
 
     var body: some View {
         Group {
-            Button("Rename…") { session.edit(place) }
+            Button("Rename…") { session.annotations.edit(place) }
             Button("Copy Coordinates") {
-                if !session.isClosed, session.canVisit(place), let map {
+                if !session.isClosed, session.annotations.canVisit(place), let map {
                     MapClipboard.copy(place.position, on: map, to: pasteboard)
                 }
             }
-            .disabled(map == nil || !session.canVisit(place))
+            .disabled(map == nil || !session.annotations.canVisit(place))
             Divider()
             Button("Remove", role: .destructive) { if !session.isClosed { session.savedPlaces.remove(place.id) } }
         }
@@ -52,7 +52,7 @@ struct MapContextMenuContent: View {
         self.position = hit?.position ?? coordinates.position
         self.y = hit?.y
         if case .row(.savedPlace(let id))? = hit?.target {
-            place = session.listedPlaces.first { $0.id == id }
+            place = session.annotations.listedPlaces.first { $0.id == id }
         } else {
             place = nil
         }
@@ -68,9 +68,9 @@ struct MapContextMenuContent: View {
                 Button("Copy Coordinates") {
                     if !session.isClosed { MapClipboard.copy(position, y: y, on: map, to: pasteboard) }
                 }
-                Button("Save Place…") { session.savePlace(at: position, in: map.dimension.id) }
+                Button("Save Place…") { session.annotations.savePlace(at: position, in: map.dimension.id) }
             }
-            Button("Measure Distance from Here") { session.beginMeasurement(at: position, in: map.dimension.id) }
+            Button("Measure Distance from Here") { session.annotations.beginMeasurement(at: position, in: map.dimension.id) }
         }
         .disabled(session.isClosed)
     }

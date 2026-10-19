@@ -90,12 +90,12 @@ struct WorldCommands: Commands {
             } set: { session?.visibility.showsGrid = $0 })
             .disabled(session?.map == nil)
             Toggle("Measure Distance", isOn: Binding {
-                session?.ruler.isEnabled ?? false
-            } set: { session?.setRulerEnabled($0) })
+                session?.annotations.ruler.isEnabled ?? false
+            } set: { session?.annotations.setRulerEnabled($0) })
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(session?.map == nil)
-            Button("Clear Measurement") { session?.ruler.clear() }
-                .disabled(session?.ruler.start == nil)
+            Button("Clear Measurement") { session?.annotations.ruler.clear() }
+                .disabled(session?.annotations.ruler.start == nil)
         }
         CommandMenu("Navigate") {
             Button("Back") { session?.navigation.goBack() }
@@ -117,7 +117,7 @@ struct WorldCommands: Commands {
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .disabled(session?.world.level.spawnPosition == nil)
-            Button("Save Place…") { session?.savePlace() }
+            Button("Save Place…") { session?.annotations.savePlace() }
                 .keyboardShortcut("d")
                 .disabled(session?.map == nil)
             Divider()
@@ -131,8 +131,8 @@ struct WorldCommands: Commands {
                 }
             }
             .disabled(session == nil)
-            Button("Save Search") { session?.saveSearch() }
-                .disabled(session?.canSaveSearch != true)
+            Button("Save Search") { session?.search.saveSearch() }
+                .disabled(session?.search.canSaveSearch != true)
         }
     }
 }

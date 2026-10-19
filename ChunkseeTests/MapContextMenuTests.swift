@@ -103,9 +103,9 @@ import Testing
             #expect(pinMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "", "Remove", "", "Measure Distance from Here"])
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             try perform("Rename…", in: pinMenu)
-            #expect(session.placeDraft?.existingID == place.id && session.placeDraft?.name == place.name)
-            #expect(session.placeDraft?.position == place.position)
-            session.placeDraft = nil
+            #expect(session.annotations.draft?.existingID == place.id && session.annotations.draft?.name == place.name)
+            #expect(session.annotations.draft?.position == place.position)
+            session.annotations.draft = nil
 
             for source in [pinMenu, sidebarMenu] {
                 board.setString("previous", forType: .string)
@@ -114,7 +114,7 @@ import Testing
                 #expect(board.string(forType: .string) == "-8 2 -8")
             }
             try perform("Measure Distance from Here", in: pinMenu)
-            #expect(session.ruler.isEnabled && session.ruler.start?.position == place.position)
+            #expect(session.annotations.ruler.isEnabled && session.annotations.ruler.start?.position == place.position)
             #expect(map.viewport == original)
             try perform("Remove", in: pinMenu)
             #expect(session.savedPlaces.all.isEmpty)
@@ -140,10 +140,10 @@ import Testing
             #expect(board.string(forType: .string) == "-9 63 -9")
             #expect(map.unfinishedCoordinateReads == 0)
             try perform("Save Place…", in: markerMenu)
-            #expect(session.placeDraft?.position == CGPoint(x: -9, y: -9))
-            session.placeDraft = nil
+            #expect(session.annotations.draft?.position == CGPoint(x: -9, y: -9))
+            session.annotations.draft = nil
             try perform("Measure Distance from Here", in: markerMenu)
-            #expect(session.ruler.start?.position == CGPoint(x: -9, y: -9))
+            #expect(session.annotations.ruler.start?.position == CGPoint(x: -9, y: -9))
 
             let emptyRoot = try #require(MapContextMenuContent(at: click, session: session, map: map,
                                                               content: MapContent(), size: size, pasteboard: board))
@@ -152,10 +152,10 @@ import Testing
             await map.waitForCoordinateReads()
             #expect(board.string(forType: .string) == "-5 2 -9")
             try perform("Save Place…", in: emptyMenu)
-            #expect(session.placeDraft?.position == CGPoint(x: -5, y: -9))
-            session.placeDraft = nil
+            #expect(session.annotations.draft?.position == CGPoint(x: -5, y: -9))
+            session.annotations.draft = nil
             try perform("Measure Distance from Here", in: emptyMenu)
-            #expect(session.ruler.start?.position == CGPoint(x: -5, y: -9))
+            #expect(session.annotations.ruler.start?.position == CGPoint(x: -5, y: -9))
             #expect(map.viewport == original)
         }
     }
@@ -182,7 +182,7 @@ import Testing
             try perform("Remove", in: savedMenu)
             try perform("Rename…", in: savedMenu)
             try perform("Copy Coordinates", in: mapMenu)
-            #expect(session.savedPlaces.all == [place] && session.placeDraft == nil)
+            #expect(session.savedPlaces.all == [place] && session.annotations.draft == nil)
             #expect(board.string(forType: .string) == "unchanged")
             #expect(MapContextMenuContent(at: .zero, session: session, map: map, content: MapContent(), size: size) == nil)
         }

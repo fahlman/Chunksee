@@ -90,10 +90,10 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search and selection models; owns ruler and annotation actions until their separate extraction |
+| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search, selection and annotation models; supplies the remaining map-content and shared-world presentation |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
-| `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types |
+| `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
@@ -101,6 +101,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
+| `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -108,7 +109,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
-| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
+| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
@@ -116,6 +117,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
+| `HelpView.swift` | On-demand native Help window, opening the original bundled sample through the existing document flow |
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
@@ -237,6 +239,11 @@ window restoration remain AppKit's. No tab/window focus bridge is used.
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
 File ▸ Open and Open Recent still use the native flow.
+Help ▸ Chunksee Help opens a separate SwiftUI window only when requested. Its sample-world button
+uses openDocument on the bundled original fixture; the ordinary world reader opens the dimension
+document and retains native recent/restoration behavior. The sample is read in place, never copied
+into or written over a user world. Its reproducible content recipe is in SampleWorldFixture, and
+tests check bundle packaging, opening, indexing, search, rendering and unchanged source files.
 
 `ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
 changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
@@ -444,7 +451,7 @@ combined rows. Existing model bindings own the settings; the command only toggle
 Saved-search menus also retain Search for This and Remove. Row navigation help says Center the
 map, distinct from the visibility action.
 
-WorldSession owns one selected item identity. The selected row, map/pin highlight and inspector
+SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
 snapshots. The native inspector visibility and an in-game map retained under nondetail markers
 are separate presentation state. Sidebar, pointer, VoiceOver and linked-pet input share that
@@ -456,9 +463,16 @@ input through the List selection binding calls `choose` and requests sidebar foc
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
 one action shared with the behavioral tests. Search pins
-select an existing result row (the active query first, then a shown saved query); one listed-hits function owns the 200-row limit and per-dimension policy for the sidebar, drawn
-search pins and their resolver. Every drawn search pin has a reachable row. Save Search enablement
+select an existing result row (the active query first, then a shown saved query). SearchModel owns
+the 200-row limit and deduplicated pins for the sidebar, map and click resolver, using the document’s
+common dimension-listing predicate. Views and commands save queries through that same model.
+Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
+
+MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
+measurement without reviving a draft. It refers weakly to the document for existing navigation,
+selection and cross-dimension routing; SavedPlaces remains the sole persistent per-world owner.
+Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening

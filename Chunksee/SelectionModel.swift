@@ -79,7 +79,7 @@ final class SelectionModel {
         switch item {
         case .worldInfo: return .worldInfo
         case .storage: return .storage
-        case .savedPlace(let id): return source.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
+        case .savedPlace(let id): return source.annotations.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
         case .structure(let id): return index.structures.first { $0.id == id }.map(ResolvedSidebarItem.structure)
         case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
         case .creature(let id): return index.creatures.first { $0.id == id }.map(ResolvedSidebarItem.creature)
@@ -88,7 +88,7 @@ final class SelectionModel {
         case .player(let id): return source.players.first { $0.uuid == id }.map(ResolvedSidebarItem.player)
         case .hit(let query, let id):
             guard (source.search.isActive && query == source.search.text) || source.savedSearches.contains(query) else { return nil }
-            return source.listedHits(for: query).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
+            return source.search.listedHits(for: query, where: source.lists).rows.first { $0.id == id }.map(ResolvedSidebarItem.hit)
         }
     }
 
@@ -120,8 +120,8 @@ final class SelectionModel {
         switch resolved {
         case .worldInfo, .storage: break
         case .savedPlace(let place):
-            guard source.canVisit(place) else { return }
-            source.visit(place)
+            guard source.annotations.canVisit(place) else { return }
+            source.annotations.visit(place)
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
             source.center(on: marker.position, keepingZoom: true)
@@ -175,7 +175,7 @@ final class SelectionModel {
 
     private func searchRow(for id: SearchHit.ID) -> SidebarItem? {
         guard let source else { return nil }
-        for query in source.visibleSearchQueries where source.listedHits(for: query).rows.contains(where: { $0.id == id }) {
+        for query in source.search.visibleSearchQueries where source.search.listedHits(for: query, where: source.lists).rows.contains(where: { $0.id == id }) {
             return .hit(query: query, id: id)
         }
         return nil
