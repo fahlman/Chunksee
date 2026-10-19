@@ -290,14 +290,14 @@
         }
       }
     },
-    "Use the Y slider to look below the surface. Surface returns to the normal map." : {
+    "Choose a cutaway height to look below the surface. Surface returns to the normal map." : {
       "comment" : "On-demand help and bundled sample world.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Use the Y slider to look below the surface. Surface returns to the normal map."
+            "value" : "Choose a cutaway height to look below the surface. Surface returns to the normal map."
           }
         }
       }
