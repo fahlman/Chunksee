@@ -1,12 +1,5 @@
+import ChunkseeKit
 import CoreGraphics
-
-/// A region file's coordinates. Each region covers 512×512 blocks.
-nonisolated struct RegionCoordinate: Hashable, Sendable {
-    var x: Int
-    var z: Int
-
-    static let blockSize = 512
-}
 
 /// Maps between view points and world block coordinates for the top-down map.
 nonisolated struct MapViewport: Equatable, Sendable {
@@ -43,8 +36,8 @@ nonisolated struct MapViewport: Equatable, Sendable {
     }
 
     /// Where a region's tile is drawn in a view of `size`.
-    func viewRect(for region: RegionCoordinate, in size: CGSize) -> CGRect {
-        let side = CGFloat(RegionCoordinate.blockSize)
+    func viewRect(for region: RegionPosition, in size: CGSize) -> CGRect {
+        let side = CGFloat(RegionTileRenderer.side)
         return CGRect(x: (CGFloat(region.x) * side - center.x) * scale + size.width / 2,
                       y: (CGFloat(region.z) * side - center.y) * scale + size.height / 2,
                       width: side * scale, height: side * scale)
@@ -61,7 +54,7 @@ nonisolated struct MapViewport: Equatable, Sendable {
               size.width >= 0, size.height >= 0 else { return nil }
         let topLeft = blockPoint(at: .zero, in: size)
         let bottomRight = blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
-        let side = Double(RegionCoordinate.blockSize)
+        let side = Double(RegionTileRenderer.side)
         guard let minX = Coordinates.block(topLeft.x / side), let maxX = Coordinates.block(bottomRight.x / side),
               let minZ = Coordinates.block(topLeft.y / side), let maxZ = Coordinates.block(bottomRight.y / side),
               minX <= maxX, minZ <= maxZ else { return nil }
@@ -69,18 +62,18 @@ nonisolated struct MapViewport: Equatable, Sendable {
     }
 
     /// Enumerate only saved regions, so fitting distant terrain never walks the empty space.
-    func visibleRegions(in size: CGSize, among available: Set<RegionCoordinate>) -> [RegionCoordinate] {
+    func visibleRegions(in size: CGSize, among available: Set<RegionPosition>) -> [RegionPosition] {
         guard let range = visibleRegionRange(in: size) else { return [] }
         return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) }
             .sorted { distanceToCenter($0) < distanceToCenter($1) }
     }
 
     /// Region headers locate all saved terrain without reading individual chunks.
-    static func fitting(_ regions: Set<RegionCoordinate>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
+    static func fitting(_ regions: Set<RegionPosition>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
         guard !regions.isEmpty, size.width > padding * 2, size.height > padding * 2,
               let minX = regions.map(\.x).min(), let maxX = regions.map(\.x).max(),
               let minZ = regions.map(\.z).min(), let maxZ = regions.map(\.z).max() else { return nil }
-        let side = CGFloat(RegionCoordinate.blockSize)
+        let side = CGFloat(RegionTileRenderer.side)
         let left = CGFloat(minX) * side, top = CGFloat(minZ) * side
         let width = (CGFloat(maxX) - CGFloat(minX) + 1) * side
         let height = (CGFloat(maxZ) - CGFloat(minZ) + 1) * side
@@ -88,10 +81,10 @@ nonisolated struct MapViewport: Equatable, Sendable {
                            scale: min((size.width - padding * 2) / width, (size.height - padding * 2) / height))
     }
 
-    func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {
-        let half = CGFloat(RegionCoordinate.blockSize) / 2
-        return hypot(CGFloat(region.x) * CGFloat(RegionCoordinate.blockSize) + half - center.x,
-                     CGFloat(region.z) * CGFloat(RegionCoordinate.blockSize) + half - center.y)
+    func distanceToCenter(_ region: RegionPosition) -> CGFloat {
+        let half = CGFloat(RegionTileRenderer.side) / 2
+        return hypot(CGFloat(region.x) * CGFloat(RegionTileRenderer.side) + half - center.x,
+                     CGFloat(region.z) * CGFloat(RegionTileRenderer.side) + half - center.y)
     }
 
     /// Moves the map with the pointer, so content follows a drag.

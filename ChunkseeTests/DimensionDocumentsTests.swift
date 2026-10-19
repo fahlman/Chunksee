@@ -339,8 +339,8 @@ import Testing
         try Data(count: 8192).write(to: endFile)
         resources.worldChanged([netherFile, endFile])
         await resources.waitForRefresh()
-        #expect(nether.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
-        #expect(end.map?.availableRegions == [RegionCoordinate(x: 1, z: -1)])
+        #expect(nether.map?.availableRegions == [RegionPosition(x: 0, z: 0)])
+        #expect(end.map?.availableRegions == [RegionPosition(x: 1, z: -1)])
         #expect(overworld.map?.availableRegions.isEmpty == true)
         resources.close()
         await resources.waitUntilClosed()
@@ -360,7 +360,7 @@ import Testing
             resources.worldChanged([file])
             try await Task.sleep(for: .milliseconds(50))
         }
-        #expect(nether.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        #expect(nether.map?.availableRegions == [RegionPosition(x: 0, z: 0)])
         resources.close()
         await resources.waitUntilClosed()
     }

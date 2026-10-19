@@ -1,19 +1,20 @@
+import ChunkseeKit
 import CoreGraphics
 import Foundation
 
 /// An immutable marker snapshot with its region buckets. Reused across viewport/visibility changes.
 nonisolated struct PointMarkers<Marker: MapLayerMarker & Sendable>: Sendable {
     let all: [Marker]
-    private let buckets: [RegionCoordinate: [Int]]
+    private let buckets: [RegionPosition: [Int]]
     /// Unusual edited positions outside the integer bucket range retain the old final checks.
     private let unbucketed: [Int]
 
     init(_ markers: [Marker] = []) {
         all = markers
-        var buckets: [RegionCoordinate: [Int]] = [:], unbucketed: [Int] = []
+        var buckets: [RegionPosition: [Int]] = [:], unbucketed: [Int] = []
         for (index, marker) in markers.enumerated() {
             if let x = Self.coordinate(marker.position.x), let z = Self.coordinate(marker.position.y) {
-                buckets[RegionCoordinate(x: x, z: z), default: []].append(index)
+                buckets[RegionPosition(x: x, z: z), default: []].append(index)
             } else { unbucketed.append(index) }
         }
         self.buckets = buckets
@@ -35,7 +36,7 @@ nonisolated struct PointMarkers<Marker: MapLayerMarker & Sendable>: Sendable {
         let cells = (Double(maxX) - Double(minX) + 1) * (Double(maxZ) - Double(minZ) + 1)
         if cells <= Double(buckets.count) {
             for x in minX...maxX { for z in minZ...maxZ {
-                indices += buckets[RegionCoordinate(x: x, z: z)] ?? []
+                indices += buckets[RegionPosition(x: x, z: z)] ?? []
             } }
         } else {
             for (region, members) in buckets where (minX...maxX).contains(region.x) && (minZ...maxZ).contains(region.z) {
@@ -46,6 +47,6 @@ nonisolated struct PointMarkers<Marker: MapLayerMarker & Sendable>: Sendable {
     }
 
     private static func coordinate(_ value: CGFloat) -> Int? {
-        Int(exactly: (value / CGFloat(RegionCoordinate.blockSize)).rounded(.down))
+        Coordinates.block(value / CGFloat(RegionTileRenderer.side))
     }
 }

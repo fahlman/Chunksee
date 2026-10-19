@@ -50,7 +50,7 @@ import Testing
         for version in [5023, 5119] {
             try await withFixture(version: version) { f in
                 let scan = await BiomeScanner.scan(try f.reader())
-                #expect(scan.biomes[ChunkCoordinate(x: 0, z: 0)] == "minecraft:plains")
+                #expect(scan.biomes[ChunkPosition(x: 0, z: 0)] == "minecraft:plains")
                 #expect(scan.caveBiomes.isEmpty)
                 #expect(scan.areas.filter { BiomeScanner.caveBiomeIDs.contains($0.group.id) }.isEmpty)
             }
@@ -63,7 +63,7 @@ import Testing
                 try await withFixture(version: version, used: used) { f in
                     let scan = await BiomeScanner.scan(try f.reader())
                     let expected = used == 1 ? "minecraft:lush_caves" : "minecraft:deep_dark"
-                    #expect(scan.caveBiomes[ChunkCoordinate(x: 0, z: 0)] == [expected])
+                    #expect(scan.caveBiomes[ChunkPosition(x: 0, z: 0)] == [expected])
                     let areas = scan.areas.filter { BiomeScanner.caveBiomeIDs.contains($0.group.id) }
                     #expect(areas.count == 1 && areas.first?.group.id == expected && areas.first?.chunkCount == 1)
                     let catalog = try f.dimension().vanillaBiomes
@@ -75,13 +75,13 @@ import Testing
 
     @Test func versionElevenCaveMembershipIsRereadInsteadOfRestored() async throws {
         try await withFixture(version: 5023) { f in
-            let dimension = try f.dimension(), region = RegionCoordinate(x: 0, z: 0)
+            let dimension = try f.dimension(), region = RegionPosition(x: 0, z: 0)
             let cache = ScanCache(directory: f.url.appendingPathComponent("test-cache"))
             let sources = [dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")]
             let fingerprint = ScanCache.fingerprint(sources)
-            let stale = [ChunkCoordinate(x: 0, z: 0): ["minecraft:lush_caves", "minecraft:deep_dark"]]
+            let stale = [ChunkPosition(x: 0, z: 0): ["minecraft:lush_caves", "minecraft:deep_dark"]]
             cache.store(stale, "caveBiomes", region: region, fingerprint: fingerprint)
-            let loaded: [ChunkCoordinate: [String]]? = cache.load("caveBiomes", region: region, fingerprint: fingerprint)
+            let loaded: [ChunkPosition: [String]]? = cache.load("caveBiomes", region: region, fingerprint: fingerprint)
             #expect(loaded == stale)
             let directory = try #require(cache.directory)
             let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)

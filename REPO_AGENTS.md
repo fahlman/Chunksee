@@ -85,7 +85,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
-| `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
+| `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
@@ -196,6 +196,11 @@ saved places and coordinate-entry destinations use the center of their block for
 Viewport-to-region and grid conversions check finite values and integer bounds before forming
 ranges. Invalid persisted centers or zooms are ignored; an invalid live viewport cannot replace
 a previously valid saved view. Grid iteration checks its step arithmetic as well as its endpoints.
+Region/chunk index keys, tiles and scan results use Kit's RegionPosition and ChunkPosition
+directly. Kit owns chunk-to-region/local coordinates and checked chunk/region origins; app scans,
+hover reads, biome geometry and block-search pins use those properties. The previous x/z cache-key
+encoding is unchanged. Unrepresentable chunk origins do not become map areas or search pins.
+The renderer owns its one-pixel-per-block canvas size; view rectangles remain CGFloat geometry.
 
 Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
 Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.

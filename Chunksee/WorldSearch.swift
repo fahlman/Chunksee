@@ -21,28 +21,28 @@ nonisolated struct DimensionIndex: Sendable {
     }
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
-    var biomes: [ChunkCoordinate: String] = [:]
-    var caveBiomes: [ChunkCoordinate: [String]] = [:]
+    var biomes: [ChunkPosition: String] = [:]
+    var caveBiomes: [ChunkPosition: [String]] = [:]
     /// Notable blocks per chunk, for `block:` search, richest first.
     var blocks: [ChunkDeposit] = []
     /// Readable and pre-1.18 chunks across the dimension.
     var formats = ChunkFormats()
     /// Inputs are replaced per region; all cross-region aggregates derive from these.
-    var regions: [RegionCoordinate: RegionIndex] = [:]
+    var regions: [RegionPosition: RegionIndex] = [:]
 
     /// Reads a dimension from its regions, through the reader's cached parts.
     @concurrent
     static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
         var part = DimensionIndex()
         let available = Set(ChunkseeKit.Dimension.Folder.allCases.flatMap { reader.dimension.regionFiles($0) }
-            .map { RegionCoordinate(x: $0.x, z: $0.z) })
-        let changed: Set<RegionCoordinate>
+            .map { RegionPosition(x: $0.x, z: $0.z) })
+        let changed: Set<RegionPosition>
         if let previous, case .regions(let selected) = change {
             part.regions = previous.regions
             for removed in selected.subtracting(available) { part.regions[removed] = nil }
             changed = selected.intersection(available)
         } else { changed = available }
-        let replacements = await withTaskGroup(of: (RegionCoordinate, RegionIndex).self) { group in
+        let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex).self) { group in
             for region in changed {
                 guard !Task.isCancelled else { break }
                 group.addTask {
@@ -50,7 +50,7 @@ nonisolated struct DimensionIndex: Sendable {
                     return (region, value)
                 }
             }
-            var values: [RegionCoordinate: RegionIndex] = [:]
+            var values: [RegionPosition: RegionIndex] = [:]
             for await (region, value) in group { values[region] = value }
             return values
         }
@@ -241,10 +241,11 @@ nonisolated enum WorldSearch {
             best += part.blocks.lazy.filter { blocks.contains($0.deposit.block) }.prefix(blockResultLimit).map { (dimension, $0) }
         }
         best.sort { $0.deposit.deposit.count > $1.deposit.deposit.count }
-        return best.prefix(blockResultLimit).map { dimension, entry in
+        return best.prefix(blockResultLimit).compactMap { dimension, entry in
             let chunk = entry.chunk, deposit = entry.deposit
+            guard let origin = chunk.blockOrigin else { return nil }
             return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
-                             dimension: dimension, position: CGPoint(x: chunk.x * 16 + 8, y: chunk.z * 16 + 8), y: deposit.minY,
+                             dimension: dimension, position: CGPoint(x: origin.x + 8, y: origin.z + 8), y: deposit.minY,
                              title: deposit.block.name,
                              // One line: the row's second line already gives the chunk's X and Z. Hundreds of
                              // wrapping rows appearing at once crashed the sidebar's layout (fahlman/Chunksee#81).

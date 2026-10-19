@@ -77,6 +77,6 @@ nonisolated struct BlockDeposit: Codable, Equatable, Sendable {
 
 /// A chunk's deposit of one notable block, as the world index lists them.
 nonisolated struct ChunkDeposit: Equatable, Sendable {
-    var chunk: ChunkCoordinate
+    var chunk: ChunkPosition
     var deposit: BlockDeposit
 }

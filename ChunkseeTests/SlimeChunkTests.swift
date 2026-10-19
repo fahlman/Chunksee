@@ -5,8 +5,8 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct SlimeChunkTests {
-    @Test(arguments: [RegionCoordinate(x: 0, z: 0), .init(x: -2, z: -1), .init(x: 3, z: -4)])
-    func masksMatchThePublishedRuleAtEveryChunk(_ region: RegionCoordinate) throws {
+    @Test(arguments: [RegionPosition(x: 0, z: 0), .init(x: -2, z: -1), .init(x: 3, z: -4)])
+    func masksMatchThePublishedRuleAtEveryChunk(_ region: RegionPosition) throws {
         let seed: Int64 = -4399779792530681128
         let image = try #require(SlimeChunks.image(region: region, seed: seed))
         #expect(image.width == 32 && image.height == 32)
@@ -29,7 +29,7 @@ import Testing
     @Test func imagesAreReusedNewRegionsAreAddedAndVisibilityIsRememberedPerDimension() async throws {
         let defaults = TestDefaults.make(), world = URL(fileURLWithPath: "/tmp/Slime Overlay Fixture")
         let visibility = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
-        let region = RegionCoordinate(x: 0, z: 0), added = RegionCoordinate(x: -1, z: 0)
+        let region = RegionPosition(x: 0, z: 0), added = RegionPosition(x: -1, z: 0)
         let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region])
         layer.restoreVisibility(from: visibility)
         #expect(!layer.isShown && layer.visibleImages.isEmpty)

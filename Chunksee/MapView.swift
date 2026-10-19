@@ -4,18 +4,18 @@ import SwiftUI
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
     /// Time-spent heat images by region.
-    var heatMap: [RegionCoordinate: CGImage] = [:]
+    var heatMap: [RegionPosition: CGImage] = [:]
     /// A map made in the game, drawn where it belongs at the given opacity.
     var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
-    var biomes: [ChunkCoordinate: String] = [:]
-    var caveBiomes: [ChunkCoordinate: [String]] = [:]
+    var biomes: [ChunkPosition: String] = [:]
+    var caveBiomes: [ChunkPosition: [String]] = [:]
     /// The world border, when it's closer than Minecraft's default.
     var border: WorldBorder?
     /// Whether chunk and region lines are drawn.
     var showsGrid = false
-    var slimeChunks: [RegionCoordinate: CGImage] = [:]
+    var slimeChunks: [RegionPosition: CGImage] = [:]
     var slimeSeed: Int64?
     var structures: [StructureMarker] = []
     var placePoints = PointMarkers<PlaceMarker>()
@@ -60,9 +60,9 @@ struct MapContent {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private static func chunk(at block: CGPoint) -> ChunkCoordinate? {
+    private static func chunk(at block: CGPoint) -> ChunkPosition? {
         guard let point = MapCoordinates(point: block) else { return nil }
-        return ChunkCoordinate(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
+        return ChunkPosition(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
     }
 
     func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
