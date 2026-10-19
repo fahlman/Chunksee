@@ -38,6 +38,7 @@ import Testing
             #expect(target == .row(row))
             disclosure.selectOnMap(target, in: session)
             #expect(session.sidebarSelection == row)
+            #expect(session.mapContent.selectedItem == row)
             #expect(session.map?.viewport == viewport && !session.navigation.canGoBack)
         }
         // Biomes expose an accessibility location, without an undrawn pointer badge at its center.

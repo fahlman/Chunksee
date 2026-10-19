@@ -87,7 +87,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
-| `MarkerGeometry.swift`, `MarkerStyle.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols |
+| `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Per-document Back/Forward snapshots, native map controls and zoom presets |
@@ -257,6 +257,12 @@ fonts/layout are reused, and translucent caption fills are made only when shown.
 map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player
 and saved-place sidebar icons share their presentation owner, and the portal inspector uses its
 group's symbol while retaining its singular title. No zoom-growth or visibility policy changes.
+Eligible marker captions share one collision layout in Canvas and export: selected items first,
+then players, then named pets, then other markers, with stable identity breaking ties. Lower-priority
+labels that overlap an accepted label's two-point margin are omitted. Existing zoom thresholds,
+marker bodies, hit targets and VoiceOver names remain available. Labels draw after the marker
+bodies; the ruler keeps its existing topmost position. Caption text is measured once for layout
+and drawing, and a spatial lookup limits comparisons to nearby accepted labels.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
