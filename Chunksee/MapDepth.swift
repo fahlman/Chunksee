@@ -88,6 +88,7 @@ private struct MapDepthPopover: View {
                 Text("Y")
                 TextField("Y", value: height, format: .number.grouping(.never))
                     .focused($isHeightFocused)
+                    .onExitCommand { dismiss() }
                     .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
                     .accessibilityLabel("Cutaway Y coordinate")

@@ -223,7 +223,9 @@ existing off-main metadata pass. DimensionPresentation supplies the current dime
 build range to the slider; logical height and ceiling metadata do not define the slider or renderer.
 Numeric entry and its stepper accept any Int, without extending the slider’s limits. The slider
 thumb clamps to those limits until the user chooses a new value; its accessibility value describes
-that thumb. Missing/unreadable/unresolved types show “Height range unavailable” in place of the
+that thumb. The number field handles SwiftUI's exit command directly so Escape dismisses the
+popover even before an edit is submitted; the native Done button supplies dismissal elsewhere.
+Missing/unreadable/unresolved types show “Height range unavailable” in place of the
 slider while retaining numeric entry. Newly discovered dimensions adopt their fresh type metadata;
 existing documents’ metadata and remembered heights are not replaced by that catalog extension.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
