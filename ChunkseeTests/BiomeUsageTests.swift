@@ -80,21 +80,17 @@ import Testing
             let sources = [dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")]
             let fingerprint = ScanCache.fingerprint(sources)
             let stale = [ChunkPosition(x: 0, z: 0): ["minecraft:lush_caves", "minecraft:deep_dark"]]
-            cache.store(stale, "caveBiomes", region: region, fingerprint: fingerprint)
-            let loaded: [ChunkPosition: [String]]? = cache.load("caveBiomes", region: region, fingerprint: fingerprint)
-            #expect(loaded == stale)
-            let directory = try #require(cache.directory)
-            let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
-            let historical = directory.appendingPathComponent(file.lastPathComponent.components(separatedBy: ".v")[0] + ".v11")
-            if file != historical { try FileManager.default.moveItem(at: file, to: historical) }
+            let historical = try TestWorld.legacyCache(stale, name: "caveBiomes.0.0.\(fingerprint).v11",
+                                                      directory: #require(cache.directory))
             let count = ReadCount()
             let reader = RegionReader(dimension: dimension, cache: cache, read: { dimension, region in
                 await count.note()
-                return await RegionData.read(dimension, region: region)
+                return try await RegionReader.scan(dimension, region: region)
             })
             f.readers.append(reader)
             #expect(await reader.caveBiomes(region).isEmpty)
             #expect(await count.value == 1)
+            #expect(!FileManager.default.fileExists(atPath: historical.path))
         }
     }
 

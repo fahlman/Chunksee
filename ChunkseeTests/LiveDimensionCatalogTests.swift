@@ -11,9 +11,11 @@ import Testing
         let model: AppModel
         var sessions: [WorldSession] = []
         var resources: [WorldResources] = []
-        var gates: [AsyncReadGate<RegionData>] = []
+        var gates: [AsyncReadGate<RegionFacts>] = []
+        let emptyFacts: RegionFacts
 
         init() throws {
+            emptyFacts = try TestWorld.facts()
             let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
             url = try TestWorld.make(chunks: [chunk])
             defaults = TestDefaults.make()
@@ -44,13 +46,13 @@ import Testing
             return folder
         }
 
-        func blockedIndex() async throws -> (WorldResources, AsyncReadGate<RegionData>, Reads) {
-            let gate = AsyncReadGate<RegionData>(), calls = Reads()
+        func blockedIndex() async throws -> (WorldResources, AsyncReadGate<RegionFacts>, Reads) {
+            let gate = AsyncReadGate<RegionFacts>(), calls = Reads()
             let resource = WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
                 savedSearches: model.savedSearches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region in
                     let count = await calls.next(dimension.id)
                     if dimension.id == "minecraft:overworld", count == 0 { return await gate.read("overworld") }
-                    return await RegionData.read(dimension, region: region)
+                    return try await RegionReader.scan(dimension, region: region)
                 })
             resources.append(resource)
             gates.append(gate)
@@ -59,7 +61,7 @@ import Testing
         }
 
         func close() async {
-            for gate in gates { await gate.finishAll(with: RegionData()) }
+            for gate in gates { await gate.finishAll(with: emptyFacts) }
             sessions.forEach { $0.close() }
             resources.forEach { $0.close() }
             for session in sessions { await session.waitUntilClosed() }
@@ -141,7 +143,7 @@ import Testing
             }
             #expect(resources.readers.count == 3 && resources.readers["minecraft:overworld"] === oldReader)
             #expect(resources.index.isIndexing)
-            await gate.finish("overworld", with: RegionData())
+            await gate.finish("overworld", with: try TestWorld.facts())
             await resources.index.waitForIndex()
             #expect(Set(resources.index.index.dimensions.keys) == Set(resources.dimensions.map(\.id)))
             for id in ["minecraft:the_nether", "minecraft:the_end"] {
@@ -159,7 +161,7 @@ import Testing
             snapshot.access.release()
             resources.close()
             await gate.waitForCancellation("overworld")
-            await gate.finish("overworld", with: RegionData())
+            await gate.finish("overworld", with: try TestWorld.facts())
             await resources.waitUntilClosed()
             #expect(await calls.counts["minecraft:the_nether"] == nil)
             #expect(resources.index.index.dimensions.isEmpty && !resources.index.isIndexing)

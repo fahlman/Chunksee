@@ -139,30 +139,14 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
 nonisolated enum PlaceScanner {
     @concurrent
     static func scan(_ dimension: ChunkseeKit.Dimension, cache: ScanCache = .off) async -> [PlaceMarker] {
-        guard !Task.isCancelled else { return [] }
-        let blocks = await withTaskGroup(of: [PointOfInterest].self) { group in
-            for file in dimension.regionFiles(.pointsOfInterest) {
-                guard !Task.isCancelled else { break }
-                group.addTask {
-                    await Self.blocks(dimension, region: RegionPosition(x: file.x, z: file.z), cache: cache)
-                }
-            }
-            var all: [PointOfInterest] = []
-            for await found in group { all += found }
-            return all
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        var blocks: [PointOfInterest] = []
+        for region in reader.availableRegions {
+            guard !Task.isCancelled else { break }
+            blocks += await reader.facts(region)?.pointsOfInterest ?? []
         }
-        guard !Task.isCancelled else { return [] }
-        return markers(from: blocks, in: dimension.id)
-    }
-
-    @concurrent
-    static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionPosition, cache: ScanCache) async -> [PointOfInterest] {
-        guard !Task.isCancelled else { return [] }
-        let file = dimension.regionURL(.pointsOfInterest, x: region.x, z: region.z)
-        return cache.value("places", region: region, sources: [file]) {
-            guard !Task.isCancelled else { return [] }
-            return (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []
-        }
+        await reader.close()
+        return Task.isCancelled ? [] : markers(from: blocks, in: dimension.id)
     }
 
     static func markers(from blocks: [PointOfInterest], in dimension: String) -> [PlaceMarker] {

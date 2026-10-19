@@ -231,7 +231,7 @@ enum StructureTestWorld {
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
-        let cached: [Creature]? = cache.load("creatures", region: .init(x: 0, z: 0), fingerprint: fingerprint)
+        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: RegionReader.options(in: dimension.id)))?.creatures
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.choose(.creature(pet.id))
@@ -529,7 +529,7 @@ enum StructureTestWorld {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
-        let gate = AsyncReadGate<RegionData>()
+        let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
         let layer = HeatMapLayer(reader: reader)
         layer.isShown = true
@@ -537,12 +537,11 @@ enum StructureTestWorld {
         layer.load(reread: true)
         layer.load(reread: true)
         let waiting = Task { await layer.waitForReads() }
-        var inhabited = RegionData()
-        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        let inhabited = try TestWorld.facts(inhabitedTime: HeatMap.maximumTicks)
         await gate.finish("region", with: inhabited)
         await gate.waitForRequest("region", count: 2)
         #expect(layer.visibleImages?.count == 1) // completed data stays visible during the next pass
-        await gate.finish("region", with: RegionData())
+        await gate.finish("region", with: try TestWorld.facts())
         await waiting.value
         #expect(layer.visibleImages?.isEmpty == true)
         #expect(await gate.requested == ["region", "region"])
@@ -563,15 +562,14 @@ enum StructureTestWorld {
         let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
-        let gate = AsyncReadGate<RegionData>()
+        let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
         let layer = HeatMapLayer(reader: reader)
         layer.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
         layer.cancel()
-        var inhabited = RegionData()
-        inhabited.inhabitedTimes[0] = HeatMap.maximumTicks
+        let inhabited = try TestWorld.facts(inhabitedTime: HeatMap.maximumTicks)
         await gate.finish("region", with: inhabited)
         await layer.waitForReads()
         layer.load(reread: true)

@@ -76,7 +76,7 @@ concise. This also disambiguates different paths within a namespace and unavaila
 well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;
 the app only formats its path or retains an unfamiliar value as readable fallback text. Vanilla
 structure/place groups and block-color lookup require the Minecraft namespace, leaving custom
-IDs distinct. Scan-cache version 17 and tile-renderer version 8 discard classifications and pixels
+IDs distinct. The RegionFacts cache and tile-renderer version 8 discard classifications and pixels
 made before this adoption. Structures retain their variant word order; the three vanilla dimension labels
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
@@ -104,7 +104,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
-| `RegionReader.swift` | Shared per-region passes, cancellation and draining when a world closes |
+| `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -158,6 +158,19 @@ The portal inspector only shows loading while the index has an actual pending re
 matching target dimension and no published portal result. Missing/unsupported/closed targets show
 an unavailable message, without fabricating an empty list. Known-empty indexed targets retain
 ChunkseeKit's normal prediction. The prediction footer appears only with an actual link result.
+
+`RegionReader` delegates the terrain/entity/POI traversal to Kit's `Dimension.scan`. It stores
+one `RegionFacts` envelope per region, validating all three file fingerprints, scan options,
+`RegionFacts.interpretationVersion` and `ScanCache.transformVersion`. Old per-part entries are
+ignored and removed after a successful replacement. Scans request the app's notable block IDs;
+the complete envelope uses Foundation JSON under LZFSE compression (transform version 2),
+including nonfinite saved numbers. Binary-plist decoding was the dominant measured cache-read
+cost in the first migration; the storage codec does not change the facts or their ownership.
+Nether biome sampling explicitly uses Y64, with surface sampling elsewhere. Kit owns biome usage,
+section counts/heights, formats and inhabited time; RegionIndex only groups those facts for views.
+Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
+cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
+previous index and heat contributions; successful empty reads and deleted files remove them.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
@@ -283,7 +296,7 @@ fractional digits in hearts, with a gauge when current and maximum are known and
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
 empty stacks are omitted, and material tint applies to symbols while text uses semantic colors.
 Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
-Scan-cache version 14 rereads earlier entries for Kit 0.29's versioned pet health, equipped modifiers,
+The RegionFacts cache rereads earlier entries with Kit 0.29's versioned pet health, equipped modifiers,
 shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
 preserved legacy item wear, structure heights, cave-biome membership, checked entity-container
 positions and missing villager-level defaults. A marker uses its saved
@@ -351,10 +364,10 @@ restoration are required; Finder and Dock opening are not required. The old app-
 recent/open-world preferences are removed; users reopen each old world once to establish
 native history and restoration state.
 
-Cave membership uses ChunkseeKit's paletteCounts() and only referenced entries; palettes without
-cave candidates skip cell counting. Unused names never create cave areas/hover membership, while
-all actually used areas and the full per-dimension vanilla-biome catalog remain. Scan-cache
-version 12 invalidates earlier false membership; surface sampling and area grouping stay unchanged.
+Cave membership filters the library's actually used biome IDs. Unused palette names never
+create cave areas/hover membership; all actually used areas and the full per-dimension vanilla
+biome catalog remain. The app owns the cave category list and neighboring-chunk area grouping.
+
 
 ## Build and test
 
@@ -425,10 +438,9 @@ The sidebar's width modifiers belong to the `NavigationSplitView` column root (t
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
 frame/native split item both enforce a 180-point minimum. Native resizing remains in charge.
 
-Time Spent uses ChunkseeKit’s `Chunk.inhabitedTime(in:)` in the shared region pass, including
-legacy `Level` chunks whose terrain cannot be rendered. Scan-cache version15 discards earlier
-zero results for those chunks. Region-file URLs use `Dimension.regionURL` for terrain, entities
-and POI; spawn navigation uses the library’s paired saved position and dimension.
+Time Spent uses `RegionFacts.inhabitedTimes`, including legacy `Level` chunks whose terrain
+cannot be rendered. Region-file URLs use `Dimension.regionURL` for terrain, entities and POI;
+spawn navigation uses the library's paired saved position and dimension.
 
 The Slime Chunks toggle is initially off and remembered per dimension. It is available only for
 the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
@@ -446,6 +458,5 @@ Personal phrases and absent-owner names stay with PlayerPresentation, preserving
 Player files use the same vanilla location rules regardless of unrelated extra fields; the app
 checks coordinate availability and presentation. Unknown numeric dimensions remain unavailable.
 Vanilla legacy dimensions and datapack dimensions still work; World Info retains its Modded line.
-Scan-cache version 16 rereads data after Kit
-0.30's identifier validation. RegionFacts and shoulder-pet presentation are
-adopted in separate changes; publishing these APIs does not enable their app features by itself.
+RegionFacts are adopted by the shared region reader; shoulder-pet presentation remains
+separate from publishing its library API.

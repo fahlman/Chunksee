@@ -40,8 +40,8 @@ import Testing
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: map.viewport.center)?.id == "minecraft:gold_block")
         #expect(map.topBlocks.keys.contains(chunk))
-        let facts = await RegionData.read(dimension, region: chunk.region)
-        #expect(facts.biomes[chunk] == "minecraft:plains")
+        let facts = try await RegionReader.scan(dimension, region: chunk.region)
+        #expect(facts.surfaceBiomes[chunk] == "minecraft:plains")
         map.close()
         await map.waitForRenders()
     }

@@ -56,10 +56,12 @@ nonisolated enum HeatMap {
     /// Every region's heat image in a dimension, read in parallel; regions with nothing to show
     /// are left out.
     @concurrent
-    static func images(_ reader: RegionReader) async -> [RegionPosition: CGImage] {
-        var images: [RegionPosition: CGImage] = [:]
-        for part in await reader.everyRegion({ await $0.inhabitedTimes($1) }) {
-            images[part.region] = image(fromTicks: part.value)
+    static func images(_ reader: RegionReader, previous: [RegionPosition: CGImage]) async -> [RegionPosition: CGImage] {
+        let available = Set(reader.dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        var images = previous.filter { available.contains($0.key) }
+        for part in await reader.everyRegion({ await $0.facts($1) }) {
+            guard let facts = part.value else { continue }
+            images[part.region] = image(fromTicks: facts.inhabitedTimes)
         }
         return images
     }
@@ -110,7 +112,7 @@ final class HeatMapLayer {
         task = Task(priority: .userInitiated) { [weak self] in
             defer { self?.task = nil }
             repeat {
-                let images = await HeatMap.images(reader)
+                let images = await HeatMap.images(reader, previous: self?.images ?? [:])
                 guard let self, !Task.isCancelled, !self.isClosed else { return }
                 self.images = images
                 // Saves during a read join one following pass instead of getting lost or

@@ -24,7 +24,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in await reads.read(dimension.id) })
+                                       readRegion: { dimension, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         #expect(Set(await reads.requested) == Set(ids))
@@ -51,7 +51,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in await reads.read(dimension.id) })
+                                       readRegion: { dimension, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let nether = try #require(resources.dimensions.first { $0.id == ids[1] })
@@ -130,15 +130,12 @@ import Testing
             if let dimension { versions[dimension, default: 1] += 1 }
         }
 
-        func read(_ dimension: String) -> RegionData {
+        func read(_ dimension: String) throws -> RegionFacts {
             requested.append(dimension)
-            var data = RegionData()
-            data.contents.containers = ItemContainer.containers(inChunk: .compound(["block_entities": .list([.compound([
+            return try TestWorld.facts(dimensionID: dimension, blockEntities: [.compound([
                 "id": .string("minecraft:chest"), "x": .int(1), "y": .int(64), "z": .int(2),
                 "Items": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(versions[dimension] ?? 1)])]),
-            ])])]))
-            data.formats.readable = 1
-            return data
+            ])])
         }
     }
 }
