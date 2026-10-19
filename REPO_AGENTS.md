@@ -240,6 +240,12 @@ names can invalidate independently. Typed unsaved queries remain per document. R
 work; an active typed waiter can still finish. Closing one document releases its wait without
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
+SearchModel registers its typed/saved-query waiter tasks in its own BackgroundWork scope. Active
+queries retain their identity and handle for selective cancellation; canceled replacements stay
+in the common registry until they finish. Local close releases saved-query waiter leases and
+closes only that search's scope. World close refuses further queries, rejects late results and
+clears completed active handles without leaving `isSearching` stuck. The scope supplies the
+drain, replacing the separate task table; source generations and result retention remain local.
 
 WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
 index close cancels/drains only its passes; world-owner close rejects late publication and queued
