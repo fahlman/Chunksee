@@ -331,7 +331,7 @@ import Testing
         #expect(session.mapContent.selectedPlayerID == nil && session.selection.mapSelection == nil)
         let missing = try #require(session.savedPlaces.add(name: "Missing", dimension: "missing:dimension", at: .zero))
         let viewport = session.map?.viewport
-        #expect(!session.canVisit(missing) && session.listedPlaces.contains { $0.id == missing.id })
+        #expect(!session.annotations.canVisit(missing) && session.annotations.listedPlaces.contains { $0.id == missing.id })
         session.selection.choose(.savedPlace(missing.id))
         #expect(session.map?.viewport == viewport && session.selection.sidebarSelection == .player(playerID))
         session.search.text = " diamond "

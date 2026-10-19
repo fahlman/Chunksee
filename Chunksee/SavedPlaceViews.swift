@@ -6,7 +6,7 @@ struct SavedPlacesSection: View {
 
     var body: some View {
         Section("Saved Places") {
-            ForEach(session.listedPlaces) { place in
+            ForEach(session.annotations.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
                     Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
                     Text(Coordinates.text(place.position))
@@ -16,12 +16,12 @@ struct SavedPlacesSection: View {
                 .lineLimit(1)
                 .tag(SidebarItem.savedPlace(place.id))
                 .id(SidebarItem.savedPlace(place.id))
-                .selectionDisabled(!session.canVisit(place))
+                .selectionDisabled(!session.annotations.canVisit(place))
                 .contextMenu {
                     SavedPlaceMenu(session: session, place: place, map: session.map)
                 }
             }
-            Button("Save Place…", systemImage: "mappin.and.ellipse") { session.savePlace() }
+            Button("Save Place…", systemImage: "mappin.and.ellipse") { session.annotations.savePlace() }
                 .buttonStyle(.plain)
                 .disabled(session.map == nil)
                 .help("Save the location at the center of the map")
@@ -29,7 +29,7 @@ struct SavedPlacesSection: View {
     }
 }
 
-/// The document owns the draft; name editing cannot move or alter the world.
+/// The annotations model owns the draft; name editing cannot move or alter the world.
 struct SavedPlaceEditor: View {
     let session: WorldSession
     let draft: SavedPlaceDraft

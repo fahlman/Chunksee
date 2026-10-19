@@ -79,7 +79,7 @@ final class SelectionModel {
         switch item {
         case .worldInfo: return .worldInfo
         case .storage: return .storage
-        case .savedPlace(let id): return source.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
+        case .savedPlace(let id): return source.annotations.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
         case .structure(let id): return index.structures.first { $0.id == id }.map(ResolvedSidebarItem.structure)
         case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
         case .creature(let id): return index.creatures.first { $0.id == id }.map(ResolvedSidebarItem.creature)
@@ -120,8 +120,8 @@ final class SelectionModel {
         switch resolved {
         case .worldInfo, .storage: break
         case .savedPlace(let place):
-            guard source.canVisit(place) else { return }
-            source.visit(place)
+            guard source.annotations.canVisit(place) else { return }
+            source.annotations.visit(place)
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
             source.center(on: marker.position, keepingZoom: true)

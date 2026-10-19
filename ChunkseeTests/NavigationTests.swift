@@ -66,16 +66,16 @@ import Testing
         session.map?.viewport = original
         session.navigation.goToCoordinates(CGPoint(x: 10, y: -20))
         session.map?.setDepth(MapDepth(y: 12, isSurface: false))
-        session.ruler.isEnabled = true
-        session.ruler.mark(.zero)
-        session.ruler.mark(CGPoint(x: 3, y: 4))
+        session.annotations.ruler.isEnabled = true
+        session.annotations.ruler.mark(.zero)
+        session.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         session.close()
         await session.waitUntilClosed()
         let defaults = TestDefaults.make()
         let replacement = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { replacement.close() }
         replacement.restoreView(from: session)
-        #expect(replacement.ruler == session.ruler && replacement.ruler.distance == 5)
+        #expect(replacement.annotations.ruler == session.annotations.ruler && replacement.annotations.ruler.distance == 5)
         #expect(replacement.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
         #expect(replacement.map?.depth == MapDepth(y: 12, isSurface: false))
         replacement.navigation.goBack()
@@ -177,6 +177,39 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct MapRulerTests {
+    @Test(.timeLimit(.minutes(1)))
+    func annotationChangesReachTheSheetAndMapWithoutRetainingTheDocument() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        var session: WorldSession? = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session?.close() }
+        let annotations = try #require(session?.annotations)
+        let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
+        defer { continuation.finish() }
+        var iterator = updates.makeAsyncIterator()
+        let initialDraft = withObservationTracking { session?.annotations.draft } onChange: { continuation.yield(true) }
+        #expect(initialDraft == nil)
+        annotations.savePlace(at: CGPoint(x: -8.7, y: 14.2))
+        let draftChanged = await iterator.next(isolation: #isolation)
+        #expect(draftChanged == true && annotations.draft?.position == CGPoint(x: -9, y: 14))
+        annotations.draft = nil
+        let initialRuler = withObservationTracking { session?.mapContent.ruler } onChange: { continuation.yield(true) }
+        #expect(initialRuler?.isEnabled == false)
+        annotations.beginMeasurement(at: CGPoint(x: -8.7, y: 14.2), in: "minecraft:overworld")
+        let rulerChanged = await iterator.next(isolation: #isolation)
+        #expect(rulerChanged == true && session?.mapContent.ruler.start?.position == CGPoint(x: -9, y: 14))
+        session?.close()
+        await session?.waitUntilClosed()
+        annotations.savePlace(at: .zero)
+        #expect(annotations.draft == nil)
+        weak let released = session
+        session = nil
+        #expect(released == nil)
+        annotations.savePlace(at: .zero)
+        #expect(annotations.draft == nil && annotations.listedPlaces.isEmpty)
+    }
+
     @Test func measurementUsesWholeBlocksAndTheThirdClickStartsAgain() {
         var ruler = MapRuler()
         ruler.mark(.zero)

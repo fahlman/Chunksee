@@ -30,18 +30,18 @@ import Testing
         let map = try #require(source.map), visibility = source.visibility
         let original = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
         map.viewport = original
-        source.ruler.isEnabled = true
-        source.ruler.mark(.zero)
-        source.ruler.mark(CGPoint(x: 3, y: 4))
+        source.annotations.ruler.isEnabled = true
+        source.annotations.ruler.mark(.zero)
+        source.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         let place = try #require(source.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
         switch action {
         case "menu": source.routing.openDimension(place.dimension)
         case "location": source.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
-        default: source.visit(place)
+        default: source.annotations.visit(place)
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")
         #expect(source.map === map && source.map?.viewport == original)
-        #expect(source.visibility === visibility && source.ruler.distance == 5)
+        #expect(source.visibility === visibility && source.annotations.ruler.distance == 5)
         #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
         // A later normal opening must not replay an action that could not invoke its opener.
         let target = WorldSession(resources: resources, dimensionID: place.dimension)
@@ -56,16 +56,16 @@ import Testing
         let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         source.map?.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
         source.navigation.goToCoordinates(CGPoint(x: 500, y: 600))
-        source.ruler.isEnabled = true
-        source.ruler.mark(.zero)
-        source.ruler.mark(CGPoint(x: 3, y: 4))
+        source.annotations.ruler.isEnabled = true
+        source.annotations.ruler.mark(.zero)
+        source.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         let target = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         let map = try #require(target.map), original = map.viewport
         target.restoreView(from: source)
         #expect(target.selectedDimensionID == "minecraft:the_nether")
         #expect(target.map === map && target.map?.viewport == original)
         #expect(!target.navigation.canGoBack && !target.navigation.canGoForward)
-        #expect(target.ruler.start == nil && target.ruler.end == nil)
+        #expect(target.annotations.ruler.start == nil && target.annotations.ruler.end == nil)
         resources.close()
         await resources.waitUntilClosed()
     }
@@ -79,18 +79,18 @@ import Testing
         overworld.map?.viewport = original
         nether.map?.viewport = MapViewport(center: CGPoint(x: 15, y: -10), scale: 8)
         overworld.navigation.goToCoordinates(CGPoint(x: 300, y: 400))
-        overworld.ruler.isEnabled = true
-        overworld.ruler.mark(.zero)
-        overworld.ruler.mark(CGPoint(x: 3, y: 4))
+        overworld.annotations.ruler.isEnabled = true
+        overworld.annotations.ruler.mark(.zero)
+        overworld.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         overworld.search.text = "diamond"
         nether.search.text = "ancient debris"
         #expect(overworld.search.indexStore === nether.search.indexStore)
         #expect(overworld.savedPlaces === nether.savedPlaces)
         #expect(overworld.search.text == "diamond" && nether.search.text == "ancient debris")
-        #expect(!nether.navigation.canGoBack && nether.ruler.start == nil)
+        #expect(!nether.navigation.canGoBack && nether.annotations.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: CGPoint(x: 15, y: -10), scale: 8))
         overworld.navigation.goBack()
-        #expect(overworld.map?.viewport == original && overworld.ruler.distance == 5)
+        #expect(overworld.map?.viewport == original && overworld.annotations.ruler.distance == 5)
         overworld.close()
         await overworld.waitUntilClosed()
         #expect(!resources.isClosed && !nether.isClosed)
@@ -110,17 +110,17 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: 12, y: 24), scale: 4)
         overworld.map?.viewport = sourceView
         nether.map?.viewport = targetView
-        overworld.ruler.isEnabled = true
-        overworld.ruler.mark(.zero)
-        overworld.ruler.mark(CGPoint(x: 3, y: 4))
+        overworld.annotations.ruler.isEnabled = true
+        overworld.annotations.ruler.mark(.zero)
+        overworld.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         var opened = recordOpens(of: overworld)
         let netherDocument = resources.documentURL(for: "minecraft:the_nether")
         let place = try #require(overworld.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
-        overworld.visit(place)
+        overworld.annotations.visit(place)
         let jumpOpened = await opened.next(isolation: #isolation)
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
-        #expect(!overworld.navigation.canGoBack && overworld.ruler.distance == 5 && nether.ruler.start == nil)
+        #expect(!overworld.navigation.canGoBack && overworld.annotations.ruler.distance == 5 && nether.annotations.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: place.mapPosition, scale: 4))
         nether.navigation.goBack()
         #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
@@ -140,7 +140,7 @@ import Testing
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         let base = try #require(nether.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: .zero))
-        #expect(nether.listedPlaces.map(\.id) == [base.id] && overworld.listedPlaces.isEmpty)
+        #expect(nether.annotations.listedPlaces.map(\.id) == [base.id] && overworld.annotations.listedPlaces.isEmpty)
         let viewport = nether.map?.viewport
         nether.selection.mapClicked(.row(.savedPlace(base.id)))
         #expect(nether.selection.sidebarSelection == .savedPlace(base.id) && nether.map?.viewport == viewport)
@@ -172,7 +172,7 @@ import Testing
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         var opened = recordOpens(of: overworld)
         let place = try #require(overworld.savedPlaces.add(name: "End City", dimension: "minecraft:the_end", at: CGPoint(x: 900, y: -400)))
-        overworld.visit(place)
+        overworld.annotations.visit(place)
         let endOpened = await opened.next(isolation: #isolation)
         #expect(endOpened == resources.documentURL(for: "minecraft:the_end"))
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
@@ -192,7 +192,7 @@ import Testing
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         overworld.routing.openDocument = { _ in throw CocoaError(.fileReadNoPermission) }
         let place = try #require(overworld.savedPlaces.add(name: "End City", dimension: "minecraft:the_end", at: CGPoint(x: 900, y: -400)))
-        overworld.visit(place)
+        overworld.annotations.visit(place)
         for await failure in Observations({ overworld.routing.openFailure }) where failure != nil { break }
         // Opening the End normally later keeps its own view, without the failed jump.
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
@@ -231,9 +231,9 @@ import Testing
             throw CocoaError(.fileReadNoPermission)
         }
         var opened = recordOpens(of: secondSource)
-        firstSource.visit(first)
+        firstSource.annotations.visit(first)
         await gate.waitForRequest("first")
-        secondSource.visit(latest)
+        secondSource.annotations.visit(latest)
         let destination = await opened.next(isolation: #isolation)
         #expect(destination == resources.documentURL(for: latest.dimension))
         await gate.finish("first", with: ())
