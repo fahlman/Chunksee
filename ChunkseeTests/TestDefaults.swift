@@ -36,7 +36,8 @@ enum TestDefaults {
         }
 
         static func file(for name: String) -> URL {
-            URL.homeDirectory.appending(path: "Library/Preferences/\(name).plist")
+            FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+                .appending(path: "Preferences/\(name).plist")
         }
     }
 }
@@ -79,8 +80,8 @@ private nonisolated struct StandardDomainMonitor {
         }
 
         func check() -> Bool {
-            let after = UserDefaults.standard.persistentDomain(forName: name) as NSDictionary? ?? [:]
             return values.withLock {
+                let after = UserDefaults.standard.persistentDomain(forName: name) as NSDictionary? ?? [:]
                 $0.changed = $0.changed || $0.before != after
                 return $0.changed
             }
