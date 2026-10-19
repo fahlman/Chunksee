@@ -51,7 +51,6 @@ final class WorldResources {
     @ObservationIgnored private var openings: Set<UUID> = []
     /// Jumps waiting for a dimension's document to open.
     @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
-    @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
     @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
@@ -188,14 +187,8 @@ final class WorldResources {
         dimensions.first { $0.id == dimension }?.documentURL(inWorldAt: url)
     }
 
-    func detach(_ session: WorldSession, draining task: Task<Void, Never>) {
+    func detach(_ session: WorldSession) {
         sessions[session.viewID] = nil
-        let id = session.viewID
-        retiringViews[id] = task
-        Task { [weak self] in
-            await task.value
-            self?.retiringViews[id] = nil
-        }
         closeIfUnused()
     }
 
@@ -208,7 +201,7 @@ final class WorldResources {
         backgroundWork.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
-        let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
+        let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
         closingTask = Task {
@@ -216,7 +209,6 @@ final class WorldResources {
                 for reader in readers { group.addTask { await reader.close() } }
             }
             await index.waitForTasks()
-            for task in retiring { await task.value }
             await backgroundWork.waitUntilFinished()
             access.release()
         }
