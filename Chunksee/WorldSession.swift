@@ -164,7 +164,7 @@ final class WorldSession {
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
         heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
-        playerRecords = PlayerRecordsModel(world: resources.world)
+        playerRecords = PlayerRecordsModel(world: resources.world, work: resources.backgroundWork)
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
         map = initialMap
