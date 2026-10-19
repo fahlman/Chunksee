@@ -15,6 +15,8 @@ struct MapContent {
     var border: WorldBorder?
     /// Whether chunk and region lines are drawn.
     var showsGrid = false
+    var slimeChunks: [RegionCoordinate: CGImage] = [:]
+    var slimeSeed: Int64?
     var structures: [StructureMarker] = []
     var placePoints = PointMarkers<PlaceMarker>()
     var creaturePoints = PointMarkers<CreatureMarker>()
@@ -219,6 +221,13 @@ struct MapView: View {
         ZoomPercentage.text(map.viewport.scale)
     }
 
+    private var accessibilityReadout: String {
+        let position = String(localized: "Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)")
+        guard let seed = content.slimeSeed,
+              let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) else { return position }
+        return [position, slime].joined(separator: "; ")
+    }
+
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
@@ -286,7 +295,7 @@ struct MapView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Map of \(session.dimensionName(map.dimension.id))"))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text("Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)"))
+        .accessibilityValue(Text(accessibilityReadout))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ZStack(alignment: .topLeading) {
@@ -388,6 +397,12 @@ struct MapView: View {
             let color = Color(BiomeColors.color(for: area.group.id))
             context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
             context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
+        }
+        for region in visible {
+            if let image = content.slimeChunks[region] {
+                context.draw(Image(decorative: image, scale: 1).interpolation(.none),
+                             in: map.viewport.viewRect(for: region, in: size))
+            }
         }
         if content.showsGrid {
             Self.drawGrid(MapGrid(viewport: map.viewport, size: size), in: context, size: size)
@@ -539,6 +554,13 @@ struct MapView: View {
                 let block = Self.namesBlocks(at: map.viewport.scale) ? map.topBlock(at: hoverBlock) : nil
                 Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock)))
                     .monospacedDigit()
+                if let seed = content.slimeSeed, let description = SlimeChunks.description(at: hoverBlock, seed: seed) {
+                    Text(description)
+                }
+            }
+            if session.slimeChunks.isLoading {
+                ProgressView().controlSize(.small)
+                Text("Drawing slime chunks…")
             }
             if map.isLoading {
                 ProgressView().controlSize(.small)
@@ -552,7 +574,7 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.ruler.isEnabled ? 0 : 1)
+        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.ruler.isEnabled && !session.slimeChunks.isLoading ? 0 : 1)
     }
 
     /// Blocks are named from 100% zoom, where a block is at least a point across.

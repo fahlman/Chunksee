@@ -279,6 +279,7 @@ final class WorldResources {
             if let id = session.selectedDimensionID, let changes = terrain[id] {
                 session.map?.regionsChanged(changes.mapRegions)
                 session.heatMap.load(reread: true)
+                session.slimeChunks.regionsChanged(session.map?.availableRegions ?? [])
             }
         }
         if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }

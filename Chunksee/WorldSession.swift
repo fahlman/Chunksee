@@ -66,6 +66,7 @@ final class WorldSession {
     let visibility: LayerVisibility
     let search: SearchModel
     let heatMap: HeatMapLayer
+    let slimeChunks: SlimeChunkLayer
     let playerRecords: PlayerRecordsModel
     /// Opens a dimension's document, or brings it to the front if it's open. Each document's view
     /// supplies this, since SwiftUI opens documents through its environment.
@@ -165,8 +166,11 @@ final class WorldSession {
         heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] })
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
-        map = Self.initialMap(resources: resources, dimensionID: selected)
+        let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
+        map = initialMap
+        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed, regions: initialMap?.availableRegions ?? [])
         heatMap.restoreVisibility(from: visibility)
+        slimeChunks.restoreVisibility(from: visibility)
         resources.attach(self)
     }
 
@@ -188,13 +192,15 @@ final class WorldSession {
         saveView()
         search.cancel()
         heatMap.cancel()
+        slimeChunks.cancel()
         playerRecords.close()
         map?.close()
-        let search = search, heatMap = heatMap, playerRecords = playerRecords
+        let search = search, heatMap = heatMap, slimeChunks = slimeChunks, playerRecords = playerRecords
         let map = map
         let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
+            await slimeChunks.waitForImages()
             await playerRecords.waitForReads()
             await map?.waitForRenders()
         }
@@ -406,6 +412,8 @@ final class WorldSession {
         let index = selectedIndex
         var content = MapContent()
         content.heatMap = heatMap.visibleImages ?? [:]
+        content.slimeChunks = slimeChunks.visibleImages
+        content.slimeSeed = slimeChunks.visibleSeed
         if case .inGameMap(let item)? = selection, let image = image(for: item) {
             content.inGameMap = (item, image, inGameMapOpacity)
         }

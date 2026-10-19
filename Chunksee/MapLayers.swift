@@ -150,6 +150,7 @@ final class LayerVisibility {
         static let hiddenPlayers = "hiddenPlayers"
         static let showsGrid = "showsGrid"
         static let timeSpent = "showsTimeSpent"
+        static let slimeChunks = "showsSlimeChunks"
         static let legacy = [structures, places, creatures, biomes, hiddenPlayers, showsGrid]
     }
 
@@ -192,6 +193,10 @@ final class LayerVisibility {
     /// HeatMapLayer owns the live flag; these accessors only restore and persist its value.
     var rememberedTimeSpent: Bool { stored[Keys.timeSpent] as? Bool ?? false }
     func rememberTimeSpent(_ shown: Bool) { saveValue(shown, Keys.timeSpent) }
+
+    /// SlimeChunkLayer owns the live flag, just as HeatMapLayer owns Time Spent.
+    var rememberedSlimeChunks: Bool { stored[Keys.slimeChunks] as? Bool ?? false }
+    func rememberSlimeChunks(_ shown: Bool) { saveValue(shown, Keys.slimeChunks) }
 
     private func save(_ names: [String], _ key: String) { saveValue(names.sorted(), key) }
 

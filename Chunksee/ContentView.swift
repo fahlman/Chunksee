@@ -13,6 +13,7 @@ struct WorldView: View {
         @Bindable var visibility = session.visibility
         @Bindable var search = session.search
         @Bindable var heatMap = session.heatMap
+        @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
             ScrollViewReader { proxy in
@@ -33,6 +34,14 @@ struct WorldView: View {
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .help("Color the map by how long players spent near each chunk")
+                        if slimeChunks.isAvailable {
+                            Toggle(isOn: $slimeChunks.isShown) {
+                                Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
+                            }
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                            .help("Mark Overworld chunks where slimes can spawn below Y 40")
+                        }
                         Toggle(isOn: $visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }

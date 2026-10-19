@@ -412,3 +412,10 @@ Time Spent uses ChunkseeKit’s `Chunk.inhabitedTime(in:)` in the shared region 
 legacy `Level` chunks whose terrain cannot be rendered. Scan-cache version15 discards earlier
 zero results for those chunks. Region-file URLs use `Dimension.regionURL` for terrain, entities
 and POI; spawn navigation uses the library’s paired saved position and dimension.
+
+The Slime Chunks toggle is initially off and remembered per dimension. It is available only for
+the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
+32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
+panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
+change the seed rule. Closing cancels and drains mask generation. The center's chunk status is
+in the map's accessibility value; pointer hover shows the same checked rule in the readout.
