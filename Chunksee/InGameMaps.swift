@@ -33,7 +33,7 @@ struct InGameMapRow: View {
 
     var body: some View {
         HStack {
-            if let image = session.image(for: map) {
+            if let image = session.selection.image(for: map) {
                 Image(decorative: image, scale: 1)
                     .interpolation(.none)
                     .resizable()
@@ -57,10 +57,11 @@ struct InGameMapRow: View {
 
 /// Details of the selected in-game map in the inspector, with a slider to compare it with today's terrain.
 struct InGameMapDetailView: View {
-    @Bindable var session: WorldSession
+    let session: WorldSession
     let map: MapItem
 
     var body: some View {
+        @Bindable var selection = session.selection
         Form {
             Section {
                 LabeledContent("Area", value: "\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
@@ -76,7 +77,7 @@ struct InGameMapDetailView: View {
             }
             Section {
                 LabeledContent("Opacity") {
-                    Slider(value: $session.inGameMapOpacity, in: 0...1)
+                    Slider(value: $selection.inGameMapOpacity, in: 0...1)
                 }
             } footer: {
                 Text("Lower the opacity to compare the map with today’s terrain.")
