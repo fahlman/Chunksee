@@ -1,4 +1,5 @@
 import CoreGraphics
+import ChunkseeKit
 import Observation
 
 /// A dimension's saved-place drafts and ruler. SavedPlaces remains the world's shared store.
