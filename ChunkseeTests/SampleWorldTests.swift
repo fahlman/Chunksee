@@ -34,8 +34,9 @@ struct SampleWorldTests {
         #expect(session.selectedIndex.places.filter { $0.group == .spawner }.map(\.mob) == ["minecraft:zombie"])
         session.search.text = "diamond"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
-        #expect(session.search.results.count == 1 && hit.count == 12)
+        let hit = try #require(session.search.results.first { $0.source == .container(kind: "minecraft:chest") })
+        #expect(session.search.results.count == 2 && hit.count == 12)
+        #expect(session.search.results.contains { $0.source == .sign && $0.detail.contains("Find diamonds") })
         #expect(hit.position == CGPoint(x: 93.5, y: 109.5) && hit.y == 58)
         let dimension = try #require(session.selectedDimension)
         let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: .init(x: 0, z: 0)))
