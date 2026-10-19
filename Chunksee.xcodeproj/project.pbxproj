@@ -540,7 +540,7 @@
 			repositoryURL = "https://github.com/fahlman/ChunkseeKit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.30.0;
+				minimumVersion = 0.31.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
