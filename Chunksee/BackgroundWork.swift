@@ -1,6 +1,7 @@
 import Foundation
 
-/// A world's registered work stays owned until it finishes, including after cancellation.
+/// Related work owned by a world or an app-wide source, such as player names.
+/// Registered work stays owned until it finishes, including after cancellation.
 /// Individual consumers may cancel their own handles without closing their siblings' work.
 final class BackgroundWork {
     private(set) var isClosed = false
@@ -47,7 +48,7 @@ final class BackgroundWork {
         while let task = tasks.values.first(where: { $0.scope == scope })?.task { await task.value }
     }
 
-    /// One consumer's task group. Canceled/replaced reads remain in the world's registry
+    /// One consumer's task group. Canceled/replaced reads remain in the owner's registry
     /// until they finish, while a local drain never waits for another consumer's work.
     final class Scope {
         private let owner: BackgroundWork
