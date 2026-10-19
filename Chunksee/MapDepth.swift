@@ -40,12 +40,14 @@ struct MapDepthControl: View {
         .popover(isPresented: $showsPopover) {
             MapDepthPopover(map: map)
         }
+        .focusedSceneValue(\.mapHeightPopover, $showsPopover)
     }
 }
 
 private struct MapDepthPopover: View {
     @Bindable var map: MapModel
     @State private var draggedY: Int?
+    @FocusState private var isHeightFocused: Bool
 
     private var displayedY: Int { draggedY ?? map.depth.y }
 
@@ -113,6 +115,7 @@ private struct MapDepthPopover: View {
             HStack {
                 Text("Y")
                 TextField("Y", value: height, format: .number.grouping(.never))
+                    .focused($isHeightFocused)
                     .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
                     .accessibilityLabel("Cutaway Y coordinate")
@@ -129,6 +132,8 @@ private struct MapDepthPopover: View {
             .disabled(map.depth.isSurface)
         }
         .padding()
+        .onAppear { isHeightFocused = !map.depth.isSurface }
+        .onChange(of: map.depth.isSurface) { _, isSurface in isHeightFocused = !isSurface }
         .onDisappear { draggedY = nil }
     }
 }

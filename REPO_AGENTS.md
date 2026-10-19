@@ -185,6 +185,10 @@ shows Surface or the current Y and opens a standard popover. Its segmented mode 
 slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
 Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
 dimension alongside the viewport, including moves.
+Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
+(Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
+binding exposes the view-owned popover flag; MapDepth still owns the mode and height. The Cutaway
+number field receives SwiftUI focus on opening or switching from Surface.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the

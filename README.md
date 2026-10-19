@@ -29,7 +29,9 @@ It shows a top-down view of a world, the structures and places found in it, and 
    To look underground, click **Surface** in the toolbar and choose **Cutaway**. Use the slider,
    enter a whole **Y** coordinate, or use the stepper for one-block changes. The map updates when
    you release the slider and shows terrain at or below that height, including cave floors.
-   Choose **Surface** to return to the normal map. Each dimension remembers its height and mode.
+   Choose **Surface** to return to the normal map. **View ▸ Map Height…** (**⇧⌘Y**) opens these
+   controls from the keyboard; **View ▸ Surface** (**⌥⌘Y**) switches between Surface and Cutaway.
+   In Cutaway mode, type the height and press Return. Each dimension remembers its height and mode.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.
