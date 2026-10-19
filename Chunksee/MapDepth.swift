@@ -56,6 +56,11 @@ private struct MapDepthPopover: View {
         }
     }
 
+    private func stepHeight(by step: Int) {
+        let (next, overflow) = displayedY.addingReportingOverflow(step)
+        if !overflow { height.wrappedValue = next }
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
             Picker("Map View", selection: Binding {
@@ -104,7 +109,10 @@ private struct MapDepthPopover: View {
                     .accessibilityLabel("Cutaway Y coordinate")
                     .accessibilityIdentifier("cutaway-y")
                     .help("Show the terrain at or below this height")
-                Stepper("Cutaway Height", value: height, in: Int.min...Int.max)
+                // A full Int range cannot form the distance required by Stepper's ranged binding.
+                Stepper("Cutaway Height",
+                        onIncrement: displayedY < Int.max ? { stepHeight(by: 1) } : nil,
+                        onDecrement: displayedY > Int.min ? { stepHeight(by: -1) } : nil)
                     .labelsHidden()
                     .accessibilityValue(Text("Y \(displayedY.formatted())"))
                     .accessibilityIdentifier("cutaway-stepper")
