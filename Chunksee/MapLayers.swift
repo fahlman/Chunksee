@@ -63,15 +63,16 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                         } set: {
                             if $0 { expandedGroups.insert(group) } else { expandedGroups.remove(group) }
                         }) {
-                            ForEach(nearestFirst(byGroup[group] ?? [])) { marker in
+                            // The collection owns the same identity used by selection and scrolling.
+                            // An inner .id adds a dynamic row-list transformation for every marker.
+                            ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(marker.name)
-                                    Text(Coordinates.text(marker.position))
+                                    Text(row.marker.name)
+                                    Text(Coordinates.text(row.marker.position))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                .tag(item(marker))
-                                .id(item(marker))
+                                .tag(row.id)
                                 .help("Center the map on this location")
                             }
                         } label: {
