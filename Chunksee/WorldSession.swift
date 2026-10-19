@@ -151,7 +151,7 @@ final class WorldSession {
 
     convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
                      defaults: UserDefaults, cacheRoot: URL?,
-                     readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData = RegionData.read) {
+                     readRegion: @escaping RegionReader.Read = RegionReader.scan) {
         self.init(resources: WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
                                            defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
     }

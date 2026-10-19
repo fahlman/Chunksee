@@ -103,7 +103,7 @@ import Testing
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
-        let gate = AsyncReadGate<RegionData>()
+        let gate = AsyncReadGate<RegionFacts>()
         let session = WorldSession(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                    readRegion: { _, _ in await gate.read("region") })
@@ -116,7 +116,7 @@ import Testing
         }
         await gate.waitForCancellation("region")
         #expect(session.isClosed && !finishedClosing)
-        await gate.finish("region", with: RegionData())
+        await gate.finish("region", with: try TestWorld.facts())
         await closing.value
         #expect(finishedClosing)
     }
@@ -126,7 +126,7 @@ import Testing
         let cacheURL = FileManager.default.temporaryDirectory.appendingPathComponent("ChunkseeReadCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: cacheURL) }
         let dimension = try #require(try World(contentsOf: url).dimensions().first)
-        let gate = AsyncReadGate<RegionData>()
+        let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _ in
             await gate.read("region")
         }
@@ -137,7 +137,7 @@ import Testing
         // A queued read after shutdown never starts another pass.
         #expect(await reader.contents(.init(x: 1, z: 0)).containers.isEmpty)
         #expect(await gate.requested == ["region"])
-        await gate.finish("region", with: RegionData())
+        await gate.finish("region", with: try TestWorld.facts())
         _ = await read.value
         await closing.value
         #expect(!FileManager.default.fileExists(atPath: cacheURL.path))

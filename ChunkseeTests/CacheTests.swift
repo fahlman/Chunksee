@@ -122,7 +122,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let creatures = await reader.creatures(region)
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
-        let saved: [Creature]? = cache.load("creatures", region: region, fingerprint: fingerprint)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.creatures
         #expect(saved?.first?.maxHealth == 10)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
@@ -148,37 +148,12 @@ import Testing
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
         #expect(await reader.structures(region).isEmpty)
-        let saved: [StructureMarker]? = cache.load("structures", region: region, fingerprint: fingerprint)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.structures.map(StructureMarker.init)
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 
-    @Test func readsOnceAndAgainWhenASourceChanges() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ScanCacheTests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let source = dir.appendingPathComponent("r.0.0.mca")
-        try Data([1, 2, 3]).write(to: source)
-        let cache = ScanCache(directory: dir.appendingPathComponent("scans"))
-        var reads = 0
-        func value() -> [String] {
-            cache.value("test", region: RegionPosition(x: 0, z: 0), sources: [source, dir.appendingPathComponent("missing.mca")]) {
-                reads += 1
-                return ["read \(reads)"]
-            }
-        }
-        #expect(value() == ["read 1"] && value() == ["read 1"] && reads == 1)
-        try Data([1, 2, 3, 4]).write(to: source)   // the game saved the region
-        #expect(value() == ["read 2"] && value() == ["read 2"] && reads == 2)
-        // Only the newest entry is kept.
-        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("scans").path).count == 1)
-        var offReads = 0
-        _ = ScanCache.off.value("test", region: RegionPosition(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
-        _ = ScanCache.off.value("test", region: RegionPosition(x: 0, z: 0), sources: [source]) { offReads += 1; return 0 }
-        #expect(offReads == 2)
-    }
-
-    @Test func oneReadSavesEveryScansPart() async throws {
+    @Test func oneEnvelopeServesEveryScan() async throws {
         let world = try TestWorld.make(chunks: (0..<2).flatMap { x in (0..<2).map { z in
             TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } })
         defer { try? FileManager.default.removeItem(at: world) }
@@ -192,8 +167,7 @@ import Testing
         // One scan reads the region...
         let first = await BiomeScanner.scan(RegionReader(dimension: dimension, cache: cache))
         #expect(first.areas.map(\.chunkCount) == [4])
-        // ...then blank its file but keep its size and date: only saved parts can still answer, and
-        // the biome read saved the other scans' parts too.
+        // ...then blank its file but keep its size and date: only the saved envelope can still answer.
         let size = (try FileManager.default.attributesOfItem(atPath: region.path)[.size] as? NSNumber)?.intValue ?? 0
         try Data(count: size).write(to: region)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)

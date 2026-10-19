@@ -46,9 +46,10 @@ nonisolated enum BiomeScanner {
     @concurrent
     static func scan(_ reader: RegionReader) async -> BiomeScan {
         var scan = BiomeScan()
-        for part in await reader.everyRegion({ await ($0.biomes($1), $0.caveBiomes($1)) }) {
-            scan.biomes.merge(part.value.0) { $1 }
-            scan.caveBiomes.merge(part.value.1) { $1 }
+        for part in await reader.everyRegion({ await $0.facts($1) }) {
+            guard let facts = part.value else { continue }
+            scan.biomes.merge(facts.surfaceBiomes) { $1 }
+            scan.caveBiomes.merge(facts.caveBiomes) { $1 }
         }
         scan.areas = areas(surface: scan.biomes, caves: scan.caveBiomes)
         return scan
@@ -61,41 +62,11 @@ nonisolated enum BiomeScanner {
         areas(from: surface.filter { !caveBiomeIDs.contains($0.value) }) + caveAreas(from: caves)
     }
 
-    /// The cave biomes actually used by cells in a chunk. A palette may retain unused entries.
-    static func caveBiomes(of chunk: Chunk) -> [String] {
-        var found = Set<String>()
-        for section in chunk.sections {
-            guard let biomes = section.biomes else { continue }
-            let candidates = biomes.palette.indices.filter { caveBiomeIDs.contains(biomes.palette[$0]) }
-            guard !candidates.isEmpty else { continue }
-            let counts = biomes.paletteCounts()
-            for index in candidates where counts[index] > 0 { found.insert(biomes.palette[index]) }
-        }
-        return found.sorted()
-    }
-
     /// Areas of each cave biome; a chunk can belong to more than one.
     static func caveAreas(from caves: [ChunkPosition: [String]]) -> [BiomeArea] {
         caveBiomeIDs.sorted().flatMap { biome in
             areas(from: caves.filter { $0.value.contains(biome) }.mapValues { _ in biome })
         }
-    }
-
-    /// The biome at the middle column's surface: the heightmap's top block, or the top of the
-    /// highest section with blocks when the chunk has no heightmap. The Nether's surface is under
-    /// its roof, so it's sampled at Y 64.
-    static func surfaceBiome(of chunk: Chunk, in dimension: String) -> String? {
-        let y: Int
-        if dimension == "minecraft:the_nether" {
-            y = 64
-        } else if let heights = chunk.heightmap("WORLD_SURFACE") {
-            y = heights[8 * 16 + 8] - 1
-        } else if let top = chunk.sections.last(where: { $0.blockStates?.palette.contains { !$0.id.hasSuffix("air") } == true }) {
-            y = top.y * 16 + 15
-        } else {
-            return nil
-        }
-        return chunk.biome(x: 8, y: y, z: 8)
     }
 
     /// Joins chunks of the same biome that share an edge. Every area is kept, down to a single

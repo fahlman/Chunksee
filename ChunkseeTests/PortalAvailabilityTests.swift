@@ -11,9 +11,11 @@ import Testing
         let searches: SavedSearches
         var sessions: [WorldSession] = []
         var resources: [WorldResources] = []
-        var gates: [AsyncReadGate<RegionData>] = []
+        var gates: [AsyncReadGate<RegionFacts>] = []
+        let emptyFacts: RegionFacts
 
         init() throws {
+            emptyFacts = try TestWorld.facts()
             let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
             url = try TestWorld.make(chunks: [chunk])
             defaults = TestDefaults.make()
@@ -43,12 +45,12 @@ import Testing
             try Data(TestWorld.regionFile([chunk])).write(to: folder.appendingPathComponent("r.0.0.mca"))
         }
 
-        func controlled() async throws -> (WorldSession, AsyncReadGate<RegionData>) {
-            let gate = AsyncReadGate<RegionData>(), first = FirstRead()
+        func controlled() async throws -> (WorldSession, AsyncReadGate<RegionFacts>) {
+            let gate = AsyncReadGate<RegionFacts>(), first = FirstRead()
             let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: names,
                 savedSearches: searches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region in
                     if dimension.id == "minecraft:the_nether", await first.take() { return await gate.read("nether") }
-                    return await RegionData.read(dimension, region: region)
+                    return try await RegionReader.scan(dimension, region: region)
                 })
             self.resources.append(resources)
             gates.append(gate)
@@ -60,7 +62,7 @@ import Testing
         func close() async {
             sessions.forEach { $0.close() }
             resources.forEach { $0.close() }
-            for gate in gates { await gate.finishAll(with: RegionData()) }
+            for gate in gates { await gate.finishAll(with: emptyFacts) }
             for session in sessions { await session.waitUntilClosed() }
             for resource in resources { await resource.waitUntilClosed() }
             try? FileManager.default.removeItem(at: url)
@@ -93,7 +95,7 @@ import Testing
             await gate.waitForRequest("nether")
             let portal = try #require(session.portalsByDimension["minecraft:overworld"]?.first)
             #expect(session.isWaitingForPortalLink(portal) && session.link(for: portal) == nil)
-            await gate.finish("nether", with: RegionData())
+            await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
             #expect(!session.isWaitingForPortalLink(portal))
             #expect(session.portalsByDimension["minecraft:the_nether"]?.isEmpty == true)
@@ -113,7 +115,7 @@ import Testing
             snapshot.access.release()
             await gate.waitForRequest("nether")
             #expect(session.link(for: portal) == nil && session.isWaitingForPortalLink(portal))
-            await gate.finish("nether", with: RegionData())
+            await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
             #expect(!session.isWaitingForPortalLink(portal) && session.link(for: portal) != nil)
         }
@@ -131,7 +133,7 @@ import Testing
             session.resources.close()
             await gate.waitForCancellation("nether")
             #expect(!session.isWaitingForPortalLink(portal))
-            await gate.finish("nether", with: RegionData())
+            await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.waitUntilClosed()
             #expect(!session.resources.index.isWaitingForPortals(in: "minecraft:the_nether"))
         }

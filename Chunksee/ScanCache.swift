@@ -1,85 +1,85 @@
 import ChunkseeKit
 import Foundation
 
-/// Scan results (search contents, structures, places, creatures, biomes, time spent) kept on disk per region,
-/// so reopening a world lists everything at once. Like tiles, an entry is valid only for the
-/// exact files it was read from (size and modification date), so regions the game changed are
-/// read again.
+/// One library-owned facts envelope per region. Source files, scan choices and both owners'
+/// versions determine whether the entry is usable; app presentation is derived after loading.
 nonisolated struct ScanCache: Sendable {
-    /// Bump whenever what a scan saves changes, invalidating old entries.
-    /// 2: one read per region fills every scan's entry (fahlman/Chunksee#53).
-    /// 3: biomes only from fully generated chunks, and Sulfur Caves as a cave biome (fahlman/Chunksee#79).
-    /// 4: structures only from finished chunks; explicitly unplaced and empty starts excluded.
-    /// 5: spawners in search contents (fahlman/Chunksee#121).
-    /// 6: saved current health on creatures (fahlman/Chunksee#145).
-    /// 7: saved pet maximum health, order, appearance, collar and equipment (same issue).
-    /// 8: corrected loaded pet maximum health, Health Boost and durability defaults.
-    /// 9: stable creature UUIDs and preserved legacy item wear.
-    /// 10: structure marker heights in the Copy Coordinates branch (fahlman/Chunksee#159).
-    /// 11: both creature details and structure heights; invalidates entries from either branch.
-    /// 12: cave biome membership uses referenced cells, excluding unused palette entries.
-    /// 13: Kit 0.28 corrects entity-container positions and missing villager-level defaults.
-    /// 14: Kit 0.29 corrects versioned pet health, equipment modifiers, UUIDs and display text.
-    /// 15: shared inhabited-time reader includes legacy Level compounds.
-    /// 16: Kit 0.30 validates saved identifiers through its shared reader.
-    /// 17: structure/place groups use Kit's identifier parser, including an empty default namespace.
-    static let version = 17
-
-    /// `nil` reads every time and saves nothing.
+    /// Bump for changes to the app's scan choices/transforms; Kit versions its readers separately.
+    static let transformVersion = 1
     let directory: URL?
-
-    /// Reads every time, for tests and worlds without a cache folder.
     static let off = ScanCache(directory: nil)
 
-    /// The scans folder inside a dimension's tile folder, where tile pruning also covers it.
+    struct Key: Hashable, Sendable {
+        let dimension: String
+        let region: RegionPosition
+        let fingerprint: String
+        let options: RegionScanOptions
+
+        init(dimension: ChunkseeKit.Dimension, region: RegionPosition, options: RegionScanOptions) {
+            self.dimension = dimension.id
+            self.region = region
+            fingerprint = ScanCache.fingerprint(ChunkseeKit.Dimension.Folder.allCases.map {
+                dimension.regionURL($0, at: region)
+            })
+            self.options = options
+        }
+
+        func matches(_ facts: RegionFacts) -> Bool {
+            facts.dimension == dimension && facts.region == region && facts.options == options
+        }
+
+        var optionsHash: String {
+            // Length-prefix IDs so even unfamiliar saved names cannot alias another set.
+            let ids = options.blockIDs.map { $0.sorted().map { "\($0.utf8.count):\($0)" }.joined() } ?? "all"
+            return ScanCache.hash("\(options.biomeSampleY.map(String.init) ?? "surface");\(options.height.map(String.init) ?? "unknown");\(ids)")
+        }
+    }
+
+    private struct Entry: Codable {
+        let transformVersion: Int
+        let fingerprint: String
+        let facts: RegionFacts
+    }
+
     init(forWorldAt world: URL, dimensionID: String, root: URL?) {
         directory = TileCache.directory(forWorldAt: world, dimensionID: dimensionID, root: root)?
             .appendingPathComponent("scans", isDirectory: true)
     }
 
-    init(directory: URL?) {
-        self.directory = directory
+    init(directory: URL?) { self.directory = directory }
+
+    func load(_ key: Key) -> RegionFacts? {
+        guard let file = file(key), let data = try? Data(contentsOf: file),
+              let plist = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              let entry = try? PropertyListDecoder().decode(Entry.self, from: plist),
+              entry.transformVersion == Self.transformVersion, entry.fingerprint == key.fingerprint,
+              key.matches(entry.facts) else { return nil }
+        return entry.facts
     }
 
-    /// The saved `kind` result for a region, or `read()`'s result, saved for next time. `sources`
-    /// are the files the result comes from; a missing file counts as a state of its own.
-    func value<T: Codable>(_ kind: String, region: RegionPosition, sources: [URL], read: () -> T) -> T {
-        guard directory != nil else { return read() }
-        // Taken before reading, so a file the game saves meanwhile is read again next time.
-        let fingerprint = Self.fingerprint(sources)
-        if let saved: T = load(kind, region: region, fingerprint: fingerprint) { return saved }
-        let value = read()
-        store(value, kind, region: region, fingerprint: fingerprint)
-        return value
-    }
-
-    /// The saved `kind` result for a region whose source files have `fingerprint`.
-    func load<T: Codable>(_ kind: String, region: RegionPosition, fingerprint: String) -> T? {
-        guard let file = file(kind, region: region, fingerprint: fingerprint),
-              let data = try? Data(contentsOf: file), let plist = try? (data as NSData).decompressed(using: .lzfse) as Data else { return nil }
-        return try? PropertyListDecoder().decode(T.self, from: plist)
-    }
-
-    /// Saves a result, replacing older ones for the region. Failing to save only costs reading the
-    /// region again next time.
-    func store<T: Codable>(_ value: T, _ kind: String, region: RegionPosition, fingerprint: String) {
-        guard let directory, let file = file(kind, region: region, fingerprint: fingerprint) else { return }
+    /// Cache failure only costs another scan. Retire older envelopes and per-part entries after
+    /// the new complete envelope has been written successfully.
+    func store(_ facts: RegionFacts, key: Key) {
+        guard key.matches(facts), let directory, let file = file(key) else { return }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        guard let plist = try? encoder.encode(value), let data = try? (plist as NSData).compressed(using: .lzfse) as Data else { return }
-        let fileManager = FileManager.default
-        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let prefix = Self.prefix(kind, region)
-        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [] where name.hasPrefix(prefix) {
-            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        let entry = Entry(transformVersion: Self.transformVersion, fingerprint: key.fingerprint, facts: facts)
+        guard let plist = try? encoder.encode(entry), let data = try? (plist as NSData).compressed(using: .lzfse) as Data else { return }
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: file, options: .atomic)
+        } catch { return }
+        let kinds = ["facts", "contents", "structures", "creatures", "biomes", "caveBiomes", "blocks", "formats", "inhabitedTimes", "places"]
+        let prefixes = kinds.map { "\($0).\(key.region.x).\(key.region.z)." }
+        for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
+            where name != file.lastPathComponent && prefixes.contains(where: { name.hasPrefix($0) }) {
+            try? fm.removeItem(at: directory.appendingPathComponent(name))
         }
-        try? data.write(to: file, options: .atomic)
     }
 
-    private static func prefix(_ kind: String, _ region: RegionPosition) -> String { "\(kind).\(region.x).\(region.z)." }
-
-    private func file(_ kind: String, region: RegionPosition, fingerprint: String) -> URL? {
-        directory?.appendingPathComponent(Self.prefix(kind, region) + fingerprint + ".v\(Self.version)")
+    private func file(_ key: Key) -> URL? {
+        directory?.appendingPathComponent("facts.\(key.region.x).\(key.region.z).\(key.fingerprint).k\(RegionFacts.interpretationVersion).a\(Self.transformVersion).\(key.optionsHash).lzfse")
     }
 
     /// A stable FNV-1a hash of each source file's size and modification date.
@@ -94,6 +94,10 @@ nonisolated struct ScanCache: Sendable {
                 text += "-;"
             }
         }
+        return hash(text)
+    }
+
+    private static func hash(_ text: String) -> String {
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in text.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
         return String(hash, radix: 16)

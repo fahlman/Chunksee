@@ -329,14 +329,12 @@ import Testing
         var old = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                  pieces: [("piece", [-10, -60, -20, -1, -41, -11])]))
         old.y = nil
-        cache.store([old], "structures", region: region, fingerprint: fingerprint)
-        let current = try #require(cache.directory).appendingPathComponent("structures.-1.-1.\(fingerprint).v\(ScanCache.version)")
-        let previous = current.deletingPathExtension().appendingPathExtension("v\(oldVersion)")
-        try FileManager.default.moveItem(at: current, to: previous)
+        let previous = try TestWorld.legacyCache([old], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
+                                                directory: #require(cache.directory))
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await reader.structures(region)
         #expect(rebuilt.map(\.y) == [-50])
-        let saved: [StructureMarker]? = cache.load("structures", region: region, fingerprint: fingerprint)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.structures.map(StructureMarker.init)
         #expect(saved?.first?.y == -50)
         #expect(!FileManager.default.fileExists(atPath: previous.path))
         await reader.close()

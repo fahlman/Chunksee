@@ -32,14 +32,16 @@ nonisolated struct RegionIndex: Sendable {
     var pointsOfInterest: [PointOfInterest]
 
     @concurrent
-    static func read(_ reader: RegionReader, region: RegionPosition) async -> RegionIndex {
-        async let data = reader.indexData(region)
-        async let points = PlaceScanner.blocks(reader.dimension, region: region, cache: reader.cache)
-        let found = await data
-        let pois = await points
-        return RegionIndex(contents: found.contents, structures: found.structures,
-                                 creatures: found.creatures.compactMap { CreatureMarker($0, dimension: reader.dimension.id) },
-                                 biomes: found.biomes, caveBiomes: found.caveBiomes, blocks: found.blocks,
-                                 formats: found.formats, pointsOfInterest: pois)
+    static func read(_ reader: RegionReader, region: RegionPosition) async -> RegionIndex? {
+        guard let facts = await reader.facts(region) else { return nil }
+        let blocks = Dictionary(uniqueKeysWithValues: facts.chunks.compactMap { chunk in
+            let deposits = BlockDeposit.grouped(chunk.blockDeposits)
+            return deposits.isEmpty ? nil : (chunk.position, deposits)
+        })
+        return RegionIndex(contents: facts.searchContents, structures: facts.structures.map(StructureMarker.init),
+                           creatures: facts.creatures.compactMap { CreatureMarker($0, dimension: facts.dimension) },
+                           biomes: facts.surfaceBiomes, caveBiomes: facts.caveBiomes, blocks: blocks,
+                           formats: ChunkFormats(readable: facts.formats.readable, legacy: facts.formats.legacy),
+                           pointsOfInterest: facts.pointsOfInterest)
     }
 }

@@ -42,7 +42,7 @@ final class WorldResources {
     let cacheRoot: URL?
     private(set) var playerSnapshot: PlayerSnapshot
     var players: [PlayerInfo] { playerSnapshot.players }
-    private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData
+    private let readRegion: RegionReader.Read
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -80,7 +80,7 @@ final class WorldResources {
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
-         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData = RegionData.read,
+         readRegion: @escaping RegionReader.Read = RegionReader.scan,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
         world = snapshot.world

@@ -180,7 +180,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in await state.read(dimension.id) })
+                                       readRegion: { dimension, _ in try await state.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -220,16 +220,17 @@ import Testing
     private actor MovingMarkers {
         private var step = 0
         func move(to step: Int) { self.step = step }
-        func read(_ dimension: String) -> RegionData {
-            var data = RegionData()
-            if dimension == "minecraft:the_nether" {
-                data.contents.spawners = [Spawner(x: 513, y: 64, z: 0, mob: "minecraft:blaze")]
-            } else if step < 2 {
-                let x = step == 0 ? 511 : 513
-                data.contents.spawners = [Spawner(x: x, y: 64, z: 0, mob: "minecraft:zombie")]
-                data.creatures = [Creature(id: "minecraft:wolf", x: Double(x) + 0.5, y: 64, z: 0.5, owner: UUID())]
-            }
-            return data
+        func read(_ dimension: String) throws -> RegionFacts {
+            let nether = dimension == "minecraft:the_nether"
+            guard nether || step < 2 else { return try TestWorld.facts(dimensionID: dimension) }
+            let x: Int32 = nether || step == 1 ? 513 : 511
+            let spawner = NBT.compound([
+                "id": .string("minecraft:mob_spawner"), "x": .int(x), "y": .int(64), "z": .int(0),
+                "SpawnData": .compound(["entity": .compound(["id": .string(nether ? "minecraft:blaze" : "minecraft:zombie")])]),
+            ])
+            let pet = NBT.compound(["id": .string("minecraft:wolf"), "Owner": .intArray([1, 2, 3, 4]),
+                                   "Pos": .list([.double(Double(x) + 0.5), .double(64), .double(0.5)])])
+            return try TestWorld.facts(dimensionID: dimension, blockEntities: [spawner], entities: nether ? [] : [pet])
         }
     }
 }

@@ -66,7 +66,7 @@ import Testing
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
                                        readRegion: { dimension, region in
                                            await reads.record(dimension.id, region)
-                                           return await RegionData.read(dimension, region: region)
+                                           return try await RegionReader.scan(dimension, region: region)
                                        })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
@@ -105,7 +105,7 @@ import Testing
         let url = try TestWorld.make(chunks: [terrain(0), legacy])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let data = await RegionData.read(dimension, region: .init(x: 0, z: 0))
+        let data = try await RegionReader.scan(dimension, region: .init(x: 0, z: 0))
         #expect(data.inhabitedTimes[0] == 2400)
         #expect(data.inhabitedTimes[3 * 32 + 2] == 7200)
         #expect(data.inhabitedTimes[1] == 0)
@@ -114,15 +114,13 @@ import Testing
         let root = url.appendingPathComponent("test-cache")
         let cache = ScanCache(directory: root)
         let region = RegionPosition(x: 0, z: 0)
-        cache.store([Int](repeating: 0, count: 1024), "inhabitedTimes", region: region, fingerprint: "unchanged")
-        let current = try #require(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first)
-        let old = current.deletingLastPathComponent().appendingPathComponent("inhabitedTimes.0.0.unchanged.v14")
-        try FileManager.default.moveItem(at: current, to: old)
-        let stale: [Int]? = cache.load("inhabitedTimes", region: region, fingerprint: "unchanged")
-        #expect(stale == nil)
-        cache.store(data.inhabitedTimes, "inhabitedTimes", region: region, fingerprint: "unchanged")
-        let saved: [Int]? = cache.load("inhabitedTimes", region: region, fingerprint: "unchanged")
-        #expect(saved?[3 * 32 + 2] == 7200)
+        let old = try TestWorld.legacyCache([Int](repeating: 0, count: 1024), name: "inhabitedTimes.0.0.unchanged.v14", directory: root)
+        let reader = RegionReader(dimension: dimension, cache: cache)
+        #expect(await reader.inhabitedTimes(region)[3 * 32 + 2] == 7200)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))
+        #expect(saved?.inhabitedTimes[3 * 32 + 2] == 7200)
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        await reader.close()
     }
 
     @Test(.timeLimit(.minutes(1))) func realFileNotificationsRefreshTheWorldWithoutInjectedChanges() async throws {

@@ -370,7 +370,7 @@ import Testing
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
-        let gate = AsyncReadGate<RegionData>()
+        let gate = AsyncReadGate<RegionFacts>()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { _, _ in await gate.read("region") })
@@ -378,7 +378,7 @@ import Testing
         let waiter = Task { await resources.index.waitForIndex() }
         resources.index.rebuild(firstDimension: nil)   // queued behind the running pass
         resources.close()
-        await gate.finish("region", with: RegionData())
+        await gate.finish("region", with: try TestWorld.facts())
         await waiter.value                              // ends instead of waiting forever
         await resources.waitUntilClosed()
         #expect(await gate.requested == ["region"])     // the queued pass never ran

@@ -30,19 +30,22 @@ nonisolated struct DimensionIndex: Sendable {
     /// Inputs are replaced per region; all cross-region aggregates derive from these.
     var regions: [RegionPosition: RegionIndex] = [:]
 
-    /// Reads a dimension from its regions, through the reader's cached parts.
+    /// Reads a dimension from its regions, through the reader's cached library facts.
     @concurrent
     static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
         var part = DimensionIndex()
-        let available = Set(ChunkseeKit.Dimension.Folder.allCases.flatMap { reader.dimension.regionFiles($0) }
-            .map { RegionPosition(x: $0.x, z: $0.z) })
+        let available = reader.availableRegions
         let changed: Set<RegionPosition>
         if let previous, case .regions(let selected) = change {
             part.regions = previous.regions
             for removed in selected.subtracting(available) { part.regions[removed] = nil }
             changed = selected.intersection(available)
-        } else { changed = available }
-        let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex).self) { group in
+        } else {
+            // A failed region read retains its previous contribution; a deleted region does not.
+            part.regions = previous?.regions.filter { available.contains($0.key) } ?? [:]
+            changed = available
+        }
+        let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex?).self) { group in
             for region in changed {
                 guard !Task.isCancelled else { break }
                 group.addTask {
@@ -51,7 +54,7 @@ nonisolated struct DimensionIndex: Sendable {
                 }
             }
             var values: [RegionPosition: RegionIndex] = [:]
-            for await (region, value) in group { values[region] = value }
+            for await (region, value) in group { if let value { values[region] = value } }
             return values
         }
         guard !Task.isCancelled else { return part }

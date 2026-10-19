@@ -113,11 +113,13 @@ import Testing
             if y == 3 && z == 0 && x < 5 { return 1 }
             return (x, y, z) == (8, 8, 8) ? 2 : 0
         }
-        let deposits = BlockDeposit.deposits(in: try Chunk(nbt: spec.nbt))
-        #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
-
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1))
+        let deposits = BlockDeposit.grouped(try #require(facts.chunks.first).blockDeposits)
+        #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
+
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }

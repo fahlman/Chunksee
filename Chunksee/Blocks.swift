@@ -50,25 +50,18 @@ nonisolated struct BlockDeposit: Codable, Equatable, Sendable {
     var minY: Int
     var maxY: Int
 
-    /// The notable blocks in a chunk, counted from each section's palette without reading every
-    /// block; sections whose palette has none are skipped entirely.
-    static func deposits(in chunk: Chunk) -> [BlockDeposit] {
+    /// Combine the library's per-ID counts into the app's ore/variant groups.
+    static func grouped(_ deposits: [ChunkseeKit.BlockDeposit]) -> [BlockDeposit] {
         var found: [NotableBlock: BlockDeposit] = [:]
-        for section in chunk.sections {
-            guard let states = section.blockStates else { continue }
-            let wanted = states.palette.indices.compactMap { i in NotableBlock.byID[states.palette[i].id].map { (i, $0) } }
-            guard !wanted.isEmpty else { continue }
-            let counts = states.paletteCounts()
-            for (index, block) in wanted where counts[index] > 0 {
-                let bottom = section.y * 16, top = bottom + 15
-                if var deposit = found[block] {
-                    deposit.count += counts[index]
-                    deposit.minY = min(deposit.minY, bottom)
-                    deposit.maxY = max(deposit.maxY, top)
-                    found[block] = deposit
-                } else {
-                    found[block] = BlockDeposit(block: block, count: counts[index], minY: bottom, maxY: top)
-                }
+        for value in deposits {
+            guard let block = NotableBlock.byID[value.id] else { continue }
+            if var deposit = found[block] {
+                deposit.count += value.count
+                deposit.minY = min(deposit.minY, value.minY)
+                deposit.maxY = max(deposit.maxY, value.maxY)
+                found[block] = deposit
+            } else {
+                found[block] = BlockDeposit(block: block, count: value.count, minY: value.minY, maxY: value.maxY)
             }
         }
         return found.values.sorted { $0.block.rawValue < $1.block.rawValue }

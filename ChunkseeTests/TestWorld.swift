@@ -6,7 +6,7 @@ import Testing
 @testable import ChunkseeTestHost
 
 /// Builds minimal 26.x worlds on disk using ChunkseeKit's public NBT and compression API.
-enum TestWorld {
+nonisolated enum TestWorld {
     struct ChunkSpec {
         var x: Int, z: Int
         var nbt: NBT
@@ -41,6 +41,40 @@ enum TestWorld {
             try Data(regionFile(regionChunks)).write(to: regionDir.appendingPathComponent("r.\(region.x).\(region.z).mca"))
         }
         return root
+    }
+
+    /// Real library facts for tests that control when a region read completes. The temporary
+    /// world is removed before returning; the fixture never fabricates the private archive shape.
+    static func facts(dimensionID: String = "minecraft:overworld", blockEntities: [NBT] = [],
+                      entities: [NBT] = [], inhabitedTime: Int = 0) throws -> RegionFacts {
+        let root = try make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = try #require(Identifier(dimensionID))
+        let folder = root.appendingPathComponent("dimensions").appendingPathComponent(id.namespace).appendingPathComponent(id.path)
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("region"), withIntermediateDirectories: true)
+        let dimension = try #require(try World(contentsOf: root).dimension(dimensionID))
+        if !blockEntities.isEmpty || inhabitedTime != 0 {
+            let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound([
+                "DataVersion": .int(5023), "Status": .string("minecraft:full"), "sections": .list([]),
+                "block_entities": .list(blockEntities), "InhabitedTime": .long(Int64(inhabitedTime)),
+            ]))
+            try Data(regionFile([chunk])).write(to: dimension.regionURL(at: .init(x: 0, z: 0)))
+        }
+        if !entities.isEmpty {
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent("entities"), withIntermediateDirectories: true)
+            let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound(["DataVersion": .int(5023), "Entities": .list(entities)]))
+            try Data(regionFile([chunk])).write(to: dimension.regionURL(.entities, at: .init(x: 0, z: 0)))
+        }
+        return try dimension.scan(region: .init(x: 0, z: 0), options: RegionReader.options(in: dimensionID))
+    }
+
+    /// Write the old cache format explicitly, without keeping the retired production writer.
+    static func legacyCache<T: Encodable>(_ value: T, name: String, directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent(name)
+        let data = try PropertyListEncoder().encode(value)
+        try ((data as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        return file
     }
 
     /// A region file holding chunks of one region, zlib-compressed, one record per sector run.
