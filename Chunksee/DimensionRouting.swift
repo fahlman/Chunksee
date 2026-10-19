@@ -1,4 +1,5 @@
 import Foundation
+import ChunkseeKit
 import Observation
 
 /// App actions delivered through native dimension documents, without owning their windows.
