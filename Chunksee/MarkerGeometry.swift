@@ -17,6 +17,11 @@ nonisolated enum MarkerGeometry: Sendable {
         }
     }
 
+    /// The same body rectangle positions Canvas drawing and its accessibility child.
+    func frame(at point: CGPoint) -> CGRect {
+        CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+    }
+
     /// Preserve the six-point tolerance already used for places/portals, consistently across
     /// badge sizes and selection. A larger selected body therefore has a larger target too.
     var hitRadius: CGFloat { radius + 6 }

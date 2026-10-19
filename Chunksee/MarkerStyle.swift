@@ -113,8 +113,7 @@ struct MarkerStyle {
                   symbol resolve: (Symbol) -> GraphicsContext.ResolvedImage) {
         var context = context
         context.opacity = opacity
-        let radius = geometry.radius
-        let path = shape.path(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+        let path = shape.path(in: geometry.frame(at: point))
         context.fill(path, with: .color(fill))
         context.stroke(path, with: .color(stroke), lineWidth: lineWidth)
         let side = geometry.symbolSide

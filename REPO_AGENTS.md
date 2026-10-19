@@ -238,7 +238,10 @@ tolerance beyond the body. Labels, structure outlines and portal status decorati
 enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
 cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
-retain the saved coordinates. Marker zoom growth stays separate.
+retain the saved coordinates. Marker zoom growth stays separate. Canvas accessibility children use the same badge-body
+frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.
+Panning, zoom and block-centered anchors therefore move their native accessibility frames
+along with the drawing, while the existing actions and visibility rules stay the same.
 MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
 layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
 cache keys the actual symbol and tint. Structure outlines/portal rooms, bounds culling and marker

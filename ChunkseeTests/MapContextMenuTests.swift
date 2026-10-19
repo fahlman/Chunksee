@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import ChunkseeKit
 import SwiftUI
@@ -30,6 +31,57 @@ import Testing
         menu.update()
         let index = try #require(menu.items.firstIndex { $0.title == title && !$0.isSeparatorItem })
         menu.performActionForItem(at: index)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func nativeAccessibilityFramesContainTheirMarkers() async throws {
+        try await withSession { session in
+            let map = try #require(session.map)
+            map.viewport = MapViewport(center: .zero, scale: 2)
+            var content = MapContent()
+            content.savedPlaces = [
+                SavedPlace(name: "West Marker", dimension: map.dimension.id, x: -50, z: -30),
+                SavedPlace(name: "East Marker", dimension: map.dimension.id, x: 40, z: 25),
+            ]
+            let appeared = AsyncStream<Void>.makeStream()
+            let host = NSHostingView(rootView: MapView(session: session, map: map, content: content)
+                .frame(width: size.width, height: size.height)
+                .onAppear { appeared.continuation.yield(()); appeared.continuation.finish() })
+            let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: 100, y: 100), size: size),
+                                  styleMask: .titled, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            window.makeKeyAndOrderFront(nil)
+            defer { window.close() }
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            for await _ in appeared.stream { }
+
+            // An AX client activates SwiftUI's lazy accessibility tree. Leave the main actor
+            // free to answer its request, then use the public selectors: virtual SwiftUI nodes
+            // implement them without declaring AppKit's full NSAccessibilityProtocol.
+            let activation = await Task.detached {
+                var windows: CFTypeRef?
+                return AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &windows).rawValue
+            }.value
+            try #require(activation == AXError.success.rawValue)
+            func frames(of node: AnyObject) -> [(String, CGRect)] {
+                let label = node.accessibilityLabel?() ?? ""
+                let frame = node.accessibilityFrame?() ?? .zero
+                let children = node.accessibilityChildren?() ?? []
+                return [(label, frame)] + children.flatMap { frames(of: $0 as AnyObject) }
+            }
+            let nativeFrames = frames(of: host)
+
+            for location in content.accessibleLocations(viewport: map.viewport, size: size) {
+                let frame = try #require(nativeFrames.first { $0.0 == location.name }?.1)
+                let point = map.viewport.viewPoint(for: location.anchor ?? location.position, in: size)
+                let local = CGPoint(x: point.x, y: host.isFlipped ? point.y : size.height - point.y)
+                let screen = window.convertPoint(toScreen: host.convert(local, to: nil))
+                #expect(frame.contains(screen))
+                #expect(abs(frame.width - location.frame.width) < 1)
+                #expect(abs(frame.height - location.frame.height) < 1)
+            }
+        }
     }
 
     @Test func aSavedPinAndSidebarShareRenameCopyAndRemoveWithoutMovingTheMap() async throws {

@@ -136,6 +136,68 @@ import Testing
         #expect(marker.anchor == expected)
     }
 
+    @Test(arguments: [0.25, 2.0, 32.0])
+    func accessibilityFramesFollowDrawnBodiesWhenPannedAndZoomed(_ scale: Double) throws {
+        let pet = try pet(), search = search(), structure = try structure()
+        let portal = PlaceMarker(NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: -2, y: 64, z: 1)]))
+        let spawner = PlaceMarker(Spawner(x: 2, y: 64, z: -1, mob: "minecraft:zombie"))
+        let saved = SavedPlace(name: "Home", dimension: "minecraft:overworld", x: 1, z: 2)
+        let players = [MapMarker.Kind.player, .death, .respawn].enumerated().map { i, kind in
+            MapMarker(id: "frame-\(i)", playerID: UUID(), kind: kind, position: CGPoint(x: i - 1, y: -2),
+                      y: 64, label: "Friend", isOutdated: false)
+        }
+        var content = MapContent()
+        content.structures = [structure]; content.places = [portal, spawner]
+        content.creatures = [pet]; content.hits = [search]; content.players = players; content.savedPlaces = [saved]
+        let viewport = MapViewport(center: CGPoint(x: -1, y: 1), scale: scale)
+        for selected in [false, true] {
+            content.selection = selected ? .creature(pet) : nil
+            content.selectedHitID = selected ? search.id : nil
+            let expected: [(String, CGPoint, CGFloat)] = [
+                ("structure-" + structure.id, structure.position, 9),
+                ("place-" + portal.id, portal.position, 8),
+                ("place-" + spawner.id, spawner.position, 6),
+                ("creature-" + pet.id, pet.position, selected ? 9 : 6),
+                ("search-" + search.id, search.position!, selected ? 10 : 7),
+                ("saved-" + saved.id.uuidString, saved.mapPosition, 8),
+            ] + players.map { ("player-" + $0.id, $0.anchor, $0.kind == .player ? 11 : 9) }
+            let locations = content.accessibleLocations(viewport: viewport, size: size)
+            for (id, anchor, radius) in expected {
+                let point = viewport.viewPoint(for: anchor, in: size)
+                guard CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20).contains(point) else { continue }
+                let frame = try #require(locations.first { $0.id == id }?.frame)
+                #expect(frame.contains(point))
+                #expect(frame.midX == point.x && frame.midY == point.y)
+                #expect(frame.width == radius * 2 && frame.height == radius * 2)
+            }
+        }
+    }
+
+    @Test func biomeAccessibilityFrameEnclosesTheDrawnArea() throws {
+        let bounds = CGRect(x: -32, y: -16, width: 64, height: 32)
+        let area = BiomeArea(id: "plains", group: BiomeGroup(id: "minecraft:plains"), chunkCount: 8,
+                             position: CGPoint(x: -8, y: 8), bounds: bounds, chunks: Path(bounds), outline: Path(bounds))
+        var content = MapContent(); content.biomeAreas = [area]
+        let viewport = MapViewport(center: CGPoint(x: 5, y: -10), scale: 2)
+        let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
+        #expect(location.frame.origin == viewport.viewPoint(for: bounds.origin, in: size))
+        #expect(location.frame.size == CGSize(width: 128, height: 64))
+        #expect(location.frame.contains(viewport.viewPoint(for: area.position, in: size)))
+    }
+
+    @Test func accessibilityFramesRespectLayerAndZoomVisibility() throws {
+        let pet = try pet()
+        let portal = PlaceMarker(NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: 0, y: 64, z: 0)]))
+        let spawner = PlaceMarker(Spawner(x: 0, y: 64, z: 0, mob: "minecraft:zombie"))
+        var content = MapContent(); content.creatures = [pet]; content.places = [portal, spawner]
+        let viewport = MapViewport(center: .zero, scale: 0.0625)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).map(\.id) == ["place-" + portal.id])
+        content.selection = .creature(pet)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).contains { $0.id == "creature-" + pet.id })
+        content.shownCreatureGroups = []; content.shownPlaceGroups = []
+        #expect(content.accessibleLocations(viewport: viewport, size: size).isEmpty)
+    }
+
     @Test func markerRenderingProducesComparableImages() throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
