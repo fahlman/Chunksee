@@ -45,7 +45,7 @@ extension WorldSession {
     /// The selected dimension's map as currently shown, or `nil` before it's laid out.
     func renderMapImage() -> MapImage? {
         guard let map, let shown = map.shownSize else { return nil }
-        return MapImage.render(map, content: mapContent, portalStatus: { [weak self] in self?.linkStatus(for: $0) },
+        return MapImage.render(map, content: MapContent(session: self), portalStatus: { [weak self] in self?.linkStatus(for: $0) },
                                size: shown.size, scale: shown.displayScale)
     }
 }

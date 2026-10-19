@@ -37,7 +37,7 @@ import Testing
         nether.visibility.showsGrid = false
         nether.heatMap.isShown = true
         nether.heatMap.isShown = false
-        #expect(overworld.mapContent.showsGrid && !nether.mapContent.showsGrid)
+        #expect(MapContent(session: overworld).showsGrid && !MapContent(session: nether).showsGrid)
         #expect(overworld.heatMap.isShown && !nether.heatMap.isShown)
         #expect(overworld.visibility.hiddenPlayers == [hidden] && nether.visibility.hiddenPlayers.isEmpty)
         #expect(overworld.visibility.structures == [.mineshaft] && nether.visibility.structures.isEmpty)
@@ -53,7 +53,7 @@ import Testing
         #expect(restored.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
         #expect(restoredNether.visibility.biomes == [BiomeGroup(id: "minecraft:nether_wastes")])
         #expect(restored.visibility.hiddenPlayers == [hidden] && restoredNether.visibility.hiddenPlayers.isEmpty)
-        #expect(restored.mapContent.showsGrid && !restoredNether.mapContent.showsGrid)
+        #expect(MapContent(session: restored).showsGrid && !MapContent(session: restoredNether).showsGrid)
         #expect(restored.heatMap.isShown && !restoredNether.heatMap.isShown)
         await restored.heatMap.waitForReads()
         #expect(restored.heatMap.visibleImages != nil && !restored.heatMap.isLoading)

@@ -194,11 +194,11 @@ import Testing
         let draftChanged = await iterator.next(isolation: #isolation)
         #expect(draftChanged == true && annotations.draft?.position == CGPoint(x: -9, y: 14))
         annotations.draft = nil
-        let initialRuler = withObservationTracking { session?.mapContent.ruler } onChange: { continuation.yield(true) }
+        let initialRuler = withObservationTracking { session.map(MapContent.init(session:))?.ruler } onChange: { continuation.yield(true) }
         #expect(initialRuler?.isEnabled == false)
         annotations.beginMeasurement(at: CGPoint(x: -8.7, y: 14.2), in: "minecraft:overworld")
         let rulerChanged = await iterator.next(isolation: #isolation)
-        #expect(rulerChanged == true && session?.mapContent.ruler.start?.position == CGPoint(x: -9, y: 14))
+        #expect(rulerChanged == true && session.map(MapContent.init(session:))?.ruler.start?.position == CGPoint(x: -9, y: 14))
         session?.close()
         await session?.waitUntilClosed()
         annotations.savePlace(at: .zero)

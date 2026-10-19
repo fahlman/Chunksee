@@ -182,38 +182,6 @@ final class WorldSession {
         annotations.restore(from: previous.annotations)
     }
 
-    /// Everything drawn over the selected dimension's terrain.
-    var mapContent: MapContent {
-        guard map != nil, let id = selectedDimensionID else { return MapContent() }
-        let index = selectedIndex
-        var content = MapContent()
-        content.heatMap = heatMap.visibleImages ?? [:]
-        content.slimeChunks = slimeChunks.visibleImages
-        content.slimeSeed = slimeChunks.visibleSeed
-        if case .inGameMap(let item)? = selection.mapSelection, let image = selection.image(for: item) {
-            content.inGameMap = (item, image, selection.inGameMapOpacity)
-        }
-        content.biomeAreas = index.biomeAreas.filter { visibility.biomes.contains($0.group) }
-        content.biomes = index.biomes
-        content.caveBiomes = index.caveBiomes
-        content.border = details.borders[id].flatMap { $0.isLimited ? $0 : nil }
-        content.showsGrid = visibility.showsGrid
-        content.structures = index.structures.filter { visibility.structures.contains($0.group) }
-        content.placePoints = index.placePoints
-        content.shownPlaceGroups = visibility.places
-        content.creaturePoints = index.creaturePoints
-        content.shownCreatureGroups = visibility.creatures
-        content.hits = search.pinnedHits(where: lists).filter { $0.dimension == id && $0.position != nil }
-        content.selectedHitID = selection.selectedHitID
-        content.players = drawnPlayerMarkers
-        content.selection = selection.mapSelection
-        content.selectedItem = selection.sidebarSelection
-        content.selectedPlayerID = if case .player(let uuid)? = selection.inspector { uuid } else { nil }
-        content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
-        content.ruler = annotations.ruler
-        return content
-    }
-
     private static func initialMap(resources: WorldResources, dimensionID: String?,
                                    renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?) -> MapModel? {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }

@@ -121,7 +121,7 @@ struct WorldView: View {
                 }
                 .navigationSubtitle(session.displayName)
             } else if let map = session.map {
-                MapView(session: session, map: map, content: session.mapContent, portalStatus: { session.linkStatus(for: $0) },
+                MapView(session: session, map: map, content: MapContent(session: session), portalStatus: { session.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }

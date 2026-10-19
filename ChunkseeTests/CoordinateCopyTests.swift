@@ -143,7 +143,7 @@ import Testing
                     session.search.text = ""
                     await session.search.waitForSearch()
                 }
-                let content = session.mapContent
+                let content = MapContent(session: session)
                 #expect(content.hits.count == 1)
                 let pin = try #require(content.hits.first)
                 let position = try #require(pin.position)

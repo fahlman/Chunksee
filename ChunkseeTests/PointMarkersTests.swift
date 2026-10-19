@@ -187,7 +187,7 @@ import Testing
         let other = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         overworld.visibility.places = [.spawner]; other.visibility.places = [.spawner]
         overworld.visibility.creatures = [.pet]
-        let before = overworld.mapContent
+        let before = MapContent(session: overworld)
         let viewport = MapViewport(center: CGPoint(x: 513.5, y: 0.5), scale: 32)
         let small = CGSize(width: 8, height: 8)
         #expect(before.nearbyPlaces(viewport: viewport, size: small).isEmpty)
@@ -196,10 +196,10 @@ import Testing
             resources.worldChanged([url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")])
             await resources.waitForRefresh()
             await resources.index.waitForIndex()
-            let content = overworld.mapContent
+            let content = MapContent(session: overworld)
             #expect(content.nearbyPlaces(viewport: viewport, size: small).count == (step == 1 ? 1 : 0))
             #expect(content.nearbyCreatures(viewport: viewport, size: small).count == (step == 1 ? 1 : 0))
-            #expect(other.mapContent.places.map(\.mob) == ["minecraft:blaze"])
+            #expect(MapContent(session: other).places.map(\.mob) == ["minecraft:blaze"])
             #expect(before.places.first?.position.x == 511.5) // captured snapshot stays immutable
         }
         resources.close()
