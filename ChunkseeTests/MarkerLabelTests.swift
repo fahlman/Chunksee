@@ -14,8 +14,9 @@ import Testing
         guard a.width == b.width, a.height == b.height else { return false }
         func rgba(_ image: CGImage) throws -> Data {
             let row = image.width * 4
+            let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
             let context = try #require(CGContext(data: nil, width: image.width, height: image.height,
-                bitsPerComponent: 8, bytesPerRow: row, space: try #require(CGColorSpace(name: CGColorSpace.sRGB)),
+                bitsPerComponent: 8, bytesPerRow: row, space: space,
                 bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue))
             context.clear(CGRect(x: 0, y: 0, width: image.width, height: image.height))
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
