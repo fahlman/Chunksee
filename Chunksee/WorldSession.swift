@@ -168,7 +168,8 @@ final class WorldSession {
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
         map = initialMap
-        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed, regions: initialMap?.availableRegions ?? [])
+        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
+                                     regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
         heatMap.restoreVisibility(from: visibility)
         slimeChunks.restoreVisibility(from: visibility)
         resources.attach(self)

@@ -361,6 +361,12 @@ registers with BackgroundWork, keeping its off-main I/O boundary and cancellatio
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
 
+WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
+tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
+drains them through the common registry. The two-second scheduling window, changed-region
+aggregation and newest-player-read publication guard remain owned by WorldResources. It no longer
+keeps another refresh-task dictionary, cancel-all loop or drain loop.
+
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on
 combined rows. Existing model bindings own the settings; the command only toggles its binding.
@@ -472,7 +478,11 @@ The Slime Chunks toggle is initially off and remembered per dimension. It is ava
 the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
-change the seed rule. Closing cancels and drains mask generation. The center's chunk status is
+change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer
+retains its single active handle for hide/close cancellation and local draining; hiding and then
+showing resumes missing masks after the canceled pass finishes. World close cancels/drains the
+registered task and prevents late publication or a following pass. Closing one layer leaves its
+siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
 Player listing uses the session's one dimension-listing fallback, shared with saved places and
