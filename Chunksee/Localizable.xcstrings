@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Done" : {
+      "comment" : "Dismiss the map-height popover; height changes have already been applied."
+    },
     "Height range unavailable" : {
       "comment" : "Shown instead of the cutaway slider when the dimension's build limits cannot be read. Numeric entry remains available."
     },
