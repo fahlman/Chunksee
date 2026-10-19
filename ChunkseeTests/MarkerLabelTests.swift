@@ -96,6 +96,15 @@ import Testing
         content.players.reverse()
         let after = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
         #expect(before.data == after.data)
+        // Closing the inspector removes its body highlight but leaves the sidebar row selected.
+        // That selected row must still win the label collision.
+        content.selectedItem = .player(markers[1].playerID)
+        let selected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        #expect(selected.data != before.data)
+        content.selectedItem = nil
+        content.players[0].id = "0"
+        let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        #expect(selected.data == expected.data)
         let names = content.accessibleLocations(viewport: map.viewport, size: size).map(\.name)
         #expect(Set(names) == ["Player a", "Player b"])
         #expect(content.target(at: CGPoint(x: 200, y: 100), viewport: map.viewport, size: size) != nil)

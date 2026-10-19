@@ -445,7 +445,7 @@ struct MapView: View {
         // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
         for creature in content.nearbyCreatures(viewport: map.viewport, size: size) {
             let selected = content.selection == .creature(creature)
-            let priority: MarkerLabelLayout.Priority = selected ? .selected
+            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(creature.id) ? .selected
                 : creature.group == .pet && creature.creature.customName != nil ? .namedPet : .other
             add(Self.drawBadge(style: .creature(creature.group, selected: selected), name: creature.name,
                                id: "creature-" + creature.id, priority: priority, scale: map.viewport.scale,
@@ -459,6 +459,7 @@ struct MapView: View {
         }
         for marker in content.players {
             add(Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
+                      labelSelected: content.selectedItem == .player(marker.playerID) || marker.playerID == content.selectedPlayerID,
                       at: map.viewport.viewPoint(for: marker.anchor, in: size),
                       in: context, bounds: bounds, symbol: symbol))
         }
@@ -532,12 +533,12 @@ struct MapView: View {
         return style.label(name(), id: id(), priority: priority, at: point, scale: scale, in: context)
     }
 
-    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+    private static func draw(_ marker: MapMarker, selected: Bool, labelSelected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
                              symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
         guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return nil }
         let style = MarkerStyle.player(marker.kind, outdated: marker.isOutdated, selected: selected)
         style.drawBody(at: point, in: context, symbol: symbol)
-        return style.label(marker.label, id: "player-" + marker.id, priority: selected ? .selected : .player,
+        return style.label(marker.label, id: "player-" + marker.id, priority: labelSelected ? .selected : .player,
                            at: point, scale: 1, in: context)
     }
 
