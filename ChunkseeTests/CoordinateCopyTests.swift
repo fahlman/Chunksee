@@ -15,7 +15,7 @@ import Testing
     }
 
     private func map(_ url: URL, dimensionID: String = "overworld",
-                     read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+                     read: (@Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
         if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
         return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
@@ -323,7 +323,7 @@ import Testing
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let cache = ScanCache(directory: url.appendingPathComponent("cache")), region = RegionCoordinate(x: -1, z: -1)
+        let cache = ScanCache(directory: url.appendingPathComponent("cache")), region = RegionPosition(x: -1, z: -1)
         let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.-1.-1.mca"),
                                                  dimension.entitiesDirectory.appendingPathComponent("r.-1.-1.mca")])
         var old = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),

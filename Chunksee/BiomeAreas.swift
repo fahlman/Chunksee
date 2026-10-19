@@ -29,9 +29,9 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
 /// Biome areas, and every sampled chunk's biomes for the hover readout.
 nonisolated struct BiomeScan: Sendable {
     var areas: [BiomeArea] = []
-    var biomes: [ChunkCoordinate: String] = [:]
+    var biomes: [ChunkPosition: String] = [:]
     /// Cave biomes under each chunk that has any.
-    var caveBiomes: [ChunkCoordinate: [String]] = [:]
+    var caveBiomes: [ChunkPosition: [String]] = [:]
 }
 
 /// Finds biome areas by sampling one surface column per chunk and joining neighboring chunks of
@@ -57,7 +57,7 @@ nonisolated enum BiomeScanner {
     /// Every biome's areas, each chunk counted once per biome. A cave biome sometimes reaches the
     /// surface sample, but its underground membership already covers that chunk, so its areas come
     /// only from there; the hover readout still names the surface biome.
-    static func areas(surface: [ChunkCoordinate: String], caves: [ChunkCoordinate: [String]]) -> [BiomeArea] {
+    static func areas(surface: [ChunkPosition: String], caves: [ChunkPosition: [String]]) -> [BiomeArea] {
         areas(from: surface.filter { !caveBiomeIDs.contains($0.value) }) + caveAreas(from: caves)
     }
 
@@ -75,7 +75,7 @@ nonisolated enum BiomeScanner {
     }
 
     /// Areas of each cave biome; a chunk can belong to more than one.
-    static func caveAreas(from caves: [ChunkCoordinate: [String]]) -> [BiomeArea] {
+    static func caveAreas(from caves: [ChunkPosition: [String]]) -> [BiomeArea] {
         caveBiomeIDs.sorted().flatMap { biome in
             areas(from: caves.filter { $0.value.contains(biome) }.mapValues { _ in biome })
         }
@@ -101,24 +101,25 @@ nonisolated enum BiomeScanner {
     /// Joins chunks of the same biome that share an edge. Every area is kept, down to a single
     /// chunk, so nothing in the world is hidden (Ryan, 2026-10-13); one sample per chunk breaks
     /// thin biomes such as rivers and beaches into many small areas.
-    static func areas(from biomes: [ChunkCoordinate: String]) -> [BiomeArea] {
-        var visited = Set<ChunkCoordinate>()
+    static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
+        let biomes = biomes.filter { $0.key.blockOrigin != nil }
+        var visited = Set<ChunkPosition>()
         var areas: [BiomeArea] = []
         for (start, biome) in biomes where !visited.contains(start) {
-            var chunks: [ChunkCoordinate] = []
+            var chunks: [ChunkPosition] = []
             var stack = [start]
             visited.insert(start)
             while let chunk = stack.popLast() {
                 chunks.append(chunk)
-                for next in [ChunkCoordinate(x: chunk.x + 1, z: chunk.z), ChunkCoordinate(x: chunk.x - 1, z: chunk.z),
-                             ChunkCoordinate(x: chunk.x, z: chunk.z + 1), ChunkCoordinate(x: chunk.x, z: chunk.z - 1)]
+                for next in [ChunkPosition(x: chunk.x + 1, z: chunk.z), ChunkPosition(x: chunk.x - 1, z: chunk.z),
+                             ChunkPosition(x: chunk.x, z: chunk.z + 1), ChunkPosition(x: chunk.x, z: chunk.z - 1)]
                 where !visited.contains(next) && biomes[next] == biome {
                     visited.insert(next)
                     stack.append(next)
                 }
             }
-            let middleX = Double(chunks.map(\.x).reduce(0, +)) / Double(chunks.count)
-            let middleZ = Double(chunks.map(\.z).reduce(0, +)) / Double(chunks.count)
+            let middleX = chunks.reduce(0.0) { $0 + Double($1.x) } / Double(chunks.count)
+            let middleZ = chunks.reduce(0.0) { $0 + Double($1.z) } / Double(chunks.count)
             let inside = chunks.min {
                 let a = hypot(Double($0.x) - middleX, Double($0.z) - middleZ)
                 let b = hypot(Double($1.x) - middleX, Double($1.z) - middleZ)
@@ -128,23 +129,20 @@ nonisolated enum BiomeScanner {
             var fill = Path(), outline = Path()
             let members = Set(chunks)
             for chunk in chunks {
-                let x = CGFloat(chunk.x * 16), z = CGFloat(chunk.z * 16)
+                guard let origin = chunk.blockOrigin else { continue }
+                let x = CGFloat(origin.x), z = CGFloat(origin.z)
                 fill.addRect(CGRect(x: x, y: z, width: 16, height: 16))
                 for (dx, dz, from, to) in [(0, -1, (0, 0), (16, 0)), (1, 0, (16, 0), (16, 16)), (0, 1, (0, 16), (16, 16)), (-1, 0, (0, 0), (0, 16))]
-                where !members.contains(ChunkCoordinate(x: chunk.x + dx, z: chunk.z + dz)) {
+                where !members.contains(ChunkPosition(x: chunk.x + dx, z: chunk.z + dz)) {
                     outline.move(to: CGPoint(x: x + CGFloat(from.0), y: z + CGFloat(from.1)))
                     outline.addLine(to: CGPoint(x: x + CGFloat(to.0), y: z + CGFloat(to.1)))
                 }
             }
+            guard let origin = inside.blockOrigin else { continue }
             areas.append(BiomeArea(id: "\(biome)@\(inside.x),\(inside.z)", group: BiomeGroup(id: biome), chunkCount: chunks.count,
-                                   position: CGPoint(x: inside.x * 16 + 8, y: inside.z * 16 + 8), bounds: fill.boundingRect,
+                                   position: CGPoint(x: origin.x + 8, y: origin.z + 8), bounds: fill.boundingRect,
                                    chunks: fill, outline: outline))
         }
         return areas
     }
-}
-
-nonisolated struct ChunkCoordinate: Hashable, Sendable, Codable {
-    var x: Int
-    var z: Int
 }

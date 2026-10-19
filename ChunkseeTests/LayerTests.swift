@@ -341,10 +341,10 @@ enum StructureTestWorld {
 
 @Suite(.isolatedStores) struct BiomeAreaTests {
     @Test func neighboringChunksJoinAndEveryAreaIsKept() {
-        var biomes: [ChunkCoordinate: String] = [:]
-        for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
-        biomes[ChunkCoordinate(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk river
-        for z in 5..<9 { biomes[ChunkCoordinate(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
+        var biomes: [ChunkPosition: String] = [:]
+        for x in 0..<3 { for z in 0..<2 { biomes[ChunkPosition(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
+        biomes[ChunkPosition(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk river
+        for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
         let areas = BiomeScanner.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
         #expect(areas.map(\.chunkCount) == [6, 4, 1])
         #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name == "Plains")
@@ -358,7 +358,7 @@ enum StructureTestWorld {
     }
 
     @Test func aCaveBiomeAtTheSurfaceIsOneArea() {
-        let chunk = ChunkCoordinate(x: 0, z: 0)
+        let chunk = ChunkPosition(x: 0, z: 0)
         let areas = BiomeScanner.areas(surface: [chunk: "minecraft:sulfur_caves"], caves: [chunk: ["minecraft:sulfur_caves"]])
         #expect(areas.map(\.id) == ["minecraft:sulfur_caves@0,0"])
     }
@@ -473,7 +473,7 @@ enum StructureTestWorld {
         session.heatMap.isShown = true
         #expect(session.heatMap.isLoading)
         await session.heatMap.waitForReads()
-        #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionCoordinate(x: 0, z: 0)])
+        #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionPosition(x: 0, z: 0)])
         session.heatMap.isShown = false
         #expect(session.heatMap.visibleImages == nil)
     }
@@ -498,7 +498,7 @@ enum StructureTestWorld {
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         await resources.index.waitForIndex()
         func pixel(_ session: WorldSession) throws -> [UInt8] {
-            let image = try #require(session.heatMap.visibleImages?[RegionCoordinate(x: 0, z: 0)])
+            let image = try #require(session.heatMap.visibleImages?[RegionPosition(x: 0, z: 0)])
             let data = try #require(image.dataProvider?.data)
             let bytes = try #require(CFDataGetBytePtr(data))
             return Array(UnsafeBufferPointer(start: bytes, count: 4))

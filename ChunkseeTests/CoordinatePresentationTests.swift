@@ -71,12 +71,12 @@ import Testing
         let data = try encoder.encode(SearchContents(containers: [oldContainer]))
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
-        let contents = await reader.contents(RegionCoordinate(x: -1, z: -1))
+        let contents = await reader.contents(RegionPosition(x: -1, z: -1))
         await reader.close()
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
-        let saved: SearchContents? = cache.load("contents", region: RegionCoordinate(x: -1, z: -1), fingerprint: fingerprint)
+        let saved: SearchContents? = cache.load("contents", region: RegionPosition(x: -1, z: -1), fingerprint: fingerprint)
         #expect(saved?.containers == contents.containers)
     }
 
