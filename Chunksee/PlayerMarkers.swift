@@ -85,21 +85,14 @@ nonisolated enum PlayerPresentation {
         return (player.dataVersion ?? 0) < worldDataVersion
     }
 
-    /// Whether the player's locations can be placed on this world's map. Bukkit servers share
-    /// player files across worlds, so their positions may be somewhere else entirely.
-    static func isMappable(_ player: PlayerInfo) -> Bool {
-        player.locationsBelongToWorld
-    }
-
-    /// Keeps raw saved positions out of the UI when they are invalid or may belong to a
-    /// different Bukkit world. Whether a known dimension is openable remains the session's rule.
-    private static func usable(_ location: PlayerInfo.Location?, of player: PlayerInfo) -> PlayerInfo.Location? {
-        guard isMappable(player), let location,
-              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return nil }
+    /// Invalid saved coordinates stay unavailable. Whether a known dimension is openable
+    /// remains the session's rule.
+    private static func usable(_ location: PlayerInfo.Location?) -> PlayerInfo.Location? {
+        guard let location, Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return nil }
         return location
     }
 
-    static func position(of player: PlayerInfo) -> PlayerInfo.Location? { usable(player.position, of: player) }
+    static func position(of player: PlayerInfo) -> PlayerInfo.Location? { usable(player.position) }
 
     struct Location: Identifiable, Sendable {
         let kind: MapMarker.Kind
@@ -121,7 +114,7 @@ nonisolated enum PlayerPresentation {
             (.player, player.position), (.death, player.lastDeath), (.respawn, player.respawn),
         ]
         return candidates.compactMap { kind, location in
-            usable(location, of: player).map { Location(kind: kind, position: $0) }
+            usable(location).map { Location(kind: kind, position: $0) }
         }
     }
 
@@ -135,7 +128,7 @@ nonisolated enum PlayerPresentation {
     static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,
                         worldDataVersion: Int?, knownName: (UUID) -> String? = { _ in nil }) -> [MapMarker] {
         var markers: [MapMarker] = []
-        for player in players where isMappable(player) {
+        for player in players {
             let name = label(of: player, singleplayerUUID: singleplayerUUID, knownName: knownName(player.uuid))
             let outdated = isOutdated(player, worldDataVersion: worldDataVersion)
             let id = player.uuid.uuidString

@@ -39,36 +39,35 @@ import Testing
         #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in .named("") }.isEmpty)
     }
 
-    @Test func anInventoryFromAnotherServerWorldRemainsSearchableWithoutAMapPin() async throws {
+    @Test func anInventoryWithoutARecognizedDimensionRemainsSearchableWithoutAMapPin() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
-        let serverID = UUID(), localID = UUID()
-        func player(_ uuid: UUID, server: Bool) -> PlayerInfo {
-            var fields: [String: NBT] = [
-                "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(-8.7), .double(63.9), .double(4.6)]),
+        let unknownID = UUID(), localID = UUID()
+        func player(_ uuid: UUID, knownDimension: Bool) -> PlayerInfo {
+            let fields: [String: NBT] = [
+                "Dimension": knownDimension ? .string("minecraft:overworld") : .int(21), "Pos": .list([.double(-8.7), .double(63.9), .double(4.6)]),
                 "Inventory": .list([item("minecraft:diamond", 3)]),
             ]
-            if server { fields["SpawnWorld"] = .string("some other world") }
             return PlayerInfo(uuid: uuid, nbt: .compound(fields))
         }
         let original = try await WorldSnapshot.read(url)
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
-                                     dimensionDocuments: original.dimensionDocuments, players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
+                                     dimensionDocuments: original.dimensionDocuments, players: [player(unknownID, knownDimension: false), player(localID, knownDimension: true)], details: original.details)
         let defaults = TestDefaults.make()
         let session = WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         session.search.text = "diamond"
         await session.search.waitForSearch()
-        let server = try #require(session.search.results.first { $0.source == .inventory(serverID) })
+        let unknown = try #require(session.search.results.first { $0.source == .inventory(unknownID) })
         let local = try #require(session.search.results.first { $0.source == .inventory(localID) })
-        #expect(server.position == nil && server.dimension == nil && server.y == nil && server.count == 3)
+        #expect(unknown.position == nil && unknown.dimension == nil && unknown.y == nil && unknown.count == 3)
         #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
         let viewport = session.map?.viewport
-        session.choose(.hit(query: session.search.text, id: server.id))
+        session.choose(.hit(query: session.search.text, id: unknown.id))
         #expect(session.map?.viewport == viewport)
         let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
                                                             size: CGSize(width: 400, height: 300))
-        #expect(!visible.contains { $0.id == "search-" + server.id })
+        #expect(!visible.contains { $0.id == "search-" + unknown.id })
         #expect(visible.contains { $0.id == "search-" + local.id })
         session.close()
         await session.waitUntilClosed()

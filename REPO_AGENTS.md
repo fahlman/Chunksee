@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
-| `PlayerMarkers.swift` | Player names and personal/named phrases, outdated and Bukkit rules shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
+| `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
@@ -429,10 +429,12 @@ in the map's accessibility value; pointer hover shows the same checked rule in t
 Player listing uses the session's one dimension-listing fallback, shared with saved places and
 search results. Map content and map-click validation consume the same drawn-player marker
 collection, including hidden-player filtering. PlayerPresentation supplies the valid saved
-locations to both the map and inspector; Bukkit/invalid coordinates are excluded consistently,
+locations to both the map and inspector; invalid coordinates are excluded consistently,
 while readable locations in unavailable dimensions remain inspectable with navigation disabled.
 Personal phrases and absent-owner names stay with PlayerPresentation, preserving their wording.
-The player-location policy comes from Kit's `PlayerInfo.locationsBelongToWorld`; the app only
-checks coordinate availability and presentation. Scan-cache version 16 rereads data after Kit
+Player files use the same vanilla location rules regardless of unrelated extra fields; the app
+checks coordinate availability and presentation. Unknown numeric dimensions remain unavailable.
+Vanilla legacy dimensions and datapack dimensions still work; World Info retains its Modded line.
+Scan-cache version 16 rereads data after Kit
 0.30's identifier validation. Typed positions, RegionFacts and shoulder-pet presentation are
 adopted in separate changes; publishing these APIs does not enable their app features by itself.
