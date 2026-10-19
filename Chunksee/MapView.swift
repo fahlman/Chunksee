@@ -278,17 +278,8 @@ struct MapView: View {
             Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
                          in: context, bounds: bounds, symbol: symbol)
         }
-        for marker in content.players {
-            add(Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
-                      labelSelected: content.selectedItem == .player(marker.playerID) || marker.playerID == content.selectedPlayerID,
-                      at: map.viewport.viewPoint(for: marker.anchor, in: size),
-                      in: context, bounds: bounds, symbol: symbol))
-        }
-        for place in content.savedPlaces {
-            add(Self.drawBadge(style: .savedPlace, name: place.name, id: "saved-" + place.id.uuidString,
-                               priority: content.selectedItem == .savedPlace(place.id) ? .selected : .other,
-                               scale: map.viewport.scale, at: map.viewport.viewPoint(for: place.mapPosition, in: size),
-                               in: context, bounds: bounds, symbol: symbol))
+        for item in content.scene(viewport: map.viewport, size: size).items {
+            add(item.draw(in: context, scale: map.viewport.scale, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
@@ -352,15 +343,6 @@ struct MapView: View {
         let style = style()
         style.drawBody(at: point, in: context, symbol: symbol)
         return style.label(name(), id: id(), priority: priority, at: point, scale: scale, in: context)
-    }
-
-    private static func draw(_ marker: MapMarker, selected: Bool, labelSelected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
-                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
-        guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return nil }
-        let style = MarkerStyle.player(marker.kind, outdated: marker.isOutdated, selected: selected)
-        style.drawBody(at: point, in: context, symbol: symbol)
-        return style.label(marker.label, id: "player-" + marker.id, priority: labelSelected ? .selected : .player,
-                           at: point, scale: 1, in: context)
     }
 
     private var statusBar: some View {
