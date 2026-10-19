@@ -381,8 +381,9 @@ RefreshLoader coalesces saves during a pass, retains the previous value and reje
 its own or its world's close. Canceling a waiter does not cancel the shared read. WorldResources
 owns BackgroundWork, which retains registered tasks until completion and drains work added during
 a wait. A tab closes only its own loader; world close cancels and drains all registered work before
-releasing file access. Time Spent is the first adoption; other readers keep their existing owned
-tasks and drain paths until separately migrated under #169. Startup cache maintenance also
+releasing file access. Index, search, map, player-record and refresh readers now use the same
+owner with their own cancellation scopes, as described above. Source and request identities
+remain with the models that validate their results. Startup cache maintenance also
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
