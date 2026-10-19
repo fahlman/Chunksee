@@ -180,6 +180,11 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct CacheRootTests {
+    nonisolated private static func finishMaintenance(at folder: URL) {
+        #expect(!Thread.isMainThread)
+        TileCache.markUsed(worldFolder: folder)
+    }
+
     @Test(.timeLimit(.minutes(1))) func closingWaitsForStartupMaintenanceBeforeCacheCleanup() async throws {
         let world = try TestWorld.make(chunks: [])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID())")
@@ -194,7 +199,7 @@ import Testing
                                        maintainCache: { _, folder in
             await gate.read("maintenance")
             // A disk operation already underway can still finish after cancellation.
-            TileCache.markUsed(worldFolder: folder)
+            Self.finishMaintenance(at: folder)
         })
         await gate.waitForRequest("maintenance")
         await resources.index.waitForIndex()
