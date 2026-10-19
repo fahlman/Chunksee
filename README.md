@@ -6,7 +6,7 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 ## Using Chunksee
 
-Choose **Help ▸ Chunksee Help** (**⌘?**) for a short introduction. **Open Sample World**
+Choose **Help ▸ Chunksee Help** for a short introduction. **Open Sample World**
 opens a small fictional island with a cabin, two pets and a chest of diamonds, even without
 Minecraft installed. The sample is bundled read-only and uses the same document, map and search
 features as your worlds. Help opens only when requested.
