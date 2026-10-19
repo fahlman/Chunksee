@@ -78,7 +78,8 @@ import Testing
                       RegionScanOptions(blockIDs: options.blockIDs, height: 384)] {
             #expect(cache.load(.init(dimension: dimension, region: region, options: other)) == nil)
         }
-        let file = try #require(try FileManager.default.contentsOfDirectory(at: #require(cache.directory), includingPropertiesForKeys: nil).first)
+        let directory = try #require(cache.directory)
+        let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
         let compressed = try Data(contentsOf: file)
         let data = try (compressed as NSData).decompressed(using: .lzfse) as Data
         let original = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])

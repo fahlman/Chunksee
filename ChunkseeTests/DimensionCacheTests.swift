@@ -62,15 +62,15 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let key = TileCache.Key(region: region, fileSize: 12_288, modified: 1_790_000_000)
         TileCache(directory: oldDirectory).store([UInt8](repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4), for: key)
-        ScanCache(directory: oldDirectory.appendingPathComponent("scans"))
-            .store([999], "inhabitedTimes", region: region, fingerprint: "matching")
+        _ = try TestWorld.legacyCache([999], name: "inhabitedTimes.0.0.matching.v17",
+                                      directory: oldDirectory.appendingPathComponent("scans"))
         for id in ["example:ice-caves", "example:ice_caves", "example:ice/caves"] {
             let directory = try #require(TileCache.directory(forWorldAt: world, dimensionID: id, root: root))
             #expect(directory.deletingLastPathComponent() == worldFolder)
             #expect(TileCache(directory: directory).load(key) == nil)
-            let times: [Int]? = ScanCache(forWorldAt: world, dimensionID: id, root: root)
-                .load("inhabitedTimes", region: region, fingerprint: "matching")
-            #expect(times == nil)
+            let scans = ScanCache(forWorldAt: world, dimensionID: id, root: root)
+            #expect(scans.directory == directory.appendingPathComponent("scans", isDirectory: true))
+            #expect(!FileManager.default.fileExists(atPath: try #require(scans.directory).path))
             #expect(TileCache.directory(forWorldAt: world, dimensionID: id, root: root) == directory)
         }
         // Existing world-level pruning owns old files; selecting a dimension doesn't delete them.
