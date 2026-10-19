@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent is the first consumer |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent, startup cache maintenance and player inspectors use the owner |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -348,7 +348,10 @@ its own or its world's close. Canceling a waiter does not cancel the shared read
 owns BackgroundWork, which retains registered tasks until completion and drains work added during
 a wait. A tab closes only its own loader; world close cancels and drains all registered work before
 releasing file access. Time Spent is the first adoption; other readers keep their existing owned
-tasks and drain paths until separately migrated under #169.
+tasks and drain paths until separately migrated under #169. Startup cache maintenance also
+registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
+world's common drain includes a maintenance write already underway before cache cleanup or
+file-access release; there is no separate maintenance-task handle.
 
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on

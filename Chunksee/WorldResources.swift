@@ -52,7 +52,6 @@ final class WorldResources {
     @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
     @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var closingTask: Task<Void, Never>?
-    @ObservationIgnored private var cacheMaintenance: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
     @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
@@ -106,7 +105,9 @@ final class WorldResources {
         index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
-            cacheMaintenance = Task.detached(priority: .background) { await maintainCache(root, folder) }
+            backgroundWork.start(priority: .background) {
+                await Self.runCacheMaintenance(maintainCache, root: root, folder: folder)
+            }
         }
     }
 
@@ -130,6 +131,13 @@ final class WorldResources {
         TileCache.markUsed(worldFolder: folder)
         guard !Task.isCancelled else { return }
         TileCache.prune(root: root, limit: 1 << 30, keeping: folder)
+    }
+
+    /// The work registry is main-actor isolated; maintenance keeps its off-main I/O boundary.
+    @concurrent private nonisolated static func runCacheMaintenance(
+        _ operation: @Sendable (URL, URL) async -> Void, root: URL, folder: URL
+    ) async {
+        await operation(root, folder)
     }
 
     func attach(_ session: WorldSession) {
@@ -195,12 +203,11 @@ final class WorldResources {
         pendingActions = [:]
         watcher?.stop()
         backgroundWork.close()
-        cacheMaintenance?.cancel()
         refreshTasks.values.forEach { $0.cancel() }
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
-        let refresh = Array(refreshTasks.values), access = access, maintenance = cacheMaintenance
+        let refresh = Array(refreshTasks.values), access = access
         let backgroundWork = backgroundWork
         closingTask = Task {
             await withTaskGroup(of: Void.self) { group in
@@ -208,7 +215,6 @@ final class WorldResources {
             }
             await index.waitForTasks()
             for task in retiring + refresh { await task.value }
-            await maintenance?.value
             await backgroundWork.waitUntilFinished()
             access.release()
         }
