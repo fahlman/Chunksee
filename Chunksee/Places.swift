@@ -158,7 +158,7 @@ nonisolated enum PlaceScanner {
     @concurrent
     static func blocks(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate, cache: ScanCache) async -> [PointOfInterest] {
         guard !Task.isCancelled else { return [] }
-        let file = dimension.poiDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        let file = dimension.regionURL(.pointsOfInterest, x: region.x, z: region.z)
         return cache.value("places", region: region, sources: [file]) {
             guard !Task.isCancelled else { return [] }
             return (try? dimension.pointsOfInterest(regionX: region.x, regionZ: region.z)) ?? []

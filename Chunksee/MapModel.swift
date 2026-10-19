@@ -186,7 +186,7 @@ final class MapModel {
         // regions are removed too, and the current set so newly created regions become visible.
         let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionCoordinate(x: $0.x, z: $0.z) })
         for region in regions {
-            let file = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+            let file = dimension.regionURL(.terrain, x: region.x, z: region.z)
             if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
             // A render that started before the save may have read the old file; start it again.
             inFlight[region]?.task.cancel()

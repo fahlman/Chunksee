@@ -97,6 +97,34 @@ import Testing
         #expect(incremental.formats == complete.formats)
     }
 
+    @Test func timeSpentIncludesLegacyChunksAndInvalidatesEarlierScanEntries() async throws {
+        let legacy = TestWorld.ChunkSpec(x: 2, z: 3, nbt: .compound([
+            "Level": .compound(["xPos": .int(2), "zPos": .int(3), "InhabitedTime": .long(7200),
+                                "Sections": .list([])])
+        ]))
+        let url = try TestWorld.make(chunks: [terrain(0), legacy])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(World(contentsOf: url).dimension("overworld"))
+        let data = await RegionData.read(dimension, region: .init(x: 0, z: 0))
+        #expect(data.inhabitedTimes[0] == 2400)
+        #expect(data.inhabitedTimes[3 * 32 + 2] == 7200)
+        #expect(data.inhabitedTimes[1] == 0)
+        #expect(data.formats.legacy == 1)
+
+        let root = url.appendingPathComponent("test-cache")
+        let cache = ScanCache(directory: root)
+        let region = RegionCoordinate(x: 0, z: 0)
+        cache.store([Int](repeating: 0, count: 1024), "inhabitedTimes", region: region, fingerprint: "unchanged")
+        let current = try #require(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first)
+        let old = current.deletingLastPathComponent().appendingPathComponent("inhabitedTimes.0.0.unchanged.v14")
+        try FileManager.default.moveItem(at: current, to: old)
+        let stale: [Int]? = cache.load("inhabitedTimes", region: region, fingerprint: "unchanged")
+        #expect(stale == nil)
+        cache.store(data.inhabitedTimes, "inhabitedTimes", region: region, fingerprint: "unchanged")
+        let saved: [Int]? = cache.load("inhabitedTimes", region: region, fingerprint: "unchanged")
+        #expect(saved?[3 * 32 + 2] == 7200)
+    }
+
     @Test(.timeLimit(.minutes(1))) func realFileNotificationsRefreshTheWorldWithoutInjectedChanges() async throws {
         let url = try TestWorld.make(chunks: [terrain(0)])
         defer { try? FileManager.default.removeItem(at: url) }

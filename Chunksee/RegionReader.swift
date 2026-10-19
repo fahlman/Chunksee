@@ -51,7 +51,7 @@ nonisolated struct RegionData: Sendable {
                 data.contents.containers += ItemContainer.containers(inChunk: nbt)
                 data.contents.signs += Sign.signs(inChunk: nbt)
                 data.contents.spawners += Spawner.spawners(inChunk: nbt)
-                data.inhabitedTimes[z * 32 + x] = nbt["InhabitedTime"]?.int ?? 0
+                data.inhabitedTimes[z * 32 + x] = Chunk.inhabitedTime(in: nbt) ?? 0
                 let chunk: Chunk?
                 do {
                     chunk = try Chunk(nbt: nbt)
@@ -74,7 +74,7 @@ nonisolated struct RegionData: Sendable {
                 }
             }
         }
-        let entitiesFile = dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        let entitiesFile = dimension.regionURL(.entities, x: region.x, z: region.z)
         guard !Task.isCancelled else { return data }
         if let entities = try? RegionFile(contentsOf: entitiesFile) {
             for (x, z) in entities.chunkCoordinates {
@@ -158,8 +158,8 @@ actor RegionReader {
     }
 
     private func fingerprint(_ region: RegionCoordinate) -> String {
-        ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca"),
-                               dimension.entitiesDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")])
+        ScanCache.fingerprint([dimension.regionURL(.terrain, x: region.x, z: region.z),
+                               dimension.regionURL(.entities, x: region.x, z: region.z)])
     }
 
     private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionCoordinate) async -> T {

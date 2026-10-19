@@ -407,3 +407,8 @@ and the project's settings. Xcode 27.2 and Swift snapshots are previews, not the
 The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
 frame/native split item both enforce a 180-point minimum. Native resizing remains in charge.
+
+Time Spent uses ChunkseeKit’s `Chunk.inhabitedTime(in:)` in the shared region pass, including
+legacy `Level` chunks whose terrain cannot be rendered. Scan-cache version15 discards earlier
+zero results for those chunks. Region-file URLs use `Dimension.regionURL` for terrain, entities
+and POI; spawn navigation uses the library’s paired saved position and dimension.

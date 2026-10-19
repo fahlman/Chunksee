@@ -255,7 +255,7 @@ final class WorldSession {
 
     private static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
         guard let spawn = world.level.spawnPosition,
-              (world.level.spawnDimension ?? "minecraft:overworld") == dimensionID else { return .zero }
+              world.level.spawnDimension == dimensionID else { return .zero }
         return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
     }
 

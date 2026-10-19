@@ -87,7 +87,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     @concurrent
     func tile(for region: RegionCoordinate) async throws -> RenderedTile? {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
-        let regionFile = dimension.regionDirectory.appendingPathComponent("r.\(region.x).\(region.z).mca")
+        let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
         let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, cutawayY: cutawayY)
         var pixels: [UInt8]?
         var cacheWrite: CacheWrite?

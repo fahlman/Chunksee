@@ -89,8 +89,9 @@ struct WorldCommands: Commands {
                 .disabled(session?.map == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") {
-                guard let session, let spawn = session.world.level.spawnPosition else { return }
-                session.focus(on: .init(dimension: session.world.level.spawnDimension ?? "minecraft:overworld",
+                guard let session, let spawn = session.world.level.spawnPosition,
+                      let dimension = session.world.level.spawnDimension else { return }
+                session.focus(on: .init(dimension: dimension,
                                        x: Double(spawn.x), y: Double(spawn.y), z: Double(spawn.z)))
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
