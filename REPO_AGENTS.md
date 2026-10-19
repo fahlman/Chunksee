@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent, startup cache maintenance and player inspectors use the owner |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
