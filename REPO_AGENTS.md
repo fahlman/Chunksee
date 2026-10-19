@@ -351,8 +351,8 @@ The creature inspector shows saved current/maximum health in hearts and applicab
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
-the app keeps only presentation slot filtering, ordering and labels. Players and creatures share
-the same equipment rows. The player inventory grids use Kit's `inventorySlots(in:)` for hotbar,
+the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
+use Kit's `inventorySlots(in:)` for hotbar,
 storage and ender chest; saved slot numbers, empty slots and duplicate handling stay in Kit.
 The app owns only the grid and selected-hotbar styling. Players and creatures share
 the native equipment section and health row. Health uses up to two
