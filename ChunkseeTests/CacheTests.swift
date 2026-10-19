@@ -256,9 +256,10 @@ import Testing
         let scans = try #require(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root))
             .appendingPathComponent("scans")
         #expect(FileManager.default.fileExists(atPath: scans.path))
-        // Nothing for this world in the app's own Caches folder.
-        let appFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
-        #expect(!FileManager.default.fileExists(atPath: appFolder.path))
+        // Verify the session's writes without consulting the real app's cache at all.
+        let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
+        #expect(worldFolder.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path) == [worldFolder.lastPathComponent])
     }
 }
 
