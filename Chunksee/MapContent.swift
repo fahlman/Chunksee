@@ -121,14 +121,7 @@ struct MapContent {
                     frame: frame(.search(selected: hit.id == selectedHitID), at: position), target: .searchHit(hit.id))
             }
         }
-        for marker in players {
-            add("player-" + marker.id, marker.label, marker.position, y: marker.y, anchor: marker.anchor,
-                frame: frame(.player(marker.kind), at: marker.anchor), target: .row(.player(marker.playerID)))
-        }
-        for place in savedPlaces {
-            add("saved-" + place.id.uuidString, place.name, place.position, anchor: place.mapPosition,
-                frame: frame(.savedPlace, at: place.mapPosition), target: .row(.savedPlace(place.id)))
-        }
+        locations.append(contentsOf: scene(viewport: viewport, size: size).accessibleLocations)
         return locations
     }
 
@@ -150,12 +143,7 @@ struct MapContent {
             }
             return best
         }
-        if let place = nearest(savedPlaces, within: { _ in MarkerGeometry.savedPlace.hitRadius }, position: \.mapPosition) {
-            return MapHit(target: .row(.savedPlace(place.id)), position: place.position)
-        }
-        if let player = nearest(players, within: { MarkerGeometry.player($0.kind).hitRadius }, position: \.anchor) {
-            return MapHit(target: .row(.player(player.playerID)), position: player.position, y: player.y)
-        }
+        if let hit = scene(viewport: viewport, size: size).hit(at: point) { return hit }
         if let hit = nearest(hits.lazy.filter { $0.position != nil },
                              within: { MarkerGeometry.search(selected: $0.id == selectedHitID).hitRadius }, position: { $0.position! }) {
             return MapHit(target: .searchHit(hit.id), position: hit.position!, y: hit.y.map(Double.init))
