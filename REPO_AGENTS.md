@@ -392,6 +392,11 @@ registers with BackgroundWork, keeping its off-main I/O boundary and cancellatio
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
 
+WorldResources uses that common drain for detached tabs too; it keeps no retiring-view task
+table or cleanup tasks. Each WorldSession retains its own closing join because a native document
+reread or move must await that session before replacing it. DocumentGroup still owns document
+closure, and the world releases folder access only after its readers and registered work finish.
+
 WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
 tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
 drains them through the common registry. The two-second scheduling window, changed-region
