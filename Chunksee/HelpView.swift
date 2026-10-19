@@ -48,8 +48,6 @@ struct HelpView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
-
-
             }
             .padding(24)
         }
