@@ -14,7 +14,16 @@ private struct SearchFocusKey: FocusedValueKey {
     typealias Value = SearchFocusAction
 }
 
+private struct MapHeightPopoverKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var mapHeightPopover: Binding<Bool>? {
+        get { self[MapHeightPopoverKey.self] }
+        set { self[MapHeightPopoverKey.self] = newValue }
+    }
+
     var worldSession: WorldSession? {
         get { self[WorldSessionKey.self] }
         set { self[WorldSessionKey.self] = newValue }
@@ -30,6 +39,7 @@ extension FocusedValues {
 struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
+    @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -52,6 +62,17 @@ struct WorldCommands: Commands {
                 .disabled(session?.map == nil)
             Button("Fit World") { session?.navigation.fitWorld() }
                 .disabled(session?.navigation.canFitWorld != true)
+            Button("Map Height…") { showsMapHeight = true }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .disabled(session?.map == nil || showsMapHeight == nil)
+            Toggle("Surface", isOn: Binding {
+                session?.map?.depth.isSurface ?? true
+            } set: { isSurface in
+                guard let map = session?.map else { return }
+                map.setDepth(MapDepth(y: map.depth.y, isSurface: isSurface))
+            })
+                .keyboardShortcut("y", modifiers: [.command, .option])
+                .disabled(session?.map == nil)
             Divider()
             Toggle("World Info", isOn: Binding {
                 session?.inspector == .world
@@ -105,7 +126,7 @@ struct WorldCommands: Commands {
                     ForEach(session.dimensions, id: \.id) { dimension in
                         Toggle(session.dimensionName(dimension.id), isOn: Binding {
                             session.selectedDimensionID == dimension.id
-                        } set: { if $0 { session.openDimension(dimension.id) } })
+                        } set: { if $0 { session.routing.openDimension(dimension.id) } })
                     }
                 }
             }

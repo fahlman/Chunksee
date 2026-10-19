@@ -43,9 +43,7 @@ nonisolated enum EquipmentPresentation {
     }
 
     static func items(for player: PlayerInfo) -> [String: ItemStack] {
-        var items = player.equipment
-        items["mainhand"] = player.mainHandItem
-        return items.filter { slotOrder.contains($0.key) && $0.key != "storage" }
+        player.equippedItems.filter { slotOrder.contains($0.key) && $0.key != "storage" }
     }
 
     static func rows(_ items: [String: ItemStack]) -> [Row] {
