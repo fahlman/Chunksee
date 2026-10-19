@@ -194,8 +194,8 @@ struct WorldView: View {
         }
     }
 
-    private func selectOnMap(_ target: MapTarget?) {
-        if sidebarDisclosure.selectOnMap(target, in: session) { sidebarRevealID = UUID() }
+    private func selectOnMap(_ target: MapTarget?, y: Double?) {
+        if sidebarDisclosure.selectOnMap(target, y: y, in: session) { sidebarRevealID = UUID() }
     }
 
     private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {

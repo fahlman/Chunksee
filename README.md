@@ -34,7 +34,9 @@ with a link to this guide. Help opens only when requested.
    you release the slider and shows terrain at or below that height, including cave floors.
    Choose **Surface** to return to the normal map. **View ▸ Map Height…** (**⇧⌘Y**) opens these
    controls from the keyboard; **View ▸ Surface** (**⌥⌘Y**) switches between Surface and Cutaway.
-   In Cutaway mode, type the height and press Return. Each dimension remembers its height and mode.
+   In Cutaway mode, type the height and press Return. Selecting an item with a known Y also sets
+   the cutaway height. Surface stays on Surface and remembers that Y for later. Each dimension
+   remembers its own height and mode.
    The slider follows that dimension’s known build limits; the number field accepts any Y coordinate.
    If Chunksee cannot read the dimension’s height range, use the number field and stepper.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient

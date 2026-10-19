@@ -16,8 +16,8 @@ struct SidebarDisclosure {
     var showsInGameMaps = false
 
     /// The view and tests share this complete map-origin selection/reveal action.
-    @discardableResult mutating func selectOnMap(_ target: MapTarget?, in session: WorldSession) -> Bool {
-        guard let item = session.selection.mapClicked(target) else { return false }
+    @discardableResult mutating func selectOnMap(_ target: MapTarget?, y: Double?, in session: WorldSession) -> Bool {
+        guard let item = session.selection.mapClicked(target, y: y) else { return false }
         reveal(item, in: session)
         return true
     }

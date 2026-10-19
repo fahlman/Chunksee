@@ -74,6 +74,8 @@ import Testing
         source.map?.viewport = initial
         target.map?.viewport = targetInitial
         source.selection.choose(.player(owner))
+        source.map?.setDepth(MapDepth(y: 99, isSurface: false))
+        target.map?.setDepth(MapDepth(y: 12, isSurface: false))
         #expect(source.selection.inspector == .player(owner))
         let (opens, continuation) = AsyncStream.makeStream(of: URL.self)
         source.routing.openDocument = { continuation.yield($0) }
@@ -87,6 +89,8 @@ import Testing
         #expect(source.selection.sidebarRevealRequest == nil && target.selection.sidebarRevealRequest != nil)
         #expect(target.selection.mapSelection == .creature(pet) && target.selection.sidebarSelection == .creature(pet.id))
         #expect(target.map?.viewport.center == pet.position && target.map?.viewport.scale == 4)
+        #expect(source.map?.depth.cutawayY == 99)
+        #expect(target.map?.depth.cutawayY == BlockPosition.coordinate(containing: pet.creature.y))
         #expect(target.visibility.creatures.contains(.pet))
         target.navigation.goBack()
         #expect(target.map?.viewport == targetInitial && !target.navigation.canGoBack)

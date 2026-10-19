@@ -93,7 +93,7 @@ final class SelectionModel {
     }
 
     /// Every input path changes this identity. Overlay retention is independent of the row.
-    private func select(_ item: SidebarItem?, preservingGlobalRows: Bool = false) {
+    private func select(_ item: SidebarItem?, height: Int? = nil, preservingGlobalRows: Bool = false) {
         guard let source, !source.isClosed else { return }
         if item == nil, preservingGlobalRows {
             if selectedItem == .worldInfo || selectedItem == .storage { return }
@@ -110,6 +110,7 @@ final class SelectionModel {
         case .savedPlace?, .structure?, .biome?, .hit?, nil: break
         }
         inspectorIsShown = true
+        if resolved != nil { followHeight(height) }
         if inspector != previous { playerRecords.cancel() }
     }
 
@@ -139,10 +140,13 @@ final class SelectionModel {
             show(map, keepingZoom: true)
         case .player(let player):
             source.visibility.hiddenPlayers.remove(player.uuid)
-            if source.routing.canFocus(player), let position = player.position { source.routing.focus(on: position, keepingZoom: true) }
+            if source.routing.canFocus(player), let location = player.position {
+                focus(on: CGPoint(x: location.x, y: location.z),
+                      height: BlockPosition.coordinate(containing: location.y), in: location.dimension)
+            }
         case .hit(let hit):
             guard let dimension = hit.dimension, let position = hit.position else { return }
-            source.routing.focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
+            focus(on: position, height: hit.y, in: dimension)
             if case .layer(let layer) = hit.source {
                 switch layer {
                 case .structure(let group): source.visibility.structures.insert(group)
@@ -152,11 +156,11 @@ final class SelectionModel {
                 }
             }
         }
-        select(item)
+        select(item, height: resolved.height(in: source.selectedDimensionID))
     }
 
     /// A death/respawn marker may show player details here when their row belongs elsewhere.
-    @discardableResult func mapClicked(_ clicked: MapTarget?) -> SidebarItem? {
+    @discardableResult func mapClicked(_ clicked: MapTarget?, y: Double?) -> SidebarItem? {
         let item: SidebarItem?
         switch clicked {
         case .searchHit(let id)?: item = searchRow(for: id)
@@ -169,8 +173,21 @@ final class SelectionModel {
             }
         case nil: item = nil
         }
-        select(item, preservingGlobalRows: true)
+        select(item, height: y.flatMap(BlockPosition.coordinate(containing:)), preservingGlobalRows: true)
         return item == nil ? nil : sidebarSelection
+    }
+
+    /// Selection changes height once; a later save or manual slider change does not track the item.
+    private func followHeight(_ height: Int?) {
+        guard let height, let map = source?.map else { return }
+        map.setDepth(MapDepth(y: height, isSurface: map.depth.isSurface))
+    }
+
+    private func focus(on position: CGPoint, height: Int?, in dimension: String) {
+        guard let source, !source.isClosed, MapCoordinates(point: position) != nil else { return }
+        if source.routing.route(to: dimension, perform: { $0.selection.focus(on: position, height: height, in: dimension) }) { return }
+        source.navigation.focus(on: position, keepingZoom: true)
+        followHeight(height)
     }
 
     private func searchRow(for id: SearchHit.ID) -> SidebarItem? {
@@ -195,7 +212,7 @@ final class SelectionModel {
         if source.routing.route(to: portal.dimension, perform: { $0.selection.show(portal, keepingZoom: keepingZoom) }) { return }
         source.routing.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
                      keepingZoom: keepingZoom)
-        select(.place(PlaceMarker(portal).id))
+        select(.place(PlaceMarker(portal).id), height: portal.minY)
     }
 
     /// An image cache for the sidebar thumbnail and the selected map overlay.
