@@ -111,7 +111,7 @@
       }
     },
     "Choose File ▸ Open… and select one world’s folder inside your saves folder." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -123,7 +123,7 @@
       }
     },
     "Chunksee Help" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -135,7 +135,7 @@
       }
     },
     "Chunksee shows the terrain, places, pets and players in a saved Java Edition world. It only reads your world; it never changes it." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -146,20 +146,8 @@
         }
       }
     },
-    "Couldn’t Open Sample World" : {
-      "comment" : "On-demand help and bundled sample world.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn’t Open Sample World"
-          }
-        }
-      }
-    },
     "Drag or scroll to move. Pinch to zoom, or click the toolbar’s zoom percentage to choose a level or Fit World." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -171,7 +159,7 @@
       }
     },
     "Each dimension opens as its own document. File ▸ Open Recent brings it back later." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -183,7 +171,7 @@
       }
     },
     "Explore Your Minecraft World" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -195,7 +183,7 @@
       }
     },
     "Look Around" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -206,20 +194,8 @@
         }
       }
     },
-    "No world handy? The sample has a small island, a cabin, two pets and a chest of diamonds. Minecraft isn’t needed to explore it." : {
-      "comment" : "On-demand help and bundled sample world.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No world handy? The sample has a small island, a cabin, two pets and a chest of diamonds. Minecraft isn’t needed to explore it."
-          }
-        }
-      }
-    },
     "OK" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -230,20 +206,8 @@
         }
       }
     },
-    "Open Sample World" : {
-      "comment" : "On-demand help and bundled sample world.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open Sample World"
-          }
-        }
-      }
-    },
     "Open a World" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -255,7 +219,7 @@
       }
     },
     "Select a pet or player to see details. Search for an item such as diamond to find where it is stored." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -266,20 +230,8 @@
         }
       }
     },
-    "The sample world couldn’t be found in this copy of Chunksee." : {
-      "comment" : "On-demand help and bundled sample world.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The sample world couldn’t be found in this copy of Chunksee."
-          }
-        }
-      }
-    },
     "To reach the hidden Library folder, press Shift-Command-G in the Open panel and enter:" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -291,7 +243,7 @@
       }
     },
     "Choose a cutaway height to look below the surface. Surface returns to the normal map." : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -303,7 +255,7 @@
       }
     },
     "User Guide" : {
-      "comment" : "On-demand help and bundled sample world.",
+      "comment" : "On-demand Help instructions.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
