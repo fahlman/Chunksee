@@ -7,8 +7,14 @@ import SwiftUI
 /// live in its language files, which can't be redistributed.
 nonisolated enum ReadableName {
     static func from(_ id: String) -> String {
-        let base = id.split(separator: ":").last.map(String.init) ?? id
+        let base = identifierPath(id)
         return base.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+
+    /// Kit parses IDs; presentation keeps an unfamiliar/malformed value visible as a fallback.
+    static func identifierPath(_ id: String) -> String {
+        guard let parsed = Identifier(id), !parsed.path.isEmpty else { return id }
+        return parsed.path
     }
 }
 

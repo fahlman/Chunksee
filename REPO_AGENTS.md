@@ -73,7 +73,11 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
-well as items. Structures retain their variant word order; the three vanilla dimension labels
+well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;
+the app only formats its path or retains an unfamiliar value as readable fallback text. Vanilla
+structure/place groups and block-color lookup require the Minecraft namespace, leaving custom
+IDs distinct. Scan-cache version 17 and tile-renderer version 8 discard classifications and pixels
+made before this adoption. Structures retain their variant word order; the three vanilla dimension labels
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
 

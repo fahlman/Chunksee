@@ -1,3 +1,5 @@
+import ChunkseeKit
+
 /// An opaque sRGB color for one map pixel.
 nonisolated struct MapColor: Equatable, Sendable {
     var red: UInt8
@@ -21,7 +23,7 @@ nonisolated struct MapColor: Equatable, Sendable {
 nonisolated enum BlockColors {
     /// The map color for a block ID, or `nil` for blocks the map sees through (air, glass panes, light).
     static func color(for id: String) -> MapColor? {
-        let name = id.hasPrefix("minecraft:") ? String(id.dropFirst(10)) : id
+        let name = Identifier(id).flatMap { $0.namespace == "minecraft" ? $0.path : nil } ?? id
         if transparent.contains(name) { return nil }
         if let exact = exact[name] { return MapColor(exact) }
         for (fragment, hex) in fragments where name.contains(fragment) { return MapColor(hex) }
@@ -29,7 +31,8 @@ nonisolated enum BlockColors {
     }
 
     static func isWater(_ id: String) -> Bool {
-        id == "minecraft:water" || id == "minecraft:bubble_column"
+        guard let parsed = Identifier(id), parsed.namespace == "minecraft" else { return false }
+        return parsed.path == "water" || parsed.path == "bubble_column"
     }
 
     private static let transparent: Set<String> = [

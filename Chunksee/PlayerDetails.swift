@@ -5,7 +5,7 @@ import SwiftUI
 /// an SF Symbol for their category, tinted by their material.
 nonisolated enum ItemAppearance {
     static func symbol(for id: String) -> String {
-        let name = id.split(separator: ":").last.map(String.init) ?? id
+        let name = ReadableName.identifierPath(id)
         func any(_ parts: [String]) -> Bool { parts.contains { name.hasSuffix($0) || name == $0 } }
         if any(["_helmet", "_chestplate", "_leggings", "_boots", "elytra", "_horse_armor", "wolf_armor"]) { return "tshirt.fill" }
         if any(["shield"]) { return "shield.fill" }
