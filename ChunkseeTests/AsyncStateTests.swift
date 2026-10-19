@@ -7,6 +7,38 @@ import Testing
 @Suite(.isolatedStores) struct NameSourceLifetimeTests {
     func defaults() -> UserDefaults { TestDefaults.make() }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func cancelingOneNameSourceLeavesTheOtherRunning(cancelLocal: Bool) async throws {
+        let localGate = AsyncReadGate<[UUID: String]>(), onlineGate = AsyncReadGate<(Data, Int)>()
+        let folder = try TestWorld.make(chunks: []), localID = UUID(), onlineID = UUID()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let names = PlayerNames(defaults: defaults(),
+                                mojang: MojangProfiles(fetch: { _ in await onlineGate.read("online") }),
+                                readCaches: { _ in await localGate.read("local") })
+        names.looksUpOnline = true
+        let choosing = Task { await names.chooseMinecraftFolder(folder) }
+        let lookup = Task { await names.lookUp([onlineID]) }
+        await localGate.waitForRequest("local")
+        await onlineGate.waitForRequest("online")
+        if cancelLocal {
+            names.forgetMinecraftFolder()
+            await localGate.waitForCancellation("local")
+        } else {
+            names.looksUpOnline = false
+            await onlineGate.waitForCancellation("online")
+        }
+        await localGate.finish("local", with: [localID: "Local Name"])
+        await onlineGate.finish("online", with: (Data(#"{"name":"OnlineName"}"#.utf8), 200))
+        await choosing.value
+        await lookup.value
+        #expect(names.name(for: localID) == (cancelLocal ? nil : "Local Name"))
+        #expect(names.name(for: onlineID) == (cancelLocal ? "OnlineName" : nil))
+        #expect(await localGate.requested == ["local"])
+        #expect(await onlineGate.requested == ["online"])
+        names.forgetMinecraftFolder()
+        names.looksUpOnline = false
+    }
+
     @Test func turningLookupOffCancelsTheRequestAndStopsTheBatch() async {
         let gate = AsyncReadGate<(Data, Int)>()
         let first = UUID(), second = UUID()
