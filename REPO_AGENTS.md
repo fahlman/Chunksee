@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent, startup cache maintenance and player inspectors use the owner |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; consumers include Time Spent and Slime Chunks |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -470,7 +470,11 @@ The Slime Chunks toggle is initially off and remembered per dimension. It is ava
 the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
-change the seed rule. Closing cancels and drains mask generation. The center's chunk status is
+change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer
+retains its single active handle for hide/close cancellation and local draining; hiding and then
+showing resumes missing masks after the canceled pass finishes. World close cancels/drains the
+registered task and prevents late publication or a following pass. Closing one layer leaves its
+siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
 Player listing uses the session's one dimension-listing fallback, shared with saved places and
