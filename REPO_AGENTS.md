@@ -105,8 +105,8 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent and startup cache maintenance use the owner |
-| `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent, startup cache maintenance and player inspectors use the owner |
+| `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
@@ -315,6 +315,13 @@ show completed seconds/minutes/hours rather than dropping every duration below a
 keep rounding partial seconds up. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
+
+PlayerRecordsModel keeps the selected player's request identity and rejects replaced results.
+Its reads register in a BackgroundWork scope: cancellation and draining affect only that inspector,
+including older canceled reads, while world close still cancels and drains every scope. Closing
+or dropping a scope refuses future work and cancels its pending reads. A caller's cancellation
+continues to cancel only its own player-record read; selection replacement is not a coalesced
+Time Spent refresh. The model no longer keeps a second task registry or close loop.
 
 Tile-cache renderer version 7 refreshes surfaces affected by Kit 0.29's heightmap correction.
 When a packed heightmap has an ambiguous width, the renderer's existing block scan finds the
