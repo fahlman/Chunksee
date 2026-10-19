@@ -3,9 +3,9 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct MapGridTests {
+@Suite(.isolatedStores) struct MapGridTests {
     let size = CGSize(width: 800, height: 600)
 
     @Test func chunkLinesWhenTheyreFarEnoughApart() {
@@ -41,14 +41,14 @@ import Testing
     }
 
     @Test func theGridSettingIsRemembered() {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         #expect(!LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid)
         LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid = true
         #expect(LayerVisibility(world: URL(fileURLWithPath: "/Grid Test"), dimension: "minecraft:overworld", defaults: defaults).showsGrid)
     }
 }
 
-@Suite struct MapAccessibilityTests {
+@Suite(.isolatedStores) struct MapAccessibilityTests {
     @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() throws {
         let playerID = UUID()
         var content = MapContent()
@@ -69,7 +69,7 @@ import Testing
     }
 }
 
-@Suite struct MapViewportTests {
+@Suite(.isolatedStores) struct MapViewportTests {
     let size = CGSize(width: 800, height: 600)
 
     @Test func centerOfViewIsViewportCenter() {
@@ -130,7 +130,7 @@ import Testing
     }
 }
 
-@Suite struct BlockColorsTests {
+@Suite(.isolatedStores) struct BlockColorsTests {
     @Test func airIsTransparent() {
         #expect(BlockColors.color(for: "minecraft:air") == nil)
         #expect(BlockColors.color(for: "minecraft:cave_air") == nil)
@@ -149,7 +149,7 @@ import Testing
     }
 }
 
-@Suite struct RegionTileRendererTests {
+@Suite(.isolatedStores) struct RegionTileRendererTests {
     @Test func rendersSurfaceWaterGapsAndRelief() async throws {
         let world = try TestWorld.make(chunks: [
             // Chunk (0, 0): stone floor at y 0; grass at y 1 for x < 8, water at y 1 for x ≥ 8.
@@ -234,7 +234,7 @@ import Testing
     }
 }
 
-@Suite struct MapModelTests {
+@Suite(.isolatedStores) struct MapModelTests {
     @Test func loadsEveryVisibleRegionThatExists() async throws {
         let world = try TestWorld.make(chunks: [
             TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 },
@@ -251,7 +251,7 @@ import Testing
     }
 }
 
-@Suite struct LevelOfDetailTests {
+@Suite(.isolatedStores) struct LevelOfDetailTests {
     func stoneWorld(regions: [RegionCoordinate]) throws -> URL {
         try TestWorld.make(chunks: regions.map { r in
             TestWorld.chunk(x: r.x * 32, z: r.z * 32, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
@@ -352,7 +352,7 @@ import Testing
     }
 }
 
-@Suite struct ScrollWheelInputTests {
+@Suite(.isolatedStores) struct ScrollWheelInputTests {
     let point = CGPoint(x: 100, y: 50)
 
     @Test func trackpadScrollPansWithTheFingers() {
@@ -373,7 +373,7 @@ import Testing
     }
 }
 
-@Suite struct LiveMapTests {
+@Suite(.isolatedStores) struct LiveMapTests {
     static func stone(x: Int, z: Int, height: Int) -> TestWorld.ChunkSpec {
         TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y <= height ? 1 : 0 }
     }
@@ -421,7 +421,7 @@ import Testing
     @Test func sessionRefreshesRegionsAndPlayers() async throws {
         let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         session.refreshDelay = .zero
@@ -443,7 +443,7 @@ import Testing
     }
 }
 
-@Suite struct HoverBlockTests {
+@Suite(.isolatedStores) struct HoverBlockTests {
     /// Stone at Y 0 everywhere; sand on it at x 0, z 0; three blocks of water on it at x 1, z 0.
     private func world() throws -> URL {
         let palette = ["minecraft:air", "minecraft:stone", "minecraft:sand", "minecraft:water"]
@@ -509,7 +509,7 @@ import Testing
     }
 }
 
-@Suite struct HoverReadLifecycleTests {
+@Suite(.isolatedStores) struct HoverReadLifecycleTests {
     private func world(top: String = "minecraft:sand") throws -> URL {
         try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", top]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }])
     }

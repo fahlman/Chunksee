@@ -3,7 +3,7 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
 /// Builds minimal 26.x worlds on disk using ChunkseeKit's public NBT and compression API.
 enum TestWorld {

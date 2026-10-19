@@ -1,8 +1,8 @@
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct CountedTextTests {
+@Suite(.isolatedStores) struct CountedTextTests {
     @Test func heartsUseDisplayedPrecisionAndMaximumAgreementWithoutChangingGaugeData() {
         let english = Locale(identifier: "en_US")
         for (health, maximum, expected) in [

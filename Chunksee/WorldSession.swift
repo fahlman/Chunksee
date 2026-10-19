@@ -149,7 +149,7 @@ final class WorldSession {
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
 
     convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
-                     defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+                     defaults: UserDefaults, cacheRoot: URL?,
                      readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
         self.init(resources: WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
                                            defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
@@ -174,8 +174,8 @@ final class WorldSession {
     /// `defaults` keeps which layers are shown and where the map was, and saved searches unless
     /// `savedSearches` is given; `cacheRoot` holds tiles and scans (`nil` keeps nothing). Tests pass
     /// their own so they leave the app's alone.
-    static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults = .standard,
-                     cacheRoot: URL? = TileCache.root) async throws -> WorldSession {
+    static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults,
+                     cacheRoot: URL?) async throws -> WorldSession {
         let snapshot = try await WorldSnapshot.read(url)
         return WorldSession(snapshot: snapshot, names: names, savedSearches: savedSearches ?? SavedSearches(defaults: defaults),
                             defaults: defaults, cacheRoot: cacheRoot)

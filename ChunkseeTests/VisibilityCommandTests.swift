@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.serialized) struct VisibilityCommandTests {
+@Suite(.isolatedStores, .serialized) struct VisibilityCommandTests {
     private func perform(_ binding: Binding<Bool>, title: String) throws {
         let menu = NSHostingMenu(rootView: VisibilityCommand(isShown: binding))
         menu.update()
@@ -14,9 +14,9 @@ import Testing
     }
 
     @Test func nativeVisibilityCommandsChangeOnlyTheirOwnDimensionGroupAndPersist() throws {
-        let suite = "ChunkseeTests-\(UUID())", world = URL(fileURLWithPath: "/Visibility Commands")
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let world = URL(fileURLWithPath: "/Visibility Commands")
+        let defaults = TestDefaults.make()
+
         let first = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
         let other = LayerVisibility(world: world, dimension: "minecraft:the_nether", defaults: defaults)
         func exercise<Group: Hashable>(_ group: Group, _ keyPath: ReferenceWritableKeyPath<LayerVisibility, Set<Group>>) throws {
@@ -40,9 +40,9 @@ import Testing
     }
 
     @Test func playerCommandKeepsOtherPlayersAndDimensionSettings() throws {
-        let suite = "ChunkseeTests-\(UUID())", world = URL(fileURLWithPath: "/Player Visibility Commands")
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let world = URL(fileURLWithPath: "/Player Visibility Commands")
+        let defaults = TestDefaults.make()
+
         let first = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
         let other = LayerVisibility(world: world, dimension: "minecraft:the_nether", defaults: defaults)
         let player = UUID(), alreadyHidden = UUID()
@@ -59,8 +59,8 @@ import Testing
     }
 
     @Test func savedQueryCommandUsesTheLiveBindingAndDoesNotRecreateARemovedQuery() throws {
-        let suite = "ChunkseeTests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = TestDefaults.make()
+
         let searches = SavedSearches(defaults: defaults)
         searches.add("pet:"); searches.add("structure:")
         let saved = try #require(searches.all.first)

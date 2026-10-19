@@ -2,9 +2,9 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct PlayerInspectorTests {
+@Suite(.isolatedStores) struct PlayerInspectorTests {
     let owner = UUID(uuidString: "00000001-0000-0002-0000-000300000004")!
     let otherOwner = UUID(uuidString: "00000005-0000-0006-0000-000700000008")!
 
@@ -35,7 +35,7 @@ import Testing
     }
 
     func open(_ url: URL) async throws -> WorldSession {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
         return session

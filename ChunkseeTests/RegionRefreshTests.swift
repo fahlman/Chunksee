@@ -2,9 +2,9 @@ import ChunkseeKit
 import CoreGraphics
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct RegionRefreshTests {
+@Suite(.isolatedStores) struct RegionRefreshTests {
     private let overworld = "minecraft:overworld"
 
     private func terrain(_ x: Int, count: Int32 = 1) throws -> TestWorld.ChunkSpec {
@@ -61,7 +61,7 @@ import Testing
     // its coalescing delay, making exact read counts depend on the test's speed.
     private func resources(_ url: URL, reads: Reads,
                            watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
                                        readRegion: { dimension, region in

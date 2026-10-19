@@ -2,12 +2,11 @@ import ChunkseeKit
 import CoreGraphics
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct LiveDimensionCatalogTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct LiveDimensionCatalogTests {
     private final class Fixture {
         let url: URL
-        let suite: String
         let defaults: UserDefaults
         let model: AppModel
         var sessions: [WorldSession] = []
@@ -17,8 +16,7 @@ import Testing
         init() throws {
             let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
             url = try TestWorld.make(chunks: [chunk])
-            suite = "ChunkseeTests-\(UUID())"
-            defaults = UserDefaults(suiteName: suite)!
+            defaults = TestDefaults.make()
             model = AppModel(defaults: defaults, cacheRoot: nil)
             model.worldFolders.remember(url)
         }
@@ -66,7 +64,6 @@ import Testing
             resources.forEach { $0.close() }
             for session in sessions { await session.waitUntilClosed() }
             for resource in resources { await resource.waitUntilClosed() }
-            defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: url)
         }
     }

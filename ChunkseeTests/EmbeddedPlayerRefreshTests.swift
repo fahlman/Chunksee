@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct EmbeddedPlayerRefreshTests {
+@Suite(.isolatedStores) struct EmbeddedPlayerRefreshTests {
     private func writeLevel(_ url: URL, health: Float?) throws {
         var data: [String: NBT] = ["LevelName": .string("Embedded Player"), "DataVersion": .int(2586)]
         if let health {
@@ -21,7 +21,7 @@ import Testing
         var opened: WorldResources?
         do {
             try writeLevel(url, health: 4)
-            let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+            let defaults = TestDefaults.make()
             let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
             opened = resources

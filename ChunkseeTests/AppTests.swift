@@ -1,9 +1,9 @@
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct WorldDocumentTests {
+@Suite(.isolatedStores) struct WorldDocumentTests {
     @Test func readsOpeningMetadataAndRejectsOtherFolders() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
@@ -36,7 +36,7 @@ import Testing
             if let dataVersion { data["DataVersion"] = .int(dataVersion) }
             try Data(Compression.deflate(NBT.compound(["Data": .compound(data)]).serialized(), gzip: true))
                 .write(to: url.appendingPathComponent("level.dat"))
-            let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+            let defaults = TestDefaults.make()
             return (url, try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil))
         }
         for (dataVersion, isOld) in [(nil, true), (Int32(2730), true), (Int32(2844), false), (Int32(5023), false)] as [(Int32?, Bool)] {
@@ -65,7 +65,7 @@ import Testing
                                        ([readable], false)] as [([TestWorld.ChunkSpec], Bool)] {
             let url = try TestWorld.make(chunks: chunks)   // level data at 5023
             defer { try? FileManager.default.removeItem(at: url) }
-            let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+            let defaults = TestDefaults.make()
             let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
             await session.search.waitForIndex()
             #expect(session.isSavedBeforeReadableFormat == isUnreadable, "chunks: \(chunks.count)")
@@ -78,12 +78,12 @@ import Testing
     @Test func manyOpenWorldsHaveIndependentLifetimes() async throws {
         let urls = try (0..<12).map { _ in try TestWorld.make(chunks: []) }
         defer { for url in urls { try? FileManager.default.removeItem(at: url) } }
-        let model = AppModel(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!)
+        let model = AppModel(defaults: TestDefaults.make(), cacheRoot: nil)
         var sessions: [WorldSession] = []
         for url in urls {
             let snapshot = try await WorldSnapshot.read(url)
             sessions.append(WorldSession(snapshot: snapshot, names: model.names, savedSearches: model.savedSearches,
-                                         defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!, cacheRoot: nil))
+                                         defaults: TestDefaults.make(), cacheRoot: nil))
         }
         let first = sessions[0]
         sessions[1].close()
@@ -97,12 +97,12 @@ import Testing
     }
 }
 
-@Suite struct RegionReadLifetimeTests {
+@Suite(.isolatedStores) struct RegionReadLifetimeTests {
     @Test func theDocumentSessionDoesNotFinishClosingUntilItsRegionReadReturns() async throws {
         let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let gate = AsyncReadGate<RegionData>()
         let session = WorldSession(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,

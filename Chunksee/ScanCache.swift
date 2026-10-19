@@ -28,7 +28,7 @@ nonisolated struct ScanCache: Sendable {
     static let off = ScanCache(directory: nil)
 
     /// The scans folder inside a dimension's tile folder, where tile pruning also covers it.
-    init(forWorldAt world: URL, dimensionID: String, root: URL? = TileCache.root) {
+    init(forWorldAt world: URL, dimensionID: String, root: URL?) {
         directory = TileCache.directory(forWorldAt: world, dimensionID: dimensionID, root: root)?
             .appendingPathComponent("scans", isDirectory: true)
     }

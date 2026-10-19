@@ -2,20 +2,19 @@ import AppKit
 import ChunkseeKit
 import CoreGraphics
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct CutawayTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct CutawayTests {
     private final class Fixture {
         let url: URL
         let defaults: UserDefaults
-        let suite = "ChunkseeTests-\(UUID())"
         var maps: [MapModel] = []
         var resources: [WorldResources] = []
         let tiles = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let blocks = AsyncReadGate<MapModel.TopBlockRead?>()
 
         init() throws {
-            defaults = UserDefaults(suiteName: suite)!
+            defaults = TestDefaults.make()
             url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
                 palette: ["minecraft:air", "minecraft:grass_block", "minecraft:stone", "minecraft:bedrock"]) { _, y, _ in
                 y == 15 ? 3 : y == 10 ? 2 : y <= 2 ? 1 : 0
@@ -31,7 +30,6 @@ import Testing
             await blocks.finishAll(with: nil)
             for map in maps { await map.waitForRenders() }
             for resource in resources { await resource.waitUntilClosed() }
-            defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -190,9 +188,9 @@ import Testing
     }
 
     @Test func movedViewsMergeDimensionHeightsAndOlderPreferencesDefaultToSurface() {
-        let suite = "ChunkseeTests-\(UUID())", old = URL(fileURLWithPath: "/Cutaway Old"), new = URL(fileURLWithPath: "/Cutaway New")
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let old = URL(fileURLWithPath: "/Cutaway Old"), new = URL(fileURLWithPath: "/Cutaway New")
+        let defaults = TestDefaults.make()
+
         let source = RememberedViews(world: old, defaults: defaults), target = RememberedViews(world: new, defaults: defaults)
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
         source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil)

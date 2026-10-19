@@ -1,8 +1,8 @@
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct VillagerTextTests {
+@Suite(.isolatedStores) struct VillagerTextTests {
     func creature(level: Int32? = nil, job: String = "minecraft:farmer") throws -> Creature {
         var data: [String: NBT] = ["profession": .string(job)]
         if let level { data["level"] = .int(level) }

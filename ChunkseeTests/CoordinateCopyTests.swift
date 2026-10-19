@@ -2,9 +2,9 @@ import AppKit
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.serialized) struct CoordinateCopyTests {
+@Suite(.isolatedStores, .serialized) struct CoordinateCopyTests {
     private let size = CGSize(width: 400, height: 300)
 
     private func world(roof: Bool = false) throws -> URL {
@@ -119,7 +119,7 @@ import Testing
                        "Pos": .list([.double(-3.7), .double(-22.3), .double(-13.2)])]),
         ])])
         try Data(TestWorld.regionFile([.init(x: -1, z: -1, nbt: pets)])).write(to: entities.appendingPathComponent("r.-1.-1.mca"))
-        let defaults = try #require(UserDefaults(suiteName: "ChunkseeTests-\(UUID())"))
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()

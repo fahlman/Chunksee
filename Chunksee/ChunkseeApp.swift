@@ -1,9 +1,10 @@
 import SwiftUI
 
+#if !CHUNKSEE_TEST_HOST
 @main
 struct ChunkseeApp: App {
     @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
-    @State private var model = AppModel()
+    @State private var model = AppModel(defaults: .standard, cacheRoot: TileCache.root)
     @FocusedValue(\.worldSession) private var focusedSession
 
     var body: some Scene {
@@ -30,3 +31,4 @@ struct ChunkseeApp: App {
         }
     }
 }
+#endif

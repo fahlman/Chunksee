@@ -340,7 +340,15 @@ Run action uses `script/build_and_run.sh`, which defaults to Release and quits t
 before rebuilding and opening the new bundle. `--debug` explicitly selects Debug.
 
 - **Scheme:** `Chunksee` is shared and tracked. It builds the app and runs `ChunkseeTests`
-  (Swift Testing).
+  (Swift Testing) in `ChunkseeTestHost`, a separate target with the fixed bundle ID
+  `com.fahlsing.Chunksee.Tests`. The host compiles the same app sources but starts an empty
+  settings scene instead of creating the real app's stores or restoring documents. Tests import
+  that host module. The ordinary app target is not built for testing.
+- `ChunkseeApp` alone supplies `.standard` and `TileCache.root`; all store/cache consumers require
+  explicit arguments. Tests use `TestDefaults.make()` inside `.isolatedStores` suites. The trait
+  removes every suite's persistent domain and `.plist` after the async test returns, including
+  failures, and fails if the host's standard domain changed. Every test suite carries this trait.
+  Cache tests pass their own temporary roots or `nil`.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running

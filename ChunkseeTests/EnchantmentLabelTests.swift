@@ -1,8 +1,8 @@
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct EnchantmentLabelTests {
+@Suite(.isolatedStores) struct EnchantmentLabelTests {
     @Test func firstLevelsRemainVisibleInDecodedEquipmentAndTrades() throws {
         let item = try #require(ItemStack(.compound([
             "id": .string("minecraft:diamond_sword"), "count": .int(1),

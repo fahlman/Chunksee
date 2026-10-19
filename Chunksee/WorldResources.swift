@@ -78,7 +78,7 @@ final class WorldResources {
     /// Tests that inject file changes substitute the watcher so real notifications cannot race
     /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
-         defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+         defaults: UserDefaults, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {

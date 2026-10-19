@@ -31,7 +31,7 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
-    static func worldFolder(forWorldAt world: URL, root: URL? = TileCache.root) -> URL? {
+    static func worldFolder(forWorldAt world: URL, root: URL?) -> URL? {
         // A stable FNV-1a hash of the world's path keeps different worlds' tiles apart.
         var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in world.standardizedFileURL.path.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
@@ -39,7 +39,7 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The cache directory for one dimension of one world, by default inside the app's Caches folder.
-    static func directory(forWorldAt world: URL, dimensionID: String, root: URL? = TileCache.root) -> URL? {
+    static func directory(forWorldAt world: URL, dimensionID: String, root: URL?) -> URL? {
         // Replacing punctuation with underscores aliases valid IDs such as ice-caves/ice_caves.
         // Old folders may contain another dimension's data, so don't migrate their contents.
         let dimension = SHA256.hash(data: Data(dimensionID.utf8)).map { String(format: "%02x", $0) }.joined()

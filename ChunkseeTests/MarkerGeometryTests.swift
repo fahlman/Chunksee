@@ -4,9 +4,9 @@ import CryptoKit
 import Foundation
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct MarkerGeometryTests {
+@Suite(.isolatedStores) struct MarkerGeometryTests {
     private let size = CGSize(width: 440, height: 240)
 
     private func pet() throws -> CreatureMarker {

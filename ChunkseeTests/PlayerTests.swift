@@ -3,9 +3,9 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct PlayerMarkerTests {
+@Suite(.isolatedStores) struct PlayerMarkerTests {
     let you = UUID(uuidString: "52DFB519-DE9C-47E6-BC6C-BB053CC423E7")!
     let friend = UUID(uuidString: "06D119DA-BC79-410F-8F7B-062CE442A86D")!
     let bukkit = UUID(uuidString: "11C0E607-2120-4B62-A7E5-938F830B3CE7")!
@@ -57,7 +57,7 @@ import Testing
     }
 }
 
-@Suite struct PlayerNameTests {
+@Suite(.isolatedStores) struct PlayerNameTests {
     let friend = UUID(uuidString: "06D119DA-BC79-410F-8F7B-062CE442A86D")!
     let you = UUID(uuidString: "52DFB519-DE9C-47E6-BC6C-BB053CC423E7")!
 
@@ -79,9 +79,9 @@ import Testing
     }
 
     func freshDefaults() -> UserDefaults {
-        let name = "ChunkseeTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
+
+        let defaults = TestDefaults.make()
+
         return defaults
     }
 
@@ -141,7 +141,7 @@ import Testing
     }
 }
 
-@Suite struct PlayerLayerTests {
+@Suite(.isolatedStores) struct PlayerLayerTests {
     @Test func hiddenPlayersLoseTheirMarkersAndStayHidden() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
@@ -151,7 +151,7 @@ import Testing
         let nbt = NBT.compound(["DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
                                 "Pos": .list([.double(1), .double(64), .double(2)])])
         try Data(Compression.deflate(nbt.serialized(), gzip: true)).write(to: players.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         #expect(!first.mapContent.players.isEmpty)
         first.visibility.hiddenPlayers.insert(uuid)
@@ -163,7 +163,7 @@ import Testing
     }
 }
 
-@Suite struct ItemAppearanceTests {
+@Suite(.isolatedStores) struct ItemAppearanceTests {
     @Test func symbolsAndTintsByCategoryAndMaterial() {
         #expect(ItemAppearance.symbol(for: "minecraft:diamond_pickaxe") == "hammer.fill")
         #expect(ItemAppearance.symbol(for: "minecraft:iron_chestplate") == "tshirt.fill")
@@ -188,7 +188,7 @@ import Testing
     }
 }
 
-@Suite struct PlayerRecordsTests {
+@Suite(.isolatedStores) struct PlayerRecordsTests {
     @Test func namesRankingsAndDistances() {
         #expect(PlayerRecords.travelName("minecraft:aviate_one_cm") == "Elytra")
         #expect(PlayerRecords.travelName("minecraft:boat_one_cm") == "Boat")

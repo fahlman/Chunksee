@@ -1,8 +1,8 @@
 import AppKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct ReadOnlyDocumentMenuTests {
+@Suite(.isolatedStores) struct ReadOnlyDocumentMenuTests {
     @Test func menuNotificationsDoNotMutateAnInProgressNativeUpdate() async {
         let original = NSApp.mainMenu
         defer { NSApp.mainMenu = original }

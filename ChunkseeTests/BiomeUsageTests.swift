@@ -1,9 +1,9 @@
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct BiomeUsageTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct BiomeUsageTests {
     private final class Fixture {
         let url: URL
         var readers: [RegionReader] = []

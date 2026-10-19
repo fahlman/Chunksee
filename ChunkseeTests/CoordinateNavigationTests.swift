@@ -1,8 +1,8 @@
 import CoreGraphics
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct CoordinateNavigationTests {
+@Suite(.isolatedStores) struct CoordinateNavigationTests {
     @Test func signedCoordinatesAcceptPastedMinusAndWhitespace() {
         #expect(MapCoordinates(x: "−266", z: "71")?.position == CGPoint(x: -266, y: 71))
         #expect(MapCoordinates(x: "  -266\n", z: " +71 ")?.position == CGPoint(x: -266, y: 71))

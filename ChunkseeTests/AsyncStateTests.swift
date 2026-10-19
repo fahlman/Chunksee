@@ -2,10 +2,10 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct NameSourceLifetimeTests {
-    func defaults() -> UserDefaults { UserDefaults(suiteName: "ChunkseeTests-\(UUID())")! }
+@Suite(.isolatedStores) struct NameSourceLifetimeTests {
+    func defaults() -> UserDefaults { TestDefaults.make() }
 
     @Test func turningLookupOffCancelsTheRequestAndStopsTheBatch() async {
         let gate = AsyncReadGate<(Data, Int)>()
@@ -70,7 +70,7 @@ import Testing
     }
 }
 
-@Suite struct SharedNameReadTests {
+@Suite(.isolatedStores) struct SharedNameReadTests {
     @Test func requestTracksThePlayerRosterWithoutDependingOnItsPositionsOrOrder() async {
         let first = UUID(), second = UUID()
         func player(_ uuid: UUID, x: Double?) -> PlayerInfo {
@@ -79,7 +79,7 @@ import Testing
             return PlayerInfo(uuid: uuid, nbt: .compound(fields))
         }
         let gate = AsyncReadGate<(Data, Int)>()
-        let names = PlayerNames(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!,
+        let names = PlayerNames(defaults: TestDefaults.make(),
                                 mojang: MojangProfiles(fetch: { await gate.read($0.lastPathComponent) }))
         names.looksUpOnline = true
         let request = names.request(for: [player(first, x: 0), player(second, x: nil)])
@@ -101,7 +101,7 @@ import Testing
         let gate = AsyncReadGate<[UUID: String]>()
         let folder = try TestWorld.make(chunks: []), uuid = UUID()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let names = PlayerNames(defaults: defaults, readCaches: { await gate.read($0.path) })
         let first = Task.immediate { await names.chooseMinecraftFolder(folder) }
         await gate.waitForRequest(folder.path)
@@ -121,7 +121,7 @@ import Testing
     @Test func closingTheRequestingDocumentDoesNotDiscardTheGloballyDeduplicatedProfile() async {
         let uuid = UUID(), gate = AsyncReadGate<(Data, Int)>()
         let key = MojangProfiles.profileURL(for: uuid).lastPathComponent
-        let names = PlayerNames(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!,
+        let names = PlayerNames(defaults: TestDefaults.make(),
                                 mojang: MojangProfiles(fetch: { await gate.read($0.lastPathComponent) }))
         names.looksUpOnline = true
         let first = Task.immediate { await names.lookUp([uuid]) }
@@ -137,7 +137,7 @@ import Testing
     }
 }
 
-@Suite struct InspectorReadLifetimeTests {
+@Suite(.isolatedStores) struct InspectorReadLifetimeTests {
     @Test func thePreviousPlayerCannotReplaceTheCurrentPlayersRecords() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
@@ -159,14 +159,14 @@ import Testing
     }
 }
 
-@Suite struct SearchRequestLifetimeTests {
+@Suite(.isolatedStores) struct SearchRequestLifetimeTests {
     func hit(_ name: String) -> SearchHit {
         SearchHit(id: name, source: .sign, dimension: "minecraft:overworld", position: .zero, y: 64,
                   title: name, detail: name, count: 1)
     }
 
     @Test func editingKeepsTheDisplayedResultsAndReusesCompletedSavedSearches() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
@@ -200,7 +200,7 @@ import Testing
     }
 
     @Test func editingDoesNotCancelOrRepeatAPendingSavedSearch() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
@@ -223,7 +223,7 @@ import Testing
     }
 
     @Test func sourceChangesKeepSnapshotsUntilTheirReplacementsArrive() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
@@ -251,7 +251,7 @@ import Testing
     }
 
     @Test func anOldQueryCannotPublishOverTheNewQuery() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], playerSnapshot: PlayerSnapshot([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
@@ -270,7 +270,7 @@ import Testing
     }
 
     @Test func sharedNameChangesReplaceTheQuerySnapshot() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!, uuid = UUID()
+        let defaults = TestDefaults.make(), uuid = UUID()
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"Known"}"#.utf8), 200) }))
         names.looksUpOnline = true
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))

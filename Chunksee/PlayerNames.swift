@@ -73,7 +73,7 @@ final class PlayerNames {
         static let folder = "minecraftFolderBookmark"
     }
 
-    init(defaults: UserDefaults = .standard, mojang: MojangProfiles = MojangProfiles(),
+    init(defaults: UserDefaults, mojang: MojangProfiles = MojangProfiles(),
          readCaches: @escaping @Sendable (URL) async -> [UUID: String] = PlayerNames.readLocalCaches) {
         self.defaults = defaults
         self.mojang = mojang

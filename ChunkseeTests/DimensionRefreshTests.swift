@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct DimensionRefreshTests {
+@Suite(.isolatedStores) struct DimensionRefreshTests {
     private let ids = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"]
 
     private func world() throws -> URL {
@@ -21,7 +21,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let reads = RegionReads()
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in await reads.read(dimension.id) })
@@ -48,7 +48,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let reads = RegionReads()
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in await reads.read(dimension.id) })

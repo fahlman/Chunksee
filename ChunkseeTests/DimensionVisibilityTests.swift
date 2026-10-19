@@ -1,17 +1,17 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct DimensionVisibilityTests {
+@Suite(.isolatedStores) struct DimensionVisibilityTests {
     @Test func dimensionTabsRetainTheirOwnControlsWhenAnotherTabChangesAndAfterReopening() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
-        let suiteName = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let defaults = TestDefaults.make()
+
         let hidden = UUID()
         func sessions() async throws -> [WorldSession] {
             let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
@@ -63,9 +63,9 @@ import Testing
     }
 
     @Test func oldPreferencesSeedEachDimensionOnceWithoutBecomingSharedLiveSettings() {
-        let suiteName = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let defaults = TestDefaults.make()
+
         let url = URL(fileURLWithPath: "/Visibility Migration")
         defaults.set(["mineshaft"], forKey: "shownStructureGroups")
         defaults.set([String](), forKey: "shownCreatureGroups")
@@ -84,9 +84,9 @@ import Testing
     }
 
     @Test func worldsAreIndependentAndRelocationPreservesEveryDimension() {
-        let suiteName = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let defaults = TestDefaults.make()
+
         let first = URL(fileURLWithPath: "/First World"), second = URL(fileURLWithPath: "/Second World")
         let moved = URL(fileURLWithPath: "/Moved World")
         let overworld = LayerVisibility(world: first, dimension: "minecraft:overworld", defaults: defaults)
