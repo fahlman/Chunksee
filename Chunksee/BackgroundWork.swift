@@ -39,21 +39,33 @@ final class BackgroundWork {
         while let task = tasks.values.first?.task { await task.value }
     }
 
+    /// Drains a consumer's related scopes together, including work added to an earlier scope
+    /// while another finishes. Scopes must belong to this owner.
+    func waitUntilFinished(in scopes: [Scope]) async {
+        precondition(scopes.allSatisfy { $0.owner === self })
+        await waitUntilFinished(inIDs: Set(scopes.map(\.id)))
+    }
+
     private func cancel(in scope: UUID) {
         for entry in tasks.values where entry.scope == scope { entry.task.cancel() }
     }
 
     private func waitUntilFinished(in scope: UUID) async {
-        while let task = tasks.values.first(where: { $0.scope == scope })?.task { await task.value }
+        await waitUntilFinished(inIDs: [scope])
+    }
+
+    private func waitUntilFinished(inIDs scopes: Set<UUID>) async {
+        while let task = tasks.values.first(where: { $0.scope.map(scopes.contains) == true })?.task { await task.value }
     }
 
     /// One consumer's task group. Canceled/replaced reads remain in the world's registry
     /// until they finish, while a local drain never waits for another consumer's work.
     final class Scope {
-        private let owner: BackgroundWork
-        private let id = UUID()
+        fileprivate let owner: BackgroundWork
+        fileprivate let id = UUID()
         private var closed = false
         var isClosed: Bool { closed || owner.isClosed }
+        var unfinishedCount: Int { owner.tasks.values.reduce(0) { $0 + ($1.scope == id ? 1 : 0) } }
 
         fileprivate init(owner: BackgroundWork) { self.owner = owner }
 
