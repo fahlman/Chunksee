@@ -457,7 +457,11 @@ The Slime Chunks toggle is initially off and remembered per dimension. It is ava
 the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
-change the seed rule. Closing cancels and drains mask generation. The center's chunk status is
+change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer
+retains its single active handle for hide/close cancellation and local draining; hiding and then
+showing resumes missing masks after the canceled pass finishes. World close cancels/drains the
+registered task and prevents late publication or a following pass. Closing one layer leaves its
+siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
 Player listing uses the session's one dimension-listing fallback, shared with saved places and
