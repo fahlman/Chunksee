@@ -82,7 +82,7 @@ import Testing
             let first = try await f.open(f.url.appendingPathComponent("dimensions/minecraft/overworld"))
             let resources = first.resources, oldMap = try #require(first.map)
             await resources.index.waitForIndex()
-            first.goToCoordinates(CGPoint(x: 101, y: -202))
+            first.navigation.goToCoordinates(CGPoint(x: 101, y: -202))
             first.visibility.showsGrid = true
             let view = oldMap.viewport
             #expect(first.navigation.canGoBack)

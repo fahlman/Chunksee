@@ -113,7 +113,7 @@ final class MapModel {
     private var queue: [RegionPosition] = []
     private var inFlight: [RegionPosition: Job] = [:]
     private var nextJobID = 0
-    private var isClosed: Bool { renderWork.isClosed }
+    var isClosed: Bool { renderWork.isClosed }
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     private func startQueued() {
