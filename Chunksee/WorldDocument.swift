@@ -345,6 +345,7 @@ struct WorldDocumentView: View {
                     .task { await openInstead(dimensions) }
             } else if let session = document.session {
                 WorldView(session: session)
+                    .background(DocumentWindowTitle(title: session.selectedDimensionID.map { session.dimensionName($0) } ?? session.displayName))
                     .id(ObjectIdentifier(session))
                     // Capture only the action: the session must not keep its own view or document alive.
                     .onAppear { session.openDocument = { [openDocument] in try await openDocument(at: $0) } }

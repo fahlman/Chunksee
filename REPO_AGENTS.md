@@ -74,11 +74,12 @@ and location/detail rows. Colliding readable labels include their full IDs; uniq
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
 well as items. Structures retain their variant word order; the three vanilla dimension labels
-remain localized. Names do not replace identifiers or native document folder titles.
+remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
+subtitle. Names do not replace identifiers or document URLs.
 
 | File | Owns |
 |---|---|
-| `ChunkseeApp.swift`, `WorldDocument.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime and moves |
+| `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, immutable player publication, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
@@ -118,9 +119,15 @@ opens the dimension folders with SwiftUI's `openDocument` and then closes itself
 Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
 to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
 The opening action captures only `openDocument`, so a view never keeps its own document alive.
-macOS names each window and Open Recent item after its folder (`overworld`, `the_nether`,
-`the_end`), so the window subtitle names the world. Each dimension's
-map position is remembered in `RememberedViews`.
+Native window and tab titles use `WorldSession.dimensionName(_:)`, the same localized,
+collision-safe name as the menus. URL-based DocumentGroup in macOS 27 retains folder titles
+with navigationTitle at the document root, split-view root or map detail (verified in Release).
+The small DocumentWindowTitle view sets only NSDocument.displayName through its existing
+window controller; SwiftUI still owns the document, URL, window and native tabs. A view-scoped
+observation reapplies the model’s display name if native restoration resets it; moving or closing
+the view ends that observation. The adapter never edits a file URL or document contents.
+The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
+Each dimension's map position is remembered in `RememberedViews`.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,
