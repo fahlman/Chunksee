@@ -488,7 +488,9 @@ selection transition. Selecting an item without details closes previous pet/play
 (Ryan, 2026-10-17, fahlman/Chunksee#167). Empty/stale map input clears transient row/pin selection
 while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
 VoiceOver marker actions select the corresponding native sidebar row. Only user
-input through the List selection binding calls `choose` and requests sidebar focus. Pointer
+input through the List selection binding calls `choose` and requests sidebar focus. A simultaneous
+sidebar tap also requests its existing focus, including when the already-selected row leaves the
+binding unchanged; it does not select, navigate or replace native row/control actions. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
 one action shared with the behavioral tests. Search pins
