@@ -343,7 +343,10 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   (Swift Testing) in `ChunkseeTestHost`, a separate target with the fixed bundle ID
   `com.fahlsing.Chunksee.Tests`. The host compiles the same app sources but starts an empty
   settings scene instead of creating the real app's stores or restoring documents. Tests import
-  that host module. The ordinary app target is not built for testing.
+  that host module. The test action defaults to Release, matching Ryan's configuration preference;
+  the host and test targets enable testability in Release so Command-U and plain `xcodebuild test`
+  work without a command-line override. The ordinary app target is not built for testing and
+  does not enable testability in Release.
 - `ChunkseeApp` alone supplies `.standard` and `TileCache.root`; all store/cache consumers require
   explicit arguments. Tests use `TestDefaults.make()` inside `.isolatedStores` suites. The trait
   removes every suite's persistent domain and `.plist` after the async test returns, including
