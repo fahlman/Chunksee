@@ -73,7 +73,7 @@ WorldDetails keeps game rules by saved ID and derives sorted display rows. Wande
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
 disables spawning. Rows use saved IDs so equal readable names remain distinct.
 
-`WorldSession.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
+`DimensionPresentation.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
 and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
@@ -90,7 +90,8 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search, selection and annotation models; supplies the remaining shared-world presentation |
+| `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
+| `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
@@ -133,7 +134,7 @@ opens the dimension folders with SwiftUI's `openDocument` and then closes itself
 Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
 to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
 The opening action captures only `openDocument`, so a view never keeps its own document alive.
-Native window and tab titles use `WorldSession.dimensionName(_:)`, the same localized,
+Native window and tab titles use `DimensionPresentation.dimensionName(_:)`, the same localized,
 collision-safe name as the menus. URL-based DocumentGroup in macOS 27 retains folder titles
 with navigationTitle at the document root, split-view root or map detail (verified in Release).
 The small DocumentWindowTitle view sets only NSDocument.displayName through its existing
@@ -480,6 +481,12 @@ selection and cross-dimension routing; SavedPlaces remains the sole persistent p
 Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
 MapContent constructs its value directly from the document’s live models for drawing and export.
 It keeps no document reference or separate cache; SwiftUI observation follows those same models.
+DimensionPresentation supplies the shared labels and listings directly from WorldResources,
+SearchModel and LayerVisibility. It holds only a weak document reference, with no copied snapshot,
+observation storage, task or lifetime flag; observation reaches the existing data owners. Linked
+pets use the same projection, while MapImage owns the export entry point. WorldSession retains
+composition, native document lifetime and view restoration/persistence, not presentation forwarding.
+Tests call WorldResources directly for live-refresh control.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
@@ -577,7 +584,7 @@ registered task and prevents late publication or a following pass. Closing one l
 siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
-Player listing uses the session's one dimension-listing fallback, shared with saved places and
+Player listing uses DimensionPresentation's one dimension-listing fallback, shared with saved places and
 search results. Map content and map-click validation consume the same drawn-player marker
 collection, including hidden-player filtering. PlayerPresentation supplies the valid saved
 locations to both the map and inspector; invalid coordinates are excluded consistently,

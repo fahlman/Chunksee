@@ -80,11 +80,11 @@ import Testing
         try await withFixture { f in
             let session = try await f.open()
             await session.resources.index.waitForIndex()
-            let portal = try #require(session.portalsByDimension["minecraft:overworld"]?.first)
+            let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             #expect(session.dimensions.map(\.id) == ["minecraft:overworld"])
-            #expect(!session.resources.index.isIndexing && session.link(for: portal) == nil)
-            #expect(!session.isWaitingForPortalLink(portal))
-            #expect(session.portalsByDimension["minecraft:the_nether"] == nil)
+            #expect(!session.resources.index.isIndexing && session.presentation.link(for: portal) == nil)
+            #expect(!session.presentation.isWaitingForPortalLink(portal))
+            #expect(session.presentation.portalsByDimension["minecraft:the_nether"] == nil)
         }
     }
 
@@ -93,13 +93,13 @@ import Testing
             try f.addTarget()
             let (session, gate) = try await f.controlled()
             await gate.waitForRequest("nether")
-            let portal = try #require(session.portalsByDimension["minecraft:overworld"]?.first)
-            #expect(session.isWaitingForPortalLink(portal) && session.link(for: portal) == nil)
+            let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
+            #expect(session.presentation.isWaitingForPortalLink(portal) && session.presentation.link(for: portal) == nil)
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
-            #expect(!session.isWaitingForPortalLink(portal))
-            #expect(session.portalsByDimension["minecraft:the_nether"]?.isEmpty == true)
-            if case .wouldCreateNewPortal? = session.link(for: portal) {} else { Issue.record("Known-empty target lost its existing prediction") }
+            #expect(!session.presentation.isWaitingForPortalLink(portal))
+            #expect(session.presentation.portalsByDimension["minecraft:the_nether"]?.isEmpty == true)
+            if case .wouldCreateNewPortal? = session.presentation.link(for: portal) {} else { Issue.record("Known-empty target lost its existing prediction") }
         }
     }
 
@@ -107,17 +107,17 @@ import Testing
         try await withFixture { f in
             let (session, gate) = try await f.controlled()
             await session.resources.index.waitForIndex()
-            let portal = try #require(session.portalsByDimension["minecraft:overworld"]?.first)
-            #expect(session.link(for: portal) == nil && !session.isWaitingForPortalLink(portal))
+            let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
+            #expect(session.presentation.link(for: portal) == nil && !session.presentation.isWaitingForPortalLink(portal))
             try f.addTarget()
             let snapshot = try await WorldSnapshot.read(f.url)
             session.resources.includeDimensions(from: snapshot)
             snapshot.access.release()
             await gate.waitForRequest("nether")
-            #expect(session.link(for: portal) == nil && session.isWaitingForPortalLink(portal))
+            #expect(session.presentation.link(for: portal) == nil && session.presentation.isWaitingForPortalLink(portal))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
-            #expect(!session.isWaitingForPortalLink(portal) && session.link(for: portal) != nil)
+            #expect(!session.presentation.isWaitingForPortalLink(portal) && session.presentation.link(for: portal) != nil)
         }
     }
 
@@ -126,13 +126,13 @@ import Testing
             try f.addTarget()
             let (session, gate) = try await f.controlled()
             await gate.waitForRequest("nether")
-            let portal = try #require(session.portalsByDimension["minecraft:overworld"]?.first)
+            let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             let unsupported = NetherPortal(dimension: "example:sky", blocks: [.init(x: 8, y: 2, z: 8)])
-            #expect(session.link(for: unsupported) == nil && !session.isWaitingForPortalLink(unsupported))
-            #expect(session.isWaitingForPortalLink(portal))
+            #expect(session.presentation.link(for: unsupported) == nil && !session.presentation.isWaitingForPortalLink(unsupported))
+            #expect(session.presentation.isWaitingForPortalLink(portal))
             session.resources.close()
             await gate.waitForCancellation("nether")
-            #expect(!session.isWaitingForPortalLink(portal))
+            #expect(!session.presentation.isWaitingForPortalLink(portal))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.waitUntilClosed()
             #expect(!session.resources.index.isWaitingForPortals(in: "minecraft:the_nether"))

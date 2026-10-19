@@ -15,7 +15,7 @@ final class MapAnnotations {
 
     var listedPlaces: [SavedPlace] {
         guard let source else { return [] }
-        return source.savedPlaces.all.filter { source.lists($0.dimension) }
+        return source.savedPlaces.all.filter { source.presentation.lists($0.dimension) }
     }
 
     func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {

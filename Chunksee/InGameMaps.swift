@@ -49,8 +49,8 @@ struct InGameMapRow: View {
         }
         .tag(SidebarItem.inGameMap(map.id))
         .id(SidebarItem.inGameMap(map.id))
-        .selectionDisabled(!session.canShow(map))
-        .help(session.canShow(map) ? "Show this map where it belongs on the world map"
+        .selectionDisabled(!session.presentation.canShow(map))
+        .help(session.presentation.canShow(map) ? "Show this map where it belongs on the world map"
                                    : "This map was drawn in a dimension this world no longer has")
     }
 }

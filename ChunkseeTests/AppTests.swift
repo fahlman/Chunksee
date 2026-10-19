@@ -41,9 +41,9 @@ import Testing
         }
         for (dataVersion, isOld) in [(nil, true), (Int32(2730), true), (Int32(2844), false), (Int32(5023), false)] as [(Int32?, Bool)] {
             let (url, opened) = try await session(dataVersion: dataVersion)
-            #expect(opened.isSavedBeforeReadableFormat == isOld, "data version \(String(describing: dataVersion))")
+            #expect(opened.presentation.isSavedBeforeReadableFormat == isOld, "data version \(String(describing: dataVersion))")
             await opened.search.waitForIndex()
-            #expect(opened.possibleBiomes.isEmpty == isOld)   // no "(0)" rows for a world that can't be read
+            #expect(opened.presentation.possibleBiomes.isEmpty == isOld)   // no "(0)" rows for a world that can't be read
             opened.close()
             await opened.waitUntilClosed()
             try? FileManager.default.removeItem(at: url)
@@ -68,8 +68,8 @@ import Testing
             let defaults = TestDefaults.make()
             let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
             await session.search.waitForIndex()
-            #expect(session.isSavedBeforeReadableFormat == isUnreadable, "chunks: \(chunks.count)")
-            #expect(session.possibleBiomes.isEmpty == isUnreadable)
+            #expect(session.presentation.isSavedBeforeReadableFormat == isUnreadable, "chunks: \(chunks.count)")
+            #expect(session.presentation.possibleBiomes.isEmpty == isUnreadable)
             session.close()
             await session.waitUntilClosed()
         }

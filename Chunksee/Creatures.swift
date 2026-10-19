@@ -96,7 +96,7 @@ struct CreatureDetailView: View {
                 }
                 HealthRow(health: marker.creature.health, maximum: marker.creature.maxHealth)
                 if let owner = marker.creature.owner {
-                    LabeledContent("Tamed By", value: session.name(ofPlayerWith: owner))
+                    LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                     PetDetailRows(creature: marker.creature)
                 }
                 if let villager = marker.creature.villager {

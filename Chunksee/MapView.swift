@@ -115,7 +115,7 @@ struct MapView: View {
         }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Map of \(session.dimensionName(map.dimension.id))"))
+        .accessibilityLabel(Text("Map of \(session.presentation.dimensionName(map.dimension.id))"))
         .accessibilityIdentifier("world-map")
         .accessibilityValue(Text(accessibilityReadout))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))

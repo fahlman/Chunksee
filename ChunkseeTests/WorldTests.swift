@@ -188,7 +188,7 @@ import Testing
         #expect(session.search.isIndexing)
         await session.search.waitForIndex()
         #expect(!session.search.isIndexing)
-        #expect(session.selectedIndex.storage.map(\.name) == ["Golden Apple"])
+        #expect(session.presentation.selectedIndex.storage.map(\.name) == ["Golden Apple"])
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
