@@ -606,7 +606,7 @@ enum StructureTestWorld {
         }
         try write(3, mapNBT(dimension: .string("minecraft:overworld"), scale: 1, x: 256, z: -2432))
         try write(4, mapNBT(dimension: .string("minecraft:overworld"), drawn: false))   // blank
-        try write(5, mapNBT(dimension: .byte(15)))                                       // another Bukkit world
+        try write(5, mapNBT(dimension: .byte(15)))                                       // unrecognized numeric dimension
         try write(6, mapNBT(dimension: .string("minecraft:the_nether")))                 // dimension not in this world
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)

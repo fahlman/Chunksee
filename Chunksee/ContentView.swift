@@ -252,18 +252,11 @@ private struct PlayerRow: View {
     }
 
     private var detail: String {
-        if player.isFromBukkitServer {
-            if let world = player.bukkitWorldName { return String(localized: "May be in another world, “\(world)”") }
-            return String(localized: "May be in another world")
-        }
         guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
         return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.dimensionName(position.dimension))
     }
 
     private var help: String {
-        if player.isFromBukkitServer {
-            return String(localized: "This player’s file came from a server with several worlds, so this location may not be in this world.")
-        }
         if session.isOutdated(player) {
             return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
         }
