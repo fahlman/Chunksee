@@ -2,6 +2,7 @@ import ChunkseeKit
 import CoreGraphics
 import CryptoKit
 import Foundation
+import ImageIO
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -234,6 +235,9 @@ import Testing
                 // This bounded baseline/candidate comparison is evidence, not a portable golden
                 // image assertion: system symbol/font rasterization can change with macOS.
                 print("Marker presentation image \(scale) variant=\(variant): \(digest)")
+                let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+                let pixels = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+                Attachment.record(pixels, named: "markers-\(scale)-\(variant).png", as: .png)
             }
         }
     }
