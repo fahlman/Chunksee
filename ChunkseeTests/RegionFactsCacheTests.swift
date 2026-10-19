@@ -82,7 +82,7 @@ import Testing
         let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
         let compressed = try Data(contentsOf: file)
         let data = try (compressed as NSData).decompressed(using: .lzfse) as Data
-        let original = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        let original = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         for invalid in ["transform", "interpretation", "fingerprint", "dimension", "options"] {
             var entry = original
             var saved = try #require(entry["facts"] as? [String: Any])
@@ -94,12 +94,33 @@ import Testing
             default: saved["biomeSampleY"] = 64
             }
             entry["facts"] = saved
-            let invalidData = try PropertyListSerialization.data(fromPropertyList: entry, format: .binary, options: 0)
+            let invalidData = try JSONSerialization.data(withJSONObject: entry)
             try ((invalidData as NSData).compressed(using: .lzfse) as Data).write(to: file)
             #expect(cache.load(key) == nil)
         }
         try compressed.write(to: file)
         #expect(cache.load(key)?.containers.count == 1)
+    }
+
+    @Test func cachePreservesIntegerLimitsAndNonfiniteSavedNumbers() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let components = NBT.compound([
+            "minimum": .long(.min), "maximum": .long(.max),
+            "infinite": .double(.infinity), "negativeInfinite": .float(-.infinity), "notANumber": .double(.nan),
+        ])
+        let facts = try TestWorld.facts(blockEntities: [.compound([
+            "id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
+            "Items": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(1), "components": components])]),
+        ])])
+        let key = ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: facts.options)
+        let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
+        cache.store(facts, key: key)
+        let loaded = try #require(cache.load(key)?.containers.first?.items.first?.components)
+        #expect(loaded["minimum"] == .long(.min) && loaded["maximum"] == .long(.max))
+        #expect(loaded["infinite"] == .double(.infinity) && loaded["negativeInfinite"] == .float(-.infinity))
+        #expect(loaded["notANumber"]?.double?.isNaN == true)
     }
 
     @Test func failedReadsKeepPreviousIndexAndHeatUntilACompleteReplacementOrDeletion() async throws {

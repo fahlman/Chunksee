@@ -163,6 +163,9 @@ ChunkseeKit's normal prediction. The prediction footer appears only with an actu
 one `RegionFacts` envelope per region, validating all three file fingerprints, scan options,
 `RegionFacts.interpretationVersion` and `ScanCache.transformVersion`. Old per-part entries are
 ignored and removed after a successful replacement. Scans request the app's notable block IDs;
+the complete envelope uses Foundation JSON under LZFSE compression (transform version 2),
+including nonfinite saved numbers. Binary-plist decoding was the dominant measured cache-read
+cost in the first migration; the storage codec does not change the facts or their ownership.
 Nether biome sampling explicitly uses Y64, with surface sampling elsewhere. Kit owns biome usage,
 section counts/heights, formats and inhabited time; RegionIndex only groups those facts for views.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write

@@ -5,7 +5,7 @@ import Foundation
 /// versions determine whether the entry is usable; app presentation is derived after loading.
 nonisolated struct ScanCache: Sendable {
     /// Bump for changes to the app's scan choices/transforms; Kit versions its readers separately.
-    static let transformVersion = 1
+    static let transformVersion = 2
     let directory: URL?
     static let off = ScanCache(directory: nil)
 
@@ -49,9 +49,11 @@ nonisolated struct ScanCache: Sendable {
     init(directory: URL?) { self.directory = directory }
 
     func load(_ key: Key) -> RegionFacts? {
+        let decoder = JSONDecoder()
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         guard let file = file(key), let data = try? Data(contentsOf: file),
-              let plist = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              let entry = try? PropertyListDecoder().decode(Entry.self, from: plist),
+              let archive = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              let entry = try? decoder.decode(Entry.self, from: archive),
               entry.transformVersion == Self.transformVersion, entry.fingerprint == key.fingerprint,
               key.matches(entry.facts) else { return nil }
         return entry.facts
@@ -61,10 +63,12 @@ nonisolated struct ScanCache: Sendable {
     /// the new complete envelope has been written successfully.
     func store(_ facts: RegionFacts, key: Key) {
         guard key.matches(facts), let directory, let file = file(key) else { return }
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .binary
+        // Binary-plist decoding of the many typed chunk integers dominated the measured
+        // cached reads on Xcode 27.1. Keep the same facts, using Foundation's JSON codec.
+        let encoder = JSONEncoder()
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         let entry = Entry(transformVersion: Self.transformVersion, fingerprint: key.fingerprint, facts: facts)
-        guard let plist = try? encoder.encode(entry), let data = try? (plist as NSData).compressed(using: .lzfse) as Data else { return }
+        guard let archive = try? encoder.encode(entry), let data = try? (archive as NSData).compressed(using: .lzfse) as Data else { return }
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: directory, withIntermediateDirectories: true)
