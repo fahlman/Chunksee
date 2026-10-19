@@ -163,7 +163,7 @@ final class WorldSession {
         search = SearchModel(readers: [], playerSnapshot: resources.playerSnapshot, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
-        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] })
+        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
         playerRecords = PlayerRecordsModel(world: resources.world)
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
