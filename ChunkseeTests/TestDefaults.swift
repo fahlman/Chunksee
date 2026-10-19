@@ -12,32 +12,34 @@ enum TestDefaults {
     }
 
     final class Scope {
-        private var suites: [(name: String, defaults: UserDefaults)] = []
+        private let directory: URL
+        private var suites: [(domain: String, defaults: UserDefaults)] = []
+
+        init() throws {
+            directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ChunkseeTestPreferences-\(UUID())", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
 
         func make() -> UserDefaults {
-            let name = "ChunkseeTests-\(UUID())"
-            let defaults = UserDefaults(suiteName: name)!
-            suites.append((name, defaults))
+            // Absolute preference domains keep even cfprefsd's delayed empty writes in a
+            // disposable directory. It cannot recreate a deleted parent after the test exits.
+            let domain = directory.appendingPathComponent("suite-\(UUID())").path
+            let defaults = UserDefaults(suiteName: domain)!
+            suites.append((domain, defaults))
             return defaults
         }
 
         func cleanUp() throws {
             for suite in suites {
-                suite.defaults.removePersistentDomain(forName: suite.name)
+                suite.defaults.removePersistentDomain(forName: suite.domain)
                 suite.defaults.synchronize()
-                let file = Self.file(for: suite.name)
-                if FileManager.default.fileExists(atPath: file.path) {
-                    try FileManager.default.removeItem(at: file)
-                }
-                // Reading this domain again recreates an empty plist when the process exits.
-                #expect(!FileManager.default.fileExists(atPath: file.path))
             }
             suites.removeAll()
-        }
-
-        static func file(for name: String) -> URL {
-            FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
-                .appending(path: "Preferences/\(name).plist")
+            if FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.removeItem(at: directory)
+            }
+            #expect(!FileManager.default.fileExists(atPath: directory.path))
         }
     }
 }
@@ -47,7 +49,7 @@ nonisolated struct IsolatedStores: TestTrait, SuiteTrait, TestScoping {
     var isRecursive: Bool { true }
 
     func provideScope(for test: Test, testCase: Test.Case?, performing body: @concurrent @Sendable () async throws -> Void) async throws {
-        let scope = await TestDefaults.Scope()
+        let scope = try await TestDefaults.Scope()
         let monitor = StandardDomainMonitor()
         do {
             try await TestDefaults.$scope.withValue(scope) { try await body() }
@@ -109,7 +111,7 @@ private nonisolated struct StandardDomainMonitor {
 
 @Suite(.isolatedStores) struct TestStoreIsolationTests {
     @Test func cleanupRemovesTheDomainAndItsPlist() throws {
-        let scope = TestDefaults.Scope()
+        let scope = try TestDefaults.Scope()
         let defaults = scope.make()
         defaults.set("temporary", forKey: "isolationProbe")
         defaults.synchronize()
