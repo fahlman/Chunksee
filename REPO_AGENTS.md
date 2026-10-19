@@ -346,6 +346,12 @@ registers with BackgroundWork, keeping its off-main I/O boundary and cancellatio
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
 
+WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
+tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
+drains them through the common registry. The two-second scheduling window, changed-region
+aggregation and newest-player-read publication guard remain owned by WorldResources. It no longer
+keeps another refresh-task dictionary, cancel-all loop or drain loop.
+
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on
 combined rows. Existing model bindings own the settings; the command only toggles its binding.
