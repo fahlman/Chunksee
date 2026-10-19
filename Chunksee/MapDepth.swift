@@ -98,7 +98,9 @@ private struct MapDepthPopover: View {
                     height.wrappedValue = y
                 }
             }
+            .labelsHidden()
             .disabled(map.depth.isSurface)
+            .accessibilityLabel("Cutaway Height")
             .accessibilityIdentifier("cutaway-slider")
             .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
             HStack {
