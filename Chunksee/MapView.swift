@@ -124,7 +124,7 @@ struct MapView: View {
                 ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                     Button {
                         isFocused = true
-                        session.center(on: location.anchor ?? location.position, keepingZoom: true)
+                        session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
                         onSelect(location.target)
                     } label: {
                         Color.clear.frame(width: location.frame.width, height: location.frame.height)

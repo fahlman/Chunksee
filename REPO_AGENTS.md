@@ -99,7 +99,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
-| `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
+| `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
@@ -147,7 +147,9 @@ document's existing MapModel, which remains the only viewport/depth owner. It ow
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
 Native reread/move restoration copies history, viewport and depth into the new model, including
 from an already closed source, without sharing that source's map or history. Cross-dimension
-validation stays with the feature; DimensionRouting dispatches through the native opener. It refers
+location validation and player-focus availability belong to DimensionRouting, which dispatches
+through the native opener. Local marker centering calls MapNavigation directly with X/Z and does
+not invent a saved Y. DimensionRouting refers
 weakly to its source document for identity and closed state, without a second lifetime flag.
 WorldResources keeps the latest waiting app action per destination, shared across source documents;
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,

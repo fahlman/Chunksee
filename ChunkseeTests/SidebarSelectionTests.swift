@@ -200,7 +200,7 @@ import Testing
         defer { session.close() }
         // Listed here, since their dimension is missing, but nothing of theirs is drawn here.
         let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
-        #expect(!session.canFocus(unavailable))
+        #expect(!session.routing.canFocus(unavailable))
         session.visibility.hiddenPlayers = [playerID]
         for stale in [unavailable.uuid, playerID, UUID()] {
             session.selection.mapClicked(.row(.player(stale)))
@@ -221,7 +221,7 @@ import Testing
         // `away` is listed in the Nether; `unplaced` has no position, so the Overworld lists them.
         #expect(!session.listedPlayers.contains { $0.uuid == away })
         let unplacedPlayer = try #require(session.listedPlayers.first { $0.uuid == unplaced })
-        #expect(!session.canFocus(unplacedPlayer))
+        #expect(!session.routing.canFocus(unplacedPlayer))
         let size = CGSize(width: 800, height: 600)
         let viewport = MapViewport(center: .zero, scale: 4)
         session.map?.viewport = viewport
@@ -277,7 +277,7 @@ import Testing
         #expect(session.selection.inspector == nil && session.selection.sidebarSelection == nil)
         // Without a mappable position, their row still shows their details and leaves the map alone.
         let unavailable = try #require(session.listedPlayers.first { $0.uuid == missingDimensionPlayerID })
-        #expect(!session.canFocus(unavailable))
+        #expect(!session.routing.canFocus(unavailable))
         session.selection.choose(.player(unavailable.uuid))
         #expect(session.selection.inspector == .player(unavailable.uuid) && session.map?.viewport == viewport)
         session.close(); await session.waitUntilClosed()

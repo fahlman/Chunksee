@@ -124,25 +124,25 @@ final class SelectionModel {
             source.annotations.visit(place)
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .place(let marker):
             source.visibility.places.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .creature(let marker):
             source.visibility.creatures.insert(marker.group)
-            source.center(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position, keepingZoom: true)
         case .biome(let area):
             source.visibility.biomes.insert(area.group)
-            source.center(on: area.position, keepingZoom: true)
+            source.navigation.focus(on: area.position, keepingZoom: true)
         case .inGameMap(let map):
             guard source.canShow(map) else { return }
             show(map, keepingZoom: true)
         case .player(let player):
             source.visibility.hiddenPlayers.remove(player.uuid)
-            if source.canFocus(player), let position = player.position { source.focus(on: position, keepingZoom: true) }
+            if source.routing.canFocus(player), let position = player.position { source.routing.focus(on: position, keepingZoom: true) }
         case .hit(let hit):
             guard let dimension = hit.dimension, let position = hit.position else { return }
-            source.focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
+            source.routing.focus(on: PlayerInfo.Location(dimension: dimension, x: position.x, y: Double(hit.y ?? 64), z: position.y), keepingZoom: true)
             if case .layer(let layer) = hit.source {
                 switch layer {
                 case .structure(let group): source.visibility.structures.insert(group)
@@ -193,7 +193,7 @@ final class SelectionModel {
     func show(_ portal: NetherPortal, keepingZoom: Bool = false) {
         guard let source else { return }
         if source.routing.route(to: portal.dimension, perform: { $0.selection.show(portal, keepingZoom: keepingZoom) }) { return }
-        source.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
+        source.routing.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
                      keepingZoom: keepingZoom)
         select(.place(PlaceMarker(portal).id))
     }
