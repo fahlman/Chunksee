@@ -50,8 +50,8 @@ struct WorldCommands: Commands {
             Button("Actual Size") { session?.map?.viewport.scale = 1 }
                 .keyboardShortcut("0")
                 .disabled(session?.map == nil)
-            Button("Fit World") { session?.fitWorld() }
-                .disabled(session?.canFitWorld != true)
+            Button("Fit World") { session?.navigation.fitWorld() }
+                .disabled(session?.navigation.canFitWorld != true)
             Divider()
             Toggle("World Info", isOn: Binding {
                 session?.inspector == .world
@@ -77,10 +77,10 @@ struct WorldCommands: Commands {
                 .disabled(session?.ruler.start == nil)
         }
         CommandMenu("Navigate") {
-            Button("Back") { session?.goBack() }
+            Button("Back") { session?.navigation.goBack() }
                 .keyboardShortcut("[")
                 .disabled(session?.navigation.canGoBack != true)
-            Button("Forward") { session?.goForward() }
+            Button("Forward") { session?.navigation.goForward() }
                 .keyboardShortcut("]")
                 .disabled(session?.navigation.canGoForward != true)
             Divider()

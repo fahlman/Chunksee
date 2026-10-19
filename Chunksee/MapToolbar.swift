@@ -17,10 +17,10 @@ struct MapToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            Button("Back", systemImage: "chevron.backward") { session.goBack() }
+            Button("Back", systemImage: "chevron.backward") { session.navigation.goBack() }
                 .disabled(!session.navigation.canGoBack)
                 .help("Go back to the previous map view")
-            Button("Forward", systemImage: "chevron.forward") { session.goForward() }
+            Button("Forward", systemImage: "chevron.forward") { session.navigation.goForward() }
                 .disabled(!session.navigation.canGoForward)
                 .help("Go forward to the next map view")
         }
@@ -42,8 +42,8 @@ struct MapToolbar: ToolbarContent {
                 }
                 .pickerStyle(.inline)
                 Divider()
-                Button("Fit World") { session.fitWorld() }
-                    .disabled(!session.canFitWorld)
+                Button("Fit World") { session.navigation.fitWorld() }
+                    .disabled(!session.navigation.canFitWorld)
             } label: {
                 Text(ZoomPercentage.text(map.viewport.scale))
                     .monospacedDigit()

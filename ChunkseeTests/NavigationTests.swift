@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import Observation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -18,13 +19,13 @@ import Testing
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let map = try #require(session.map)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
-        #expect(!session.canFitWorld) // the dimension has no saved regions
+        #expect(!session.navigation.canFitWorld) // the dimension has no saved regions
         map.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 0.125)
-        session.goToCoordinates(CGPoint(x: -266, y: 71))
+        session.navigation.goToCoordinates(CGPoint(x: -266, y: 71))
         #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
         session.focus(on: .init(dimension: "minecraft:overworld", x: 10, y: 64, z: 20))
         #expect(map.viewport.scale == 2)
-        session.goBack()
+        session.navigation.goBack()
         #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
         session.close()
         await session.waitUntilClosed()
@@ -36,23 +37,23 @@ import Testing
         let map = try #require(session.map)
         let original = MapViewport(center: CGPoint(x: 100.5, y: -199.5), scale: 0.25)
         map.viewport = original
-        session.goToCoordinates(original.center)
+        session.navigation.goToCoordinates(original.center)
         #expect(!session.navigation.canGoBack)
-        session.goToCoordinates(CGPoint(x: -300, y: 40))
+        session.navigation.goToCoordinates(CGPoint(x: -300, y: 40))
         map.viewport.pan(by: CGSize(width: 12, height: -8))
         map.viewport.scale = 8
         let adjusted = map.viewport
-        session.goBack()
+        session.navigation.goBack()
         #expect(map.viewport == original)
         #expect(!session.navigation.canGoBack && session.navigation.canGoForward)
-        session.goToCoordinates(original.center) // a no-op does not discard Forward
+        session.navigation.goToCoordinates(original.center) // a no-op does not discard Forward
         #expect(session.navigation.canGoForward)
-        session.goForward()
+        session.navigation.goForward()
         #expect(map.viewport == adjusted)
-        session.goBack()
-        session.goToCoordinates(CGPoint(x: 5, y: 6))
+        session.navigation.goBack()
+        session.navigation.goToCoordinates(CGPoint(x: 5, y: 6))
         #expect(!session.navigation.canGoForward)
-        session.goBack()
+        session.navigation.goBack()
         #expect(map.viewport == original)
         session.close()
         await session.waitUntilClosed()
@@ -63,7 +64,8 @@ import Testing
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let original = MapViewport(center: CGPoint(x: -100, y: 200), scale: 0.5)
         session.map?.viewport = original
-        session.goToCoordinates(CGPoint(x: 10, y: -20))
+        session.navigation.goToCoordinates(CGPoint(x: 10, y: -20))
+        session.map?.setDepth(MapDepth(y: 12, isSurface: false))
         session.ruler.isEnabled = true
         session.ruler.mark(.zero)
         session.ruler.mark(CGPoint(x: 3, y: 4))
@@ -75,13 +77,53 @@ import Testing
         replacement.restoreView(from: session)
         #expect(replacement.ruler == session.ruler && replacement.ruler.distance == 5)
         #expect(replacement.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
-        replacement.goBack()
+        #expect(replacement.map?.depth == MapDepth(y: 12, isSurface: false))
+        replacement.navigation.goBack()
         #expect(replacement.map?.viewport == original)
+        #expect(session.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
         let (otherURL, other) = try await openWorld()
         defer { other.close(); try? FileManager.default.removeItem(at: otherURL) }
         #expect(!other.navigation.canGoBack && !other.navigation.canGoForward)
         replacement.close(); other.close()
         await replacement.waitUntilClosed(); await other.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func localNavigationStopsWithItsMapAndAReplacementCanRestoreTheClosedSource() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let work = BackgroundWork()
+        let map = MapModel(work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let navigation = MapNavigation(map: map)
+        let original = map.viewport
+        let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
+        var updatesIterator = updates.makeAsyncIterator()
+        let couldGoBack = withObservationTracking { navigation.canGoBack } onChange: { continuation.yield(true) }
+        #expect(!couldGoBack)
+        navigation.goToCoordinates(CGPoint(x: -9, y: 13))
+        let updated = await updatesIterator.next(isolation: #isolation)
+        #expect(updated == true && navigation.canGoBack)
+        map.setDepth(MapDepth(y: 22, isSurface: false))
+        let lastView = map.viewport
+        map.close()
+        navigation.focus(on: CGPoint(x: 500, y: 600))
+        navigation.goToCoordinates(.zero)
+        navigation.goBack()
+        navigation.goForward()
+        navigation.fitWorld()
+        #expect(map.viewport == lastView && !navigation.canGoBack && !navigation.canGoForward)
+
+        let replacement = MapModel(work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let restored = MapNavigation(map: replacement)
+        restored.restore(from: navigation)
+        #expect(replacement.viewport == lastView && replacement.depth == map.depth)
+        #expect(restored.canGoBack)
+        restored.goBack()
+        #expect(replacement.viewport == original && map.viewport == lastView)
+        replacement.close()
+        work.close()
+        await work.waitUntilFinished()
     }
 }
 
@@ -124,10 +166,10 @@ import Testing
         let map = try #require(session.map)
         let original = map.viewport
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
-        #expect(session.canFitWorld)
-        session.fitWorld()
+        #expect(session.navigation.canFitWorld)
+        session.navigation.fitWorld()
         #expect(map.viewport.center == CGPoint(x: -768, y: 1280))
-        session.goBack()
+        session.navigation.goBack()
         #expect(map.viewport == original)
         session.close()
         await session.waitUntilClosed()
