@@ -175,6 +175,10 @@ previous index and heat contributions; successful empty reads and deleted files 
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+Slider dragging holds an unfinished height in the view and commits it only when released
+(Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
+during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
+control discards an unfinished drag. The native control redesign remains tracked separately.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
