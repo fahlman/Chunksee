@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Height range unavailable" : {
+      "comment" : "Shown instead of the cutaway slider when the dimension's build limits cannot be read. Numeric entry remains available."
+    },
+    "Choose within this dimension’s build height, or type any Y coordinate below" : {
+      "comment" : "Help for the height slider; numeric entry can go outside the dimension's verified slider bounds."
+    },
     "%lld chunks" : {
       "comment" : "Number of neighboring chunks in one biome area.",
       "localizations" : {

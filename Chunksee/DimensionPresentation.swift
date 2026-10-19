@@ -13,6 +13,11 @@ final class DimensionPresentation {
         return source.dimensions.first { $0.id == source.selectedDimensionID }
     }
 
+    var heightRange: ClosedRange<Int>? {
+        guard let source, let id = source.selectedDimensionID else { return nil }
+        return source.details.dimensionTypes[id]?.buildRange
+    }
+
     var displayName: String {
         guard let source else { return "" }
         return source.world.level.name ?? source.url.lastPathComponent

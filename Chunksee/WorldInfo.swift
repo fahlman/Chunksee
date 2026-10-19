@@ -4,6 +4,8 @@ import SwiftUI
 
 /// World-wide settings and state beyond `level.dat`'s basics, read once when the world opens.
 nonisolated struct WorldDetails: Sendable {
+    /// Verified dimension-type metadata, keyed by the saved dimension ID.
+    var dimensionTypes: [String: DimensionType] = [:]
     var seed: Int64?
     /// Saved identifiers remain the identity; readable names are presentation only.
     var gameRules: [String: GameRuleValue] = [:]
@@ -28,6 +30,7 @@ nonisolated struct WorldDetails: Sendable {
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
         var details = WorldDetails()
+        details.dimensionTypes = (try? world.dimensionTypes()) ?? [:]
         details.seed = try? world.seed()
         details.gameRules = (try? world.gameRules()) ?? [:]
         details.weather = try? world.weather()

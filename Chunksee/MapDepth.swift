@@ -9,13 +9,11 @@ nonisolated struct MapDepth: Equatable, Sendable {
     var accessibilityDescription: String {
         isSurface ? String(localized: "Surface") : String(localized: "Cutaway at Y \(y.formatted())")
     }
-
-    /// Slider travel, not a dimension's world-generation bounds. Numeric entry extends it.
-    var sliderRange: ClosedRange<Double> { Double(min(-64, y))...Double(max(319, y)) }
 }
 
 struct MapDepthControl: View {
     @Bindable var map: MapModel
+    let heightRange: ClosedRange<Int>?
     @Binding var showsPopover: Bool
 
     var body: some View {
@@ -38,13 +36,14 @@ struct MapDepthControl: View {
         .accessibilityIdentifier("cutaway-control")
         .help("Choose Surface or a cutaway height")
         .popover(isPresented: $showsPopover) {
-            MapDepthPopover(map: map)
+            MapDepthPopover(map: map, heightRange: heightRange)
         }
     }
 }
 
 private struct MapDepthPopover: View {
     @Bindable var map: MapModel
+    let heightRange: ClosedRange<Int>?
     @State private var draggedY: Int?
     @FocusState private var isHeightFocused: Bool
 
@@ -76,40 +75,12 @@ private struct MapDepthPopover: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("cutaway-mode")
 
-            // Exact entry and the stepper provide one-block changes without dense slider ticks.
-            Slider(value: Binding {
-                Double(displayedY)
-            } set: {
-                guard let y = Int(exactly: $0.rounded()) else { return }
-                if draggedY != nil {
-                    draggedY = y
-                } else {
-                    height.wrappedValue = y
-                }
-            }, in: map.depth.sliderRange) {
-                Text("Cutaway Height")
-            } minimumValueLabel: {
-                Text(map.depth.sliderRange.lowerBound, format: .number.grouping(.never))
-            } maximumValueLabel: {
-                Text(map.depth.sliderRange.upperBound, format: .number.grouping(.never))
-            } onEditingChanged: { editing in
-                if editing {
-                    // The map keeps its committed depth while the native slider edits this draft.
-                    draggedY = map.depth.y
-                } else if let y = draggedY {
-                    height.wrappedValue = y
-                }
-            }
-            .labelsHidden()
-            .disabled(map.depth.isSurface)
-            .accessibilityIdentifier("cutaway-slider")
-            .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: stepHeight(by: 1)
-                case .decrement: stepHeight(by: -1)
-                @unknown default: break
-                }
+            if let heightRange {
+                slider(in: heightRange)
+            } else {
+                Text("Height range unavailable")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("cutaway-range-unavailable")
             }
             HStack {
                 Text("Y")
@@ -134,5 +105,47 @@ private struct MapDepthPopover: View {
         .onAppear { isHeightFocused = !map.depth.isSurface }
         .onChange(of: map.depth.isSurface) { _, isSurface in isHeightFocused = !isSurface }
         .onDisappear { draggedY = nil }
+    }
+
+    private func sliderY(in range: ClosedRange<Int>) -> Int {
+        min(max(displayedY, range.lowerBound), range.upperBound)
+    }
+
+    private func slider(in range: ClosedRange<Int>) -> some View {
+        // Numeric entry stays unrestricted; it never changes the dimension's verified limits.
+        Slider(value: Binding {
+            Double(sliderY(in: range))
+        } set: {
+            guard let y = Int(exactly: $0.rounded()) else { return }
+            if draggedY != nil { draggedY = y } else { height.wrappedValue = y }
+        }, in: Double(range.lowerBound)...Double(range.upperBound)) {
+            Text("Cutaway Height")
+        } minimumValueLabel: {
+            Text(range.lowerBound, format: .number.grouping(.never))
+        } maximumValueLabel: {
+            Text(range.upperBound, format: .number.grouping(.never))
+        } onEditingChanged: { editing in
+            if editing {
+                // The map keeps its committed depth while the native slider edits this draft.
+                draggedY = sliderY(in: range)
+            } else if let y = draggedY {
+                height.wrappedValue = y
+            }
+        }
+        .labelsHidden()
+        .disabled(map.depth.isSurface)
+        .accessibilityIdentifier("cutaway-slider")
+        .accessibilityValue(Text("Y \(sliderY(in: range).formatted())"))
+        .accessibilityAdjustableAction { direction in
+            let step: Int
+            switch direction {
+            case .increment: step = 1
+            case .decrement: step = -1
+            @unknown default: return
+            }
+            let (next, overflow) = sliderY(in: range).addingReportingOverflow(step)
+            if !overflow { height.wrappedValue = min(max(next, range.lowerBound), range.upperBound) }
+        }
+        .help("Choose within this dimension’s build height, or type any Y coordinate below")
     }
 }
