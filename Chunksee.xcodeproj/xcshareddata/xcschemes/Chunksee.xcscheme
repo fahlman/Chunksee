@@ -27,6 +27,16 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "NO">
+      <PostActions>
+         <ExecutionAction ActionType="Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent title="Remove retired test preference files" scriptText="/bin/sh &quot;${SRCROOT}/script/clean_test_preferences.sh&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B1000000000000000000001F" BuildableName="ChunkseeTests.xctest" BlueprintName="ChunkseeTests" ReferencedContainer="container:Chunksee.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
       <Testables>
          <TestableReference
             skipped = "NO">

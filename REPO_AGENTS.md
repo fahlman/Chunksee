@@ -348,7 +348,8 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   explicit arguments. Tests use `TestDefaults.make()` inside `.isolatedStores` suites. The trait
   removes every suite's persistent domain and `.plist` after the async test returns, including
   failures, and fails if the host's standard domain changed. Every test suite carries this trait.
-  Cache tests pass their own temporary roots or `nil`.
+  A test-scheme post-action removes empty test-suite files that cfprefsd may recreate when the
+  host exits, restricted to this fixed test container. Cache tests pass temporary roots or `nil`.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running
