@@ -143,7 +143,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), first = UUID(), second = UUID()
         let gate = AsyncReadGate<PlayerRecords>()
-        let model = PlayerRecordsModel(world: world, read: { uuid, _ in await gate.read(uuid.uuidString) })
+        let model = PlayerRecordsModel(world: world, work: BackgroundWork(), read: { uuid, _ in await gate.read(uuid.uuidString) })
         let oldRead = Task { await model.load(first, name: nil) }
         await gate.waitForRequest(first.uuidString)
         let currentRead = Task { await model.load(second, name: nil) }
