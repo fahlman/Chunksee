@@ -244,10 +244,9 @@ retired work still finishing after cancellation. Callers that need snapshots awa
 `PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
 instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
 names used by another world. Source changes cancel only their scope, and model deinitialization
-cancels both. The local in-flight handle still coalesces overlapping callers; canceled folder
-reads retain their file access until completion. There is no separate online task dictionary.
-Overlapping local reloads
-share one pending read; later reloads still reread the source. Closing one caller does not cancel
+cancels both. Canceled folder reads retain their file access until completion. There is no
+separate online task dictionary. Overlapping local reloads share one pending handle; later
+reloads still reread the source. Closing one caller does not cancel
 globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
 still cancel/invalidate their sources. The view request follows folder, online permission and the
 known player UUID set, including players without reliable coordinates, so new players trigger lookup

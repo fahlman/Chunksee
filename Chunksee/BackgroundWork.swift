@@ -48,7 +48,7 @@ final class BackgroundWork {
         while let task = tasks.values.first(where: { $0.scope == scope })?.task { await task.value }
     }
 
-    /// One consumer's task group. Canceled/replaced reads remain in the world's registry
+    /// One consumer's task group. Canceled/replaced reads remain in the owner's registry
     /// until they finish, while a local drain never waits for another consumer's work.
     final class Scope {
         private let owner: BackgroundWork
