@@ -56,7 +56,9 @@ import Testing
         let gray = try #require(pets.first { $0.creature.uuid == bird })
         #expect(gray.position == CGPoint(x: -8.7, y: 2.2) && gray.creature.y == 70.75)
         #expect(gray.creature.owner == owner && gray.carrier == carrier)
-        #expect(gray.creature.health == 6 && gray.creature.maxHealth == 6 && gray.creature.appearance?.variant == "gray")
+        #expect(gray.creature.health == 6)
+        #expect(gray.creature.maxHealth == 6)
+        #expect(gray.creature.appearance?.variant == "minecraft:gray")
         #expect(first.presentation.linkedPets(to: owner).map(\.id) == [gray.id])
         #expect(second.presentation.linkedPets(to: carrier).map(\.creature.uuid) == [otherBird])
 
