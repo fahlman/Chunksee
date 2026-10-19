@@ -241,6 +241,14 @@ work; an active typed waiter can still finish. Closing one document releases its
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
 
+WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
+index close cancels/drains only its passes; world-owner close rejects late publication and queued
+work. The index still owns merged region-change requests, dimension priority and publication as
+each dimension finishes. Its current-task handle serves `waitForIndex`; the scope retains and
+drains every pass, replacing the separate task dictionary. Search models forward the explicit
+owner when they construct their own index. Saved-query work keeps its existing owner until its
+separate #169 migration.
+
 `PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
 share one pending read; later reloads still reread the source. Closing one caller does not cancel
 globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names

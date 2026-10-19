@@ -17,8 +17,8 @@ final class WorldIndexStore {
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
     /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
     @ObservationIgnored private var queuedPass: Pass?
-    @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
-    private var isClosed = false
+    private let work: BackgroundWork.Scope
+    private var isClosed: Bool { work.isClosed }
 
     private struct Pass {
         var firstDimension: String?
@@ -34,8 +34,9 @@ final class WorldIndexStore {
         }
     }
 
-    init(readers: [RegionReader], firstDimension: String?,
+    init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?,
          readDimension: @escaping @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex = DimensionIndex.read) {
+        self.work = work.makeScope()
         self.readers = readers
         self.readDimension = readDimension
         rebuild(firstDimension: firstDimension)
@@ -71,9 +72,14 @@ final class WorldIndexStore {
         let readers = readers.filter { changes?[$0.dimension.id] != nil || changes == nil }
             .sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
         let readDimension = readDimension
-        let id = UUID()
-        let task = Task(priority: .utility) { [weak self] in
-            defer { self?.tasks[id] = nil }
+        indexTask = work.start(priority: .utility) { [weak self] in
+            defer {
+                if self?.isClosed == true {
+                    self?.indexTask = nil
+                    self?.queuedPass = nil
+                    self?.isIndexing = false
+                }
+            }
             for reader in readers {
                 guard !Task.isCancelled, self?.isClosed == false else { return }
                 let previous = self?.index.dimensions[reader.dimension.id]
@@ -91,8 +97,6 @@ final class WorldIndexStore {
                 self.rebuild(firstDimension: next.firstDimension, changes: next.changes)
             }
         }
-        indexTask = task
-        tasks[id] = task
     }
 
     /// Waits for the running pass and any pass queued behind it, or until the store closes.
@@ -103,16 +107,15 @@ final class WorldIndexStore {
     /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
     /// still drains the cancelled reads.
     func cancel() {
-        isClosed = true
+        work.close()
         savedQueries.cancel()
-        tasks.values.forEach { $0.cancel() }
         indexTask = nil
         queuedPass = nil
         isIndexing = false
     }
 
     func waitForTasks() async {
-        for task in tasks.values { await task.value }
+        await work.waitUntilFinished()
         await savedQueries.waitForTasks()
     }
 }
