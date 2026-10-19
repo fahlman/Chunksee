@@ -41,7 +41,7 @@ nonisolated struct PlayerRecords: Sendable {
 
     /// `minecraft:walk_one_cm` → "Walk", `minecraft:aviate_one_cm` → "Elytra".
     static func travelName(_ id: String) -> String {
-        let base = (id.split(separator: ":").last.map(String.init) ?? id).replacingOccurrences(of: "_one_cm", with: "")
+        let base = ReadableName.identifierPath(id).replacingOccurrences(of: "_one_cm", with: "")
         let names = ["aviate": String(localized: "Elytra"), "walk_on_water": String(localized: "Walk on Water"),
                      "walk_under_water": String(localized: "Walk Under Water")]
         return names[base] ?? ReadableName.from(base)

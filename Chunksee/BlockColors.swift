@@ -21,7 +21,7 @@ nonisolated struct MapColor: Equatable, Sendable {
 nonisolated enum BlockColors {
     /// The map color for a block ID, or `nil` for blocks the map sees through (air, glass panes, light).
     static func color(for id: String) -> MapColor? {
-        let name = id.hasPrefix("minecraft:") ? String(id.dropFirst(10)) : id
+        let name = ReadableName.vanillaPath(id) ?? id
         if transparent.contains(name) { return nil }
         if let exact = exact[name] { return MapColor(exact) }
         for (fragment, hex) in fragments where name.contains(fragment) { return MapColor(hex) }
@@ -29,7 +29,8 @@ nonisolated enum BlockColors {
     }
 
     static func isWater(_ id: String) -> Bool {
-        id == "minecraft:water" || id == "minecraft:bubble_column"
+        guard let path = ReadableName.vanillaPath(id) else { return false }
+        return path == "water" || path == "bubble_column"
     }
 
     private static let transparent: Set<String> = [

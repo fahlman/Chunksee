@@ -87,12 +87,12 @@ import Testing
 
 @Suite(.isolatedStores) struct FitWorldTests {
     @Test func regionBoundsWithNegativeCoordinatesFitInsideTheMargin() throws {
-        let regions: Set<RegionCoordinate> = [.init(x: -3, z: -2), .init(x: 1, z: 4)]
+        let regions: Set<RegionPosition> = [.init(x: -3, z: -2), .init(x: 1, z: 4)]
         let size = CGSize(width: 800, height: 600)
         let fit = try #require(MapViewport.fitting(regions, in: size))
         #expect(fit.center == CGPoint(x: -256, y: 768))
         for region in regions {
-            let rect = fit.viewRect(for: region, in: size)
+            let rect = try #require(fit.viewRect(for: region, in: size))
             #expect(rect.minX >= 24 - 0.001 && rect.maxX <= size.width - 24 + 0.001)
             #expect(rect.minY >= 24 - 0.001 && rect.maxY <= size.height - 24 + 0.001)
         }
@@ -101,7 +101,7 @@ import Testing
     }
 
     @Test func distantRegionsFitBelowTheSmallestPresetWithoutEnumeratingEmptyRegions() throws {
-        let regions: Set<RegionCoordinate> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
+        let regions: Set<RegionPosition> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
         let size = CGSize(width: 800, height: 600)
         let fit = try #require(MapViewport.fitting(regions, in: size))
         #expect(fit.scale < 1.0 / 16)

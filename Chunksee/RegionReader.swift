@@ -30,9 +30,9 @@ nonisolated struct RegionData: Sendable {
     var contents = SearchContents()
     var structures: [StructureMarker] = []
     var creatures: [Creature] = []
-    var biomes: [ChunkCoordinate: String] = [:]
-    var caveBiomes: [ChunkCoordinate: [String]] = [:]
-    var blocks: [ChunkCoordinate: [BlockDeposit]] = [:]
+    var biomes: [ChunkPosition: String] = [:]
+    var caveBiomes: [ChunkPosition: [String]] = [:]
+    var blocks: [ChunkPosition: [BlockDeposit]] = [:]
     /// `InhabitedTime` per chunk, index `localZ * 32 + localX`.
     var inhabitedTimes = [Int](repeating: 0, count: 1024)
     var formats = ChunkFormats()
@@ -42,7 +42,7 @@ nonisolated struct RegionData: Sendable {
 
     /// Reads the region; chunks that can't be read are skipped.
     @concurrent
-    static func read(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate) async -> RegionData {
+    static func read(_ dimension: ChunkseeKit.Dimension, region: RegionPosition) async -> RegionData {
         var data = RegionData()
         if let file = try? dimension.region(x: region.x, z: region.z) {
             for (x, z) in file.chunkCoordinates {
@@ -63,9 +63,9 @@ nonisolated struct RegionData: Sendable {
                     chunk = nil
                 }
                 // Unfinished chunks can already record planned structures and a placeholder biome.
-                if let chunk, chunk.isFullyGenerated {
+                if let chunk, chunk.isFullyGenerated, let origin = region.chunkOrigin {
                     data.structures += chunk.structureStarts.map(StructureMarker.init)
-                    let coordinate = ChunkCoordinate(x: region.x * 32 + x, z: region.z * 32 + z)
+                    let coordinate = ChunkPosition(x: origin.x + x, z: origin.z + z)
                     data.biomes[coordinate] = BiomeScanner.surfaceBiome(of: chunk, in: dimension.id)
                     let caves = BiomeScanner.caveBiomes(of: chunk)
                     if !caves.isEmpty { data.caveBiomes[coordinate] = caves }
@@ -97,10 +97,10 @@ actor RegionReader {
     /// Reads under way, by region and the fingerprint of its files when the read started.
     private var reading: [String: Task<RegionData, Never>] = [:]
     private var isClosed = false
-    private let read: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData
+    private let read: @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData
 
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
-         read: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read) {
+         read: @escaping @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData = RegionData.read) {
         self.dimension = dimension
         self.cache = cache
         self.read = read
@@ -108,13 +108,13 @@ actor RegionReader {
 
     /// One value per region of the dimension, read in parallel, in no particular order.
     @concurrent
-    nonisolated func everyRegion<T: Sendable>(_ read: @escaping @Sendable (RegionReader, RegionCoordinate) async -> T)
-        async -> [(region: RegionCoordinate, value: T)] {
+    nonisolated func everyRegion<T: Sendable>(_ read: @escaping @Sendable (RegionReader, RegionPosition) async -> T)
+        async -> [(region: RegionPosition, value: T)] {
         guard !Task.isCancelled, await !isClosed else { return [] }
-        return await withTaskGroup(of: (RegionCoordinate, T).self) { group in
+        return await withTaskGroup(of: (RegionPosition, T).self) { group in
             for file in dimension.regionFiles() {
                 guard !Task.isCancelled else { break }
-                let region = RegionCoordinate(x: file.x, z: file.z)
+                let region = RegionPosition(x: file.x, z: file.z)
                 group.addTask {
                     // Await into a local before returning it with `region`: Swift 6.4 release builds
                     // can misread values captured next to an awaited call in task-group children (#6).
@@ -122,32 +122,32 @@ actor RegionReader {
                     return (region, value)
                 }
             }
-            var all: [(region: RegionCoordinate, value: T)] = []
+            var all: [(region: RegionPosition, value: T)] = []
             for await result in group { all.append(result) }
             return all
         }
     }
 
-    func contents(_ region: RegionCoordinate) async -> SearchContents { await part("contents", \.contents, region) }
-    func structures(_ region: RegionCoordinate) async -> [StructureMarker] { await part("structures", \.structures, region) }
-    func creatures(_ region: RegionCoordinate) async -> [Creature] { await part("creatures", \.creatures, region) }
-    func biomes(_ region: RegionCoordinate) async -> [ChunkCoordinate: String] { await part("biomes", \.biomes, region) }
-    func caveBiomes(_ region: RegionCoordinate) async -> [ChunkCoordinate: [String]] { await part("caveBiomes", \.caveBiomes, region) }
-    func blocks(_ region: RegionCoordinate) async -> [ChunkCoordinate: [BlockDeposit]] { await part("blocks", \.blocks, region) }
-    func inhabitedTimes(_ region: RegionCoordinate) async -> [Int] { await part("inhabitedTimes", \.inhabitedTimes, region) }
-    func formats(_ region: RegionCoordinate) async -> ChunkFormats { await part("formats", \.formats, region) }
+    func contents(_ region: RegionPosition) async -> SearchContents { await part("contents", \.contents, region) }
+    func structures(_ region: RegionPosition) async -> [StructureMarker] { await part("structures", \.structures, region) }
+    func creatures(_ region: RegionPosition) async -> [Creature] { await part("creatures", \.creatures, region) }
+    func biomes(_ region: RegionPosition) async -> [ChunkPosition: String] { await part("biomes", \.biomes, region) }
+    func caveBiomes(_ region: RegionPosition) async -> [ChunkPosition: [String]] { await part("caveBiomes", \.caveBiomes, region) }
+    func blocks(_ region: RegionPosition) async -> [ChunkPosition: [BlockDeposit]] { await part("blocks", \.blocks, region) }
+    func inhabitedTimes(_ region: RegionPosition) async -> [Int] { await part("inhabitedTimes", \.inhabitedTimes, region) }
+    func formats(_ region: RegionPosition) async -> ChunkFormats { await part("formats", \.formats, region) }
 
     /// Indexing needs these parts together. A cold region uses one shared pass even when the
     /// disk cache is disabled; a warm one loads only this region's existing part entries.
-    func indexData(_ region: RegionCoordinate) async -> RegionData {
+    func indexData(_ region: RegionPosition) async -> RegionData {
         guard !isClosed, !Task.isCancelled else { return RegionData() }
         let fingerprint = fingerprint(region)
         if let contents: SearchContents = cache.load("contents", region: region, fingerprint: fingerprint),
            let structures: [StructureMarker] = cache.load("structures", region: region, fingerprint: fingerprint),
            let creatures: [Creature] = cache.load("creatures", region: region, fingerprint: fingerprint),
-           let biomes: [ChunkCoordinate: String] = cache.load("biomes", region: region, fingerprint: fingerprint),
-           let caves: [ChunkCoordinate: [String]] = cache.load("caveBiomes", region: region, fingerprint: fingerprint),
-           let blocks: [ChunkCoordinate: [BlockDeposit]] = cache.load("blocks", region: region, fingerprint: fingerprint),
+           let biomes: [ChunkPosition: String] = cache.load("biomes", region: region, fingerprint: fingerprint),
+           let caves: [ChunkPosition: [String]] = cache.load("caveBiomes", region: region, fingerprint: fingerprint),
+           let blocks: [ChunkPosition: [BlockDeposit]] = cache.load("blocks", region: region, fingerprint: fingerprint),
            let formats: ChunkFormats = cache.load("formats", region: region, fingerprint: fingerprint) {
             var data = RegionData()
             data.contents = contents; data.structures = structures; data.creatures = creatures
@@ -157,12 +157,12 @@ actor RegionReader {
         return await data(region, fingerprint: fingerprint)
     }
 
-    private func fingerprint(_ region: RegionCoordinate) -> String {
+    private func fingerprint(_ region: RegionPosition) -> String {
         ScanCache.fingerprint([dimension.regionURL(.terrain, x: region.x, z: region.z),
                                dimension.regionURL(.entities, x: region.x, z: region.z)])
     }
 
-    private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionCoordinate) async -> T {
+    private func part<T: Codable & Sendable>(_ kind: String, _ part: KeyPath<RegionData, T> & Sendable, _ region: RegionPosition) async -> T {
         guard !isClosed, !Task.isCancelled else { return RegionData()[keyPath: part] }
         // Taken before reading, so a region the game saves meanwhile is read again next time.
         let fingerprint = fingerprint(region)
@@ -170,7 +170,7 @@ actor RegionReader {
         return await data(region, fingerprint: fingerprint)[keyPath: part]
     }
 
-    private func data(_ region: RegionCoordinate, fingerprint: String) async -> RegionData {
+    private func data(_ region: RegionPosition, fingerprint: String) async -> RegionData {
         let key = "\(region.x).\(region.z).\(fingerprint)"
         if let task = reading[key] { return await task.value }
         let dimension = dimension, cache = cache, read = read
@@ -191,9 +191,9 @@ actor RegionReader {
 
     /// Reads a region and saves each part, off the actor so other regions' requests carry on.
     @concurrent
-    private nonisolated static func readAndSave(_ dimension: ChunkseeKit.Dimension, region: RegionCoordinate, cache: ScanCache,
+    private nonisolated static func readAndSave(_ dimension: ChunkseeKit.Dimension, region: RegionPosition, cache: ScanCache,
                                                 fingerprint: String,
-                                                read: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData) async -> RegionData {
+                                                read: @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData) async -> RegionData {
         let data = await read(dimension, region)
         guard !Task.isCancelled else { return data }
         cache.store(data.contents, "contents", region: region, fingerprint: fingerprint)

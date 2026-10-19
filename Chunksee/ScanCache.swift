@@ -1,3 +1,4 @@
+import ChunkseeKit
 import Foundation
 
 /// Scan results (search contents, structures, places, creatures, biomes, time spent) kept on disk per region,
@@ -21,7 +22,8 @@ nonisolated struct ScanCache: Sendable {
     /// 14: Kit 0.29 corrects versioned pet health, equipment modifiers, UUIDs and display text.
     /// 15: shared inhabited-time reader includes legacy Level compounds.
     /// 16: Kit 0.30 validates saved identifiers through its shared reader.
-    static let version = 16
+    /// 17: structure/place groups use Kit's identifier parser, including an empty default namespace.
+    static let version = 17
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?
@@ -41,7 +43,7 @@ nonisolated struct ScanCache: Sendable {
 
     /// The saved `kind` result for a region, or `read()`'s result, saved for next time. `sources`
     /// are the files the result comes from; a missing file counts as a state of its own.
-    func value<T: Codable>(_ kind: String, region: RegionCoordinate, sources: [URL], read: () -> T) -> T {
+    func value<T: Codable>(_ kind: String, region: RegionPosition, sources: [URL], read: () -> T) -> T {
         guard directory != nil else { return read() }
         // Taken before reading, so a file the game saves meanwhile is read again next time.
         let fingerprint = Self.fingerprint(sources)
@@ -52,7 +54,7 @@ nonisolated struct ScanCache: Sendable {
     }
 
     /// The saved `kind` result for a region whose source files have `fingerprint`.
-    func load<T: Codable>(_ kind: String, region: RegionCoordinate, fingerprint: String) -> T? {
+    func load<T: Codable>(_ kind: String, region: RegionPosition, fingerprint: String) -> T? {
         guard let file = file(kind, region: region, fingerprint: fingerprint),
               let data = try? Data(contentsOf: file), let plist = try? (data as NSData).decompressed(using: .lzfse) as Data else { return nil }
         return try? PropertyListDecoder().decode(T.self, from: plist)
@@ -60,7 +62,7 @@ nonisolated struct ScanCache: Sendable {
 
     /// Saves a result, replacing older ones for the region. Failing to save only costs reading the
     /// region again next time.
-    func store<T: Codable>(_ value: T, _ kind: String, region: RegionCoordinate, fingerprint: String) {
+    func store<T: Codable>(_ value: T, _ kind: String, region: RegionPosition, fingerprint: String) {
         guard let directory, let file = file(kind, region: region, fingerprint: fingerprint) else { return }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
@@ -74,9 +76,9 @@ nonisolated struct ScanCache: Sendable {
         try? data.write(to: file, options: .atomic)
     }
 
-    private static func prefix(_ kind: String, _ region: RegionCoordinate) -> String { "\(kind).\(region.x).\(region.z)." }
+    private static func prefix(_ kind: String, _ region: RegionPosition) -> String { "\(kind).\(region.x).\(region.z)." }
 
-    private func file(_ kind: String, region: RegionCoordinate, fingerprint: String) -> URL? {
+    private func file(_ kind: String, region: RegionPosition, fingerprint: String) -> URL? {
         directory?.appendingPathComponent(Self.prefix(kind, region) + fingerprint + ".v\(Self.version)")
     }
 

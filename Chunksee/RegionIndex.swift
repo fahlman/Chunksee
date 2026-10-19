@@ -4,7 +4,7 @@ import Foundation
 /// A broad notification supersedes individual regions, including ones queued during a read.
 nonisolated enum RegionChange: Sendable, Equatable {
     case all
-    case regions(Set<RegionCoordinate>)
+    case regions(Set<RegionPosition>)
 
     mutating func merge(_ next: Self) {
         if case .regions(let current) = self, case .regions(let added) = next {
@@ -13,7 +13,7 @@ nonisolated enum RegionChange: Sendable, Equatable {
     }
 
     /// Nil tells the map to reconcile the complete dimension.
-    var mapRegions: Set<RegionCoordinate>? {
+    var mapRegions: Set<RegionPosition>? {
         if case .regions(let regions) = self { return regions }
         return nil
     }
@@ -25,14 +25,14 @@ nonisolated struct RegionIndex: Sendable {
     var contents: SearchContents
     var structures: [StructureMarker]
     var creatures: [CreatureMarker]
-    var biomes: [ChunkCoordinate: String]
-    var caveBiomes: [ChunkCoordinate: [String]]
-    var blocks: [ChunkCoordinate: [BlockDeposit]]
+    var biomes: [ChunkPosition: String]
+    var caveBiomes: [ChunkPosition: [String]]
+    var blocks: [ChunkPosition: [BlockDeposit]]
     var formats: ChunkFormats
     var pointsOfInterest: [PointOfInterest]
 
     @concurrent
-    static func read(_ reader: RegionReader, region: RegionCoordinate) async -> RegionIndex {
+    static func read(_ reader: RegionReader, region: RegionPosition) async -> RegionIndex {
         async let data = reader.indexData(region)
         async let points = PlaceScanner.blocks(reader.dimension, region: region, cache: reader.cache)
         let found = await data

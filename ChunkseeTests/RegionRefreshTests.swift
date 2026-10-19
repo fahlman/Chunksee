@@ -113,7 +113,7 @@ import Testing
 
         let root = url.appendingPathComponent("test-cache")
         let cache = ScanCache(directory: root)
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         cache.store([Int](repeating: 0, count: 1024), "inhabitedTimes", region: region, fingerprint: "unchanged")
         let current = try #require(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first)
         let old = current.deletingLastPathComponent().appendingPathComponent("inhabitedTimes.0.0.unchanged.v14")
@@ -226,15 +226,15 @@ import Testing
         await changed([file], in: resources)
         #expect(await reads.requested.isEmpty)
         #expect(resources.index.index.dimensions[overworld]?.formats.readable == 1)
-        #expect(session.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        #expect(session.map?.availableRegions == [RegionPosition(x: 0, z: 0)])
         try await matchesCompleteRead(resources, dimension: dimension)
         let broadFile = try write([terrain(-32, count: 4)], in: dimension, folder: .terrain, region: -1)
         await changed([dimension.regionDirectory], in: resources)
-        #expect(session.map?.availableRegions == [RegionCoordinate(x: -1, z: 0), RegionCoordinate(x: 0, z: 0)])
+        #expect(session.map?.availableRegions == [RegionPosition(x: -1, z: 0), RegionPosition(x: 0, z: 0)])
         try await matchesCompleteRead(resources, dimension: dimension)
         try FileManager.default.removeItem(at: broadFile)
         await changed([url], in: resources)
-        #expect(session.map?.availableRegions == [RegionCoordinate(x: 0, z: 0)])
+        #expect(session.map?.availableRegions == [RegionPosition(x: 0, z: 0)])
         try await matchesCompleteRead(resources, dimension: dimension)
         resources.close()
         await resources.waitUntilClosed()
@@ -257,7 +257,7 @@ import Testing
         await map.waitUntilIdle()
         session.heatMap.isShown = true
         await session.heatMap.waitForReads()
-        let regions = [RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: 1, z: 0)]
+        let regions = [RegionPosition(x: 0, z: 0), RegionPosition(x: 1, z: 0)]
         let tiles = try regions.map { try #require(map.tiles[$0]) }
         let heat = try regions.map { try #require(session.heatMap.visibleImages?[$0]) }
         for relative in ["data/minecraft/raids.dat", "data/minecraft/chunk_tickets.dat",
@@ -287,7 +287,7 @@ import Testing
         map.viewport.center = CGPoint(x: 512, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
         await map.waitUntilIdle()
-        let unchanged = RegionCoordinate(x: 0, z: 0), changedRegion = RegionCoordinate(x: 1, z: 0)
+        let unchanged = RegionPosition(x: 0, z: 0), changedRegion = RegionPosition(x: 1, z: 0)
         let firstTile = try #require(map.tiles[unchanged]), secondTile = try #require(map.tiles[changedRegion])
         let file = try write([terrain(32, count: 5)], in: dimension, folder: .terrain, region: 1)
         let data = dimension.url.appendingPathComponent("data/minecraft/raids.dat")
@@ -316,7 +316,7 @@ import Testing
         await map.waitUntilIdle()
         session.heatMap.isShown = true
         await session.heatMap.waitForReads()
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let tile = try #require(map.tiles[region]), heat = try #require(session.heatMap.visibleImages?[region])
         let event = directory == "world" ? url : directory == "dimension" ? dimension.url : dimension.url.appendingPathComponent(directory)
         await reads.reset()
@@ -341,7 +341,7 @@ import Testing
                                         return await gate.read(key)
                                     })
         await gate.waitForRequest("0")
-        let a = RegionCoordinate(x: -1, z: 0), b = RegionCoordinate(x: 2, z: 3)
+        let a = RegionPosition(x: -1, z: 0), b = RegionPosition(x: 2, z: 3)
         index.rebuild(firstDimension: nil, changes: [overworld: .regions([a])])
         if broad { index.rebuild(firstDimension: nil, changes: [overworld: .all]) }
         index.rebuild(firstDimension: nil, changes: [overworld: .regions([b])])
@@ -356,7 +356,7 @@ import Testing
 
     private actor Reads {
         private(set) var requested: [String] = []
-        func record(_ dimension: String, _ region: RegionCoordinate) { requested.append("\(dimension)@\(region.x),\(region.z)") }
+        func record(_ dimension: String, _ region: RegionPosition) { requested.append("\(dimension)@\(region.x),\(region.z)") }
         func reset() { requested = [] }
     }
 

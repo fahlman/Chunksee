@@ -16,7 +16,7 @@ import Testing
                         ("ice_caves", "minecraft:sand", 222),
                         ("ice/caves", "minecraft:red_wool", 333)]
         let date = Date(timeIntervalSince1970: 1_790_000_000)
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         var keys = Set<TileCache.Key>(), fingerprints = Set<String>(), directories = Set<URL>()
         var referenceImages = Set<Data>()
         for (path, block, time) in examples {
@@ -59,7 +59,7 @@ import Testing
         let world = URL(fileURLWithPath: "/tmp/Cache Identity World")
         let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
         let oldDirectory = worldFolder.appendingPathComponent("example_ice_caves")
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let key = TileCache.Key(region: region, fileSize: 12_288, modified: 1_790_000_000)
         TileCache(directory: oldDirectory).store([UInt8](repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4), for: key)
         ScanCache(directory: oldDirectory.appendingPathComponent("scans"))

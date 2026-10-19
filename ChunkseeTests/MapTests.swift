@@ -80,15 +80,15 @@ import Testing
 
     @Test func regionRectsLineUpWithBlockCoordinates() {
         let viewport = MapViewport(center: .zero, scale: 1)
-        #expect(viewport.viewRect(for: RegionCoordinate(x: 0, z: 0), in: size) == CGRect(x: 400, y: 300, width: 512, height: 512))
-        #expect(viewport.viewRect(for: RegionCoordinate(x: -1, z: -1), in: size) == CGRect(x: -112, y: -212, width: 512, height: 512))
+        #expect(viewport.viewRect(for: RegionPosition(x: 0, z: 0), in: size) == CGRect(x: 400, y: 300, width: 512, height: 512))
+        #expect(viewport.viewRect(for: RegionPosition(x: -1, z: -1), in: size) == CGRect(x: -112, y: -212, width: 512, height: 512))
     }
 
     @Test func visibleRegionsAreNearestFirst() {
         let viewport = MapViewport(center: CGPoint(x: 256, y: 256), scale: 1)
-        let available = Set((-1...1).flatMap { x in (-1...1).map { RegionCoordinate(x: x, z: $0) } })
-        let regions = viewport.visibleRegions(in: size, among: available.union([RegionCoordinate(x: 9, z: 9)]))
-        #expect(regions.first == RegionCoordinate(x: 0, z: 0))
+        let available = Set((-1...1).flatMap { x in (-1...1).map { RegionPosition(x: x, z: $0) } })
+        let regions = viewport.visibleRegions(in: size, among: available.union([RegionPosition(x: 9, z: 9)]))
+        #expect(regions.first == RegionPosition(x: 0, z: 0))
         // The view spans blocks x -144…656 and z -44…556, which touches regions -1…1 on both axes.
         #expect(Set(regions) == available)
         #expect(regions.count == 9)
@@ -119,7 +119,7 @@ import Testing
         viewport.zoom(by: 0.5, anchor: CGPoint(x: 600, y: 100), in: size)
         #expect(viewport == atLimit)
 
-        let regions: Set<RegionCoordinate> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
+        let regions: Set<RegionPosition> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
         var fitted = try #require(MapViewport.fitting(regions, in: size))
         let original = fitted
         #expect(fitted.scale < 1.0 / 16 && !fitted.canZoomOut)
@@ -162,7 +162,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
 
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 0, z: 0)))
+        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionPosition(x: 0, z: 0)))
 
         func pixel(_ x: Int, _ z: Int) -> [UInt8] { Array(pixels[((z * 512) + x) * 4 ..< ((z * 512) + x) * 4 + 4]) }
         func rgba(_ c: MapColor) -> [UInt8] { [c.red, c.green, c.blue, 255] }
@@ -183,7 +183,7 @@ import Testing
         } })
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionCoordinate(x: 0, z: 0)
+        let region = RegionPosition(x: 0, z: 0)
         let sequential = try await RegionTileRenderer(dimension: dimension, chunkConcurrency: 1).pixels(for: region)
         let parallel = try await RegionTileRenderer(dimension: dimension, chunkConcurrency: 8).pixels(for: region)
         #expect(sequential != nil)
@@ -197,7 +197,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 0, z: 0)))
+        let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionPosition(x: 0, z: 0)))
         func rgb(_ x: Int, _ z: Int) -> [UInt8] { Array(pixels[(z * 512 + x) * 4 ..< (z * 512 + x) * 4 + 3]) }
         let lit = MapColor(0x7D7D7D).shaded(1.12)
         #expect(rgb(3, 5) == [lit.red, lit.green, lit.blue])
@@ -230,7 +230,7 @@ import Testing
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        #expect(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionCoordinate(x: 3, z: 3)) == nil)
+        #expect(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionPosition(x: 3, z: 3)) == nil)
     }
 }
 
@@ -247,12 +247,12 @@ import Testing
         await map.waitUntilIdle()
         #expect(!map.isLoading)
         // Four regions are visible around the origin, but only r.0.0 exists.
-        #expect(Array(map.tiles.keys) == [RegionCoordinate(x: 0, z: 0)])
+        #expect(Array(map.tiles.keys) == [RegionPosition(x: 0, z: 0)])
     }
 }
 
 @Suite(.isolatedStores) struct LevelOfDetailTests {
-    func stoneWorld(regions: [RegionCoordinate]) throws -> URL {
+    func stoneWorld(regions: [RegionPosition]) throws -> URL {
         try TestWorld.make(chunks: regions.map { r in
             TestWorld.chunk(x: r.x * 32, z: r.z * 32, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
         })
@@ -286,7 +286,7 @@ import Testing
     }
 
     @Test func fullResolutionOnlyWhenRegionsAreLargeOnScreen() throws {
-        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0)])
+        let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
         map.viewport.scale = 0.25   // a region is 128 points: 256 pixels at 2×, the preview's size
@@ -297,7 +297,7 @@ import Testing
     }
 
     @Test func visibleTilesSurviveASmallCacheAndPreviewsArePrepared() async throws {
-        let regions = [RegionCoordinate(x: -1, z: -1), RegionCoordinate(x: 0, z: -1), RegionCoordinate(x: -1, z: 0), RegionCoordinate(x: 0, z: 0)]
+        let regions = [RegionPosition(x: -1, z: -1), RegionPosition(x: 0, z: -1), RegionPosition(x: -1, z: 0), RegionPosition(x: 0, z: 0)]
         let world = try stoneWorld(regions: regions)
         defer { try? FileManager.default.removeItem(at: world) }
         let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero,
@@ -307,17 +307,17 @@ import Testing
         // All four regions are visible, so none is evicted despite the limit of one.
         #expect(Set(map.tiles.keys) == Set(regions))
         #expect(Set(map.previews.keys) == Set(regions))
-        #expect(map.previews[RegionCoordinate(x: 0, z: 0)]?.width == RegionTileRenderer.previewSide)
+        #expect(map.previews[RegionPosition(x: 0, z: 0)]?.width == RegionTileRenderer.previewSide)
     }
 
     @Test func zoomedOutRequestsNeedOnlyPreviews() async throws {
-        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0)])
+        let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
         map.viewport.scale = 1.0 / 16
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
         await map.waitUntilIdle()
-        #expect(map.image(for: RegionCoordinate(x: 0, z: 0), fullResolution: false)?.width == RegionTileRenderer.previewSide)
+        #expect(map.image(for: RegionPosition(x: 0, z: 0), fullResolution: false)?.width == RegionTileRenderer.previewSide)
         #expect(map.tiles.isEmpty)  // full tiles aren't kept when only previews are needed
         // A second request at the same zoom has nothing left to do.
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
@@ -325,13 +325,13 @@ import Testing
     }
 
     @Test func panningWithinLoadedRegionsRequestsNothingButNewRegionsLoad() async throws {
-        let world = try stoneWorld(regions: [RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: 3, z: 0)])
+        let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0), RegionPosition(x: 3, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let map = MapModel(dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: CGPoint(x: 256, y: 256))
         let size = CGSize(width: 400, height: 300)
         map.requestTiles(visibleIn: size, displayScale: 2)
         await map.waitUntilIdle()
-        #expect(map.tiles[RegionCoordinate(x: 0, z: 0)] != nil)
+        #expect(map.tiles[RegionPosition(x: 0, z: 0)] != nil)
         map.viewport.pan(by: CGSize(width: -10, height: 0))   // still inside region (0, 0)
         map.requestTiles(visibleIn: size, displayScale: 2)
         #expect(!map.isLoading)
@@ -339,7 +339,7 @@ import Testing
         map.requestTiles(visibleIn: size, displayScale: 2)
         #expect(map.isLoading)
         await map.waitUntilIdle()
-        #expect(map.tiles[RegionCoordinate(x: 3, z: 0)] != nil)
+        #expect(map.tiles[RegionPosition(x: 3, z: 0)] != nil)
     }
 
     @Test func halfSizeAveragesBlocksOfFour() {
@@ -385,20 +385,20 @@ import Testing
         let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
         await map.waitUntilIdle()
-        let before = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)])
+        let before = try #require(map.tiles[RegionPosition(x: 0, z: 0)])
 
         // The game adds a chunk to r.0.0 and creates r.-1.0.
         let regions = dimension.regionDirectory
         try Data(TestWorld.regionFile([Self.stone(x: 0, z: 0, height: 0), Self.stone(x: 1, z: 0, height: 3)]))
             .write(to: regions.appendingPathComponent("r.0.0.mca"))
         try Data(TestWorld.regionFile([Self.stone(x: -1, z: 0, height: 0)])).write(to: regions.appendingPathComponent("r.-1.0.mca"))
-        map.regionsChanged([RegionCoordinate(x: 0, z: 0), RegionCoordinate(x: -1, z: 0)])
+        map.regionsChanged([RegionPosition(x: 0, z: 0), RegionPosition(x: -1, z: 0)])
         // The old image stays until the new one is drawn.
-        #expect(map.tiles[RegionCoordinate(x: 0, z: 0)] != nil)
+        #expect(map.tiles[RegionPosition(x: 0, z: 0)] != nil)
         await map.waitUntilIdle()
-        let after = try #require(map.tiles[RegionCoordinate(x: 0, z: 0)])
+        let after = try #require(map.tiles[RegionPosition(x: 0, z: 0)])
         #expect(after !== before)
-        #expect(map.tiles[RegionCoordinate(x: -1, z: 0)] != nil)
+        #expect(map.tiles[RegionPosition(x: -1, z: 0)] != nil)
     }
 
     @Test func watcherReportsChangedFiles() async throws {
@@ -438,7 +438,7 @@ import Testing
 
         session.worldChanged([newRegion, player, world.appendingPathComponent("session.lock")])
         await session.waitForRefresh()
-        #expect(session.map?.availableRegions.contains(RegionCoordinate(x: -1, z: 0)) == true)
+        #expect(session.map?.availableRegions.contains(RegionPosition(x: -1, z: 0)) == true)
         #expect(session.players.count == 1)
     }
 }
@@ -504,7 +504,7 @@ import Testing
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
         #expect(map.topBlock(at: CGPoint(x: 1.9, y: 0.2))?.id == "minecraft:water")
-        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])                  // the game saved the region
+        map.regionsChanged([RegionPosition(x: 0, z: 0)])                  // the game saved the region
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)
     }
 }
@@ -514,7 +514,7 @@ import Testing
         try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", top]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }])
     }
 
-    private func map(_ url: URL, read: (@Sendable (ChunkCoordinate, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+    private func map(_ url: URL, read: (@Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
         return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
@@ -526,7 +526,7 @@ import Testing
         let map = try map(url)
         defer { map.close() }
         map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
-        map.regionsChanged([RegionCoordinate(x: 1, z: 0)])   // another region saved before the read ran
+        map.regionsChanged([RegionPosition(x: 1, z: 0)])   // another region saved before the read ran
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:sand")
     }
@@ -542,7 +542,7 @@ import Testing
         // The game replaces the sand with gravel and saves; the pointer doesn't move.
         let gravel = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:gravel"]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }
         try Data(TestWorld.regionFile([gravel])).write(to: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
-        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])
+        map.regionsChanged([RegionPosition(x: 0, z: 0)])
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5))?.id == "minecraft:gravel")
     }
@@ -558,7 +558,7 @@ import Testing
         defer { map.close() }
         map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
         await gate.waitForRequest("read0")
-        map.regionsChanged([RegionCoordinate(x: 0, z: 0)])   // saved while read 0 was reading the old file
+        map.regionsChanged([RegionPosition(x: 0, z: 0)])   // saved while read 0 was reading the old file
         await gate.waitForRequest("read1")                   // the still pointer's chunk is read again
         await gate.finish("read1", with: (file, blocks("minecraft:new")))
         await gate.finish("read0", with: (file, blocks("minecraft:old")))   // the old read finishes last

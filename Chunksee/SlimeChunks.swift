@@ -5,11 +5,9 @@ import Foundation
 
 /// One pixel per chunk; the map scales this mask without smoothing, just like Time Spent.
 nonisolated enum SlimeChunks {
-    static func image(region: RegionCoordinate, seed: Int64) -> CGImage? {
-        let x = region.x.multipliedReportingOverflow(by: 32)
-        let z = region.z.multipliedReportingOverflow(by: 32)
-        guard !x.overflow, !z.overflow, let startX = Int32(exactly: x.partialValue),
-              let startZ = Int32(exactly: z.partialValue),
+    static func image(region: RegionPosition, seed: Int64) -> CGImage? {
+        guard let origin = region.chunkOrigin, let startX = Int32(exactly: origin.x),
+              let startZ = Int32(exactly: origin.z),
               startX <= Int32.max - 31, startZ <= Int32.max - 31 else { return nil }
         var pixels = [UInt8](repeating: 0, count: 32 * 32 * 4)
         for localZ in 0..<32 {
@@ -29,8 +27,8 @@ nonisolated enum SlimeChunks {
             ? String(localized: "Slime chunk") : String(localized: "Not a slime chunk")
     }
 
-    @concurrent static func images(regions: Set<RegionCoordinate>, seed: Int64) async -> [RegionCoordinate: CGImage] {
-        var images: [RegionCoordinate: CGImage] = [:]
+    @concurrent static func images(regions: Set<RegionPosition>, seed: Int64) async -> [RegionPosition: CGImage] {
+        var images: [RegionPosition: CGImage] = [:]
         for region in regions {
             guard !Task.isCancelled else { return [:] }
             images[region] = image(region: region, seed: seed)
@@ -52,17 +50,17 @@ nonisolated enum SlimeChunks {
     let seed: Int64?
     var isAvailable: Bool { seed != nil }
     var isLoading: Bool { isAvailable && isShown && !regions.isSubset(of: completed) }
-    var visibleImages: [RegionCoordinate: CGImage] { isShown && isAvailable ? images : [:] }
+    var visibleImages: [RegionPosition: CGImage] { isShown && isAvailable ? images : [:] }
     var visibleSeed: Int64? { isShown ? seed : nil }
 
-    private var regions: Set<RegionCoordinate>
-    private var completed: Set<RegionCoordinate> = []
-    private var images: [RegionCoordinate: CGImage] = [:]
+    private var regions: Set<RegionPosition>
+    private var completed: Set<RegionPosition> = []
+    private var images: [RegionPosition: CGImage] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var visibility: LayerVisibility?
     private var isClosed = false
 
-    init(dimensionID: String?, seed: Int64?, regions: Set<RegionCoordinate>) {
+    init(dimensionID: String?, seed: Int64?, regions: Set<RegionPosition>) {
         self.seed = dimensionID == "minecraft:overworld" ? seed : nil
         self.regions = regions
     }
@@ -72,7 +70,7 @@ nonisolated enum SlimeChunks {
         isShown = visibility.rememberedSlimeChunks
     }
 
-    func regionsChanged(_ regions: Set<RegionCoordinate>) {
+    func regionsChanged(_ regions: Set<RegionPosition>) {
         guard !isClosed else { return }
         self.regions = regions
         completed.formIntersection(regions)

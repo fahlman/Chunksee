@@ -4,18 +4,18 @@ import SwiftUI
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
     /// Time-spent heat images by region.
-    var heatMap: [RegionCoordinate: CGImage] = [:]
+    var heatMap: [RegionPosition: CGImage] = [:]
     /// A map made in the game, drawn where it belongs at the given opacity.
     var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
-    var biomes: [ChunkCoordinate: String] = [:]
-    var caveBiomes: [ChunkCoordinate: [String]] = [:]
+    var biomes: [ChunkPosition: String] = [:]
+    var caveBiomes: [ChunkPosition: [String]] = [:]
     /// The world border, when it's closer than Minecraft's default.
     var border: WorldBorder?
     /// Whether chunk and region lines are drawn.
     var showsGrid = false
-    var slimeChunks: [RegionCoordinate: CGImage] = [:]
+    var slimeChunks: [RegionPosition: CGImage] = [:]
     var slimeSeed: Int64?
     var structures: [StructureMarker] = []
     var placePoints = PointMarkers<PlaceMarker>()
@@ -62,9 +62,9 @@ struct MapContent {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private static func chunk(at block: CGPoint) -> ChunkCoordinate? {
+    private static func chunk(at block: CGPoint) -> ChunkPosition? {
         guard let point = MapCoordinates(point: block) else { return nil }
-        return ChunkCoordinate(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
+        return ChunkPosition(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
     }
 
     func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {
@@ -370,17 +370,17 @@ struct MapView: View {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         for region in visible {
-            guard let image = map.image(for: region, fullResolution: fullResolution) else { continue }
+            guard let image = map.image(for: region, fullResolution: fullResolution),
+                  let rect = map.viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't let the background show
             // through as seams between tiles.
-            let rect = map.viewport.viewRect(for: region, in: size).insetBy(dx: -0.5, dy: -0.5)
-            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect.insetBy(dx: -0.5, dy: -0.5))
         }
         let bounds = CGRect(origin: .zero, size: size)
         if !content.heatMap.isEmpty {
             for region in visible {
-                guard let image = content.heatMap[region] else { continue }
-                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: map.viewport.viewRect(for: region, in: size))
+                guard let image = content.heatMap[region], let rect = map.viewport.viewRect(for: region, in: size) else { continue }
+                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             }
         }
         if let (item, image, opacity) = content.inGameMap {
@@ -402,9 +402,8 @@ struct MapView: View {
             context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
         }
         for region in visible {
-            if let image = content.slimeChunks[region] {
-                context.draw(Image(decorative: image, scale: 1).interpolation(.none),
-                             in: map.viewport.viewRect(for: region, in: size))
+            if let image = content.slimeChunks[region], let rect = map.viewport.viewRect(for: region, in: size) {
+                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             }
         }
         if content.showsGrid {

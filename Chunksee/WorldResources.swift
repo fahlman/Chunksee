@@ -42,7 +42,7 @@ final class WorldResources {
     let cacheRoot: URL?
     private(set) var playerSnapshot: PlayerSnapshot
     var players: [PlayerInfo] { playerSnapshot.players }
-    private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData
+    private let readRegion: @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -80,7 +80,7 @@ final class WorldResources {
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
          defaults: UserDefaults, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
-         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionCoordinate) async -> RegionData = RegionData.read,
+         readRegion: @escaping @Sendable (ChunkseeKit.Dimension, RegionPosition) async -> RegionData = RegionData.read,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         access = snapshot.access
         world = snapshot.world
@@ -232,7 +232,7 @@ final class WorldResources {
                 let parent = file.deletingLastPathComponent().path
                 if ChunkseeKit.Dimension.Folder.allCases.contains(where: { parent == dimension.directory($0).standardizedFileURL.path }),
                    let parsed = RegionFile.parseCoordinates(file.lastPathComponent) {
-                    let change = RegionChange.regions([RegionCoordinate(x: parsed.x, z: parsed.z)])
+                    let change = RegionChange.regions([RegionPosition(x: parsed.x, z: parsed.z)])
                     if pendingIndex[dimension.id] != nil { pendingIndex[dimension.id]?.merge(change) }
                     else { pendingIndex[dimension.id] = change }
                     if parent == dimension.regionDirectory.standardizedFileURL.path {

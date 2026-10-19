@@ -83,7 +83,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     var isShownByDefault: Bool { self != .mineshaft && self != .netherFossil }
 
     static func group(for id: String) -> StructureGroup {
-        let name = id.hasPrefix("minecraft:") ? String(id.dropFirst(10)) : id
+        guard let name = ReadableName.vanillaPath(id) else { return .other }
         switch name {
         case _ where name.hasPrefix("village"): return .village
         case "stronghold": return .stronghold

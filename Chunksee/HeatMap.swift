@@ -56,8 +56,8 @@ nonisolated enum HeatMap {
     /// Every region's heat image in a dimension, read in parallel; regions with nothing to show
     /// are left out.
     @concurrent
-    static func images(_ reader: RegionReader) async -> [RegionCoordinate: CGImage] {
-        var images: [RegionCoordinate: CGImage] = [:]
+    static func images(_ reader: RegionReader) async -> [RegionPosition: CGImage] {
+        var images: [RegionPosition: CGImage] = [:]
         for part in await reader.everyRegion({ await $0.inhabitedTimes($1) }) {
             images[part.region] = image(fromTicks: part.value)
         }
@@ -75,7 +75,7 @@ final class HeatMapLayer {
             load()
         }
     }
-    private var images: [RegionCoordinate: CGImage]?
+    private var images: [RegionPosition: CGImage]?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var invalidated = false
     private let reader: RegionReader?
@@ -94,7 +94,7 @@ final class HeatMapLayer {
     }
 
     /// This document's images, when the layer is on and they've been read.
-    var visibleImages: [RegionCoordinate: CGImage]? {
+    var visibleImages: [RegionPosition: CGImage]? {
         isShown ? images : nil
     }
 
