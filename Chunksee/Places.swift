@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Families of points of interest, shown and filtered together.
 nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
-    case portal, bell, lodestone, bed, workstation, beeNest, lightningRod, spawner, other
+    case portal, bell, lodestone, bed, workstation, beeNest, lightningRod, spawner, unopenedLoot, other
 
     var name: String {
         switch self {
@@ -17,6 +17,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .beeNest: String(localized: "Bee Nests and Hives")
         case .lightningRod: String(localized: "Lightning Rods")
         case .spawner: String(localized: "Monster Spawners")
+        case .unopenedLoot: String(localized: "Unopened Loot")
         case .other: String(localized: "Other Places")
         }
     }
@@ -31,6 +32,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .beeNest: "hexagon.fill"
         case .lightningRod: "bolt.fill"
         case .spawner: "cube.transparent"
+        case .unopenedLoot: "shippingbox.fill"
         case .other: "mappin"
         }
     }
@@ -46,6 +48,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .beeNest: 0xE0A800
         case .lightningRod: 0xD35400
         case .spawner: 0x223042
+        case .unopenedLoot: 0x9B6717
         case .other: 0x566573
         }
     }
@@ -86,6 +89,8 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var portal: NetherPortal?
     /// For spawners: the mob it spawns, or `nil` when it's empty.
     var mob: String?
+    /// The saved table identifies the unopened loot; it does not predict the future items.
+    var lootTable: String?
 
     var name: String {
         let base = ReadableName.identifierPath(type)
@@ -102,6 +107,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         // Named by its mob, not its surroundings: a zombie spawner may be in a monster room or
         // placed by a player, so the player judges from the map (Ryan, 2026-10-13).
         case .spawner: return mob.map { String(localized: "\(ReadableName.from($0)) Spawner") } ?? String(localized: "Empty Spawner")
+        case .unopenedLoot: return LootTableName.name(lootTable)
         case .other: return ReadableName.from(base)
         }
     }
@@ -124,6 +130,18 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         y = spawner.y
         isClaimed = false
         mob = spawner.mob
+    }
+
+    init?(unopened container: ItemContainer) {
+        guard container.isSealedLoot else { return nil }
+        id = container.uuid.map { "loot-entity:\($0.uuidString.lowercased())" }
+            ?? "loot@\(container.isEntity ? "entity" : "block")@\(container.kind)@\(container.x),\(container.y),\(container.z)"
+        type = container.kind
+        group = .unopenedLoot
+        position = MapCoordinates.center(of: CGPoint(x: container.x, y: container.z))
+        y = container.y
+        isClaimed = false
+        lootTable = container.lootTable
     }
 
     /// One place for a whole Nether portal, at the center of its blocks.

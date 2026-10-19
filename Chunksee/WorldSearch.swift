@@ -79,6 +79,7 @@ nonisolated struct DimensionIndex: Sendable {
         part.structures.sort { $0.id < $1.id }
         part.creatures = creatures.sorted { $0.id < $1.id }
         part.places = PlaceScanner.markers(from: points, in: reader.dimension.id) + spawners.map(PlaceMarker.init)
+            + part.containers.compactMap { PlaceMarker(unopened: $0) }
         part.biomeAreas = BiomeScanner.areas(surface: part.biomes, caves: part.caveBiomes)
         part.blocks.sort { $0.deposit.count > $1.deposit.count }
         return part

@@ -43,6 +43,10 @@ with a link to this guide. Help opens only when requested.
    workstations a villager has claimed are dimmed. **Monster Spawners** lists every spawner by the mob it
    spawns ("Zombie Spawner", "Empty Spawner"): one may be in a monster room, a mineshaft or a fortress, or
    placed by a player, so where it is tells you which.
+   **Unopened Loot** shows sealed containers, including chest minecarts and buried treasure, and
+   starts hidden. Names describe the saved loot table (for example, “Monster Room Loot”), without
+   predicting the items inside or where the container was placed. Opened containers leave this
+   group when the world is refreshed. Search `place:loot` to find them.
 7. Click a Nether portal to see in the inspector where it leads: the matching portal in the other dimension (with a
    button to jump there), a warning if the link is one-way, or a warning that going through would
    make the game build a new portal. Portals that don't link both ways carry a small badge.

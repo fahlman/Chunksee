@@ -357,6 +357,15 @@ marker bodies, hit targets and VoiceOver names remain available. Labels draw aft
 bodies; the ruler keeps its existing topmost position. Caption text is measured once for layout
 and drawing, and a spatial lookup limits comparisons to nearby accepted labels.
 
+Unopened Loot reuses Places, its per-dimension hidden-by-default toggle, search, point buckets,
+selection, accessibility and coordinate copying. Sealed containers come from RegionFacts through
+ItemContainer.isSealedLoot and lootTable; the app names the saved table without predicting items
+or inferring surrounding structures. Chest minecarts retain their saved UUID through Kit 0.34.0,
+so colocated carts stay distinct and selection survives movement; only missing/unreadable IDs use
+the existing kind/position fallback policy. Block containers use their fixed block coordinates.
+Opened containers disappear from the group on the existing region refresh. Kit interpretation
+version 3 rereads cached containers for UUIDs; the app adds no second cache or file reader.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
