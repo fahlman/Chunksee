@@ -24,12 +24,11 @@ final class WorldSession {
     /// Created after initialization so feature models can refer weakly to this document.
     @ObservationIgnored private(set) lazy var routing = DimensionRouting(source: self)
     @ObservationIgnored private(set) lazy var selection = SelectionModel(source: self)
+    @ObservationIgnored private(set) lazy var annotations = MapAnnotations(source: self)
 
     let selectedDimensionID: String?
     let map: MapModel?
     var showsCoordinateSheet = false
-    var placeDraft: SavedPlaceDraft?
-    var ruler = MapRuler()
     let navigation: MapNavigation
     /// Every Nether portal in the Overworld and the Nether, by dimension id, for predicting links.
     var portalsByDimension: [String: [NetherPortal]] { search.portals }
@@ -176,42 +175,11 @@ final class WorldSession {
         focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y), keepingZoom: keepingZoom)
     }
 
-    func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
-        guard !isClosed, let point = point ?? map?.viewport.center,
-              let coordinates = MapCoordinates(point: point), let dimension = dimension ?? selectedDimensionID else { return }
-        placeDraft = SavedPlaceDraft(name: "", dimension: dimension, position: coordinates.position)
-    }
-
-    func edit(_ place: SavedPlace) {
-        guard !isClosed else { return }
-        placeDraft = SavedPlaceDraft(existingID: place.id, name: place.name, dimension: place.dimension, position: place.position)
-    }
-
-    func canVisit(_ place: SavedPlace) -> Bool { dimensions.contains { $0.id == place.dimension } }
-
-    func visit(_ place: SavedPlace) {
-        guard canVisit(place) else { return }
-        if routing.route(to: place.dimension, perform: { $0.visit(place) }) { return }
-        navigation.goToCoordinates(place.position)
-    }
-
-    func setRulerEnabled(_ enabled: Bool) {
-        ruler.isEnabled = enabled
-        if enabled, selection.mapSelection != nil { selection.inspector = nil }
-    }
-
-    func beginMeasurement(at point: CGPoint, in dimension: String) {
-        guard !isClosed, selectedDimensionID == dimension else { return }
-        setRulerEnabled(true)
-        ruler.clear()
-        ruler.mark(point)
-    }
-
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
         guard !isClosed, selectedDimensionID == previous.selectedDimensionID, map != nil, previous.map != nil else { return }
         navigation.restore(from: previous.navigation)
-        ruler = previous.ruler
+        annotations.restore(from: previous.annotations)
     }
 
     /// Everything drawn over the selected dimension's terrain.
@@ -242,7 +210,7 @@ final class WorldSession {
         content.selectedItem = selection.sidebarSelection
         content.selectedPlayerID = if case .player(let uuid)? = selection.inspector { uuid } else { nil }
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
-        content.ruler = ruler
+        content.ruler = annotations.ruler
         return content
     }
 
@@ -361,9 +329,6 @@ final class WorldSession {
         if let dimension, dimensions.contains(where: { $0.id == dimension }) { return dimension == id }
         return id == dimensions.first?.id
     }
-
-    /// The saved places this dimension's sidebar lists.
-    var listedPlaces: [SavedPlace] { savedPlaces.all.filter { lists($0.dimension) } }
 
     /// A search's results that this dimension's sidebar lists.
     func listed(_ hits: [SearchHit]) -> [SearchHit] { hits.filter { lists($0.dimension) } }

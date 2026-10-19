@@ -12,6 +12,7 @@ struct WorldView: View {
     var body: some View {
         @Bindable var visibility = session.visibility
         @Bindable var search = session.search
+        @Bindable var annotations = session.annotations
         @Bindable var heatMap = session.heatMap
         @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
@@ -170,7 +171,7 @@ struct WorldView: View {
         .sheet(isPresented: $session.showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
-        .sheet(item: $session.placeDraft) { draft in
+        .sheet(item: $annotations.draft) { draft in
             SavedPlaceEditor(session: session, draft: draft)
         }
         .inspector(isPresented: inspectorShown) {
@@ -178,8 +179,8 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.placeDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.placeDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, session.showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
     }
 
