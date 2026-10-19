@@ -68,11 +68,8 @@ final class WorldSession {
     let heatMap: HeatMapLayer
     let slimeChunks: SlimeChunkLayer
     let playerRecords: PlayerRecordsModel
-    /// Opens a dimension's document, or brings it to the front if it's open. Each document's view
-    /// supplies this, since SwiftUI opens documents through its environment.
-    @ObservationIgnored var openDocument: ((URL) async throws -> Void)?
-    /// Why another dimension's document couldn't open, until it's been shown.
-    var openFailure: String?
+    /// Created after initialization so the router can refer weakly to this document's lifetime.
+    @ObservationIgnored private(set) lazy var routing = DimensionRouting(source: self)
 
     let selectedDimensionID: String?
     let map: MapModel?
@@ -274,7 +271,7 @@ final class WorldSession {
     func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
         guard dimensions.contains(where: { $0.id == location.dimension }),
               Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-        if route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
+        if routing.route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
         navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition, keepingZoom: keepingZoom)
     }
 
@@ -283,7 +280,7 @@ final class WorldSession {
     func showLinkedPet(_ pet: CreatureMarker, ownedBy playerID: UUID) {
         guard !isClosed,
               let current = search.index.dimensions[pet.dimension]?.creatures.first(where: { $0.id == pet.id && $0.creature.owner == playerID }) else { return }
-        if route(to: current.dimension, perform: { $0.showLinkedPet(current, ownedBy: playerID) }) { return }
+        if routing.route(to: current.dimension, perform: { $0.showLinkedPet(current, ownedBy: playerID) }) { return }
         choose(.creature(current.id))
         sidebarRevealRequest = UUID()
     }
@@ -309,7 +306,7 @@ final class WorldSession {
 
     func visit(_ place: SavedPlace) {
         guard canVisit(place) else { return }
-        if route(to: place.dimension, perform: { $0.visit(place) }) { return }
+        if routing.route(to: place.dimension, perform: { $0.visit(place) }) { return }
         navigation.goToCoordinates(place.position)
     }
 
@@ -323,35 +320,6 @@ final class WorldSession {
         setRulerEnabled(true)
         ruler.clear()
         ruler.mark(point)
-    }
-
-    func openDimension(_ id: String) {
-        guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
-        open(id, then: nil)
-    }
-
-    /// Each dimension is its own document; a jump to another dimension happens in that
-    /// dimension's document, once it's open.
-    private func route(to dimension: String, perform: @escaping (WorldSession) -> Void) -> Bool {
-        guard !isClosed, dimension != selectedDimensionID else { return false }
-        open(dimension, then: perform)
-        return true
-    }
-
-    /// A jump that can't reach its dimension is dropped, so a later opening doesn't replay it.
-    private func open(_ dimension: String, then perform: ((WorldSession) -> Void)?) {
-        guard let openDocument, let url = resources.documentURL(for: dimension) else { return }
-        let request = perform.flatMap { resources.whenShowing(dimension, perform: $0) }
-        let resources = resources
-        Task { [weak self] in
-            do {
-                try await openDocument(url)
-            } catch {
-                if let request { resources.cancelPending(request, in: dimension) }
-                guard !(error is CancellationError), (error as? CocoaError)?.code != .userCancelled else { return }
-                self?.openFailure = error.localizedDescription
-            }
-        }
     }
 
     /// A native document reread or move replaces readers, while keeping window navigation.
@@ -593,7 +561,7 @@ final class WorldSession {
 
     /// Selects a portal and centers the map on it, switching dimension if needed.
     func show(_ portal: NetherPortal, keepingZoom: Bool = false) {
-        if route(to: portal.dimension, perform: { $0.show(portal, keepingZoom: keepingZoom) }) { return }
+        if routing.route(to: portal.dimension, perform: { $0.show(portal, keepingZoom: keepingZoom) }) { return }
         focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
               keepingZoom: keepingZoom)
         select(.place(PlaceMarker(portal).id))
@@ -624,7 +592,7 @@ final class WorldSession {
         // A map from a missing dimension is listed but not shown, so its coordinates are never
         // drawn over another dimension's terrain.
         guard canShow(map), let dimension = map.dimension else { return }
-        if route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
+        if routing.route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
         navigation.focus(on: CGPoint(x: map.centerX, y: map.centerZ), keepingZoom: keepingZoom,
                          fittingScale: InGameMapImage.fittingScale(for: map))
         select(.inGameMap(map.id))

@@ -95,6 +95,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
+| `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -138,7 +139,11 @@ document's existing MapModel, which remains the only viewport/depth owner. It ow
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
 Native reread/move restoration copies history, viewport and depth into the new model, including
 from an already closed source, without sharing that source's map or history. Cross-dimension
-validation and routing remain in WorldSession for their separate extraction. Native commands and
+validation stays with the feature; DimensionRouting dispatches through the native opener. It refers
+weakly to its source document for identity and closed state, without a second lifetime flag.
+WorldResources keeps the latest waiting app action per destination, shared across source documents;
+a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
+but errors are presented only while that source remains open. Native commands and
 the toolbar call the navigation model directly for local actions.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
@@ -180,12 +185,20 @@ Concurrent requests share cache decoding/scanning. File-open errors and cancella
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
 
-`MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
-share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+`MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
+shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
+slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
+dimension alongside the viewport, including moves.
+Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
+(Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
+binding exposes the view-owned popover flag; MapDepth still owns the mode and height. The Cutaway
+number field receives SwiftUI focus on opening or switching from Surface.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
-control discards an unfinished drag. The native control redesign remains tracked separately.
+popover discards an unfinished drag. Actual dimension-type bounds remain tracked in #248; the
+displayed slider endpoints describe its travel, not verified world-generation limits.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only

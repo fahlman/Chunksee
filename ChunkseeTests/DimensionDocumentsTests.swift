@@ -18,7 +18,7 @@ import Testing
     /// Installs an opening action like a document view's, and returns the documents it's asked to open.
     private func recordOpens(of session: WorldSession) -> AsyncStream<URL>.Iterator {
         let (requests, continuation) = AsyncStream.makeStream(of: URL.self)
-        session.openDocument = { continuation.yield($0) }
+        session.routing.openDocument = { continuation.yield($0) }
         return requests.makeAsyncIterator()
     }
 
@@ -35,7 +35,7 @@ import Testing
         source.ruler.mark(CGPoint(x: 3, y: 4))
         let place = try #require(source.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
         switch action {
-        case "menu": source.openDimension(place.dimension)
+        case "menu": source.routing.openDimension(place.dimension)
         case "location": source.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
         default: source.visit(place)
         }
@@ -127,7 +127,7 @@ import Testing
         nether.navigation.goForward()
         #expect(nether.map?.viewport.center == place.mapPosition && !nether.navigation.canGoForward)
         nether.navigation.goBack()
-        overworld.openDimension("minecraft:the_nether")
+        overworld.routing.openDimension("minecraft:the_nether")
         let menuOpened = await opened.next(isolation: #isolation)
         #expect(menuOpened == netherDocument && nether.map?.viewport == targetView)
         resources.close()
@@ -190,10 +190,10 @@ import Testing
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
-        overworld.openDocument = { _ in throw CocoaError(.fileReadNoPermission) }
+        overworld.routing.openDocument = { _ in throw CocoaError(.fileReadNoPermission) }
         let place = try #require(overworld.savedPlaces.add(name: "End City", dimension: "minecraft:the_end", at: CGPoint(x: 900, y: -400)))
         overworld.visit(place)
-        for await failure in Observations({ overworld.openFailure }) where failure != nil { break }
+        for await failure in Observations({ overworld.routing.openFailure }) where failure != nil { break }
         // Opening the End normally later keeps its own view, without the failed jump.
         let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
         #expect(end.map?.viewport.center != CGPoint(x: 900.5, y: -399.5) && !end.navigation.canGoBack)
@@ -207,11 +207,45 @@ import Testing
         var nether: WorldSession? = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         weak let released = nether
         _ = recordOpens(of: try #require(nether))
-        nether?.openDimension("minecraft:overworld")
+        let routing = try #require(nether?.routing)
+        nether?.routing.openDimension("minecraft:overworld")
         nether?.close()
         await nether?.waitUntilClosed()
         nether = nil
         #expect(released == nil)
+        #expect(!routing.route(to: "minecraft:overworld", perform: { _ in
+            Issue.record("A released source must not route another action")
+        }))
+    }
+
+    @Test func anOlderOpenFailureKeepsTheNewerDestinationsAction() async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let firstSource = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let secondSource = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let first = try #require(resources.savedPlaces.add(name: "First", dimension: "minecraft:the_end", at: CGPoint(x: 40, y: 80)))
+        let latest = try #require(resources.savedPlaces.add(name: "Latest", dimension: "minecraft:the_end", at: CGPoint(x: -90, y: 120)))
+        let gate = AsyncReadGate<Void>()
+        firstSource.routing.openDocument = { _ in
+            await gate.read("first")
+            throw CocoaError(.fileReadNoPermission)
+        }
+        var opened = recordOpens(of: secondSource)
+        firstSource.visit(first)
+        await gate.waitForRequest("first")
+        secondSource.visit(latest)
+        let destination = await opened.next(isolation: #isolation)
+        #expect(destination == resources.documentURL(for: latest.dimension))
+        await gate.finish("first", with: ())
+        for await failure in Observations({ firstSource.routing.openFailure }) where failure != nil { break }
+
+        let end = WorldSession(resources: resources, dimensionID: latest.dimension)
+        #expect(end.map?.viewport.center == latest.mapPosition)
+        #expect(firstSource.selectedDimensionID == "minecraft:overworld")
+        #expect(secondSource.selectedDimensionID == "minecraft:the_nether")
+        #expect(secondSource.routing.openFailure == nil)
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
     @Test func theOlderLayoutsOverworldIsItsRegionFolder() async throws {

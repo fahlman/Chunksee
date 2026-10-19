@@ -16,7 +16,37 @@ nonisolated struct MapDepth: Equatable, Sendable {
 
 struct MapDepthControl: View {
     @Bindable var map: MapModel
+    @Binding var showsPopover: Bool
+
+    var body: some View {
+        Button {
+            showsPopover = true
+        } label: {
+            Label {
+                if map.depth.isSurface {
+                    Text("Surface")
+                } else {
+                    Text("Y \(map.depth.y.formatted())").monospacedDigit()
+                }
+            } icon: {
+                Image(systemName: "square.3.layers.3d")
+            }
+        }
+        .labelStyle(.titleAndIcon)
+        .accessibilityLabel("Map Height")
+        .accessibilityValue(Text(map.depth.accessibilityDescription))
+        .accessibilityIdentifier("cutaway-control")
+        .help("Choose Surface or a cutaway height")
+        .popover(isPresented: $showsPopover) {
+            MapDepthPopover(map: map)
+        }
+    }
+}
+
+private struct MapDepthPopover: View {
+    @Bindable var map: MapModel
     @State private var draggedY: Int?
+    @FocusState private var isHeightFocused: Bool
 
     private var displayedY: Int { draggedY ?? map.depth.y }
 
@@ -27,8 +57,26 @@ struct MapDepthControl: View {
         }
     }
 
+    private func stepHeight(by step: Int) {
+        let (next, overflow) = displayedY.addingReportingOverflow(step)
+        if !overflow { height.wrappedValue = next }
+    }
+
     var body: some View {
-        HStack {
+        VStack(alignment: .leading) {
+            Picker("Map View", selection: Binding {
+                map.depth.isSurface
+            } set: { isSurface in
+                draggedY = nil
+                map.setDepth(MapDepth(y: map.depth.y, isSurface: isSurface))
+            }) {
+                Text("Surface").tag(true).accessibilityIdentifier("cutaway-surface")
+                Text("Cutaway").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("cutaway-mode")
+
+            // Exact entry and the stepper provide one-block changes without dense slider ticks.
             Slider(value: Binding {
                 Double(displayedY)
             } set: {
@@ -38,8 +86,12 @@ struct MapDepthControl: View {
                 } else {
                     height.wrappedValue = y
                 }
-            }, in: map.depth.sliderRange, step: 1) {
+            }, in: map.depth.sliderRange) {
                 Text("Cutaway Height")
+            } minimumValueLabel: {
+                Text(map.depth.sliderRange.lowerBound, format: .number.grouping(.never))
+            } maximumValueLabel: {
+                Text(map.depth.sliderRange.upperBound, format: .number.grouping(.never))
             } onEditingChanged: { editing in
                 if editing {
                     // The map keeps its committed depth while the native slider edits this draft.
@@ -48,23 +100,39 @@ struct MapDepthControl: View {
                     height.wrappedValue = y
                 }
             }
-            .frame(width: 130)
+            .labelsHidden()
+            .disabled(map.depth.isSurface)
             .accessibilityIdentifier("cutaway-slider")
             .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
-            Text("Y").foregroundStyle(.secondary)
-            TextField("Y", value: height, format: .number.grouping(.never))
-                .frame(width: 65)
-                .monospacedDigit()
-                .accessibilityLabel("Cutaway Y coordinate")
-                .accessibilityIdentifier("cutaway-y")
-                .help("Show the terrain at or below this height")
-            Button("Surface") {
-                map.setDepth(MapDepth(y: map.depth.y, isSurface: true))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: stepHeight(by: 1)
+                case .decrement: stepHeight(by: -1)
+                @unknown default: break
+                }
+            }
+            HStack {
+                Text("Y")
+                TextField("Y", value: height, format: .number.grouping(.never))
+                    .focused($isHeightFocused)
+                    .textFieldStyle(.roundedBorder)
+                    .monospacedDigit()
+                    .accessibilityLabel("Cutaway Y coordinate")
+                    .accessibilityIdentifier("cutaway-y")
+                    .help("Show the terrain at or below this height")
+                // A full Int range cannot form the distance required by Stepper's ranged binding.
+                Stepper("Cutaway Height",
+                        onIncrement: displayedY < Int.max ? { stepHeight(by: 1) } : nil,
+                        onDecrement: displayedY > Int.min ? { stepHeight(by: -1) } : nil)
+                    .labelsHidden()
+                    .accessibilityValue(Text("Y \(displayedY.formatted())"))
+                    .accessibilityIdentifier("cutaway-stepper")
             }
             .disabled(map.depth.isSurface)
-            .accessibilityIdentifier("cutaway-surface")
-            .help("Return to the normal surface map")
         }
+        .padding()
+        .onAppear { isHeightFocused = !map.depth.isSurface }
+        .onChange(of: map.depth.isSurface) { _, isSurface in isHeightFocused = !isSurface }
         .onDisappear { draggedY = nil }
     }
 }
