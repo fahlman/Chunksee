@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ImageIO
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -6,6 +7,22 @@ import Testing
 @Suite(.isolatedStores) struct MarkerLabelTests {
     private typealias Candidate = MarkerLabelLayout.Candidate
     private let frame = CGRect(x: 100, y: 100, width: 90, height: 20)
+
+    private func diagnose(_ a: CGImage, _ b: CGImage, name: String) {
+        let left = a.dataProvider?.data as Data? ?? Data()
+        let right = b.dataProvider?.data as Data? ?? Data()
+        let differences = zip(left, right).enumerated().compactMap { $0.element.0 == $0.element.1 ? nil : $0.offset }
+        print("IMAGE-DIAGNOSTIC \(name): \(a.width)x\(a.height) row=\(a.bytesPerRow) bpp=\(a.bitsPerPixel) component=\(a.bitsPerComponent) info=\(a.bitmapInfo.rawValue) alpha=\(a.alphaInfo.rawValue) space=\(String(describing: a.colorSpace)) counts=\(left.count),\(right.count) differences=\(differences.count) first=\(Array(differences.prefix(80)))")
+        Attachment.record(a, named: "\(name)-actual.png", as: .png)
+        Attachment.record(b, named: "\(name)-expected.png", as: .png)
+    }
+
+    private func diagnose(_ a: Data, _ b: Data, name: String) throws {
+        let left = try #require(CGImageSourceCreateWithData(a as CFData, nil))
+        let right = try #require(CGImageSourceCreateWithData(b as CFData, nil))
+        diagnose(try #require(CGImageSourceCreateImageAtIndex(left, 0, nil)),
+                 try #require(CGImageSourceCreateImageAtIndex(right, 0, nil)), name: name)
+    }
 
     @Test func priorityKeepsTheSelectedItemThenPlayersThenNamedPets() {
         let priorities: [MarkerLabelLayout.Priority] = [.other, .namedPet, .player, .selected]
@@ -59,7 +76,7 @@ import Testing
 
     @Test(arguments: [ColorScheme.light, .dark])
     func realCaptionMeasurementsAndDrawingUseTheSameWinner(_ scheme: ColorScheme) throws {
-        func render(includeOther: Bool) throws -> Data {
+        func render(includeOther: Bool) throws -> CGImage {
             let renderer = ImageRenderer(content: Canvas { context, _ in
                 let point = CGPoint(x: 140, y: 20)
                 let player = MarkerStyle.player(.player, outdated: false, selected: false)
@@ -74,9 +91,12 @@ import Testing
                 .environment(\.colorScheme, scheme))
             let image = try #require(renderer.cgImage)
             if includeOther { Attachment.record(image, named: "selected-label-\(scheme).png", as: .png) }
-            return try #require(image.dataProvider?.data) as Data
+            return image
         }
-        #expect(try render(includeOther: true) == render(includeOther: false))
+        let actual = try render(includeOther: true), expected = try render(includeOther: false)
+        let equal = actual.dataProvider?.data as Data? == expected.dataProvider?.data as Data?
+        if !equal { diagnose(actual, expected, name: "caption-\(scheme)") }
+        #expect(equal)
     }
 
     @Test func mapExportKeepsLabelsStableWithoutRemovingMarkersOrVoiceOverNames() throws {
@@ -95,6 +115,7 @@ import Testing
         let before = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
         content.players.reverse()
         let after = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        if before.data != after.data { try diagnose(before.data, after.data, name: "export-order") }
         #expect(before.data == after.data)
         // Closing the inspector removes its body highlight but leaves the sidebar row selected.
         // That selected row must still win the label collision.
@@ -104,6 +125,7 @@ import Testing
         content.selectedItem = nil
         content.players[0].id = "0"
         let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        if selected.data != expected.data { try diagnose(selected.data, expected.data, name: "export-selected") }
         #expect(selected.data == expected.data)
         let names = content.accessibleLocations(viewport: map.viewport, size: size).map(\.name)
         #expect(Set(names) == ["Player a", "Player b"])
