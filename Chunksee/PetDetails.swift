@@ -34,7 +34,7 @@ nonisolated enum PetDetailText {
     }
 
     static func name(_ id: String) -> String {
-        let key = Identifier(id).flatMap { $0.namespace == "minecraft" ? $0.path : nil } ?? id
+        let key = ReadableName.vanillaPath(id) ?? id
         return names[key] ?? ReadableName.from(id)
     }
 

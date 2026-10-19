@@ -58,8 +58,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
                               "leatherworker", "librarian", "mason", "shepherd", "toolsmith", "weaponsmith"]
 
     static func group(for type: String) -> PlaceGroup {
-        guard let parsed = Identifier(type), parsed.namespace == "minecraft" else { return .other }
-        let name = parsed.path
+        guard let name = ReadableName.vanillaPath(type) else { return .other }
         switch name {
         case "nether_portal": return .portal
         case "meeting": return .bell
