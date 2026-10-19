@@ -18,6 +18,7 @@ struct HelpView: View {
                 HStack {
                     Button("Open Sample World") { isOpeningSample = true }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityLabel("Open Sample World")
                         .keyboardShortcut(.defaultAction)
                         .disabled(isOpeningSample)
                     if isOpeningSample { ProgressView().controlSize(.small) }
