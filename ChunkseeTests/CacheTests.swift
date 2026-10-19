@@ -269,10 +269,10 @@ import Testing
         await fixture.close()
     }
 
-    @Test func visibleTilesDoNotWaitForCacheButClosingDoes() async throws {
+    @Test(arguments: [false, true]) func visibleTilesDoNotWaitForCacheButClosingDoes(closeOwner: Bool) async throws {
         try await withFixture { f in
-            let gate = f.gate, dimension = try f.dimension()
-            let map = MapModel(dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
+            let gate = f.gate, dimension = try f.dimension(), work = BackgroundWork()
+            let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
                 // Represent an already-started disk operation that completes despite cancellation.
                 await gate.read("write")
                 await operation.store()
@@ -284,7 +284,11 @@ import Testing
             #expect(map.tiles.count == 1 && map.unfinishedCacheWrites == 1)
             #expect(!FileManager.default.fileExists(atPath: f.cache.path))
             var finished = false
-            let closing = Task { map.close(); await map.waitForRenders(); finished = true }
+            let closing = Task {
+                if closeOwner { work.close() } else { map.close() }
+                await map.waitForRenders()
+                finished = true
+            }
             await gate.waitForCancellation("write")
             #expect(!finished)
             await gate.finish("write", with: ())
@@ -301,7 +305,7 @@ import Testing
     @Test func aDroppedRenderNeverSchedulesItsCacheWrite() async throws {
         try await withFixture { f in
             let gate = f.gate, count = WriteCount()
-            let map = MapModel(dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
+            let map = MapModel(work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
                 writeCache: { operation in await count.note(); await operation.store() }, renderTile: { renderer, region in
                     let tile = try await renderer.tile(for: region)
                     await gate.read("render")
