@@ -26,9 +26,10 @@ It shows a top-down view of a world, the structures and places found in it, and 
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
    appears beside the toolbar's zoom controls; click it to choose a zoom level or **Fit World**,
    which fits all saved terrain in the current dimension into the window. You can zoom in to 3,200%.
-   To look underground, move the toolbar’s height slider or enter a whole **Y** coordinate. The map
-   shows the terrain at or below that height, including cave floors. **Surface** returns to the
-   normal map. Each dimension remembers its own height and mode when reopened or restored.
+   To look underground, click **Surface** in the toolbar and choose **Cutaway**. Use the slider,
+   enter a whole **Y** coordinate, or use the stepper for one-block changes. The map updates when
+   you release the slider and shows terrain at or below that height, including cave floors.
+   Choose **Surface** to return to the normal map. Each dimension remembers its height and mode.
 5. Structures found in explored areas (villages, strongholds with their End portal rooms, ancient
    cities, fortresses and more) appear on the map; choose which kinds in **Structures** in the
    sidebar. Mineshafts and Nether fossils start hidden because there are so many.

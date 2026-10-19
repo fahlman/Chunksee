@@ -16,6 +16,35 @@ nonisolated struct MapDepth: Equatable, Sendable {
 
 struct MapDepthControl: View {
     @Bindable var map: MapModel
+    @State private var showsPopover = false
+
+    var body: some View {
+        Button {
+            showsPopover = true
+        } label: {
+            Label {
+                if map.depth.isSurface {
+                    Text("Surface")
+                } else {
+                    Text("Y \(map.depth.y.formatted())").monospacedDigit()
+                }
+            } icon: {
+                Image(systemName: "square.3.layers.3d")
+            }
+        }
+        .labelStyle(.titleAndIcon)
+        .accessibilityLabel("Map Height")
+        .accessibilityValue(Text(map.depth.accessibilityDescription))
+        .accessibilityIdentifier("cutaway-control")
+        .help("Choose Surface or a cutaway height")
+        .popover(isPresented: $showsPopover) {
+            MapDepthPopover(map: map)
+        }
+    }
+}
+
+private struct MapDepthPopover: View {
+    @Bindable var map: MapModel
     @State private var draggedY: Int?
 
     private var displayedY: Int { draggedY ?? map.depth.y }
@@ -28,7 +57,19 @@ struct MapDepthControl: View {
     }
 
     var body: some View {
-        HStack {
+        VStack(alignment: .leading) {
+            Picker("Map View", selection: Binding {
+                map.depth.isSurface
+            } set: { isSurface in
+                draggedY = nil
+                map.setDepth(MapDepth(y: map.depth.y, isSurface: isSurface))
+            }) {
+                Text("Surface").tag(true).accessibilityIdentifier("cutaway-surface")
+                Text("Cutaway").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("cutaway-mode")
+
             Slider(value: Binding {
                 Double(displayedY)
             } set: {
@@ -40,6 +81,10 @@ struct MapDepthControl: View {
                 }
             }, in: map.depth.sliderRange, step: 1) {
                 Text("Cutaway Height")
+            } minimumValueLabel: {
+                Text(map.depth.sliderRange.lowerBound, format: .number.grouping(.never))
+            } maximumValueLabel: {
+                Text(map.depth.sliderRange.upperBound, format: .number.grouping(.never))
             } onEditingChanged: { editing in
                 if editing {
                     // The map keeps its committed depth while the native slider edits this draft.
@@ -48,23 +93,25 @@ struct MapDepthControl: View {
                     height.wrappedValue = y
                 }
             }
-            .frame(width: 130)
+            .disabled(map.depth.isSurface)
             .accessibilityIdentifier("cutaway-slider")
             .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
-            Text("Y").foregroundStyle(.secondary)
-            TextField("Y", value: height, format: .number.grouping(.never))
-                .frame(width: 65)
-                .monospacedDigit()
-                .accessibilityLabel("Cutaway Y coordinate")
-                .accessibilityIdentifier("cutaway-y")
-                .help("Show the terrain at or below this height")
-            Button("Surface") {
-                map.setDepth(MapDepth(y: map.depth.y, isSurface: true))
+            HStack {
+                Text("Y")
+                TextField("Y", value: height, format: .number.grouping(.never))
+                    .textFieldStyle(.roundedBorder)
+                    .monospacedDigit()
+                    .accessibilityLabel("Cutaway Y coordinate")
+                    .accessibilityIdentifier("cutaway-y")
+                    .help("Show the terrain at or below this height")
+                Stepper("Cutaway Height", value: height, in: Int.min...Int.max)
+                    .labelsHidden()
+                    .accessibilityValue(Text("Y \(displayedY.formatted())"))
+                    .accessibilityIdentifier("cutaway-stepper")
             }
             .disabled(map.depth.isSurface)
-            .accessibilityIdentifier("cutaway-surface")
-            .help("Return to the normal surface map")
         }
+        .padding()
         .onDisappear { draggedY = nil }
     }
 }
