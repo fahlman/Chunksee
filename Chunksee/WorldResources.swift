@@ -41,7 +41,8 @@ final class WorldResources {
     let views: RememberedViews
     let defaults: UserDefaults
     let cacheRoot: URL?
-    private(set) var playerSnapshot: PlayerSnapshot
+    let playerRoster: PlayerRoster
+    var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     private let readRegion: RegionReader.Read
     var activeDimensionID: String?
@@ -50,7 +51,6 @@ final class WorldResources {
     @ObservationIgnored private var openings: Set<UUID> = []
     /// Jumps waiting for a dimension's document to open.
     @ObservationIgnored private var pendingActions: [String: (id: UUID, action: (WorldSession) -> Void)] = [:]
-    @ObservationIgnored private var retiringViews: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var watcher: WorldWatcher?
     @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
@@ -88,7 +88,7 @@ final class WorldResources {
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
-        playerSnapshot = PlayerSnapshot(snapshot.players)
+        playerRoster = PlayerRoster(snapshot.players)
         self.names = names
         self.savedSearches = savedSearches
         self.defaults = defaults
@@ -104,7 +104,7 @@ final class WorldResources {
         let last = views.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             backgroundWork.start(priority: .background) {
@@ -187,14 +187,8 @@ final class WorldResources {
         dimensions.first { $0.id == dimension }?.documentURL(inWorldAt: url)
     }
 
-    func detach(_ session: WorldSession, draining task: Task<Void, Never>) {
+    func detach(_ session: WorldSession) {
         sessions[session.viewID] = nil
-        let id = session.viewID
-        retiringViews[id] = task
-        Task { [weak self] in
-            await task.value
-            self?.retiringViews[id] = nil
-        }
         closeIfUnused()
     }
 
@@ -207,7 +201,7 @@ final class WorldResources {
         backgroundWork.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
-        let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
+        let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
         closingTask = Task {
@@ -215,7 +209,6 @@ final class WorldResources {
                 for reader in readers { group.addTask { await reader.close() } }
             }
             await index.waitForTasks()
-            for task in retiring { await task.value }
             await backgroundWork.waitUntilFinished()
             access.release()
         }
@@ -298,8 +291,7 @@ final class WorldResources {
             let generation = playerReadGeneration
             let updated = await readPlayers(world)
             guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
-            playerSnapshot = PlayerSnapshot(updated)
-            for session in sessions.values.compactMap(\.value) { session.search.playerSnapshot = playerSnapshot }
+            playerRoster.publish(updated)
         }
     }
 

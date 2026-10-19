@@ -156,17 +156,19 @@ final class WorldSession {
                                            defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
     }
 
-    init(resources: WorldResources, dimensionID: String? = nil) {
+    init(resources: WorldResources, dimensionID: String? = nil,
+         renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
+            = { try await $0.tile(for: $1) }) {
         self.resources = resources
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
-        search = SearchModel(readers: [], playerSnapshot: resources.playerSnapshot, names: resources.names,
+        search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
         heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
         playerRecords = PlayerRecordsModel(world: resources.world, work: resources.backgroundWork)
         selectedDimensionID = selected
-        let initialMap = Self.initialMap(resources: resources, dimensionID: selected)
+        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, renderTile: renderTile)
         map = initialMap
         slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
                                      regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
@@ -206,7 +208,7 @@ final class WorldSession {
             await map?.waitForRenders()
         }
         closingTask = task
-        resources.detach(self, draining: task)
+        resources.detach(self)
     }
 
     func waitUntilClosed() async {
@@ -439,12 +441,14 @@ final class WorldSession {
         return content
     }
 
-    private static func initialMap(resources: WorldResources, dimensionID: String?) -> MapModel? {
+    private static func initialMap(resources: WorldResources, dimensionID: String?,
+                                   renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?) -> MapModel? {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
-                           cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot))
+        let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: spawnPoint(in: resources.world, dimensionID: dimensionID),
+                           cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
+                           renderTile: renderTile)
         if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.views.depth(for: dimension.id))
         return map

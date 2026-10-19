@@ -85,7 +85,7 @@ subtitle. Names do not replace identifiers or document URLs.
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, immutable player publication, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
+| `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | One dimension document's map, search controls, history, ruler, selection and inspector; cross-dimension jumps open the destination dimension |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; consumers include Time Spent and Slime Chunks |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -175,12 +175,22 @@ previous index and heat contributions; successful empty reads and deleted files 
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
 share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+Slider dragging holds an unfinished height in the view and commits it only when released
+(Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
+during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
+control discards an unfinished drag. The native control redesign remains tracked separately.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only
 for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
 writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
 cache writer survives that drain.
+MapModel registers render jobs, accepted cache writes, hover reads and coordinate copies in four
+scopes of the world's BackgroundWork owner. Separate scopes preserve depth-change cancellation
+without canceling an already accepted cache write. Their combined drain includes work added
+while another map task finishes, and never waits for a sibling tab. Per-region render IDs, hover
+generations and active handles still own replacement and selective cancellation; canceled tasks
+stay in the common registry until they return. World close rejects late pixels and copy results.
 Cutaway scans from at/below Y with no roof skipping. Surface keeps its existing Nether behavior.
 Export uses the same current map. Tile renderer version 6 keys cutaways by Y and retains Surface
 plus the latest cutaway per region, rather than every slider intermediate. Slider travel starts at
@@ -240,9 +250,31 @@ names can invalidate independently. Typed unsaved queries remain per document. R
 work; an active typed waiter can still finish. Closing one document releases its wait without
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
+SearchModel registers its typed/saved-query waiter tasks in its own BackgroundWork scope. Active
+queries retain their identity and handle for selective cancellation; canceled replacements stay
+in the common registry until they finish. Local close releases saved-query waiter leases and
+closes only that search's scope. World close refuses further queries, rejects late results and
+clears completed active handles without leaving `isSearching` stuck. The scope supplies the
+drain, replacing the separate task table; source generations and result retention remain local.
 
-`PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
-share one pending read; later reloads still reread the source. Closing one caller does not cancel
+WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
+index close cancels/drains only its passes; world-owner close rejects late publication and queued
+work. The index still owns merged region-change requests, dimension priority and publication as
+each dimension finishes. Its current-task handle serves `waitForIndex`; the scope retains and
+drains every pass, replacing the separate task dictionary. Search models forward the explicit
+owner when they construct their own index. SavedQueryResults registers its passes in a separate
+scope of the same owner. Its query entries keep only handles needed for individual retirement;
+the scope retains canceled retired passes until they return and supplies the complete drain.
+Explicit cache/index close releases waiter continuations immediately, while world-owner close
+also refuses new reads and rejects late results. Saved-query caching, source identity and each
+document's waiter lease remain owned by SavedQueryResults.
+
+`PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
+instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
+names used by another world. Source changes cancel only their scope, and model deinitialization
+cancels both. Canceled folder reads retain their file access until completion. There is no
+separate online task dictionary. Overlapping local reloads share one pending handle; later
+reloads still reread the source. Closing one caller does not cancel
 globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
 still cancel/invalidate their sources. The view request follows folder, online permission and the
 known player UUID set, including players without reliable coordinates, so new players trigger lookup
@@ -316,6 +348,12 @@ keep rounding partial seconds up. The world's day-cycle clock remains a separate
 Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
 
+WorldResources owns one observable PlayerRoster for all dimension searches and inspectors. Each
+accepted read publishes one immutable PlayerSnapshot there; searches observe that snapshot
+instead of receiving pushed assignments in every tab. SearchSources still compares snapshot
+identity, so query edits never traverse saved player NBT. Shared saved queries continue to reuse
+only matching publications, and closed searches do not restart when the roster changes.
+
 PlayerRecordsModel keeps the selected player's request identity and rejects replaced results.
 Its reads register in a BackgroundWork scope: cancellation and draining affect only that inspector,
 including older canceled reads, while world close still cancels and drains every scope. Closing
@@ -347,11 +385,17 @@ RefreshLoader coalesces saves during a pass, retains the previous value and reje
 its own or its world's close. Canceling a waiter does not cancel the shared read. WorldResources
 owns BackgroundWork, which retains registered tasks until completion and drains work added during
 a wait. A tab closes only its own loader; world close cancels and drains all registered work before
-releasing file access. Time Spent is the first adoption; other readers keep their existing owned
-tasks and drain paths until separately migrated under #169. Startup cache maintenance also
+releasing file access. Index, search, map, player-record and refresh readers now use the same
+owner with their own cancellation scopes, as described above. Source and request identities
+remain with the models that validate their results. Startup cache maintenance also
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
+
+WorldResources uses that common drain for detached tabs too; it keeps no retiring-view task
+table or cleanup tasks. Each WorldSession retains its own closing join because a native document
+reread or move must await that session before replacing it. DocumentGroup still owns document
+closure, and the world releases folder access only after its readers and registered work finish.
 
 WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
 tracks overlapping player reads and supplies the refresh-only drain; world close cancels and

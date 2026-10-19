@@ -18,9 +18,8 @@ final class SearchModel {
             if text != oldValue { updateQueries() }
         }
     }
-    var playerSnapshot: PlayerSnapshot {
-        didSet { if playerSnapshot !== oldValue { updateQueries() } }
-    }
+    let playerRoster: PlayerRoster
+    var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     var index: SearchIndex { indexStore.index }
     var portals: [String: [NetherPortal]] { indexStore.portals }
@@ -37,20 +36,25 @@ final class SearchModel {
     private let singleplayerUUID: UUID?
     private let savedSearches: SavedSearches
     private let execute: @Sendable (SearchRequest) async -> [String: [SearchHit]]
-    @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
-    @ObservationIgnored private var activeQueries: [String: UUID] = [:]
+    private let work: BackgroundWork.Scope
+    private struct ActiveQuery {
+        let id: UUID
+        let task: Task<Void, Never>
+    }
+    @ObservationIgnored private var activeQueries: [String: ActiveQuery] = [:]
     @ObservationIgnored private var completedQueries: Set<String> = []
     @ObservationIgnored private var sourceGeneration = UUID()
     @ObservationIgnored private var sources: SearchSources?
-    @ObservationIgnored private var isClosed = false
+    private var isClosed: Bool { work.isClosed }
 
-    init(readers: [RegionReader], playerSnapshot: PlayerSnapshot, names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], work: BackgroundWork, playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil) {
+        self.work = work.makeScope()
         self.ownsIndex = indexStore == nil
-        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, firstDimension: firstDimension)
-        self.playerSnapshot = playerSnapshot
+        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension)
+        self.playerRoster = playerRoster
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
@@ -70,6 +74,7 @@ final class SearchModel {
             _ = names.online
             _ = savedSearches.all
             _ = indexStore.revision
+            _ = playerRoster.snapshot
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, !self.isClosed else { return }
@@ -94,12 +99,12 @@ final class SearchModel {
         if next != sources {
             sources = next
             sourceGeneration = UUID()
-            for id in activeQueries.values { cancelQuery(id) }
+            for query in activeQueries.values { cancelQuery(query) }
             activeQueries = [:]
             completedQueries = []
         }
-        for (query, id) in activeQueries where !queries.contains(query) {
-            cancelQuery(id)
+        for (query, active) in activeQueries where !queries.contains(query) {
+            cancelQuery(active)
             activeQueries[query] = nil
         }
         completedQueries.formIntersection(queries)
@@ -112,25 +117,33 @@ final class SearchModel {
             let id = UUID(), generation = sourceGeneration, execute = execute
             let request = SearchRequest(queries: [query], index: index, players: players, playerNames: playerNames)
             let isSaved = saved.contains(query)
-            activeQueries[query] = id
-            let task = Task(priority: .userInitiated) { [weak self] in
-                defer { shared.release(id); self?.tasks[id] = nil }
+            guard let task = work.start(priority: .userInitiated, operation: { [weak self] in
+                defer {
+                    shared.release(id)
+                    if let self, self.isClosed, self.activeQueries[query]?.id == id {
+                        self.activeQueries[query] = nil
+                        self.isSearching = !self.activeQueries.isEmpty
+                    }
+                }
                 let found: [String: [SearchHit]]?
                 if isSaved {
                     found = await shared.results(for: request, sources: next, waiter: id, execute: execute)
                 } else {
                     found = await execute(request)
                 }
+                // Observation schedules the replacement on the main actor; reject an older
+                // player publication even if that scheduled callback has not run yet.
                 guard !Task.isCancelled, let self, !self.isClosed,
-                      self.sourceGeneration == generation, self.activeQueries[query] == id else { return }
+                      self.playerSnapshot === next.playerSnapshot,
+                      self.sourceGeneration == generation, self.activeQueries[query]?.id == id else { return }
                 self.activeQueries[query] = nil
                 guard let found else { self.isSearching = !self.activeQueries.isEmpty; return }
                 self.completedQueries.insert(query)
                 self.queryResults[query] = found[query] ?? []
                 if query == self.text { self.displayedQuery = query }
                 self.updateQueries()
-            }
-            tasks[id] = task
+            }) else { return }
+            activeQueries[query] = ActiveQuery(id: id, task: task)
         }
         isSearching = !activeQueries.isEmpty
     }
@@ -152,29 +165,29 @@ final class SearchModel {
     /// Waits for the query snapshot actually consumed by the UI, including a changed shared source.
     func waitForSearch() async {
         updateQueries()
-        while !activeQueries.isEmpty {
-            let pending = activeQueries.values.compactMap { tasks[$0] }
+        while !isClosed, !activeQueries.isEmpty {
+            let pending = activeQueries.values.map(\.task)
             for task in pending { await task.value }
             updateQueries()
         }
     }
 
     func cancel() {
-        isClosed = true
+        work.close()
         sourceGeneration = UUID()
-        for id in tasks.keys { cancelQuery(id) }
+        for query in activeQueries.values { indexStore.savedQueries.release(query.id) }
         activeQueries = [:]
         isSearching = false
         if ownsIndex { indexStore.cancel() }
     }
 
-    private func cancelQuery(_ id: UUID) {
-        tasks[id]?.cancel()
-        indexStore.savedQueries.release(id)
+    private func cancelQuery(_ query: ActiveQuery) {
+        query.task.cancel()
+        indexStore.savedQueries.release(query.id)
     }
 
     func waitForTasks() async {
-        for task in tasks.values { await task.value }
+        await work.waitUntilFinished()
         if ownsIndex { await indexStore.waitForTasks() }
     }
 }

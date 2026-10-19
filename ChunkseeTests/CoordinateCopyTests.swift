@@ -17,8 +17,8 @@ import Testing
     private func map(_ url: URL, dimensionID: String = "overworld",
                      read: (@Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
-        if let read { return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
-        return MapModel(dimension: dimension, center: .zero, cacheDirectory: nil)
+        if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
+        return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
     }
 
     private func board() -> NSPasteboard {
