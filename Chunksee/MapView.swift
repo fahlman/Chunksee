@@ -64,7 +64,7 @@ struct MapContent {
 
     private static func chunk(at block: CGPoint) -> ChunkPosition? {
         guard let point = MapCoordinates(point: block) else { return nil }
-        return ChunkPosition(x: Int(point.x) >> 4, z: Int(point.z) >> 4)
+        return ChunkPosition(containingBlockX: Int(point.x), blockZ: Int(point.z))
     }
 
     func nearbyPlaces(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [PlaceMarker] {

@@ -29,21 +29,41 @@ import Testing
         #expect(decoded == [ChunkPosition(x: -33, z: -1): "minecraft:plains"])
     }
 
-    @Test func negativeChunkOriginsReachTheSameTerrainAndBiome() async throws {
-        let spec = TestWorld.chunk(x: -33, z: -1, palette: ["minecraft:gold_block"]) { _, _, _ in 0 }
-        let url = try TestWorld.make(chunks: [spec])
+    @Test func chunkBoundariesReachTheSameTerrainAndBiome() async throws {
+        let examples: [(point: CGPoint, chunk: ChunkPosition, y: Int, id: String)] = [
+            (CGPoint(x: -527.5, y: -15.5), .init(x: -33, z: -1), 0, "minecraft:gold_block"),
+            (CGPoint(x: -512.1, y: -1.1), .init(x: -33, z: -1), 9, "minecraft:stone"),
+            (CGPoint(x: -512, y: -1), .init(x: -32, z: -1), 13, "minecraft:stone"),
+            (CGPoint(x: 0, y: -0.1), .init(x: 0, z: -1), 13, "minecraft:stone"),
+            (CGPoint(x: 16, y: 16), .init(x: 1, z: 1), 0, "minecraft:gold_block"),
+        ]
+        let chunks = Set(examples.map(\.chunk)).map { chunk in
+            TestWorld.chunk(x: chunk.x, z: chunk.z, palette: ["minecraft:air", "minecraft:gold_block", "minecraft:stone"]) { x, y, z in
+                y <= (x + 3 * z) % 16 ? (z < 8 ? 1 : 2) : 0
+            }
+        }
+        let url = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let chunk = ChunkPosition(x: -33, z: -1)
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -527.5, y: -15.5))
-        map.loadTopBlocks(at: map.viewport.center)
-        await map.waitForTopBlocks()
-        #expect(map.topBlock(at: map.viewport.center)?.id == "minecraft:gold_block")
-        #expect(map.topBlocks.keys.contains(chunk))
-        let facts = try await RegionReader.scan(dimension, region: chunk.region)
-        #expect(facts.surfaceBiomes[chunk] == "minecraft:plains")
-        map.close()
-        await map.waitForRenders()
+        for example in examples {
+            let map = MapModel(work: BackgroundWork(), dimension: dimension, center: example.point)
+            // Copy Coordinates can read a column before the pointer has hovered over its chunk.
+            var read: RegionTileRenderer.TopBlock?
+            map.readTopBlock(at: example.point) { read = $0 }
+            await map.waitForCoordinateReads()
+            #expect(read?.id == example.id && read?.y == example.y)
+            map.loadTopBlocks(at: example.point)
+            await map.waitForTopBlocks()
+            #expect(map.topBlock(at: example.point)?.id == example.id)
+            #expect(map.topBlock(at: example.point)?.y == example.y)
+            #expect(map.topBlocks.keys.contains(example.chunk))
+            let facts = try await RegionReader.scan(dimension, region: example.chunk.region)
+            var content = MapContent()
+            content.biomes = facts.surfaceBiomes
+            #expect(content.biome(at: example.point) == "minecraft:plains")
+            map.close()
+            await map.waitForRenders()
+        }
     }
 
     @Test func biomeAreasOmitUnrepresentableChunkOrigins() {
