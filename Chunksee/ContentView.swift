@@ -92,16 +92,16 @@ struct WorldView: View {
                 }
                 .focused($isSidebarFocused)
                 // A new dimension can receive its jump before this view appears.
-                .onChange(of: session.sidebarRevealRequest, initial: true) {
-                    guard session.sidebarRevealRequest != nil, let item = session.sidebarSelection else { return }
+                .onChange(of: session.selection.sidebarRevealRequest, initial: true) {
+                    guard session.selection.sidebarRevealRequest != nil, let item = session.selection.sidebarSelection else { return }
                     sidebarDisclosure.reveal(item, in: session)
                     sidebarRevealID = UUID()
                 }
                 .onChange(of: sidebarRevealID) {
-                    if let item = session.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
+                    if let item = session.selection.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
                 }
                 .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
-                    if let item = items.first { session.choose(item) }
+                    if let item = items.first { session.selection.choose(item) }
                 }
                 // Names come from the chosen Minecraft folder and, when allowed, from Mojang; look again
                 // whenever either setting changes.
@@ -185,9 +185,9 @@ struct WorldView: View {
 
     /// Only input through the native List binding navigates and requests sidebar focus.
     private var sidebarSelection: Binding<SidebarItem?> {
-        Binding { session.sidebarSelection } set: { item in
+        Binding { session.selection.sidebarSelection } set: { item in
             if item != nil { isSidebarFocused = true }
-            session.choose(item)
+            session.selection.choose(item)
         }
     }
 
@@ -203,9 +203,9 @@ struct WorldView: View {
     }
 
     private var inspectorShown: Binding<Bool> {
-        Binding { session.inspector != nil } set: {
-            if !$0 { session.inspector = nil }
-            else if session.inspector == nil { session.inspector = .world }
+        Binding { session.selection.inspector != nil } set: {
+            if !$0 { session.selection.inspector = nil }
+            else if session.selection.inspector == nil { session.selection.inspector = .world }
         }
     }
 
@@ -270,7 +270,7 @@ private struct WorldInspector: View {
     let session: WorldSession
 
     var body: some View {
-        switch session.inspector {
+        switch session.selection.inspector {
         case .world?:
             WorldInfoView(session: session)
         case .storage?:
@@ -281,7 +281,7 @@ private struct WorldInspector: View {
                     .id(player.uuid)
             }
         case .selection?:
-            switch session.currentSelection {
+            switch session.selection.mapSelection {
             case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
             case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
             case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)

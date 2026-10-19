@@ -284,11 +284,11 @@ import Testing
 
         let overworld = sessions[0], nether = sessions[1]
         let sharedHit = try #require(nether.search.results(for: "diamond").first)
-        nether.choose(.hit(query: "diamond", id: sharedHit.id))
-        overworld.choose(.worldInfo)
-        #expect(nether.selectedHitID == sharedHit.id && overworld.selectedHitID == nil)
-        #expect(nether.sidebarSelection == .hit(query: "diamond", id: sharedHit.id))
-        #expect(overworld.sidebarSelection == .worldInfo)
+        nether.selection.choose(.hit(query: "diamond", id: sharedHit.id))
+        overworld.selection.choose(.worldInfo)
+        #expect(nether.selection.selectedHitID == sharedHit.id && overworld.selection.selectedHitID == nil)
+        #expect(nether.selection.sidebarSelection == .hit(query: "diamond", id: sharedHit.id))
+        #expect(overworld.selection.sidebarSelection == .worldInfo)
 
         // Same UUID, save date and roster size, but a different inventory. All documents must
         // switch to one new publication and expose real updated results, including a later opener.

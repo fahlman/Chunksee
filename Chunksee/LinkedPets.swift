@@ -20,7 +20,7 @@ struct LinkedPetsSection: View {
         if !pets.isEmpty {
             Section("Linked Pets") {
                 ForEach(pets) { pet in
-                    Button { session.showLinkedPet(pet, ownedBy: playerID) } label: {
+                    Button { session.selection.showLinkedPet(pet, ownedBy: playerID) } label: {
                         VStack(alignment: .leading) {
                             Label(pet.name, systemImage: "pawprint.fill")
                             Text(Coordinates.text(pet.position, y: pet.creature.y, dimension: session.dimensionName(pet.dimension)))
