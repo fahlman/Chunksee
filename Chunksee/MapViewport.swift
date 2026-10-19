@@ -20,6 +20,10 @@ nonisolated struct MapViewport: Equatable, Sendable {
     static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 32
     static let minimumManualScale: CGFloat = 1.0 / 16
     var canZoomOut: Bool { scale > Self.minimumManualScale }
+    var isValid: Bool {
+        Coordinates.block(center.x) != nil && Coordinates.block(center.y) != nil &&
+            scale.isFinite && Self.scaleRange.contains(scale)
+    }
 
     init(center: CGPoint = .zero, scale: CGFloat = 1) {
         self.center = center
@@ -52,17 +56,21 @@ nonisolated struct MapViewport: Equatable, Sendable {
         var zs: ClosedRange<Int>
     }
 
-    func visibleRegionRange(in size: CGSize) -> RegionRange {
+    func visibleRegionRange(in size: CGSize) -> RegionRange? {
+        guard isValid, size.width.isFinite, size.height.isFinite,
+              size.width >= 0, size.height >= 0 else { return nil }
         let topLeft = blockPoint(at: .zero, in: size)
         let bottomRight = blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
         let side = Double(RegionCoordinate.blockSize)
-        return RegionRange(xs: Int((topLeft.x / side).rounded(.down))...Int((bottomRight.x / side).rounded(.down)),
-                           zs: Int((topLeft.y / side).rounded(.down))...Int((bottomRight.y / side).rounded(.down)))
+        guard let minX = Coordinates.block(topLeft.x / side), let maxX = Coordinates.block(bottomRight.x / side),
+              let minZ = Coordinates.block(topLeft.y / side), let maxZ = Coordinates.block(bottomRight.y / side),
+              minX <= maxX, minZ <= maxZ else { return nil }
+        return RegionRange(xs: minX...maxX, zs: minZ...maxZ)
     }
 
     /// Enumerate only saved regions, so fitting distant terrain never walks the empty space.
     func visibleRegions(in size: CGSize, among available: Set<RegionCoordinate>) -> [RegionCoordinate] {
-        let range = visibleRegionRange(in: size)
+        guard let range = visibleRegionRange(in: size) else { return [] }
         return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) }
             .sorted { distanceToCenter($0) < distanceToCenter($1) }
     }
@@ -82,8 +90,8 @@ nonisolated struct MapViewport: Equatable, Sendable {
 
     func distanceToCenter(_ region: RegionCoordinate) -> CGFloat {
         let half = CGFloat(RegionCoordinate.blockSize) / 2
-        return hypot(CGFloat(region.x * RegionCoordinate.blockSize) + half - center.x,
-                     CGFloat(region.z * RegionCoordinate.blockSize) + half - center.y)
+        return hypot(CGFloat(region.x) * CGFloat(RegionCoordinate.blockSize) + half - center.x,
+                     CGFloat(region.z) * CGFloat(RegionCoordinate.blockSize) + half - center.y)
     }
 
     /// Moves the map with the pointer, so content follows a drag.

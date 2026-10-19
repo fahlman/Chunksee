@@ -29,8 +29,10 @@ struct RememberedViews {
     }
 
     func viewport(for dimension: String) -> MapViewport? {
-        guard let view = (defaults.dictionary(forKey: key)?["views"] as? [String: [Double]])?[dimension], view.count == 3 else { return nil }
-        return MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])
+        guard let view = (defaults.dictionary(forKey: key)?["views"] as? [String: [Double]])?[dimension], view.count == 3,
+              view[2].isFinite, view[2] > 0 else { return nil }
+        let viewport = MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])
+        return viewport.isValid ? viewport : nil
     }
 
     func depth(for dimension: String) -> MapDepth {
@@ -41,6 +43,7 @@ struct RememberedViews {
 
     /// Remembers `viewport` for `dimension`, and `selected` as the dimension showing.
     func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil) {
+        guard viewport.isValid else { return }
         var saved = defaults.dictionary(forKey: key) ?? [:]
         var views = saved["views"] as? [String: [Double]] ?? [:]
         views[dimension] = [viewport.center.x, viewport.center.y, viewport.scale]

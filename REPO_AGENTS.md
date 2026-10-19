@@ -186,6 +186,10 @@ readouts use ChunkseeKit’s `BlockPosition` containing-block conversion, includ
 are unavailable for mapping. Player/creature positions remain exact, while death/respawn points,
 saved places and coordinate-entry destinations use the center of their block for drawing and focus.
 
+Viewport-to-region and grid conversions check finite values and integer bounds before forming
+ranges. Invalid persisted centers or zooms are ignored; an invalid live viewport cannot replace
+a previously valid saved view. Grid iteration checks its step arithmetic as well as its endpoints.
+
 Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
 Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.
 A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
