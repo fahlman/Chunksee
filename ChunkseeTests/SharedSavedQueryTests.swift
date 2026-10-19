@@ -279,7 +279,7 @@ import Testing
     }
 
     @Test func sharedKeysIncludeIndexVersionAndPlayerPublication() async {
-        let cache = SavedQueryResults(), gate = AsyncReadGate<SavedQueryResults.Results>()
+        let cache = SavedQueryResults(work: BackgroundWork()), gate = AsyncReadGate<SavedQueryResults.Results>()
         let uuid = UUID(), other = UUID(), date = Date(timeIntervalSince1970: 1)
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let original = PlayerSnapshot([player])

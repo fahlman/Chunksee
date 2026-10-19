@@ -246,8 +246,12 @@ index close cancels/drains only its passes; world-owner close rejects late publi
 work. The index still owns merged region-change requests, dimension priority and publication as
 each dimension finishes. Its current-task handle serves `waitForIndex`; the scope retains and
 drains every pass, replacing the separate task dictionary. Search models forward the explicit
-owner when they construct their own index. Saved-query work keeps its existing owner until its
-separate #169 migration.
+owner when they construct their own index. SavedQueryResults registers its passes in a separate
+scope of the same owner. Its query entries keep only handles needed for individual retirement;
+the scope retains canceled retired passes until they return and supplies the complete drain.
+Explicit cache/index close releases waiter continuations immediately, while world-owner close
+also refuses new reads and rejects late results. Saved-query caching, source identity and each
+document's waiter lease remain owned by SavedQueryResults.
 
 `PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
 share one pending read; later reloads still reread the source. Closing one caller does not cancel
