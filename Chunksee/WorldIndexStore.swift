@@ -5,7 +5,7 @@ import Observation
 /// One index pass per world, shared by every dimension's independent search controls.
 @Observable
 final class WorldIndexStore {
-    let savedQueries = SavedQueryResults()
+    let savedQueries: SavedQueryResults
     private(set) var index = SearchIndex()
     private(set) var portals: [String: [NetherPortal]] = [:]
     private(set) var revision = 0
@@ -37,6 +37,7 @@ final class WorldIndexStore {
     init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?,
          readDimension: @escaping @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex = DimensionIndex.read) {
         self.work = work.makeScope()
+        savedQueries = SavedQueryResults(work: work)
         self.readers = readers
         self.readDimension = readDimension
         rebuild(firstDimension: firstDimension)
