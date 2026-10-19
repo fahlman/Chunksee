@@ -86,7 +86,6 @@ struct HelpCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .help) {
             Button("Chunksee Help") { openWindow(id: "help") }
-                .keyboardShortcut("?", modifiers: .command)
         }
     }
 }
