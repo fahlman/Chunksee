@@ -47,6 +47,6 @@ nonisolated struct PointMarkers<Marker: MapLayerMarker & Sendable>: Sendable {
     }
 
     private static func coordinate(_ value: CGFloat) -> Int? {
-        Coordinates.block(value / CGFloat(RegionTileRenderer.side))
+        Coordinates.block(value / MapViewport.regionSideInBlocks)
     }
 }

@@ -200,6 +200,8 @@ Region/chunk index keys, tiles and scan results use Kit's RegionPosition and Chu
 directly. Kit owns chunk-to-region/local coordinates and checked chunk/region origins; app scans,
 hover reads, biome geometry and block-search pins use those properties. The previous x/z cache-key
 encoding is unchanged. Unrepresentable chunk origins do not become map areas or search pins.
+Region drawing/fitting also uses Kit's checked block origins. Continuous view geometry uses one
+block-size constant, tested against Kit; the tile renderer's pixel size is independent of it.
 The renderer owns its one-pixel-per-block canvas size; view rectangles remain CGFloat geometry.
 
 Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
@@ -439,5 +441,5 @@ while readable locations in unavailable dimensions remain inspectable with navig
 Personal phrases and absent-owner names stay with PlayerPresentation, preserving their wording.
 The player-location policy comes from Kit's `PlayerInfo.locationsBelongToWorld`; the app only
 checks coordinate availability and presentation. Scan-cache version 16 rereads data after Kit
-0.30's identifier validation. Typed positions, RegionFacts and shoulder-pet presentation are
+0.30's identifier validation. RegionFacts and shoulder-pet presentation are
 adopted in separate changes; publishing these APIs does not enable their app features by itself.

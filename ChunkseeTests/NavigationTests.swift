@@ -92,7 +92,7 @@ import Testing
         let fit = try #require(MapViewport.fitting(regions, in: size))
         #expect(fit.center == CGPoint(x: -256, y: 768))
         for region in regions {
-            let rect = fit.viewRect(for: region, in: size)
+            let rect = try #require(fit.viewRect(for: region, in: size))
             #expect(rect.minX >= 24 - 0.001 && rect.maxX <= size.width - 24 + 0.001)
             #expect(rect.minY >= 24 - 0.001 && rect.maxY <= size.height - 24 + 0.001)
         }

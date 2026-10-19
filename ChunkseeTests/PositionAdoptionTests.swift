@@ -5,6 +5,23 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct PositionAdoptionTests {
+    @Test func continuousGeometryMatchesKitsRegionSize() throws {
+        let xStep = try #require(RegionPosition(x: 1, z: 0).blockOrigin)
+        let zStep = try #require(RegionPosition(x: 0, z: 1).blockOrigin)
+        #expect(MapViewport.regionSideInBlocks == CGFloat(xStep.x))
+        #expect(MapViewport.regionSideInBlocks == CGFloat(zStep.z))
+    }
+
+    @Test func unrepresentableRegionsCannotDrawOrDistortFitWorld() {
+        let size = CGSize(width: 800, height: 600)
+        let invalid = RegionPosition(x: .max, z: .min)
+        let valid = RegionPosition(x: -2, z: 3)
+        #expect(MapViewport().viewRect(for: invalid, in: size) == nil)
+        #expect(MapViewport.fitting([invalid], in: size) == nil)
+        #expect(MapViewport.fitting([valid, invalid], in: size) == MapViewport.fitting([valid], in: size))
+        #expect(MapViewport().distanceToCenter(invalid) > MapViewport().distanceToCenter(valid))
+    }
+
     @Test func existingBiomeCacheKeysDecodeAsKitPositions() throws {
         // The old ChunkCoordinate synthesized Codable used this exact x/z shape.
         let data = Data(#"[{"x":-33,"z":-1},"minecraft:plains"]"#.utf8)
