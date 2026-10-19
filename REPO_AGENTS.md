@@ -246,6 +246,12 @@ names can invalidate independently. Typed unsaved queries remain per document. R
 work; an active typed waiter can still finish. Closing one document releases its wait without
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
+SearchModel registers its typed/saved-query waiter tasks in its own BackgroundWork scope. Active
+queries retain their identity and handle for selective cancellation; canceled replacements stay
+in the common registry until they finish. Local close releases saved-query waiter leases and
+closes only that search's scope. World close refuses further queries, rejects late results and
+clears completed active handles without leaving `isSearching` stuck. The scope supplies the
+drain, replacing the separate task table; source generations and result retention remain local.
 
 WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
 index close cancels/drains only its passes; world-owner close rejects late publication and queued
@@ -375,8 +381,9 @@ RefreshLoader coalesces saves during a pass, retains the previous value and reje
 its own or its world's close. Canceling a waiter does not cancel the shared read. WorldResources
 owns BackgroundWork, which retains registered tasks until completion and drains work added during
 a wait. A tab closes only its own loader; world close cancels and drains all registered work before
-releasing file access. Time Spent is the first adoption; other readers keep their existing owned
-tasks and drain paths until separately migrated under #169. Startup cache maintenance also
+releasing file access. Index, search, map, player-record and refresh readers now use the same
+owner with their own cancellation scopes, as described above. Source and request identities
+remain with the models that validate their results. Startup cache maintenance also
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
