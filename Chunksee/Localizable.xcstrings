@@ -1,6 +1,39 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Unopened Loot" : {
+      "comment" : "Group and fallback name for a container whose loot has not been generated yet."
+    },
+    "Monster Room Loot" : {
+      "comment" : "Unopened container using Minecraft’s simple_dungeon loot table; not a prediction of its contents or surroundings."
+    },
+    "Mineshaft Loot" : {
+      "comment" : "Unopened container using the abandoned_mineshaft loot table."
+    },
+    "Desert Pyramid Loot" : {
+      "comment" : "Unopened container using the desert_pyramid loot table."
+    },
+    "Jungle Pyramid Loot" : {
+      "comment" : "Unopened container using the jungle_temple loot table."
+    },
+    "Buried Treasure Loot" : {
+      "comment" : "Unopened container using the buried_treasure loot table."
+    },
+    "Shipwreck Treasure Loot" : {
+      "comment" : "Unopened container using the shipwreck_treasure loot table."
+    },
+    "Shipwreck Supply Loot" : {
+      "comment" : "Unopened container using the shipwreck_supply loot table."
+    },
+    "Shipwreck Map Loot" : {
+      "comment" : "Unopened container using the shipwreck_map loot table."
+    },
+    "%@ Loot" : {
+      "comment" : "Readable vanilla loot-table name followed by Loot. The placeholder is the saved table name."
+    },
+    "Loot: %@" : {
+      "comment" : "Fallback unopened-loot label; the placeholder is an unfamiliar saved loot-table identifier."
+    },
     "Done" : {
       "comment" : "Dismiss the map-height popover; height changes have already been applied."
     },
