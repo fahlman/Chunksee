@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.30.0`, resolved to `0.30.0` (`4936a9a5f19adc7c5984f26eea7c8ff11d507de9`).
+  minor" from `0.31.0`, resolved to `0.31.0` (`22530aa2a2981abbb6e9f31e8111d103052d7c7a`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
