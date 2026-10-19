@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct DimensionNameTests {
+@Suite(.isolatedStores) struct DimensionNameTests {
     private func world(_ customIDs: [String]) throws -> URL {
         let url = try TestWorld.make(chunks: [])
         for id in customIDs {
@@ -15,7 +15,7 @@ import Testing
     }
 
     private func session(_ url: URL) async throws -> WorldSession {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         return try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
     }
 

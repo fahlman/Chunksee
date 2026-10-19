@@ -1,9 +1,9 @@
 import AppKit
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct CoordinatePresentationTests {
+@Suite(.isolatedStores) struct CoordinatePresentationTests {
     @Test func negativeReadoutsAndAccessibleLocationsKeepTheSameSavedXYZAsCopy() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
@@ -127,7 +127,7 @@ import Testing
         let nbt = NBT.compound(["DataVersion": .int(5023), "Entities": .list(entities)])
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: nbt)]))
             .write(to: dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
         #expect(session.selectedIndex.creatures.count == 2)

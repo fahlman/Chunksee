@@ -3,16 +3,16 @@ import CoreGraphics
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.serialized) struct MapContextMenuTests {
+@Suite(.isolatedStores, .serialized) struct MapContextMenuTests {
     private let size = CGSize(width: 400, height: 300)
 
     private func withSession(_ body: (WorldSession) async throws -> Void) async throws {
         let url = try TestWorld.make(chunks: [TestWorld.chunk(x: -1, z: -1,
             palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y <= 2 ? 1 : 0 }])
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         do { try await body(session) }
         catch { session.close(); await session.waitUntilClosed(); throw error }

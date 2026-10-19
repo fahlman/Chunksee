@@ -3,9 +3,9 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct PointMarkersTests {
+@Suite(.isolatedStores) struct PointMarkersTests {
     private let size = CGSize(width: 200, height: 140)
 
     private func places() -> [PlaceMarker] {
@@ -177,7 +177,7 @@ import Testing
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([spec])).write(to: nether.appendingPathComponent("r.0.0.mca"))
         let state = MovingMarkers()
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in await state.read(dimension.id) })

@@ -1,13 +1,13 @@
 import CoreGraphics
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct SavedPlacesTests {
+@Suite(.isolatedStores) struct SavedPlacesTests {
     @Test func placesPersistPerWorldAndRenamingAndRemovalAreRemembered() throws {
-        let suite = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let defaults = TestDefaults.make()
+
         let first = URL(fileURLWithPath: "/Worlds/First"), second = URL(fileURLWithPath: "/Worlds/Second")
         let places = SavedPlaces(world: first, defaults: defaults)
         let place = try #require(places.add(name: "  Home  ", dimension: "minecraft:overworld", at: CGPoint(x: -0.1, y: 71.9)))
@@ -25,9 +25,9 @@ import Testing
     }
 
     @Test func aNativeDocumentMoveRetainsPlacesAndRemovesTheOldPreferenceKey() throws {
-        let suite = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let defaults = TestDefaults.make()
+
         let oldURL = URL(fileURLWithPath: "/Worlds/Old"), newURL = URL(fileURLWithPath: "/Worlds/New")
         let places = SavedPlaces(world: oldURL, defaults: defaults)
         let place = try #require(places.add(name: "Base", dimension: "minecraft:the_nether", at: CGPoint(x: 1, y: 2)))

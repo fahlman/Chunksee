@@ -2,15 +2,15 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct SidebarSelectionTests {
+@Suite(.isolatedStores) struct SidebarSelectionTests {
     let playerID = UUID(uuidString: "00000001-0000-0002-0000-000300000004")!
     let missingDimensionPlayerID = UUID(uuidString: "00000005-0000-0006-0000-000700000008")!
     @Test func mapClicksSelectAndRevealRowsWithoutNavigating() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -69,7 +69,7 @@ import Testing
     @Test func aSearchPinSelectsItsCurrentOrSavedResultRow() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -97,7 +97,7 @@ import Testing
     @Test func mapOverlaySurvivesOtherMarkersAndStaleTargets() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -143,7 +143,7 @@ import Testing
     @Test func emptyMapKeepsWorldInfoAndStorageRowsSelected() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         for row in [SidebarItem.worldInfo, .storage] {
@@ -158,7 +158,7 @@ import Testing
     @Test func mapIgnoresPlayerTargetsWithNoMarkerHere() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // Listed here, since their dimension is missing, but nothing of theirs is drawn here.
@@ -177,7 +177,7 @@ import Testing
         let unplaced = UUID(uuidString: "0000000B-0000-0000-0000-00000000000B")!
         let url = try crossDimensionWorld(away: away, unplaced: unplaced)
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.selectedDimensionID == "minecraft:overworld")
@@ -218,7 +218,7 @@ import Testing
     @Test func selectingAPlayerShowsTheirDetailsAsWithAPet() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -249,7 +249,7 @@ import Testing
     @Test func sidebarChoicesReplaceOldDetailsAndPinHighlightTogether() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -323,7 +323,7 @@ import Testing
         let nether = url.appendingPathComponent("dimensions/minecraft/the_nether/region")
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([chunk])).write(to: nether.appendingPathComponent("r.0.0.mca"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let sessions = [WorldSession(resources: resources, dimensionID: "minecraft:overworld"),
@@ -364,7 +364,7 @@ import Testing
     @Test func selectedPortalAndCreatureUseLiveDataAndDisappearWhenRemoved() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         session.refreshDelay = .zero

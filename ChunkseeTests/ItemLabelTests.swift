@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct ItemLabelTests {
+@Suite(.isolatedStores) struct ItemLabelTests {
     func item(_ id: String, count: Int32 = 1, name: String? = nil, extra: [String: NBT] = [:]) -> NBT {
         var components = extra
         if let name { components["minecraft:custom_name"] = .string(name) }

@@ -28,7 +28,7 @@ final class AppModel {
         init(_ value: WorldResources) { self.value = value }
     }
 
-    init(defaults: UserDefaults = .standard, cacheRoot: URL? = TileCache.root,
+    init(defaults: UserDefaults, cacheRoot: URL?,
          readWorld: @escaping @Sendable (URL) async throws -> WorldSnapshot = { try await WorldSnapshot.read($0) }) {
         self.defaults = defaults
         self.cacheRoot = cacheRoot

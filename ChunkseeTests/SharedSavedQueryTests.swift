@@ -2,16 +2,16 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct SharedSavedQueryTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct SharedSavedQueryTests {
     private func hit(_ title: String) -> SearchHit {
         SearchHit(id: title, source: .sign, dimension: "minecraft:overworld", position: .zero,
                   y: 64, title: title, detail: title, count: 1)
     }
 
     @Test func threeDocumentsReusePendingAndCompletedSavedQueries() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
         let index = WorldIndexStore(readers: [], firstDimension: nil)
@@ -48,7 +48,7 @@ import Testing
     }
 
     @Test func closingTheRequesterStopsItsWaitWithoutCancellingTheSharedPass() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
         let index = WorldIndexStore(readers: [], firstDimension: nil)
@@ -78,7 +78,7 @@ import Testing
     }
 
     @Test func removingTheLastUseCancelsAndWorldClosureDrainsARetiredPass() async throws {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
@@ -105,7 +105,7 @@ import Testing
     }
 
     @Test func removingASavedQueryKeepsAnActiveTypedWaiterAndDoesNotCacheItAfterwards() async throws {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
@@ -134,7 +134,7 @@ import Testing
     }
 
     @Test func sameCountPlayerUpdatesAndNewlyOpenedDocumentsShareOnlyMatchingSources() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!, uuid = UUID()
+        let defaults = TestDefaults.make(), uuid = UUID()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
         let index = WorldIndexStore(readers: [], firstDimension: nil)
@@ -173,7 +173,7 @@ import Testing
     }
 
     @Test func sharedNamesInvalidateOnceAndKeepPreviousSnapshotsWhileSearching() async {
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!, uuid = UUID()
+        let defaults = TestDefaults.make(), uuid = UUID()
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"Known"}"#.utf8), 200) }))
         names.looksUpOnline = true
         let saved = SavedSearches(defaults: defaults)
@@ -222,7 +222,7 @@ import Testing
         ]))
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
                                      dimensionDocuments: original.dimensionDocuments, players: [player], details: original.details)
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("diamond")
         let resources = WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),

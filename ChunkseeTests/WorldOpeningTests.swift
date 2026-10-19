@@ -2,12 +2,11 @@ import ChunkseeKit
 import Foundation
 import Observation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct WorldOpeningTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldOpeningTests {
     private final class Fixture {
         let url: URL
-        let suite: String
         let defaults: UserDefaults
         let model: AppModel
         let probe: Reads
@@ -23,8 +22,8 @@ import Testing
             for name in ["the_nether", "the_end"] {
                 try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/\(name)/region"), withIntermediateDirectories: true)
             }
-            suite = "ChunkseeTests-\(UUID())"
-            defaults = UserDefaults(suiteName: suite)!
+
+            defaults = TestDefaults.make()
             documents = try World(contentsOf: worldURL).dimensions().map { $0.documentURL(inWorldAt: worldURL) }
             model = AppModel(defaults: defaults, cacheRoot: nil, readWorld: { try await probe.read($0) })
             model.worldFolders.remember(url)
@@ -83,7 +82,7 @@ import Testing
             for session in sessions { await session.waitUntilClosed() }
             for resource in resources { await resource.waitUntilClosed() }
             tasks = []
-            defaults.removePersistentDomain(forName: suite)
+
             try? FileManager.default.removeItem(at: url)
         }
     }

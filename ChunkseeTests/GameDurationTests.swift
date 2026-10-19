@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct GameDurationTests {
+@Suite(.isolatedStores) struct GameDurationTests {
     private let english = Locale(identifier: "en_US")
 
     @Test func decodedWorldAgeAndPlayerStatisticsShareElapsedUnits() throws {

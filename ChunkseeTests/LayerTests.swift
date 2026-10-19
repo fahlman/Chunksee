@@ -3,9 +3,9 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct StructureTests {
+@Suite(.isolatedStores) struct StructureTests {
     /// A structure start built the way chunks store it, read through ChunkseeKit's public API.
     func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])] = [("piece", [0, 60, 0, 9, 70, 9])]) -> StructureStart {
         let nbt = NBT.compound(["structures": .compound(["starts": .compound([id: .compound([
@@ -67,7 +67,7 @@ import Testing
     func unbuiltStructuresAreAbsentFromMarkersAndSearch(_ statusKey: String) async throws {
         let world = try TestWorld.make(chunks: StructureTestWorld.chunks(statusKey: statusKey))
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -117,7 +117,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct PlaceTests {
+@Suite(.isolatedStores) struct PlaceTests {
     func poi(_ type: String, _ x: Int, _ y: Int, _ z: Int, tickets: Int = 1) -> PointOfInterest {
         PointOfInterest(type: type, x: x, y: y, z: z, freeTickets: tickets)
     }
@@ -177,7 +177,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct CreatureTests {
+@Suite(.isolatedStores) struct CreatureTests {
     let owner = UUID()
 
     func entity(_ id: String, x: Double, z: Double, extra: [String: NBT] = [:]) -> NBT {
@@ -222,7 +222,7 @@ enum StructureTestWorld {
         let oldPet = Creature(id: "minecraft:wolf", x: 4, y: 64, z: 4, customName: "Summer", owner: owner, health: oldVersion == 6 ? 8 : nil)
         let encoded = try PropertyListEncoder().encode([oldPet])
         try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -270,7 +270,7 @@ enum StructureTestWorld {
             entity("minecraft:sheep", x: 1, z: 1),
         ])])
         try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: entities.appendingPathComponent("r.0.0.mca"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -313,7 +313,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct SpawnerTests {
+@Suite(.isolatedStores) struct SpawnerTests {
     @Test func spawnersAreListedByTheirMobAndSearchable() async throws {
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         guard case .compound(var chunk) = spec.nbt else { Issue.record("not a compound"); return }
@@ -325,7 +325,7 @@ enum StructureTestWorld {
         spec.nbt = .compound(chunk)
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -339,7 +339,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct BiomeAreaTests {
+@Suite(.isolatedStores) struct BiomeAreaTests {
     @Test func neighboringChunksJoinAndEveryAreaIsKept() {
         var biomes: [ChunkCoordinate: String] = [:]
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
@@ -367,7 +367,7 @@ enum StructureTestWorld {
         let chunks = (0..<2).flatMap { x in (0..<2).map { z in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } }
         let world = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -399,7 +399,7 @@ enum StructureTestWorld {
         } }
         let world = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -433,7 +433,7 @@ enum StructureTestWorld {
         } }
         let world = try TestWorld.make(chunks: generated + unfinished)
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -442,7 +442,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct HeatMapTests {
+@Suite(.isolatedStores) struct HeatMapTests {
     @Test func logarithmicScaleAndColors() throws {
         #expect(HeatMap.level(ofTicks: 1_199) == nil)
         #expect(HeatMap.level(ofTicks: HeatMap.minimumTicks) == 0)
@@ -466,7 +466,7 @@ enum StructureTestWorld {
         lived.nbt = .compound(root)
         let world = try TestWorld.make(chunks: [lived])
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.heatMap.visibleImages == nil && !session.heatMap.isLoading)
@@ -491,7 +491,7 @@ enum StructureTestWorld {
         let netherFolder = world.appendingPathComponent("DIM-1/region")
         try FileManager.default.createDirectory(at: netherFolder, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([chunk(ticks: HeatMap.minimumTicks)])).write(to: netherFolder.appendingPathComponent("r.0.0.mca"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -581,7 +581,7 @@ enum StructureTestWorld {
     }
 }
 
-@Suite struct InGameMapTests {
+@Suite(.isolatedStores) struct InGameMapTests {
     func mapNBT(dimension: NBT, scale: Int8 = 0, x: Int32 = 0, z: Int32 = 0, drawn: Bool = true) -> NBT {
         var colors = [Int8](repeating: 0, count: 128 * 128)
         if drawn { colors[0] = 4 * 12 + 2 }   // water, top-left pixel
@@ -610,7 +610,7 @@ enum StructureTestWorld {
         try write(4, mapNBT(dimension: .string("minecraft:overworld"), drawn: false))   // blank
         try write(5, mapNBT(dimension: .byte(15)))                                       // another Bukkit world
         try write(6, mapNBT(dimension: .string("minecraft:the_nether")))                 // dimension not in this world
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.

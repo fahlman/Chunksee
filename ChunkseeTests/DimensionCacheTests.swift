@@ -2,9 +2,9 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct DimensionCacheTests {
+@Suite(.isolatedStores) struct DimensionCacheTests {
     @Test func equalRegionFingerprintsKeepEachDimensionsTerrainAndScans() async throws {
         let worldURL = try TestWorld.make(chunks: [])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("DimensionCache-\(UUID())")

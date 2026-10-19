@@ -1,12 +1,11 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite(.timeLimit(.minutes(1))) struct PortalAvailabilityTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct PortalAvailabilityTests {
     private final class Fixture {
         let url: URL
-        let suite: String
         let defaults: UserDefaults
         let names: PlayerNames
         let searches: SavedSearches
@@ -17,8 +16,7 @@ import Testing
         init() throws {
             let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
             url = try TestWorld.make(chunks: [chunk])
-            suite = "ChunkseeTests-\(UUID())"
-            defaults = UserDefaults(suiteName: suite)!
+            defaults = TestDefaults.make()
             names = PlayerNames(defaults: defaults)
             searches = SavedSearches(defaults: defaults)
             let poi = NBT.compound(["Sections": .compound(["0": .compound([
@@ -65,7 +63,6 @@ import Testing
             for gate in gates { await gate.finishAll(with: RegionData()) }
             for session in sessions { await session.waitUntilClosed() }
             for resource in resources { await resource.waitUntilClosed() }
-            defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: url)
         }
     }

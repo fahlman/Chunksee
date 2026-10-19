@@ -2,12 +2,12 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct NavigationTests {
+@Suite(.isolatedStores) struct NavigationTests {
     private func openWorld() async throws -> (URL, WorldSession) {
         let url = try TestWorld.make(chunks: [])
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         await session.search.waitForIndex()
         return (url, session)
@@ -69,7 +69,7 @@ import Testing
         session.ruler.mark(CGPoint(x: 3, y: 4))
         session.close()
         await session.waitUntilClosed()
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let replacement = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { replacement.close() }
         replacement.restoreView(from: session)
@@ -85,7 +85,7 @@ import Testing
     }
 }
 
-@Suite struct FitWorldTests {
+@Suite(.isolatedStores) struct FitWorldTests {
     @Test func regionBoundsWithNegativeCoordinatesFitInsideTheMargin() throws {
         let regions: Set<RegionCoordinate> = [.init(x: -3, z: -2), .init(x: 1, z: 4)]
         let size = CGSize(width: 800, height: 600)
@@ -117,7 +117,7 @@ import Testing
         let chunk = TestWorld.chunk(x: -33, z: 65, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -134,7 +134,7 @@ import Testing
     }
 }
 
-@Suite struct MapRulerTests {
+@Suite(.isolatedStores) struct MapRulerTests {
     @Test func measurementUsesWholeBlocksAndTheThirdClickStartsAgain() {
         var ruler = MapRuler()
         ruler.mark(.zero)

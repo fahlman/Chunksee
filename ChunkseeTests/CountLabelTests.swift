@@ -1,8 +1,8 @@
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct CountLabelTests {
+@Suite(.isolatedStores) struct CountLabelTests {
     @Test func catalogPluralizesBiomeAreasAndBlockDepositsOnTheirProductionPaths() throws {
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)

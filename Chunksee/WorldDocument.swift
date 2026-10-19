@@ -89,7 +89,7 @@ nonisolated final class WorldFolders: Sendable {
     private let lock = Mutex(())
     private static let key = "worldFolderBookmarks"
 
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    init(defaults: UserDefaults) { self.defaults = defaults }
 
     /// Call while the folder is accessible, as it is right after the Open panel chose it.
     func remember(_ world: URL) {

@@ -2,14 +2,14 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct DimensionDocumentsTests {
+@Suite(.isolatedStores) struct DimensionDocumentsTests {
     private func makeResources(defaults suppliedDefaults: UserDefaults? = nil) async throws -> (URL, WorldResources) {
         let url = try TestWorld.make(chunks: [])
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM1/region"), withIntermediateDirectories: true)
-        let defaults = suppliedDefaults ?? UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = suppliedDefaults ?? TestDefaults.make()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         return (url, resources)
@@ -221,9 +221,9 @@ import Testing
         for folder in ["region", "DIM-1/region"] {
             try FileManager.default.createDirectory(at: url.appendingPathComponent(folder), withIntermediateDirectories: true)
         }
-        let suite = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let defaults = TestDefaults.make()
+
         let folders = WorldFolders(defaults: defaults)
         folders.remember(url)
         let documents = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
@@ -237,9 +237,9 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-        let suite = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let defaults = TestDefaults.make()
+
         let folders = WorldFolders(defaults: defaults)
         let nether = url.appendingPathComponent("DIM-1")
         await #expect(throws: WorldOpenError.needsWorldFolder) { try await DimensionSnapshot.read(nether, folders: folders) }
@@ -256,7 +256,7 @@ import Testing
         }
 
         // Dimensions of one open world share its resources until the last one closes.
-        let model = AppModel(defaults: defaults)
+        let model = AppModel(defaults: defaults, cacheRoot: nil)
         let view = try snapshot.makeSession(in: model)
         let other = try overworld.makeSession(in: model)
         let first = view.resources
@@ -276,7 +276,7 @@ import Testing
     @Test func openingAnUnrecognizedFolderAsksForAWorldInsteadOfDiagnosingADimension() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
         for path in ["minecraft/vanilla/release/saves", "unrelated"] {
             try FileManager.default.createDirectory(at: url.appendingPathComponent(path), withIntermediateDirectories: true)
@@ -291,7 +291,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         try Data("not a level file".utf8).write(to: url.appendingPathComponent("level.dat"))
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let reader = WorldDocument.Reader(folders: WorldFolders(defaults: defaults))
         await #expect(throws: WorldOpenError.unreadable) { try await reader.readFolder(url) }
         #expect(defaults.array(forKey: "worldFolderBookmarks") == nil)
@@ -300,7 +300,7 @@ import Testing
     @Test func theFolderReaderRemembersAWorldAndReadsItsDimensionDocuments() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
-        let folders = WorldFolders(defaults: UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!)
+        let folders = WorldFolders(defaults: TestDefaults.make())
         let reader = WorldDocument.Reader(folders: folders)
         let expected = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
         guard case .world(let documents) = try await reader.readFolder(url) else {
@@ -369,7 +369,7 @@ import Testing
         let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         let url = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: url) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let gate = AsyncReadGate<RegionData>()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
@@ -466,9 +466,9 @@ import Testing
     }
 
     @Test func movingAWorldRetainsAllDimensionViews() {
-        let suite = "ChunkseeTests-\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let defaults = TestDefaults.make()
+
         let views = RememberedViews(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults)
         let newURL = URL(fileURLWithPath: "/Worlds/Moved")
         let overworld = MapViewport(center: CGPoint(x: 120, y: -300), scale: 0.25)

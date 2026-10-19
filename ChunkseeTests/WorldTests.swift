@@ -3,9 +3,9 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct WorldSearchTests {
+@Suite(.isolatedStores) struct WorldSearchTests {
     func item(_ id: String, _ count: Int32, components: [String: NBT]? = nil) -> NBT {
         var c: [String: NBT] = ["id": .string(id), "count": .int(count)]
         if let components { c["components"] = .compound(components) }
@@ -54,7 +54,7 @@ import Testing
         let original = try await WorldSnapshot.read(url)
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
                                      dimensionDocuments: original.dimensionDocuments, players: [player(serverID, server: true), player(localID, server: false)], details: original.details)
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let session = WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         session.search.text = "diamond"
@@ -76,7 +76,7 @@ import Testing
 
     @Test func personalInventoryPhrasesChangeWhenAnAccountNamedYouBecomesKnown() async {
         let uuid = UUID()
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"You"}"#.utf8), 200) }))
         names.looksUpOnline = true
         let player = PlayerInfo(uuid: uuid, nbt: .compound([
@@ -118,7 +118,7 @@ import Testing
 
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
@@ -180,7 +180,7 @@ import Testing
         spec.nbt = .compound(root)
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The index is built as the world opens, before anyone searches.
@@ -217,7 +217,7 @@ import Testing
     }
 }
 
-@Suite struct WorldDetailsTests {
+@Suite(.isolatedStores) struct WorldDetailsTests {
     @Test func ruleNamesAndClock() {
         #expect(WorldDetails.readableRule("minecraft:keep_inventory") == "Keep Inventory")
         #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
@@ -238,7 +238,7 @@ import Testing
         try write("data/minecraft/game_rules.dat", ["minecraft:keep_inventory": .byte(1)])
         try write("data/minecraft/wandering_trader.dat", ["spawn_delay": .int(20_400), "spawn_chance": .int(75)])
         try write("dimensions/minecraft/overworld/data/minecraft/world_border.dat", ["size": .double(2000), "center_x": .double(100), "center_z": .double(0)])
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
@@ -249,13 +249,13 @@ import Testing
     }
 }
 
-@Suite struct RememberedViewTests {
+@Suite(.isolatedStores) struct RememberedViewTests {
     @Test func reopensEachDocumentAtItsOwnViewAndRemembersTheFrontDimension() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         try FileManager.default.createDirectory(at: world.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let first = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let nether = WorldSession(resources: first.resources, dimensionID: "minecraft:the_nether")
         first.map?.viewport = MapViewport(center: CGPoint(x: 100, y: -200), scale: 0.5)
@@ -277,7 +277,7 @@ import Testing
     }
 }
 
-@Suite struct LayerSearchTests {
+@Suite(.isolatedStores) struct LayerSearchTests {
     @Test func filtersParseAndOtherColonsDont() {
         #expect(LayerFilter.parse("Pet: Summer")?.filter == .pet && LayerFilter.parse("Pet: Summer")?.rest == " Summer")
         #expect(LayerFilter.parse("structure:")?.filter == .structure)
@@ -347,7 +347,7 @@ import Testing
     }
 }
 
-@Suite struct BiomeSearchTests {
+@Suite(.isolatedStores) struct BiomeSearchTests {
     func index() -> SearchIndex {
         var biomes: [ChunkCoordinate: String] = [:]
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkCoordinate(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
@@ -373,7 +373,7 @@ import Testing
         let chunks = (0..<2).flatMap { x in (0..<2).map { z in TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 } } }
         let world = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: world) }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()

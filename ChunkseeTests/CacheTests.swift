@@ -3,9 +3,9 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct TileCacheTests {
+@Suite(.isolatedStores) struct TileCacheTests {
     @Test func oldTilesAreRebuiltByScanningBlocksWhenHeightmapWidthIsAmbiguous() async throws {
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:grass_block"]) { _, y, _ in
             y == 10 ? 1 : 0
@@ -70,7 +70,7 @@ import Testing
     }
 }
 
-@Suite struct TileCachePruningTests {
+@Suite(.isolatedStores) struct TileCachePruningTests {
     @Test func prunesLeastRecentlyUsedWorldsButKeepsTheOpenOne() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ChunkseePrune-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -87,9 +87,9 @@ import Testing
         TileCache.prune(root: root, limit: 900, keeping: open)
         // A dimension's folder sits inside its world's folder, which sits directly in the root.
         let world = URL(fileURLWithPath: "/tmp/Some World")
-        let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world))
-        #expect(worldFolder.deletingLastPathComponent().standardizedFileURL == TileCache.root?.standardizedFileURL)
-        #expect(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld")?.deletingLastPathComponent().standardizedFileURL
+        let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
+        #expect(worldFolder.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL)
+        #expect(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root)?.deletingLastPathComponent().standardizedFileURL
                 == worldFolder.standardizedFileURL)
         #expect(!FileManager.default.fileExists(atPath: oldest.path))
         #expect(FileManager.default.fileExists(atPath: middle.path))
@@ -97,7 +97,7 @@ import Testing
     }
 }
 
-@Suite struct ScanCacheTests {
+@Suite(.isolatedStores) struct ScanCacheTests {
     @Test func oldCreatureCacheIsRereadWithTheEntityChunksHealthDefaults() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
@@ -205,7 +205,7 @@ import Testing
     }
 }
 
-@Suite struct CacheRootTests {
+@Suite(.isolatedStores) struct CacheRootTests {
     @Test(.timeLimit(.minutes(1))) func closingWaitsForStartupMaintenanceBeforeCacheCleanup() async throws {
         let world = try TestWorld.make(chunks: [])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheRootTests-\(UUID())")
@@ -213,7 +213,7 @@ import Testing
             try? FileManager.default.removeItem(at: world)
             try? FileManager.default.removeItem(at: root)
         }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID())")!
+        let defaults = TestDefaults.make()
         let gate = AsyncReadGate<Void>()
         let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
@@ -247,7 +247,7 @@ import Testing
             try? FileManager.default.removeItem(at: world)
             try? FileManager.default.removeItem(at: root)
         }
-        let defaults = UserDefaults(suiteName: "ChunkseeTests-\(UUID().uuidString)")!
+        let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: root)
         await session.search.waitForIndex()
         session.close()
@@ -256,13 +256,14 @@ import Testing
         let scans = try #require(TileCache.directory(forWorldAt: world, dimensionID: "minecraft:overworld", root: root))
             .appendingPathComponent("scans")
         #expect(FileManager.default.fileExists(atPath: scans.path))
-        // Nothing for this world in the app's own Caches folder.
-        let appFolder = try #require(TileCache.worldFolder(forWorldAt: world))
-        #expect(!FileManager.default.fileExists(atPath: appFolder.path))
+        // Verify the session's writes without consulting the real app's cache at all.
+        let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
+        #expect(worldFolder.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path) == [worldFolder.lastPathComponent])
     }
 }
 
-@Suite(.timeLimit(.minutes(1))) struct TileCacheWriteLifecycleTests {
+@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct TileCacheWriteLifecycleTests {
     private final class Fixture {
         let url: URL
         let gate = AsyncReadGate<Void>()

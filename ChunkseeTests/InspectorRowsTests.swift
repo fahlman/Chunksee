@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 import Testing
-@testable import Chunksee
+@testable import ChunkseeTestHost
 
-@Suite struct InspectorRowsTests {
+@Suite(.isolatedStores) struct InspectorRowsTests {
     private let english = Locale(identifier: "en_US")
 
     @Test func savedPetAndPlayerHealthHaveTheSamePrecisionAndGauge() throws {
