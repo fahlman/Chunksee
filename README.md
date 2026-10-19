@@ -6,10 +6,8 @@ It shows a top-down view of a world, the structures and places found in it, and 
 
 ## Using Chunksee
 
-Choose **Help ▸ Chunksee Help** for a short introduction. **Open Sample World**
-opens a small fictional island with a cabin, two pets and a chest of diamonds, even without
-Minecraft installed. The sample is bundled read-only and uses the same document, map and search
-features as your worlds. Help opens only when requested.
+Choose **Help ▸ Chunksee Help** for a short introduction to opening and exploring a world,
+with a link to this guide. Help opens only when requested.
 
 1. Choose **File ▸ Open…** and select a world's folder inside a `saves` folder in your Minecraft
    folder (usually Library ▸ Application Support ▸ minecraft in your home folder). Library is
