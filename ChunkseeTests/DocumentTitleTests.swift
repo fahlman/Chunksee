@@ -4,7 +4,7 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .serialized) struct DocumentTitleTests {
-    @Test func displayNamesUpdateNativeTitlesWithoutChangingDocumentURLs() {
+    @Test func displayNamesUpdateNativeTitlesWithoutChangingDocumentURLs() async {
         let document = NSDocument()
         let url = URL(fileURLWithPath: "/tmp/Title Fixture/dimensions/mod_a/caves")
         document.fileURL = url
@@ -21,7 +21,14 @@ import Testing
         #expect(window.title == "Caves (mod_a:caves)")
         #expect(window.tab.title == window.title)
         #expect(document.fileURL == url)
+        let (names, continuation) = AsyncStream<String>.makeStream()
+        let observation = document.observe(\.displayName, options: [.new]) { _, change in
+            if let name = change.newValue { continuation.yield(name) }
+        }
+        defer { observation.invalidate(); continuation.finish() }
         document.displayName = "caves" // Native restoration can reset this after view attachment.
+        let restored = await names.first { $0 == "Caves (mod_a:caves)" }
+        #expect(restored != nil)
         #expect(document.displayName == "Caves (mod_a:caves)")
         #expect(window.title == "Caves (mod_a:caves)")
         view.title = "Caves"

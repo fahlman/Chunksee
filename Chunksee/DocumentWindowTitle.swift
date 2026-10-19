@@ -27,9 +27,9 @@ struct DocumentWindowTitle: NSViewRepresentable {
             if observedDocument !== document {
                 observedDocument = document
                 // AppKit restores the native display name after attaching its content view.
-                // NSDocument's UI properties and this callback are confined to the main actor.
+                // KVO runs on the mutating thread, including native file-presenter changes.
                 observation = document.observe(\.displayName) { [weak self] _, _ in
-                    MainActor.assumeIsolated { self?.applyTitle() }
+                    Task { @MainActor [weak self] in self?.applyTitle() }
                 }
             }
             guard !title.isEmpty, document.displayName != title else { return }
