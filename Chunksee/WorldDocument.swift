@@ -348,7 +348,7 @@ struct WorldDocumentView: View {
                     .background(DocumentWindowTitle(title: session.selectedDimensionID.map { session.dimensionName($0) } ?? session.displayName))
                     .id(ObjectIdentifier(session))
                     // Capture only the action: the session must not keep its own view or document alive.
-                    .onAppear { session.openDocument = { [openDocument] in try await openDocument(at: $0) } }
+                    .onAppear { session.routing.openDocument = { [openDocument] in try await openDocument(at: $0) } }
             } else {
                 ProgressView("Opening World…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -360,10 +360,10 @@ struct WorldDocumentView: View {
             catch { errorMessage = error.localizedDescription }
         }
         .alert("Couldn’t Read World", isPresented: Binding {
-            errorMessage != nil || document.session?.openFailure != nil
-        } set: { if !$0 { errorMessage = nil; document.session?.openFailure = nil } }) {
+            errorMessage != nil || document.session?.routing.openFailure != nil
+        } set: { if !$0 { errorMessage = nil; document.session?.routing.openFailure = nil } }) {
             Button("OK", role: .cancel) { if document.worldDimensions != nil { dismiss() } }
-        } message: { Text(errorMessage ?? document.session?.openFailure ?? "") }
+        } message: { Text(errorMessage ?? document.session?.routing.openFailure ?? "") }
     }
 
     /// Opens a world folder's dimensions, then closes the folder's own window. Opened last, the

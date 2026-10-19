@@ -95,6 +95,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
+| `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -138,7 +139,11 @@ document's existing MapModel, which remains the only viewport/depth owner. It ow
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
 Native reread/move restoration copies history, viewport and depth into the new model, including
 from an already closed source, without sharing that source's map or history. Cross-dimension
-validation and routing remain in WorldSession for their separate extraction. Native commands and
+validation stays with the feature; DimensionRouting dispatches through the native opener. It refers
+weakly to its source document for identity and closed state, without a second lifetime flag.
+WorldResources keeps the latest waiting app action per destination, shared across source documents;
+a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
+but errors are presented only while that source remains open. Native commands and
 the toolbar call the navigation model directly for local actions.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
