@@ -14,6 +14,17 @@ struct HelpView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("Chunksee shows the terrain, places, pets and players in a saved Java Edition world. It only reads your world; it never changes it.")
 
+                Text("No world handy? The sample has a small island, a cabin, two pets and a chest of diamonds. Minecraft isn’t needed to explore it.")
+                HStack {
+                    Button("Open Sample World") { isOpeningSample = true }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(isOpeningSample)
+                    if isOpeningSample { ProgressView().controlSize(.small) }
+                    Spacer()
+                    Link("User Guide", destination: URL(string: "https://github.com/fahlman/Chunksee#using-chunksee")!)
+                }
+
                 GroupBox("Open a World") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Choose File ▸ Open… and select one world’s folder inside your saves folder.")
@@ -37,16 +48,7 @@ struct HelpView: View {
                     .padding(6)
                 }
 
-                Text("No world handy? The sample has a small island, a cabin, two pets and a chest of diamonds. Minecraft isn’t needed to explore it.")
-                HStack {
-                    Button("Open Sample World") { isOpeningSample = true }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(isOpeningSample)
-                    if isOpeningSample { ProgressView().controlSize(.small) }
-                    Spacer()
-                    Link("User Guide", destination: URL(string: "https://github.com/fahlman/Chunksee#using-chunksee")!)
-                }
+
             }
             .padding(24)
         }
