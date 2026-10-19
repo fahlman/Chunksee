@@ -103,6 +103,13 @@ private struct MapDepthPopover: View {
             .disabled(map.depth.isSurface)
             .accessibilityIdentifier("cutaway-slider")
             .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: stepHeight(by: 1)
+                case .decrement: stepHeight(by: -1)
+                @unknown default: break
+                }
+            }
             HStack {
                 Text("Y")
                 TextField("Y", value: height, format: .number.grouping(.never))
