@@ -104,7 +104,7 @@ struct PlayerDetailView: View {
     let player: PlayerInfo
     @Environment(\.locale) private var locale
     private var records: PlayerRecords? {
-        session.playerRecords.uuid == player.uuid ? session.playerRecords.records : nil
+        session.selection.playerRecords.uuid == player.uuid ? session.selection.playerRecords.records : nil
     }
     @State private var showsAllStatistics = false
 
@@ -164,7 +164,7 @@ struct PlayerDetailView: View {
         }
         .formStyle(.grouped)
         .task(id: RecordRequest(uuid: player.uuid, name: session.names.name(for: player.uuid), saved: player.lastSaved)) {
-            await session.playerRecords.load(player.uuid, name: session.names.name(for: player.uuid))
+            await session.selection.playerRecords.load(player.uuid, name: session.names.name(for: player.uuid))
         }
         .sheet(isPresented: $showsAllStatistics) {
             StatisticsTable(rows: records?.rows ?? [])

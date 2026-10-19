@@ -90,7 +90,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document's map, navigation and search models; owns routing, ruler, selection and inspector until their separate extraction |
+| `WorldSession.swift` | Composes one dimension document’s map, navigation, routing, search and selection models; owns ruler and annotation actions until their separate extraction |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types |
@@ -100,6 +100,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error and dispatch of cross-dimension app actions |
+| `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
@@ -149,6 +150,11 @@ WorldResources keeps the latest waiting app action per destination, shared acros
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
 but errors are presented only while that source remains open. Native commands and
 the toolbar call the navigation model directly for local actions.
+SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
+Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
+current shared world data. It refers weakly to its document and adds no snapshot or closed flag.
+The document closes and drains its player-record reads with its other feature models. Native
+inspector bindings observe this model; marker drawing/highlights read its same derived selection.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,

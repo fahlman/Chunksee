@@ -17,13 +17,13 @@ struct SidebarDisclosure {
 
     /// The view and tests share this complete map-origin selection/reveal action.
     @discardableResult mutating func selectOnMap(_ target: MapTarget?, in session: WorldSession) -> Bool {
-        guard let item = session.mapClicked(target) else { return false }
+        guard let item = session.selection.mapClicked(target) else { return false }
         reveal(item, in: session)
         return true
     }
 
     mutating func reveal(_ item: SidebarItem, in session: WorldSession) {
-        switch session.resolve(item) {
+        switch session.selection.resolve(item) {
         case .structure(let marker)?:
             collapsedLayers.remove(.structures)
             structures.insert(marker.group)

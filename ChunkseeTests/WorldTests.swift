@@ -63,7 +63,7 @@ import Testing
         #expect(unknown.position == nil && unknown.dimension == nil && unknown.y == nil && unknown.count == 3)
         #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
         let viewport = session.map?.viewport
-        session.choose(.hit(query: session.search.text, id: unknown.id))
+        session.selection.choose(.hit(query: session.search.text, id: unknown.id))
         #expect(session.map?.viewport == viewport)
         let visible = session.mapContent.accessibleLocations(viewport: MapViewport(center: .zero, scale: 1),
                                                             size: CGSize(width: 400, height: 300))
@@ -192,8 +192,8 @@ import Testing
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
-        session.choose(.hit(query: session.search.text, id: session.search.results[0].id))
-        #expect(session.selectedHitID == session.search.results[0].id)
+        session.selection.choose(.hit(query: session.search.text, id: session.search.results[0].id))
+        #expect(session.selection.selectedHitID == session.search.results[0].id)
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
@@ -275,8 +275,8 @@ import Testing
         #expect(session.details.gameRuleRows.map(\.name) == ["Keep Inventory"])
         #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
         #expect(session.mapContent.border?.size == 2000)
-        session.inspector = .world
-        #expect(session.inspector == .world)
+        session.selection.inspector = .world
+        #expect(session.selection.inspector == .world)
     }
 }
 
@@ -412,7 +412,7 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.visibility.biomes.isEmpty)
-        session.choose(.hit(query: session.search.text, id: hit.id))
+        session.selection.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])
         #expect(session.mapContent.biomeAreas.count == 1)
     }
