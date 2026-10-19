@@ -19,6 +19,7 @@ final class SavedQueryResults {
     private struct Entry {
         var query: String
         var sources: SearchSources
+        var task: Task<Void, Never>?
         var results: Results?
         var waiters: [UUID: CheckedContinuation<Results?, Never>] = [:]
     }
@@ -26,10 +27,13 @@ final class SavedQueryResults {
     private var entries: [UUID: Entry] = [:]
     private var current: [String: UUID] = [:]
     private var waiting: [UUID: UUID] = [:]
-    private var tasks: [UUID: Task<Void, Never>] = [:]
-    private var isClosed = false
+    private let work: BackgroundWork.Scope
+    private var isClosed: Bool { work.isClosed }
+
+    init(work: BackgroundWork) { self.work = work.makeScope() }
 
     func keep(_ queries: Set<String>) {
+        guard !isClosed else { return }
         for (query, id) in current where !queries.contains(query) {
             current[query] = nil
             retire(id)
@@ -48,12 +52,12 @@ final class SavedQueryResults {
                     id = existing
                 } else {
                     id = UUID()
-                    let previous = current.updateValue(id, forKey: query)
-                    entries[id] = Entry(query: query, sources: sources)
-                    tasks[id] = Task(priority: .userInitiated) { [weak self] in
+                    guard let task = work.start(priority: .userInitiated, operation: { [weak self] in
                         let found = await execute(request)
                         self?.finish(id, with: Task.isCancelled ? nil : found)
-                    }
+                    }) else { continuation.resume(returning: nil); return }
+                    let previous = current.updateValue(id, forKey: query)
+                    entries[id] = Entry(query: query, sources: sources, task: task)
                     if let previous { retire(previous) }
                 }
                 if let found = entries[id]?.results {
@@ -78,14 +82,15 @@ final class SavedQueryResults {
 
     private func retire(_ id: UUID) {
         guard let entry = entries[id], current[entry.query] != id, entry.waiters.isEmpty else { return }
-        tasks[id]?.cancel()
+        entry.task?.cancel()
         entries[id] = nil
-        // Keep the task until finish, including a read that completes after cancellation.
+        // The shared scope keeps the canceled task until its read returns.
     }
 
     private func finish(_ id: UUID, with results: Results?) {
-        tasks[id] = nil
+        guard !isClosed else { cancel(); return }
         guard var entry = entries[id] else { return }
+        entry.task = nil
         let waiters = entry.waiters
         entry.waiters = [:]
         entry.results = results
@@ -98,8 +103,7 @@ final class SavedQueryResults {
     }
 
     func cancel() {
-        isClosed = true
-        tasks.values.forEach { $0.cancel() }
+        work.close()
         for entry in entries.values {
             for continuation in entry.waiters.values { continuation.resume(returning: nil) }
         }
@@ -108,5 +112,5 @@ final class SavedQueryResults {
         waiting = [:]
     }
 
-    func waitForTasks() async { for task in tasks.values { await task.value } }
+    func waitForTasks() async { await work.waitUntilFinished() }
 }
