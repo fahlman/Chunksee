@@ -90,6 +90,8 @@ private struct MapDepthPopover: View {
                 Text(map.depth.sliderRange.lowerBound, format: .number.grouping(.never))
             } maximumValueLabel: {
                 Text(map.depth.sliderRange.upperBound, format: .number.grouping(.never))
+            } tick: { _ in
+                nil // Hundreds of one-block ticks merge into a solid line beneath the track.
             } onEditingChanged: { editing in
                 if editing {
                     // The map keeps its committed depth while the native slider edits this draft.
@@ -100,7 +102,6 @@ private struct MapDepthPopover: View {
             }
             .labelsHidden()
             .disabled(map.depth.isSurface)
-            .accessibilityLabel("Cutaway Height")
             .accessibilityIdentifier("cutaway-slider")
             .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
             HStack {
