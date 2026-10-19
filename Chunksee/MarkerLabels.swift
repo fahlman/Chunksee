@@ -23,7 +23,8 @@ nonisolated enum MarkerLabelLayout {
         var unbucketed: [CGRect] = []
         for index in order {
             let frame = labels[index].frame.insetBy(dx: -2, dy: -2)
-            guard !frame.isEmpty, [frame.minX, frame.maxX, frame.minY, frame.maxY].allSatisfy(\.isFinite) else { continue }
+            guard !frame.isEmpty, !frame.isInfinite, !frame.isNull,
+                  [frame.minX, frame.maxX, frame.minY, frame.maxY].allSatisfy(\.isFinite) else { continue }
             let cells = cells(for: frame)
             let overlaps: Bool
             if let cells {
