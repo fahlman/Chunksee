@@ -105,6 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; Time Spent is the first consumer |
 | `PlayerRecords.swift` | Statistics and advancements, and the current inspector request |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -332,8 +333,15 @@ Existing app-wide preferences seed a new scope once; later tab changes never wri
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
-It holds only that document's fixed region reader, heat images, pending task and reread flag;
-there is no mutable dimension selector or per-dimension image/task store inside the layer.
+It holds that document's fixed reader through a RefreshLoader. The loader owns its current value,
+pending pass and reread flag; no mutable dimension selector or per-dimension store is kept inside
+the layer. Hidden invalidation waits until shown, while an already running read may finish.
+RefreshLoader coalesces saves during a pass, retains the previous value and rejects results after
+its own or its world's close. Canceling a waiter does not cancel the shared read. WorldResources
+owns BackgroundWork, which retains registered tasks until completion and drains work added during
+a wait. A tab closes only its own loader; world close cancels and drains all registered work before
+releasing file access. Time Spent is the first adoption; other readers keep their existing owned
+tasks and drain paths until separately migrated under #169.
 
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on

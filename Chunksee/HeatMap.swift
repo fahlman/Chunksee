@@ -72,65 +72,48 @@ nonisolated enum HeatMap {
 final class HeatMapLayer {
     var isShown = false {
         didSet {
-            guard !isClosed, isShown != oldValue else { return }
+            guard !loader.isClosed, isShown != oldValue else { return }
             rememberedVisibility?.rememberTimeSpent(isShown)
             load()
         }
     }
-    private var images: [RegionPosition: CGImage]?
-    @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var invalidated = false
-    private let reader: RegionReader?
+    private let loader: RefreshLoader<[RegionPosition: CGImage]>
+    private let hasReader: Bool
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
-    private var isClosed = false
-
-    init(reader: RegionReader?) {
-        self.reader = reader
+    init(reader: RegionReader?, work: BackgroundWork) {
+        hasReader = reader != nil
+        loader = RefreshLoader(work: work, priority: .userInitiated) { previous in
+            guard let reader else { return [:] }
+            return await HeatMap.images(reader, previous: previous ?? [:])
+        }
     }
 
     /// Restores this tab's flag without making a second live copy in LayerVisibility.
     func restoreVisibility(from visibility: LayerVisibility) {
-        guard !isClosed else { return }
+        guard !loader.isClosed else { return }
         rememberedVisibility = visibility
         isShown = visibility.rememberedTimeSpent
     }
 
     /// This document's images, when the layer is on and they've been read.
     var visibleImages: [RegionPosition: CGImage]? {
-        isShown ? images : nil
+        isShown ? loader.value : nil
     }
 
-    var isLoading: Bool { isShown && reader != nil && images == nil }
+    var isLoading: Bool { isShown && hasReader && loader.value == nil }
 
     /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
     /// the current ones stay until the new ones are ready.
     func load(reread: Bool = false) {
-        guard !isClosed, let reader else { return }
-        if reread { invalidated = true }
-        guard isShown, task == nil, invalidated || images == nil else { return }
-        invalidated = false
-        task = Task(priority: .userInitiated) { [weak self] in
-            defer { self?.task = nil }
-            repeat {
-                let images = await HeatMap.images(reader, previous: self?.images ?? [:])
-                guard let self, !Task.isCancelled, !self.isClosed else { return }
-                self.images = images
-                // Saves during a read join one following pass instead of getting lost or
-                // restarting a large dimension's read every time the game saves.
-                guard self.isShown, self.invalidated else { return }
-                self.invalidated = false
-            } while true
-        }
+        loader.request(isEnabled: isShown && hasReader, reread: reread)
     }
 
     func waitForReads() async {
-        while let task { await task.value }
+        await loader.waitUntilFinished()
     }
 
     func cancel() {
-        isClosed = true
-        invalidated = false
-        task?.cancel()
+        loader.close()
     }
 }
 

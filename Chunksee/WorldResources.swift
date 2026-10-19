@@ -28,6 +28,7 @@ final class WorldOpening {
 @Observable
 final class WorldResources {
     let access: WorldReadAccess
+    let backgroundWork = BackgroundWork()
     let world: World
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
@@ -193,12 +194,14 @@ final class WorldResources {
         openings = []
         pendingActions = [:]
         watcher?.stop()
+        backgroundWork.close()
         cacheMaintenance?.cancel()
         refreshTasks.values.forEach { $0.cancel() }
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
         let refresh = Array(refreshTasks.values), access = access, maintenance = cacheMaintenance
+        let backgroundWork = backgroundWork
         closingTask = Task {
             await withTaskGroup(of: Void.self) { group in
                 for reader in readers { group.addTask { await reader.close() } }
@@ -206,6 +209,7 @@ final class WorldResources {
             await index.waitForTasks()
             for task in retiring + refresh { await task.value }
             await maintenance?.value
+            await backgroundWork.waitUntilFinished()
             access.release()
         }
     }
