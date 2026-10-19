@@ -43,12 +43,12 @@ final class SearchModel {
     @ObservationIgnored private var sources: SearchSources?
     @ObservationIgnored private var isClosed = false
 
-    init(readers: [RegionReader], playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], work: BackgroundWork, playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil) {
         self.ownsIndex = indexStore == nil
-        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, firstDimension: firstDimension)
+        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension)
         self.playerRoster = playerRoster
         self.names = names
         self.singleplayerUUID = singleplayerUUID

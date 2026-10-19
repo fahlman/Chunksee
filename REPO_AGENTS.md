@@ -105,7 +105,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Registered work owned by a world and retained-value refresh coalescing; consumers include Time Spent and Slime Chunks |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -241,8 +241,20 @@ work; an active typed waiter can still finish. Closing one document releases its
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
 
-`PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
-share one pending read; later reloads still reread the source. Closing one caller does not cancel
+WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
+index close cancels/drains only its passes; world-owner close rejects late publication and queued
+work. The index still owns merged region-change requests, dimension priority and publication as
+each dimension finishes. Its current-task handle serves `waitForIndex`; the scope retains and
+drains every pass, replacing the separate task dictionary. Search models forward the explicit
+owner when they construct their own index. Saved-query work keeps its existing owner until its
+separate #169 migration.
+
+`PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
+instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
+names used by another world. Source changes cancel only their scope, and model deinitialization
+cancels both. Canceled folder reads retain their file access until completion. There is no
+separate online task dictionary. Overlapping local reloads share one pending handle; later
+reloads still reread the source. Closing one caller does not cancel
 globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
 still cancel/invalidate their sources. The view request follows folder, online permission and the
 known player UUID set, including players without reliable coordinates, so new players trigger lookup
@@ -358,6 +370,12 @@ tasks and drain paths until separately migrated under #169. Startup cache mainte
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.
+
+WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
+tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
+drains them through the common registry. The two-second scheduling window, changed-region
+aggregation and newest-player-read publication guard remain owned by WorldResources. It no longer
+keeps another refresh-task dictionary, cancel-all loop or drain loop.
 
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on

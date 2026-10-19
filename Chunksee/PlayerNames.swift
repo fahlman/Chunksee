@@ -41,8 +41,8 @@ struct PlayerNameRequest: Equatable {
     let players: Set<UUID>
 }
 
-/// Player names shared by documents. Each source owns its tasks and invalidates pending results
-/// when the user changes permission, clears names, or chooses another local folder.
+/// Player names shared by documents, with an app-wide work owner and independent source scopes.
+/// Permissions and source identity still decide which results may be published.
 @Observable
 final class PlayerNames {
     private(set) var local: [UUID: String] = [:]
@@ -60,11 +60,13 @@ final class PlayerNames {
     private let defaults: UserDefaults
     private let mojang: MojangProfiles
     private let readCaches: @Sendable (URL) async -> [UUID: String]
+    private let work: BackgroundWork
+    private let localWork: BackgroundWork.Scope
+    private let onlineWork: BackgroundWork.Scope
     @ObservationIgnored private var folderAccess: WorldReadAccess?
     @ObservationIgnored private var localGeneration = UUID()
     @ObservationIgnored private var localTask: Task<Void, Never>?
     @ObservationIgnored private var onlineGeneration = UUID()
-    @ObservationIgnored private var onlineTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var attempted: Set<UUID> = []
 
     private enum Keys {
@@ -75,6 +77,10 @@ final class PlayerNames {
 
     init(defaults: UserDefaults, mojang: MojangProfiles = MojangProfiles(),
          readCaches: @escaping @Sendable (URL) async -> [UUID: String] = PlayerNames.readLocalCaches) {
+        let work = BackgroundWork()
+        self.work = work
+        localWork = work.makeScope()
+        onlineWork = work.makeScope()
         self.defaults = defaults
         self.mojang = mojang
         self.readCaches = readCaches
@@ -86,8 +92,7 @@ final class PlayerNames {
     }
 
     isolated deinit {
-        localTask?.cancel()
-        onlineTasks.values.forEach { $0.cancel() }
+        work.close()
     }
 
     func name(for uuid: UUID) -> String? { local[uuid] ?? online[uuid] }
@@ -115,7 +120,7 @@ final class PlayerNames {
 
     func forgetMinecraftFolder() {
         localGeneration = UUID()
-        localTask?.cancel()
+        localWork.cancel()
         localTask = nil
         // A read already running retains its own access until it returns.
         folderAccess = nil
@@ -146,13 +151,13 @@ final class PlayerNames {
         }
         localGeneration = UUID()
         let id = localGeneration, read = readCaches
-        let task = Task { [weak self] in
+        guard let task = localWork.start(priority: nil, operation: { [weak self] in
             defer { if self?.localGeneration == id { self?.localTask = nil } }
             let names = await read(folder)
             withExtendedLifetime(access) {}
             guard !Task.isCancelled, let self, self.localGeneration == id, self.minecraftFolder == folder else { return }
             self.local = names
-        }
+        }) else { return }
         localTask = task
         await task.value
     }
@@ -167,9 +172,8 @@ final class PlayerNames {
     /// sending the next request and before saving its answer, including after Clear Names.
     func lookUp(_ uuids: [UUID]) async {
         guard looksUpOnline, !Task.isCancelled else { return }
-        let generation = onlineGeneration, id = UUID(), mojang = mojang
-        let task = Task { [weak self] in
-            defer { self?.onlineTasks[id] = nil }
+        let generation = onlineGeneration, mojang = mojang
+        guard let task = onlineWork.start(priority: nil, operation: { [weak self] in
             for uuid in uuids {
                 guard !Task.isCancelled, let self, self.looksUpOnline, self.onlineGeneration == generation else { return }
                 guard self.name(for: uuid) == nil, self.attempted.insert(uuid).inserted else { continue }
@@ -185,8 +189,7 @@ final class PlayerNames {
                                       forKey: Keys.online)
                 }
             }
-        }
-        onlineTasks[id] = task
+        }) else { return }
         // Another document may already have skipped this UUID as attempted. Its name must still
         // arrive if this caller closes; permission/source changes cancel through the owner.
         await task.value
@@ -194,7 +197,7 @@ final class PlayerNames {
 
     private func cancelOnline() {
         onlineGeneration = UUID()
-        onlineTasks.values.forEach { $0.cancel() }
+        onlineWork.cancel()
         attempted = []
     }
 

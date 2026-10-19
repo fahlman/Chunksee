@@ -28,7 +28,7 @@ final class WorldOpening {
 @Observable
 final class WorldResources {
     let access: WorldReadAccess
-    let backgroundWork = BackgroundWork()
+    let backgroundWork: BackgroundWork
     let world: World
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
@@ -58,8 +58,7 @@ final class WorldResources {
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
     @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
     @ObservationIgnored private var pendingPlayers = false
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
+    private let refreshWork: BackgroundWork.Scope
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
     @ObservationIgnored private var isRefreshScheduled = false
     @ObservationIgnored private var playerReadGeneration = 0
@@ -83,6 +82,9 @@ final class WorldResources {
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
+        let backgroundWork = BackgroundWork()
+        self.backgroundWork = backgroundWork
+        refreshWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
@@ -103,7 +105,7 @@ final class WorldResources {
         let last = views.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, firstDimension: firstDimension)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             backgroundWork.start(priority: .background) {
@@ -204,18 +206,17 @@ final class WorldResources {
         pendingActions = [:]
         watcher?.stop()
         backgroundWork.close()
-        refreshTasks.values.forEach { $0.cancel() }
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         let readers = Array(readers.values), index = index, retiring = Array(retiringViews.values)
-        let refresh = Array(refreshTasks.values), access = access
+        let access = access
         let backgroundWork = backgroundWork
         closingTask = Task {
             await withTaskGroup(of: Void.self) { group in
                 for reader in readers { group.addTask { await reader.close() } }
             }
             await index.waitForTasks()
-            for task in retiring + refresh { await task.value }
+            for task in retiring { await task.value }
             await backgroundWork.waitUntilFinished()
             access.release()
         }
@@ -224,7 +225,7 @@ final class WorldResources {
     func waitUntilClosed() async { await closingTask?.value }
 
     func worldChanged(_ files: [URL]) {
-        guard !isClosed else { return }
+        guard !isClosed, !refreshWork.isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
             let path = file.path
             if path == url.standardizedFileURL.path {
@@ -265,22 +266,19 @@ final class WorldResources {
         // `refreshDelay` during play instead of only once the game goes quiet.
         guard !isRefreshScheduled else { return }
         isRefreshScheduled = true
-        let delay = refreshDelay, id = UUID()
-        let task = Task { [weak self] in
-            defer { self?.refreshTasks[id] = nil }
+        let delay = refreshDelay
+        refreshWork.start(priority: nil) { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled, let self else { return }
             // Changes from here on schedule the next refresh.
             self.isRefreshScheduled = false
             await self.refresh()
         }
-        refreshTask = task
-        refreshTasks[id] = task
     }
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        while let task = refreshTasks.values.first { await task.value }
+        await refreshWork.waitUntilFinished()
     }
 
     private func refresh() async {

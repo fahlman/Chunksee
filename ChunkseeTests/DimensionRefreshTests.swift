@@ -80,7 +80,7 @@ import Testing
         let dimensions = try World(contentsOf: url).dimensions()
         let readers = try ids.map { id in RegionReader(dimension: try #require(dimensions.first { $0.id == id }), cache: .off) }
         let gate = AsyncReadGate<DimensionIndex>()
-        let index = WorldIndexStore(readers: readers, firstDimension: nil,
+        let index = WorldIndexStore(readers: readers, work: BackgroundWork(), firstDimension: nil,
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
         index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
@@ -108,7 +108,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionIndex>()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], firstDimension: nil,
+        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil,
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
         index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
