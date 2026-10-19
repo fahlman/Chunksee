@@ -352,6 +352,9 @@ appearance, collar and equipment from ChunkseeKit. Missing data stays absent. Th
 creature is resolved from the current shared index, so an open inspector follows saved changes.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
 the app keeps only presentation slot filtering, ordering and labels. Players and creatures share
+the same equipment rows. The player inventory grids use Kit's `inventorySlots(in:)` for hotbar,
+storage and ender chest; saved slot numbers, empty slots and duplicate handling stay in Kit.
+The app owns only the grid and selected-hotbar styling. Players and creatures share
 the native equipment section and health row. Health uses up to two
 fractional digits in hearts, with a gauge when current and maximum are known and text for the
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
