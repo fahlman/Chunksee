@@ -118,7 +118,7 @@ import Testing
         disclosure.selectOnMap(.searchHit(hit.id), in: session)
         #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
         #expect(session.selection.selectedHitID == hit.id && session.map?.viewport == viewport)
-        session.saveSearch()
+        session.search.saveSearch()
         session.search.text = ""
         await session.search.waitForSearch()
         disclosure.selectOnMap(.searchHit(hit.id), in: session)
@@ -335,11 +335,11 @@ import Testing
         session.selection.choose(.savedPlace(missing.id))
         #expect(session.map?.viewport == viewport && session.selection.sidebarSelection == .player(playerID))
         session.search.text = " diamond "
-        #expect(session.canSaveSearch)
-        session.saveSearch()
-        #expect(session.savedSearches.contains("diamond") && !session.canSaveSearch)
+        #expect(session.search.canSaveSearch)
+        session.search.saveSearch()
+        #expect(session.savedSearches.contains("diamond") && !session.search.canSaveSearch)
         session.search.text = "diamond "
-        #expect(!session.canSaveSearch)
+        #expect(!session.search.canSaveSearch)
         session.close()
         await session.waitUntilClosed()
     }
@@ -370,7 +370,7 @@ import Testing
             await session.search.waitForIndex()
             session.search.text = "place:spawner"
             await session.search.waitForSearch()
-            let listed = session.listedHits(for: session.search.text)
+            let listed = session.search.listedHits(for: session.search.text, where: session.lists)
             #expect(listed.total == 205 && listed.rows.count == 200)
             #expect(session.search.results.count == 410)
             #expect(Set(session.mapContent.hits.map(\.id)) == Set(listed.rows.map(\.id)))
@@ -380,10 +380,10 @@ import Testing
                 #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
                 #expect(session.selection.selectedHitID == hit.id && session.map?.viewport == viewport)
             }
-            let unlisted = try #require(session.listed(session.search.results).dropFirst(200).first)
+            let unlisted = try #require(session.search.results.filter { session.lists($0.dimension) }.dropFirst(200).first)
             session.selection.mapClicked(.searchHit(unlisted.id))
             #expect(session.selection.sidebarSelection == nil && session.selection.selectedHitID == nil)
-            session.saveSearch()
+            session.search.saveSearch()
             session.search.text = ""
             await session.search.waitForSearch()
             #expect(Set(session.mapContent.hits.map(\.id)) == Set(listed.rows.map(\.id)))

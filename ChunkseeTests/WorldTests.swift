@@ -206,7 +206,7 @@ import Testing
         // is remembered for every world.
         session.search.text = "orchard"
         await session.search.waitForSearch()
-        session.saveSearch()
+        session.search.saveSearch()
         session.search.text = ""
         #expect(session.mapContent.hits.map(\.detail) == ["Orchard"])
         let saved = try #require(session.savedSearches.all.first)

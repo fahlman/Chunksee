@@ -108,7 +108,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
 | `Places.swift` | Point-of-interest groups, the background scan, and portal link status (grouping and linking rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
-| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots; the world index owns shared pending/completed saved-query work |
+| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
@@ -456,8 +456,9 @@ input through the List selection binding calls `choose` and requests sidebar foc
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
 one action shared with the behavioral tests. Search pins
-select an existing result row (the active query first, then a shown saved query); one listed-hits function owns the 200-row limit and per-dimension policy for the sidebar, drawn
-search pins and their resolver. Every drawn search pin has a reachable row. Save Search enablement
+select an existing result row (the active query first, then a shown saved query); SearchModel owns the 200-row limit and deduplicated pins for the sidebar, map and click resolver,
+using the document’s common dimension-listing predicate. Views and commands save queries through
+that same model. Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
 
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its

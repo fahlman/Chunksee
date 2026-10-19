@@ -67,6 +67,32 @@ final class SearchModel {
         query == text ? results : queryResults[query] ?? []
     }
 
+    /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
+    func listedHits(for query: String, where belongsToDimension: (String?) -> Bool) -> (rows: ArraySlice<SearchHit>, total: Int) {
+        let hits = results(for: query).filter { belongsToDimension($0.dimension) }
+        return (hits.prefix(200), hits.count)
+    }
+
+    var visibleSearchQueries: [String] {
+        (isActive ? [text] : []) + savedSearches.all.filter(\.isShown).map(\.query)
+    }
+
+    func pinnedHits(where belongsToDimension: (String?) -> Bool) -> [SearchHit] {
+        var seen = Set<SearchHit.ID>()
+        return visibleSearchQueries.flatMap { listedHits(for: $0, where: belongsToDimension).rows }
+            .filter { seen.insert($0.id).inserted }
+    }
+
+    var canSaveSearch: Bool {
+        let query = text.trimmingCharacters(in: .whitespaces)
+        return !query.isEmpty && !savedSearches.contains(query)
+    }
+
+    /// Saves the search bar's query to the sidebar.
+    func saveSearch() {
+        savedSearches.add(text)
+    }
+
     /// Shared names and saved searches can change from another window or Settings.
     private func observeSources() {
         withObservationTracking {

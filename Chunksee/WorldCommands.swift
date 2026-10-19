@@ -131,8 +131,8 @@ struct WorldCommands: Commands {
                 }
             }
             .disabled(session == nil)
-            Button("Save Search") { session?.saveSearch() }
-                .disabled(session?.canSaveSearch != true)
+            Button("Save Search") { session?.search.saveSearch() }
+                .disabled(session?.search.canSaveSearch != true)
         }
     }
 }
