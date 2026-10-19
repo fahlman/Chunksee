@@ -16,23 +16,41 @@ nonisolated struct MapDepth: Equatable, Sendable {
 
 struct MapDepthControl: View {
     @Bindable var map: MapModel
+    @State private var draggedY: Int?
+
+    private var displayedY: Int { draggedY ?? map.depth.y }
 
     private var height: Binding<Int> {
-        Binding { map.depth.y } set: { map.setDepth(MapDepth(y: $0, isSurface: false)) }
+        Binding { displayedY } set: {
+            draggedY = nil
+            map.setDepth(MapDepth(y: $0, isSurface: false))
+        }
     }
 
     var body: some View {
         HStack {
             Slider(value: Binding {
-                Double(map.depth.y)
+                Double(displayedY)
             } set: {
-                if let y = Int(exactly: $0.rounded()) { height.wrappedValue = y }
+                guard let y = Int(exactly: $0.rounded()) else { return }
+                if draggedY != nil {
+                    draggedY = y
+                } else {
+                    height.wrappedValue = y
+                }
             }, in: map.depth.sliderRange, step: 1) {
                 Text("Cutaway Height")
+            } onEditingChanged: { editing in
+                if editing {
+                    // The map keeps its committed depth while the native slider edits this draft.
+                    draggedY = map.depth.y
+                } else if let y = draggedY {
+                    height.wrappedValue = y
+                }
             }
             .frame(width: 130)
             .accessibilityIdentifier("cutaway-slider")
-            .accessibilityValue(Text("Y \(map.depth.y.formatted()); \(map.depth.accessibilityDescription)"))
+            .accessibilityValue(Text("Y \(displayedY.formatted()); \(map.depth.accessibilityDescription)"))
             Text("Y").foregroundStyle(.secondary)
             TextField("Y", value: height, format: .number.grouping(.never))
                 .frame(width: 65)
@@ -47,5 +65,6 @@ struct MapDepthControl: View {
             .accessibilityIdentifier("cutaway-surface")
             .help("Return to the normal surface map")
         }
+        .onDisappear { draggedY = nil }
     }
 }
