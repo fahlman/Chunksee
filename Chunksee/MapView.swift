@@ -42,6 +42,8 @@ struct MapContent {
     var ruler = MapRuler()
     /// The selected portal or creature, drawn highlighted.
     var selection: MapSelection?
+    /// The resolved sidebar identity, used to prioritize its label without another selection owner.
+    var selectedItem: SidebarItem?
 
     /// The surface biome of the chunk under a block, once the dimension has been read.
     func biome(at block: CGPoint) -> String? {
@@ -331,12 +333,12 @@ struct MapView: View {
 
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
     /// 1/2×) and, for strongholds, the End portal room.
-    private static func draw(_ structure: StructureMarker, viewport: MapViewport, in context: GraphicsContext,
-                             size: CGSize, bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
+    private static func draw(_ structure: StructureMarker, selected: Bool, viewport: MapViewport, in context: GraphicsContext,
+                             size: CGSize, bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
         let topLeft = viewport.viewPoint(for: structure.bounds.origin, in: size)
         let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
                                                            height: structure.bounds.height * viewport.scale))
-        guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return }
+        guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return nil }
         let style = MarkerStyle.structure(structure.group), color = style.fill
         if viewport.scale >= 0.25 {
             let path = Path(outline)
@@ -354,7 +356,8 @@ struct MapView: View {
             sparkle.shading = .color(.mint)
             context.draw(sparkle, in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
         }
-        style.drawName(structure.name, at: center, scale: viewport.scale, in: context)
+        return style.label(structure.name, id: "structure-" + structure.id, priority: selected ? .selected : .other,
+                           at: center, scale: viewport.scale, in: context)
     }
 
     /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
@@ -414,6 +417,10 @@ struct MapView: View {
             context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
         }
         var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
+        var labels: [MarkerLabel] = []
+        func add(_ label: MarkerLabel?) {
+            if let label, label.placement.frame.intersects(bounds) { labels.append(label) }
+        }
         func symbol(_ key: MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage {
             if let image = symbols[key] { return image }
             var image = context.resolve(Image(systemName: key.name))
@@ -422,12 +429,15 @@ struct MapView: View {
             return image
         }
         for structure in content.structures {
-            Self.draw(structure, viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol)
+            add(Self.draw(structure, selected: content.selectedItem == .structure(structure.id),
+                          viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol))
         }
         // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
         for place in content.nearbyPlaces(viewport: map.viewport, size: size) {
             let point = map.viewport.viewPoint(for: place.position, in: size)
-            Self.draw(place, at: point, scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
+            add(Self.drawBadge(style: .place(place.group, claimed: place.isClaimed), name: place.name,
+                               id: "place-" + place.id, priority: content.selectedItem == .place(place.id) ? .selected : .other,
+                               scale: map.viewport.scale, at: point, in: context, bounds: bounds, symbol: symbol))
             if let portal = place.portal {
                 Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
             }
@@ -435,8 +445,12 @@ struct MapView: View {
         // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
         for creature in content.nearbyCreatures(viewport: map.viewport, size: size) {
             let selected = content.selection == .creature(creature)
-            Self.draw(creature, selected: selected, at: map.viewport.viewPoint(for: creature.position, in: size),
-                      scale: map.viewport.scale, in: context, bounds: bounds, symbol: symbol)
+            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(creature.id) ? .selected
+                : creature.group == .pet && creature.creature.customName != nil ? .namedPet : .other
+            add(Self.drawBadge(style: .creature(creature.group, selected: selected), name: creature.name,
+                               id: "creature-" + creature.id, priority: priority, scale: map.viewport.scale,
+                               at: map.viewport.viewPoint(for: creature.position, in: size),
+                               in: context, bounds: bounds, symbol: symbol))
         }
         for hit in content.hits {
             guard let position = hit.position else { continue }
@@ -444,14 +458,18 @@ struct MapView: View {
                          in: context, bounds: bounds, symbol: symbol)
         }
         for marker in content.players {
-            Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
+            add(Self.draw(marker, selected: marker.kind == .player && marker.playerID == content.selectedPlayerID,
+                      labelSelected: content.selectedItem == .player(marker.playerID) || marker.playerID == content.selectedPlayerID,
                       at: map.viewport.viewPoint(for: marker.anchor, in: size),
-                      in: context, bounds: bounds, symbol: symbol)
+                      in: context, bounds: bounds, symbol: symbol))
         }
         for place in content.savedPlaces {
-            Self.drawBadge(style: .savedPlace, name: place.name, scale: map.viewport.scale,
-                           at: map.viewport.viewPoint(for: place.mapPosition, in: size), in: context, bounds: bounds, symbol: symbol)
+            add(Self.drawBadge(style: .savedPlace, name: place.name, id: "saved-" + place.id.uuidString,
+                               priority: content.selectedItem == .savedPlace(place.id) ? .selected : .other,
+                               scale: map.viewport.scale, at: map.viewport.viewPoint(for: place.mapPosition, in: size),
+                               in: context, bounds: bounds, symbol: symbol))
         }
+        MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
     }
 
@@ -505,33 +523,23 @@ struct MapView: View {
         MarkerStyle.search(selected: selected).drawBody(at: point, in: context, symbol: symbol)
     }
 
-    private static func draw(_ place: PlaceMarker, at point: CGPoint, scale: CGFloat, in context: GraphicsContext, bounds: CGRect,
-                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
-        drawBadge(style: .place(place.group, claimed: place.isClaimed), name: place.name, scale: scale,
-                  at: point, in: context, bounds: bounds, symbol: symbol)
-    }
-
-    private static func draw(_ creature: CreatureMarker, selected: Bool, at point: CGPoint, scale: CGFloat, in context: GraphicsContext,
-                             bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
-        drawBadge(style: .creature(creature.group, selected: selected), name: creature.name, scale: scale,
-                  at: point, in: context, bounds: bounds, symbol: symbol)
-    }
-
-    private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String, scale: CGFloat,
+    private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String,
+                                  id: @autoclosure () -> String, priority: MarkerLabelLayout.Priority, scale: CGFloat,
                                   at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
-                                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
-        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
+                                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
+        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return nil }
         let style = style()
         style.drawBody(at: point, in: context, symbol: symbol)
-        style.drawName(name(), at: point, scale: scale, in: context)
+        return style.label(name(), id: id(), priority: priority, at: point, scale: scale, in: context)
     }
 
-    private static func draw(_ marker: MapMarker, selected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
-                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
-        guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return }
+    private static func draw(_ marker: MapMarker, selected: Bool, labelSelected: Bool, at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
+                             symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
+        guard bounds.insetBy(dx: -60, dy: -30).contains(point) else { return nil }
         let style = MarkerStyle.player(marker.kind, outdated: marker.isOutdated, selected: selected)
         style.drawBody(at: point, in: context, symbol: symbol)
-        style.drawName(marker.label, at: point, scale: 1, in: context)
+        return style.label(marker.label, id: "player-" + marker.id, priority: labelSelected ? .selected : .player,
+                           at: point, scale: 1, in: context)
     }
 
     private var statusBar: some View {

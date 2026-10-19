@@ -252,7 +252,8 @@ import Testing
         for (style, scale, expected) in cases {
             let before = probe.calls
             let renderer = ImageRenderer(content: Canvas { context, _ in
-                style.drawName(probe.name(), at: CGPoint(x: 120, y: 30), scale: scale, in: context)
+                style.label(probe.name(), id: "fixture", priority: .other,
+                            at: CGPoint(x: 120, y: 30), scale: scale, in: context)?.draw(in: context)
             }.frame(width: 240, height: 100))
             _ = try #require(renderer.cgImage)
             #expect((probe.calls > before) == expected)

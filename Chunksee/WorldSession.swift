@@ -431,6 +431,7 @@ final class WorldSession {
         content.selectedHitID = selectedHitID
         content.players = drawnPlayerMarkers
         content.selection = currentSelection
+        content.selectedItem = sidebarSelection
         content.selectedPlayerID = if case .player(let uuid)? = inspector { uuid } else { nil }
         content.savedPlaces = savedPlaces.all.filter { $0.dimension == id }
         content.ruler = ruler

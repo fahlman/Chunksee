@@ -121,15 +121,15 @@ struct MarkerStyle {
     }
 
     /// A hidden label must not format a creature/place name or resolve text on every frame.
-    func drawName(_ name: @autoclosure () -> String, at point: CGPoint, scale: CGFloat, in context: GraphicsContext) {
-        guard let caption, scale >= caption.minimumScale else { return }
-        var context = context
-        context.opacity = opacity
+    func label(_ name: @autoclosure () -> String, id: @autoclosure () -> String,
+               priority: MarkerLabelLayout.Priority, at point: CGPoint, scale: CGFloat,
+               in context: GraphicsContext) -> MarkerLabel? {
+        guard let caption, scale >= caption.minimumScale else { return nil }
         let text = context.resolve(Text(name()).font(caption.font).foregroundStyle(.white))
         let size = text.measure(in: caption.maximumSize)
         let label = CGRect(x: point.x - size.width / 2 - caption.padding.width, y: point.y + geometry.radius + caption.gap,
                            width: size.width + caption.padding.width * 2, height: size.height + caption.padding.height * 2)
-        context.fill(Path(roundedRect: label, cornerRadius: label.height / 2), with: .color((caption.background ?? fill).opacity(caption.backgroundOpacity)))
-        context.draw(text, at: CGPoint(x: label.midX, y: label.midY))
+        return MarkerLabel(placement: .init(id: id(), priority: priority, frame: label), text: text,
+                           background: (caption.background ?? fill).opacity(caption.backgroundOpacity), opacity: opacity)
     }
 }
