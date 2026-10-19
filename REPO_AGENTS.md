@@ -116,6 +116,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
+| `HelpView.swift` | On-demand native Help window with opening/navigation instructions and the User Guide link |
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
@@ -237,6 +238,9 @@ window restoration remain AppKit's. No tab/window focus bridge is used.
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
 File ▸ Open and Open Recent still use the native flow.
+Help ▸ Chunksee Help opens a separate SwiftUI window only when requested, with opening and
+navigation instructions and a User Guide link. It owns no document-opening or sample-world flow.
+The bundled sample remains on #92 until Ryan provides his world.
 
 `ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
 changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
