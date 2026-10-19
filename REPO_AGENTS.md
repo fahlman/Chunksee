@@ -185,12 +185,20 @@ Concurrent requests share cache decoding/scanning. File-open errors and cancella
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
 
-`MapDepth` is the map-owned selected Y and Surface/cutaway mode. Native SwiftUI toolbar controls
-share it, and RememberedViews stores it per dimension alongside the viewport, including moves.
+`MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
+shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
+slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
+dimension alongside the viewport, including moves.
+Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
+(Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
+binding exposes the view-owned popover flag; MapDepth still owns the mode and height. The Cutaway
+number field receives SwiftUI focus on opening or switching from Surface.
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
-control discards an unfinished drag. The native control redesign remains tracked separately.
+popover discards an unfinished drag. Actual dimension-type bounds remain tracked in #248; the
+displayed slider endpoints describe its travel, not verified world-generation limits.
 A depth change cancels rendering, hover and coordinate reads and clears all corresponding pixels
 and named columns. Canceled tasks stay tracked until drain; job IDs/cancellation reject old output.
 The renderer returns immutable pending cache writes with its tiles. MapModel starts writes only

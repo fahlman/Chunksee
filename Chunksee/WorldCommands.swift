@@ -14,7 +14,16 @@ private struct SearchFocusKey: FocusedValueKey {
     typealias Value = SearchFocusAction
 }
 
+private struct MapHeightPopoverKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var mapHeightPopover: Binding<Bool>? {
+        get { self[MapHeightPopoverKey.self] }
+        set { self[MapHeightPopoverKey.self] = newValue }
+    }
+
     var worldSession: WorldSession? {
         get { self[WorldSessionKey.self] }
         set { self[WorldSessionKey.self] = newValue }
@@ -30,6 +39,7 @@ extension FocusedValues {
 struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
+    @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -52,6 +62,17 @@ struct WorldCommands: Commands {
                 .disabled(session?.map == nil)
             Button("Fit World") { session?.navigation.fitWorld() }
                 .disabled(session?.navigation.canFitWorld != true)
+            Button("Map Height…") { showsMapHeight = true }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .disabled(session?.map == nil || showsMapHeight == nil)
+            Toggle("Surface", isOn: Binding {
+                session?.map?.depth.isSurface ?? true
+            } set: { isSurface in
+                guard let map = session?.map else { return }
+                map.setDepth(MapDepth(y: map.depth.y, isSurface: isSurface))
+            })
+                .keyboardShortcut("y", modifiers: [.command, .option])
+                .disabled(session?.map == nil)
             Divider()
             Toggle("World Info", isOn: Binding {
                 session?.inspector == .world
