@@ -77,7 +77,7 @@ final class MapModel {
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
         // runs on every frame of a pan.
-        let range = viewport.visibleRegionRange(in: size)
+        guard let range = viewport.visibleRegionRange(in: size) else { return }
         guard range != lastRequest?.range || full != lastRequest?.full else { return }
         lastRequest = (range, full)
         let visible = viewport.visibleRegions(in: size, among: availableRegions)

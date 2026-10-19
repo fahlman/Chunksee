@@ -26,6 +26,8 @@ nonisolated struct MapGrid: Equatable {
     static let minimumLabelSpacing: CGFloat = 48
 
     init(viewport: MapViewport, size: CGSize) {
+        guard viewport.isValid, size.width.isFinite, size.height.isFinite,
+              size.width >= 0, size.height >= 0 else { return }
         let chunkSpacing = CGFloat(Self.chunk) * viewport.scale
         let regionSpacing = CGFloat(Self.region) * viewport.scale
         var step: Int
@@ -33,17 +35,29 @@ nonisolated struct MapGrid: Equatable {
             step = 1
         } else {
             step = chunkSpacing >= Self.minimumLineSpacing ? Self.chunk : Self.region
-            while CGFloat(step) * viewport.scale < Self.minimumLineSpacing { step *= 2 }
+            while CGFloat(step) * viewport.scale < Self.minimumLineSpacing {
+                let next = step.multipliedReportingOverflow(by: 2)
+                guard !next.overflow else { return }
+                step = next.partialValue
+            }
         }
         labelsChunks = chunkSpacing >= Self.minimumLabelSpacing
         labelsRegions = regionSpacing >= Self.minimumLabelSpacing
         let topLeft = viewport.blockPoint(at: .zero, in: size)
         let bottomRight = viewport.blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
         func lines(from start: CGFloat, to end: CGFloat, position: (Int) -> CGFloat) -> [Line] {
-            let first = Int((start / CGFloat(step)).rounded(.up)) * step
-            return stride(from: first, through: Int(end.rounded(.down)), by: step).map {
-                Line(block: $0, position: position($0))
+            guard let multiple = Int(exactly: (start / CGFloat(step)).rounded(.up)),
+                  let last = Coordinates.block(end) else { return [] }
+            let first = multiple.multipliedReportingOverflow(by: step)
+            guard !first.overflow else { return [] }
+            var block = first.partialValue, result: [Line] = []
+            while block <= last {
+                result.append(Line(block: block, position: position(block)))
+                let next = block.addingReportingOverflow(step)
+                if next.overflow { break }
+                block = next.partialValue
             }
+            return result
         }
         vertical = lines(from: topLeft.x, to: bottomRight.x) { viewport.viewPoint(for: CGPoint(x: $0, y: 0), in: size).x }
         horizontal = lines(from: topLeft.y, to: bottomRight.y) { viewport.viewPoint(for: CGPoint(x: 0, y: $0), in: size).y }
