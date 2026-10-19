@@ -55,7 +55,7 @@ import Testing
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         source.map?.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 4)
-        source.goToCoordinates(CGPoint(x: 500, y: 600))
+        source.navigation.goToCoordinates(CGPoint(x: 500, y: 600))
         source.ruler.isEnabled = true
         source.ruler.mark(.zero)
         source.ruler.mark(CGPoint(x: 3, y: 4))
@@ -78,7 +78,7 @@ import Testing
         let original = MapViewport(center: CGPoint(x: 120, y: -80), scale: 0.25)
         overworld.map?.viewport = original
         nether.map?.viewport = MapViewport(center: CGPoint(x: 15, y: -10), scale: 8)
-        overworld.goToCoordinates(CGPoint(x: 300, y: 400))
+        overworld.navigation.goToCoordinates(CGPoint(x: 300, y: 400))
         overworld.ruler.isEnabled = true
         overworld.ruler.mark(.zero)
         overworld.ruler.mark(CGPoint(x: 3, y: 4))
@@ -89,7 +89,7 @@ import Testing
         #expect(overworld.search.text == "diamond" && nether.search.text == "ancient debris")
         #expect(!nether.navigation.canGoBack && nether.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: CGPoint(x: 15, y: -10), scale: 8))
-        overworld.goBack()
+        overworld.navigation.goBack()
         #expect(overworld.map?.viewport == original && overworld.ruler.distance == 5)
         overworld.close()
         await overworld.waitUntilClosed()
@@ -122,11 +122,11 @@ import Testing
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
         #expect(!overworld.navigation.canGoBack && overworld.ruler.distance == 5 && nether.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: place.mapPosition, scale: 4))
-        nether.goBack()
+        nether.navigation.goBack()
         #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
-        nether.goForward()
+        nether.navigation.goForward()
         #expect(nether.map?.viewport.center == place.mapPosition && !nether.navigation.canGoForward)
-        nether.goBack()
+        nether.navigation.goBack()
         overworld.openDimension("minecraft:the_nether")
         let menuOpened = await opened.next(isolation: #isolation)
         #expect(menuOpened == netherDocument && nether.map?.viewport == targetView)

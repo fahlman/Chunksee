@@ -90,7 +90,7 @@ struct GoToCoordinatesView: View {
 
     private func go() {
         guard let destination else { return }
-        session.goToCoordinates(destination.position)
+        session.navigation.goToCoordinates(destination.position)
         dismiss()
     }
 }

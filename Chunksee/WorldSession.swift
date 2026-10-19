@@ -121,7 +121,7 @@ final class WorldSession {
     var showsCoordinateSheet = false
     var placeDraft: SavedPlaceDraft?
     var ruler = MapRuler()
-    private(set) var navigation = MapNavigationHistory()
+    let navigation: MapNavigation
     var selection: MapSelection? {
         guard inspectorIsShown else { return nil }
         switch selectedItem.flatMap(resolve) {
@@ -170,6 +170,7 @@ final class WorldSession {
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected, renderTile: renderTile)
         map = initialMap
+        navigation = MapNavigation(map: initialMap)
         slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
                                      regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
         heatMap.restoreVisibility(from: visibility)
@@ -274,11 +275,7 @@ final class WorldSession {
         guard dimensions.contains(where: { $0.id == location.dimension }),
               Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
         if route(to: location.dimension, perform: { $0.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
-        navigate {
-            let point = CGPoint(x: location.x, y: location.z)
-            map?.viewport.center = blockPosition ? MapCoordinates.center(of: point) : point
-            if !keepingZoom, let map, map.viewport.scale < 2 { map.viewport.scale = 2 }
-        }
+        navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition, keepingZoom: keepingZoom)
     }
 
     /// Resolve a link again at activation, so refreshed ownership or a removed pet cannot use
@@ -297,12 +294,6 @@ final class WorldSession {
         focus(on: PlayerInfo.Location(dimension: id, x: point.x, y: 64, z: point.y), keepingZoom: keepingZoom)
     }
 
-    /// Coordinate entry changes only the center, keeping the chosen zoom.
-    func goToCoordinates(_ point: CGPoint) {
-        guard let coordinates = MapCoordinates(point: point) else { return }
-        navigate { map?.viewport.center = coordinates.center }
-    }
-
     func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
         guard !isClosed, let point = point ?? map?.viewport.center,
               let coordinates = MapCoordinates(point: point), let dimension = dimension ?? selectedDimensionID else { return }
@@ -319,10 +310,7 @@ final class WorldSession {
     func visit(_ place: SavedPlace) {
         guard canVisit(place) else { return }
         if route(to: place.dimension, perform: { $0.visit(place) }) { return }
-        let scale = map?.viewport.scale ?? 1
-        navigate {
-            map?.viewport = MapViewport(center: place.mapPosition, scale: scale)
-        }
+        navigation.goToCoordinates(place.position)
     }
 
     func setRulerEnabled(_ enabled: Bool) {
@@ -336,8 +324,6 @@ final class WorldSession {
         ruler.clear()
         ruler.mark(point)
     }
-
-    private var currentView: MapViewport? { map?.viewport }
 
     func openDimension(_ id: String) {
         guard !isClosed, dimensions.contains(where: { $0.id == id }) else { return }
@@ -368,45 +354,11 @@ final class WorldSession {
         }
     }
 
-    /// History belongs to this document. A routed jump records its destination's viewport.
-    private func navigate(_ change: () -> Void) {
-        guard !isClosed else { return }
-        let previous = currentView
-        change()
-        if let previous, previous != currentView { navigation.record(previous) }
-    }
-
-    func goBack() {
-        guard !isClosed, let currentView, let destination = navigation.goBack(from: currentView) else { return }
-        restore(destination)
-    }
-
-    func goForward() {
-        guard !isClosed, let currentView, let destination = navigation.goForward(from: currentView) else { return }
-        restore(destination)
-    }
-
-    private func restore(_ viewport: MapViewport) { map?.viewport = viewport }
-
     /// A native document reread or move replaces readers, while keeping window navigation.
     func restoreView(from previous: WorldSession) {
-        guard selectedDimensionID == previous.selectedDimensionID, map != nil,
-              let viewport = previous.currentView else { return }
-        navigation = previous.navigation
-        restore(viewport)
-        if let depth = previous.map?.depth { map?.setDepth(depth) }
+        guard !isClosed, selectedDimensionID == previous.selectedDimensionID, map != nil, previous.map != nil else { return }
+        navigation.restore(from: previous.navigation)
         ruler = previous.ruler
-    }
-
-    var canFitWorld: Bool {
-        guard let map, let shown = map.shownSize else { return false }
-        return MapViewport.fitting(map.availableRegions, in: shown.size) != nil
-    }
-
-    func fitWorld() {
-        guard let map, let shown = map.shownSize,
-              let fitted = MapViewport.fitting(map.availableRegions, in: shown.size) else { return }
-        navigate { map.viewport = fitted }
     }
 
     /// Everything drawn over the selected dimension's terrain.
@@ -673,11 +625,8 @@ final class WorldSession {
         // drawn over another dimension's terrain.
         guard canShow(map), let dimension = map.dimension else { return }
         if route(to: dimension, perform: { $0.show(map, keepingZoom: keepingZoom) }) { return }
-        navigate {
-            focus(on: PlayerInfo.Location(dimension: dimension, x: Double(map.centerX), y: 64, z: Double(map.centerZ)),
-                  keepingZoom: keepingZoom)
-            if !keepingZoom { self.map?.viewport.scale = InGameMapImage.fittingScale(for: map) }
-        }
+        navigation.focus(on: CGPoint(x: map.centerX, y: map.centerZ), keepingZoom: keepingZoom,
+                         fittingScale: InGameMapImage.fittingScale(for: map))
         select(.inGameMap(map.id))
     }
 
