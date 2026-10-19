@@ -16,7 +16,7 @@ nonisolated struct MapDepth: Equatable, Sendable {
 
 struct MapDepthControl: View {
     @Bindable var map: MapModel
-    @State private var showsPopover = false
+    @Binding var showsPopover: Bool
 
     var body: some View {
         Button {
@@ -40,7 +40,6 @@ struct MapDepthControl: View {
         .popover(isPresented: $showsPopover) {
             MapDepthPopover(map: map)
         }
-        .focusedSceneValue(\.mapHeightPopover, $showsPopover)
     }
 }
 

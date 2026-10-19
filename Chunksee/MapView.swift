@@ -213,6 +213,7 @@ struct MapView: View {
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
     @State private var magnifyStart: MapViewport?
+    @State private var showsHeightPopover = false
     /// The pointer position in the view; the block under it is worked out from the current viewport,
     /// so the readout stays right while the map moves under a still pointer.
     @State private var hoverPoint: CGPoint?
@@ -328,7 +329,8 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move West")) { map.viewport.pan(by: CGSize(width: size.width / 4, height: 0)) }
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
         .overlay(alignment: .bottom) { statusBar }
-        .toolbar { MapToolbar(session: session, map: map) }
+        .toolbar { MapToolbar(session: session, map: map, showsHeightPopover: $showsHeightPopover) }
+        .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
     }
 
     /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from

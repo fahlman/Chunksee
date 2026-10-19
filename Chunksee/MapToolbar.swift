@@ -13,6 +13,7 @@ enum ZoomPercentage {
 struct MapToolbar: ToolbarContent {
     let session: WorldSession
     @Bindable var map: MapModel
+    @Binding var showsHeightPopover: Bool
     private static let levels: [CGFloat] = [1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0 / 2, 1, 2, 4, 8, 16, 32]
 
     var body: some ToolbarContent {
@@ -54,7 +55,7 @@ struct MapToolbar: ToolbarContent {
             .help("Choose a zoom level or fit the world")
         }
         ToolbarItem {
-            MapDepthControl(map: map)
+            MapDepthControl(map: map, showsPopover: $showsHeightPopover)
         }
         ToolbarItem {
             Toggle("Measure Distance", systemImage: "ruler", isOn: Binding {
