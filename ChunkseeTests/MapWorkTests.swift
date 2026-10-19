@@ -6,6 +6,45 @@ import Testing
 
 @Suite(.isolatedStores)
 struct MapWorkTests {
+    @Test(.timeLimit(.minutes(1))) func worldClosureWaitsForARenderInAnAlreadyClosedTab() async throws {
+        let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        let url = try TestWorld.make(chunks: [chunk]), defaults = TestDefaults.make()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                                       watchWorld: { _, _ in nil })
+        await resources.index.waitForIndex()
+        let opening = try resources.opening()
+        let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
+        let tab = WorldSession(resources: resources, renderTile: { _, _ in await render.read("render") })
+        let map = try #require(tab.map)
+        map.viewport.center = CGPoint(x: 8, y: 8)
+        map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+        await render.waitForRequest("render")
+        tab.close()
+        await render.waitForCancellation("render")
+        #expect(tab.isClosed && !resources.isClosed)
+        // The last document opening finishes after this tab detached. The common owner must
+        // retain its canceled render, even though no live session remains in WorldResources.
+        opening.finish()
+        var finishedReads = false
+        let draining = Task.immediate {
+            await resources.backgroundWork.waitUntilFinished()
+            finishedReads = true
+        }
+        var finishedClosing = false
+        let closing = Task.immediate {
+            await resources.waitUntilClosed()
+            finishedClosing = true
+        }
+        #expect(resources.isClosed && !finishedReads && !finishedClosing)
+        await render.finish("render", with: nil)
+        await draining.value
+        await closing.value
+        await tab.waitUntilClosed()
+        #expect(finishedReads && finishedClosing && map.tiles.isEmpty && !map.isLoading)
+    }
+
     @Test(.timeLimit(.minutes(1))) func ownerClosureCancelsMapReadsAndRejectsLatePixelsAndCopies() async throws {
         let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         let url = try TestWorld.make(chunks: [chunk])
