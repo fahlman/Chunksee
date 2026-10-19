@@ -1,6 +1,7 @@
 import Foundation
 
-/// A world's registered work stays owned until it finishes, including after cancellation.
+/// Related work owned by a world or an app-wide source, such as player names.
+/// Registered work stays owned until it finishes, including after cancellation.
 /// Individual consumers may cancel their own handles without closing their siblings' work.
 final class BackgroundWork {
     private(set) var isClosed = false

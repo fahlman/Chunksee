@@ -241,7 +241,12 @@ work; an active typed waiter can still finish. Closing one document releases its
 cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
 retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
 
-`PlayerNames` owns local reads and online batches across documents. Overlapping local reloads
+`PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
+instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
+names used by another world. Source changes cancel only their scope, and model deinitialization
+cancels both. The local in-flight handle still coalesces overlapping callers; canceled folder
+reads retain their file access until completion. There is no separate online task dictionary.
+Overlapping local reloads
 share one pending read; later reloads still reread the source. Closing one caller does not cancel
 globally useful work; choosing/forgetting a folder or revoking online permission and Clear Names
 still cancel/invalidate their sources. The view request follows folder, online permission and the
