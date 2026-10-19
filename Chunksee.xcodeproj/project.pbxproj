@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B30000000000000000000001 /* SampleWorld in Resources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000003 /* SampleWorld */; };
+		B30000000000000000000002 /* SampleWorld in Test Host Resources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000003 /* SampleWorld */; };
 		B1000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000019 /* ChunkseeKit */; };
 		B2000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000019 /* ChunkseeKit */; };
 /* End PBXBuildFile section */
@@ -22,6 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B30000000000000000000003 /* SampleWorld */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SampleWorld; sourceTree = "<group>"; };
 		B10000000000000000000011 /* Chunksee.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chunksee.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000021 /* ChunkseeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChunkseeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000011 /* ChunkseeTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChunkseeTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +68,7 @@
 				B10000000000000000000012 /* Chunksee */,
 				B10000000000000000000022 /* ChunkseeTests */,
 				B10000000000000000000003 /* Products */,
+				B30000000000000000000003 /* SampleWorld */,
 			);
 			sourceTree = "<group>";
 		};
@@ -196,6 +200,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B30000000000000000000001 /* SampleWorld in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -210,6 +215,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B30000000000000000000002 /* SampleWorld in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
