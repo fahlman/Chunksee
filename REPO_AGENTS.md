@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.31.0`, resolved to `0.31.0` (`22530aa2a2981abbb6e9f31e8111d103052d7c7a`).
+  minor" from `0.32.0`, resolved to `0.32.0` (`0c0c3a93617e86733bae3a4085e59353297de67b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -350,7 +350,9 @@ and drawing, and a spatial lookup limits comparisons to nearby accepted labels.
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-Players and creatures share the native equipment section and health row. Health uses up to two
+Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
+the app keeps only presentation slot filtering, ordering and labels. Players and creatures share
+the native equipment section and health row. Health uses up to two
 fractional digits in hearts, with a gauge when current and maximum are known and text for the
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
 empty stacks are omitted, and material tint applies to symbols while text uses semantic colors.
