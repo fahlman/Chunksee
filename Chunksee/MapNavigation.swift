@@ -1,4 +1,5 @@
 import CoreGraphics
+import ChunkseeKit
 import Observation
 
 /// Local jumps and history for one document. MapModel remains the viewport and depth owner.
