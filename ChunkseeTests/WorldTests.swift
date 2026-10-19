@@ -219,6 +219,36 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct WorldDetailsTests {
+    @Test func traderStatusUsesSavedRuleIdentityAndTheSharedCurrentLegacyPolicy() throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = url.appendingPathComponent("data/minecraft/game_rules.dat")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let current = "minecraft:spawn_wandering_traders", custom = "example:spawn_wandering_traders"
+        let cases: [([String: NBT], Bool)] = [
+            ([:], false), ([current: .byte(0)], true),
+            (["doTraderSpawning": .byte(0)], true),
+            ([current: .byte(1), "doTraderSpawning": .byte(0)], false),
+            ([current: .int(9), "doTraderSpawning": .byte(0)], false),
+            ([custom: .byte(0)], false), ([current: .byte(1), custom: .byte(0)], false),
+        ]
+        for (rules, off) in cases {
+            let root = NBT.compound(["DataVersion": .int(5023), "data": .compound(rules)])
+            try Data(Compression.deflate(root.serialized(), gzip: true)).write(to: file)
+            let details = WorldDetails.read(try World(contentsOf: url))
+            #expect(details.wanderingTradersAreOff == off)
+            #expect(Set(details.gameRuleRows.map(\.id)) == Set(rules.keys))
+            #expect(details.gameRuleRows.map(\.name) == details.gameRuleRows.map(\.name).sorted())
+        }
+        // Before separate saved data, the same app presentation reads the legacy string rule.
+        try FileManager.default.removeItem(at: file)
+        let level = NBT.compound(["Data": .compound([
+            "DataVersion": .int(3953), "GameRules": .compound(["doTraderSpawning": .string("false")]),
+        ])])
+        try Data(Compression.deflate(level.serialized(), gzip: true)).write(to: url.appendingPathComponent("level.dat"))
+        #expect(WorldDetails.read(try World(contentsOf: url)).wanderingTradersAreOff)
+    }
+
     @Test func ruleNamesAndClock() {
         #expect(WorldDetails.readableRule("minecraft:keep_inventory") == "Keep Inventory")
         #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
@@ -242,7 +272,7 @@ import Testing
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        #expect(session.details.gameRules.map(\.name) == ["Keep Inventory"])
+        #expect(session.details.gameRuleRows.map(\.name) == ["Keep Inventory"])
         #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
         #expect(session.mapContent.border?.size == 2000)
         session.selection.inspector = .world

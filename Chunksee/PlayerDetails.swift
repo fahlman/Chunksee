@@ -87,15 +87,6 @@ nonisolated enum ItemAppearance {
 
     static func isEnchanted(_ item: ItemStack) -> Bool { !item.enchantments.isEmpty }
 
-    /// Items placed by slot into `count` slots starting at `first`; empty slots are `nil`.
-    static func slots(_ items: [ItemStack], first: Int = 0, count: Int) -> [ItemStack?] {
-        var slots = [ItemStack?](repeating: nil, count: count)
-        for item in items {
-            guard let slot = item.slot, slot >= first, slot < first + count else { continue }
-            slots[slot - first] = item
-        }
-        return slots
-    }
 }
 
 /// A player's health, hunger, experience, equipment and inventories, shown in the inspector.
@@ -152,13 +143,13 @@ struct PlayerDetailView: View {
             EquipmentSection(items: EquipmentPresentation.items(for: player))
             LinkedPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
-                SlotGrid(slots: ItemAppearance.slots(player.inventory, count: 9), selected: player.selectedSlot)
+                SlotGrid(slots: player.inventorySlots(in: .hotbar), selected: player.selectedSlot)
             }
             Section("Inventory") {
-                SlotGrid(slots: ItemAppearance.slots(player.inventory, first: 9, count: 27))
+                SlotGrid(slots: player.inventorySlots(in: .storage))
             }
             Section("Ender Chest") {
-                SlotGrid(slots: ItemAppearance.slots(player.enderChest, count: 27))
+                SlotGrid(slots: player.inventorySlots(in: .enderChest))
             }
             PlayerRecordsSections(records: records, showsAllStatistics: $showsAllStatistics)
         }

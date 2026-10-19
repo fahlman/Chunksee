@@ -222,15 +222,19 @@ import Testing
     }
 
     @Test func slotsDescriptionsAndEnchantments() throws {
-        let sword = try #require(ItemStack(.compound(["id": .string("minecraft:diamond_sword"), "count": .int(1), "Slot": .byte(10), "components": .compound([
+        let swordNBT = NBT.compound(["id": .string("minecraft:diamond_sword"), "count": .int(1), "Slot": .byte(10), "components": .compound([
             "minecraft:custom_name": .string("Excalibur"), "minecraft:enchantments": .compound(["minecraft:sharpness": .int(5)]),
-        ])])))
-        let torches = ItemStack(id: "minecraft:torch", count: 64, slot: 0)
+        ])])
+        let player = PlayerInfo(uuid: UUID(), nbt: .compound([
+            "Inventory": .list([swordNBT, .compound(["id": .string("minecraft:torch"), "count": .int(64), "Slot": .byte(0)])]),
+        ]))
+        let hotbar = player.inventorySlots(in: .hotbar), storage = player.inventorySlots(in: .storage)
+        let sword = try #require(storage[1]), torches = try #require(hotbar[0])
         #expect(ItemAppearance.description(of: sword) == "Diamond Sword “Excalibur”, enchanted")
         #expect(ItemAppearance.description(of: torches) == "64 Torch")
-        let hotbar = ItemAppearance.slots([torches, sword], count: 9)
         #expect(hotbar.count == 9 && hotbar[0]?.id == "minecraft:torch" && hotbar.compactMap(\.self).count == 1)
-        #expect(ItemAppearance.slots([torches, sword], first: 9, count: 27)[1]?.id == "minecraft:diamond_sword")
+        #expect(storage.count == 27 && storage[1]?.id == "minecraft:diamond_sword")
+        #expect(player.inventorySlots(in: .enderChest).count == 27 && player.inventorySlots(in: .enderChest).allSatisfy { $0 == nil })
         #expect(!ItemAppearance.isEnchanted(torches))
     }
 }

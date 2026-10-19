@@ -5,8 +5,8 @@ import SwiftUI
 /// World-wide settings and state beyond `level.dat`'s basics, read once when the world opens.
 nonisolated struct WorldDetails: Sendable {
     var seed: Int64?
-    /// Game rules by readable name, sorted.
-    var gameRules: [(name: String, value: GameRuleValue)] = []
+    /// Saved identifiers remain the identity; readable names are presentation only.
+    var gameRules: [String: GameRuleValue] = [:]
     var weather: Weather?
     var dayTime: Int?
     /// World borders by dimension id.
@@ -16,11 +16,20 @@ nonisolated struct WorldDetails: Sendable {
     /// Maps made in the game that have something drawn, in a recognized dimension.
     var maps: [MapItem] = []
 
+    var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
+        gameRules.map { (id: $0.key, name: Self.readableRule($0.key), value: $0.value) }
+            .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+    }
+
+    var wanderingTradersAreOff: Bool {
+        GameRule.wanderingTraderSpawning.value(in: gameRules) == .bool(false)
+    }
+
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
         var details = WorldDetails()
         details.seed = try? world.seed()
-        details.gameRules = ((try? world.gameRules()) ?? [:]).map { (readableRule($0.key), $0.value) }.sorted { $0.name < $1.name }
+        details.gameRules = (try? world.gameRules()) ?? [:]
         details.weather = try? world.weather()
         details.dayTime = try? world.dayTime()
         for dimension in world.dimensions() {
@@ -109,7 +118,7 @@ struct WorldInfoView: View {
             }
             if let trader = details.wanderingTrader {
                 Section("Wandering Trader") {
-                    if tradersAreOff {
+                    if details.wanderingTradersAreOff {
                         Text("Turned off by a game rule").foregroundStyle(.secondary)
                     } else {
                         LabeledContent("Next Chance", value: trader.spawnDelay < 1200 ? String(localized: "Within a minute of play")
@@ -137,7 +146,7 @@ struct WorldInfoView: View {
             }
             if !details.gameRules.isEmpty {
                 Section("Game Rules") {
-                    ForEach(details.gameRules, id: \.name) { rule in
+                    ForEach(details.gameRuleRows, id: \.id) { rule in
                         switch rule.value {
                         case .bool(let on): LabeledContent(rule.name, value: on ? String(localized: "On") : String(localized: "Off"))
                         case .int(let number): LabeledContent(rule.name, value: number.formatted())
@@ -147,11 +156,6 @@ struct WorldInfoView: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    /// `spawn_wandering_traders` in 26.1+, `doTraderSpawning` before.
-    private var tradersAreOff: Bool {
-        details.gameRules.contains { ["Spawn Wandering Traders", "Do Trader Spawning"].contains($0.name) && $0.value == .bool(false) }
     }
 
     private var difficulty: String {
