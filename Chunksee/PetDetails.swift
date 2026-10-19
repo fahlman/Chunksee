@@ -34,7 +34,7 @@ nonisolated enum PetDetailText {
     }
 
     static func name(_ id: String) -> String {
-        let key = id.replacingOccurrences(of: "minecraft:", with: "")
+        let key = ReadableName.vanillaPath(id) ?? id
         return names[key] ?? ReadableName.from(id)
     }
 

@@ -58,7 +58,7 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
                               "leatherworker", "librarian", "mason", "shepherd", "toolsmith", "weaponsmith"]
 
     static func group(for type: String) -> PlaceGroup {
-        let name = type.hasPrefix("minecraft:") ? String(type.dropFirst(10)) : type
+        guard let name = ReadableName.vanillaPath(type) else { return .other }
         switch name {
         case "nether_portal": return .portal
         case "meeting": return .bell
@@ -88,7 +88,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var mob: String?
 
     var name: String {
-        let base = type.hasPrefix("minecraft:") ? String(type.dropFirst(10)) : type
+        let base = ReadableName.identifierPath(type)
         switch group {
         case .portal: return String(localized: "Nether Portal")
         case .bell: return String(localized: "Village Bell")

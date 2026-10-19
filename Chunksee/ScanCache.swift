@@ -22,7 +22,8 @@ nonisolated struct ScanCache: Sendable {
     /// 14: Kit 0.29 corrects versioned pet health, equipment modifiers, UUIDs and display text.
     /// 15: shared inhabited-time reader includes legacy Level compounds.
     /// 16: Kit 0.30 validates saved identifiers through its shared reader.
-    static let version = 16
+    /// 17: structure/place groups use Kit's identifier parser, including an empty default namespace.
+    static let version = 17
 
     /// `nil` reads every time and saves nothing.
     let directory: URL?

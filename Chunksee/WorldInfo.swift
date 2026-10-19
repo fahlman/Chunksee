@@ -34,7 +34,7 @@ nonisolated struct WorldDetails: Sendable {
 
     /// `minecraft:keep_inventory` and the older `keepInventory` both become "Keep Inventory".
     static func readableRule(_ id: String) -> String {
-        let base = id.split(separator: ":").last.map(String.init) ?? id
+        let base = ReadableName.identifierPath(id)
         if base.contains("_") { return ReadableName.from(base) }
         var words: [String] = []
         for character in base {
