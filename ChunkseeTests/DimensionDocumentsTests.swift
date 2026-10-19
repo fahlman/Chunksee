@@ -142,9 +142,9 @@ import Testing
         let base = try #require(nether.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: .zero))
         #expect(nether.annotations.listedPlaces.map(\.id) == [base.id] && overworld.annotations.listedPlaces.isEmpty)
         let viewport = nether.map?.viewport
-        nether.selection.mapClicked(.row(.savedPlace(base.id)))
+        nether.selection.mapClicked(.row(.savedPlace(base.id)), y: nil)
         #expect(nether.selection.sidebarSelection == .savedPlace(base.id) && nether.map?.viewport == viewport)
-        overworld.selection.mapClicked(.row(.savedPlace(base.id)))
+        overworld.selection.mapClicked(.row(.savedPlace(base.id)), y: nil)
         #expect(overworld.selection.sidebarSelection == nil && nether.selection.sidebarSelection == .savedPlace(base.id))
         #expect(nether.presentation.lists("minecraft:the_nether") && !nether.presentation.lists("minecraft:overworld"))
         // Something with no dimension in this world is listed once, with the Overworld.

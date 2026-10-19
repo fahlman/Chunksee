@@ -65,11 +65,11 @@ import Testing
                     == overworld.presentation.lists(PlayerPresentation.position(of: player)?.dimension))
         }
         #expect(MapContent(session: nether).players.contains { $0.playerID == you && $0.kind == .death })
-        nether.selection.mapClicked(.row(.player(you)))
+        nether.selection.mapClicked(.row(.player(you)), y: nil)
         #expect(nether.selection.inspector == .player(you))
         nether.visibility.hiddenPlayers.insert(you)
         #expect(!MapContent(session: nether).players.contains { $0.playerID == you })
-        nether.selection.mapClicked(.row(.player(you)))
+        nether.selection.mapClicked(.row(.player(you)), y: nil)
         #expect(nether.selection.inspector == nil)
         overworld.close(); nether.close()
         await overworld.waitUntilClosed(); await nether.waitUntilClosed()

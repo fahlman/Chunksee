@@ -26,8 +26,8 @@ struct MapView: View {
     var content = MapContent()
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
-    /// Called with the clicked marker's identity, or `nil` for empty map.
-    var onSelect: (MapTarget?) -> Void = { _ in }
+    /// Called with the clicked marker’s identity and saved height, or nil for empty map.
+    var onSelect: (MapTarget?, Double?) -> Void = { _, _ in }
 
     @State private var size: CGSize = .zero
     @State private var dragStart: MapViewport?
@@ -64,7 +64,8 @@ struct MapView: View {
             if session.annotations.ruler.isEnabled {
                 session.annotations.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
             } else {
-                onSelect(content.target(at: value.location, viewport: map.viewport, size: size))
+                let hit = content.hit(at: value.location, viewport: map.viewport, size: size)
+                onSelect(hit?.target, hit?.y)
             }
         })
         .scrollWheelInput(contextContent: { point in
@@ -125,7 +126,7 @@ struct MapView: View {
                     Button {
                         isFocused = true
                         session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
-                        onSelect(location.target)
+                        onSelect(location.target, location.y)
                     } label: {
                         Color.clear.frame(width: location.frame.width, height: location.frame.height)
                     }

@@ -252,7 +252,7 @@ enum StructureTestWorld {
         let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
         let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
         var disclosure = SidebarDisclosure()
-        disclosure.selectOnMap(location.target, in: session)
+        disclosure.selectOnMap(location.target, y: nil, in: session)
         #expect(session.selection.sidebarSelection == .creature(refreshed.id) && session.selection.mapSelection == .creature(refreshed))
         session.close()
         await session.waitUntilClosed()
@@ -280,13 +280,13 @@ enum StructureTestWorld {
         session.visibility.creatures = [.pet]
         #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
-        session.selection.mapClicked(.row(.creature(summer.id)))
+        session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
         #expect(MapContent(session: session).selection == .creature(summer))
         #expect(session.selection.sidebarSelection == .creature(summer.id))
         #expect(session.selection.inspector == .selection)   // its details show in the inspector
-        session.selection.mapClicked(nil)
+        session.selection.mapClicked(nil, y: nil)
         #expect(session.selection.mapSelection == nil && session.selection.inspector == nil && session.selection.sidebarSelection == nil)
-        session.selection.mapClicked(.row(.creature(summer.id)))
+        session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
         session.selection.inspector = .world                 // showing something else lets go of it
         #expect(session.selection.mapSelection == nil)
         // Choosing the creature in the sidebar shows its layer, centers on it and selects it.
@@ -647,7 +647,7 @@ enum StructureTestWorld {
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
         #expect(session.selection.inspector == .selection)
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
-        session.selection.mapClicked(nil)
+        session.selection.mapClicked(nil, y: nil)
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
         // Closing the inspector takes it away.
         session.selection.inspector = nil
