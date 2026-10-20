@@ -5,6 +5,7 @@ nonisolated struct CountedText: FormatStyle, Sendable {
     private enum Phrase: Codable, Hashable, Sendable {
         case hearts
         case heartsOf(Double)
+        case hunger
         case blocks
     }
 
@@ -13,6 +14,7 @@ nonisolated struct CountedText: FormatStyle, Sendable {
 
     static var hearts: Self { Self(phrase: .hearts) }
     static func hearts(of maximum: Double) -> Self { Self(phrase: .heartsOf(maximum)) }
+    static var hunger: Self { Self(phrase: .hunger) }
     static var blocks: Self { Self(phrase: .blocks) }
 
     func locale(_ locale: Locale) -> Self {
@@ -31,6 +33,8 @@ nonisolated struct CountedText: FormatStyle, Sendable {
             let shown = Self.displayedCount(maximum, format: number)
             // Only the maximum belongs to this noun phrase; 1 of 2 is plural, 0 of 1 is singular.
             return String(AttributedString(localized: "\(value, format: number) of ^[\(shown, format: number) heart](inflect: true)", locale: locale).characters)
+        case .hunger:
+            return String(localized: "\(value, format: number) of \(10.0, format: number) drumsticks", locale: locale)
         case .blocks:
             let shown = Self.displayedCount(value, format: number)
             return String(AttributedString(localized: "^[\(shown, format: number) block](inflect: true)", locale: locale).characters)

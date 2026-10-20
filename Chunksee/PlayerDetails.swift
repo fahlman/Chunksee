@@ -143,10 +143,11 @@ struct PlayerDetailView: View {
                 if let food = player.foodLevel {
                     LabeledContent("Hunger") {
                         Gauge(value: Double(min(food, 20)), in: 0...20) { EmptyView() } currentValueLabel: {
-                            Text("\(Double(food) / 2, format: .number.precision(.fractionLength(0...1))) of 10")
+                            Text(Double(food) / 2, format: CountedText.hunger).monospacedDigit()
                         }
                         .tint(.orange)
                     }
+                    .help("Hunger recorded when Minecraft last saved")
                 }
                 if let level = player.experienceLevel {
                     LabeledContent("Experience") {

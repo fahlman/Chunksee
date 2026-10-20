@@ -425,6 +425,10 @@ the existing kind/position fallback policy. Block containers use their fixed blo
 Opened containers disappear from the group on the existing region refresh. Kit interpretation
 version 3 rereads cached containers for UUIDs; the app adds no second cache or file reader.
 
+The player's Hunger row uses the shared CountedText style, reporting saved food in the game's
+10 drumsticks, including half drumsticks. It uses aligned digits and saved-value help like Health;
+the existing food conversion and gauge range remain unchanged.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
