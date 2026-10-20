@@ -139,33 +139,16 @@ final class LayerVisibility {
     /// Chunk and region lines; off at first.
     var showsGrid: Bool { didSet { saveValue(showsGrid, Keys.showsGrid) } }
 
-    private let defaults: UserDefaults
-    private let worldKey: String
+    private let settings: WorldSettings
     private let dimension: String?
+    private typealias Keys = WorldSettings.Layer
 
-    private enum Keys {
-        static let structures = "shownStructureGroups"
-        static let places = "shownPlaceGroups"
-        static let creatures = "shownCreatureGroups"
-        static let biomes = "shownBiomeGroups"
-        static let hiddenPlayers = "hiddenPlayers"
-        static let showsGrid = "showsGrid"
-        static let timeSpent = "showsTimeSpent"
-        static let slimeChunks = "showsSlimeChunks"
-        static let legacy = [structures, places, creatures, biomes, hiddenPlayers, showsGrid]
-    }
-
-    init(world: URL, dimension: String?, defaults: UserDefaults) {
-        self.defaults = defaults
-        let worldKey = Self.key(for: world)
-        self.worldKey = worldKey
+    init(settings: WorldSettings, dimension: String?) {
+        self.settings = settings
         self.dimension = dimension
-        let previous = dimension.flatMap { defaults.dictionary(forKey: worldKey)?[$0] as? [String: Any] }
-        // The previous app-wide choices seed a tab once; tab changes never write those keys.
-        let values = previous ?? Dictionary(uniqueKeysWithValues: Keys.legacy.compactMap { key in
-            defaults.object(forKey: key).map { (key, $0) }
-        })
-        func saved<Group: RawRepresentable & CaseIterable & Sendable>(_ key: String, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
+        let previous = settings.layers(for: dimension)
+        let values = previous ?? settings.legacyLayers
+        func saved<Group: RawRepresentable & CaseIterable & Sendable>(_ key: Keys, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
             guard let names = values[key] as? [String] else { return Set(Group.allCases.filter(isShown)) }
             return Set(names.compactMap(Group.init(rawValue:)))
         }
@@ -185,43 +168,15 @@ final class LayerVisibility {
         }
     }
 
-    private static func key(for world: URL) -> String { "mapLayers." + world.standardizedFileURL.path }
-
-    private var stored: [String: Any] {
-        dimension.flatMap { defaults.dictionary(forKey: worldKey)?[$0] as? [String: Any] } ?? [:]
-    }
-
     /// HeatMapLayer owns the live flag; these accessors only restore and persist its value.
-    var rememberedTimeSpent: Bool { stored[Keys.timeSpent] as? Bool ?? false }
-    func rememberTimeSpent(_ shown: Bool) { saveValue(shown, Keys.timeSpent) }
+    var rememberedTimeSpent: Bool { settings.layers(for: dimension)?[.timeSpent] as? Bool ?? false }
+    func rememberTimeSpent(_ shown: Bool) { saveValue(shown, .timeSpent) }
 
     /// SlimeChunkLayer owns the live flag, just as HeatMapLayer owns Time Spent.
-    var rememberedSlimeChunks: Bool { stored[Keys.slimeChunks] as? Bool ?? false }
-    func rememberSlimeChunks(_ shown: Bool) { saveValue(shown, Keys.slimeChunks) }
+    var rememberedSlimeChunks: Bool { settings.layers(for: dimension)?[.slimeChunks] as? Bool ?? false }
+    func rememberSlimeChunks(_ shown: Bool) { saveValue(shown, .slimeChunks) }
 
-    private func save(_ names: [String], _ key: String) { saveValue(names.sorted(), key) }
-
-    private func saveValue(_ value: Any, _ key: String) {
-        var values = stored
-        values[key] = value
-        write(values)
-    }
-
-    private func write(_ values: [String: Any]) {
-        guard let dimension else { return }
-        // Read the current dictionary so another dimension's changes are retained.
-        var dimensions = defaults.dictionary(forKey: worldKey) ?? [:]
-        dimensions[dimension] = values
-        defaults.set(dimensions, forKey: worldKey)
-    }
-
-    /// A native move keeps every dimension's settings under the moving world's new URL.
-    func relocate(to world: URL) {
-        let destination = Self.key(for: world)
-        guard destination != worldKey, let moving = defaults.dictionary(forKey: worldKey) else { return }
-        var merged = defaults.dictionary(forKey: destination) ?? [:]
-        merged.merge(moving) { _, moving in moving }
-        defaults.set(merged, forKey: destination)
-        defaults.removeObject(forKey: worldKey)
-    }
+    private func save(_ names: [String], _ key: Keys) { saveValue(names.sorted(), key) }
+    private func saveValue(_ value: Any, _ key: Keys) { write([key: value]) }
+    private func write(_ values: [Keys: Any]) { settings.saveLayers(values, for: dimension) }
 }

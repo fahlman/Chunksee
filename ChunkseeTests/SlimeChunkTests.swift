@@ -28,7 +28,7 @@ import Testing
 
     @Test func imagesAreReusedNewRegionsAreAddedAndVisibilityIsRememberedPerDimension() async throws {
         let defaults = TestDefaults.make(), world = URL(fileURLWithPath: "/tmp/Slime Overlay Fixture")
-        let visibility = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
+        let visibility = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld")
         let region = RegionPosition(x: 0, z: 0), added = RegionPosition(x: -1, z: 0)
         let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region], work: BackgroundWork())
         layer.restoreVisibility(from: visibility)
@@ -45,9 +45,9 @@ import Testing
         layer.isShown = true
         await layer.waitForImages()
         #expect(layer.visibleImages[region] === image)
-        let restored = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
+        let restored = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld")
         #expect(restored.rememberedSlimeChunks)
-        let nether = LayerVisibility(world: world, dimension: "minecraft:the_nether", defaults: defaults)
+        let nether = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:the_nether")
         #expect(!nether.rememberedSlimeChunks)
         layer.regionsChanged([added])
         #expect(layer.visibleImages[region] == nil)

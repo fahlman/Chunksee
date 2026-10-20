@@ -70,17 +70,17 @@ import Testing
         defaults.set(["mineshaft"], forKey: "shownStructureGroups")
         defaults.set([String](), forKey: "shownCreatureGroups")
         defaults.set(true, forKey: "showsGrid")
-        let overworld = LayerVisibility(world: url, dimension: "minecraft:overworld", defaults: defaults)
+        let overworld = LayerVisibility(settings: WorldSettings(world: url, defaults: defaults), dimension: "minecraft:overworld")
         #expect(overworld.structures == [.mineshaft] && overworld.creatures.isEmpty && overworld.showsGrid)
         overworld.structures = []
         overworld.showsGrid = false
-        let nether = LayerVisibility(world: url, dimension: "minecraft:the_nether", defaults: defaults)
+        let nether = LayerVisibility(settings: WorldSettings(world: url, defaults: defaults), dimension: "minecraft:the_nether")
         #expect(nether.structures == [.mineshaft] && nether.creatures.isEmpty && nether.showsGrid)
         #expect(defaults.bool(forKey: "showsGrid") && defaults.stringArray(forKey: "shownStructureGroups") == ["mineshaft"])
         defaults.set(["villager"], forKey: "shownCreatureGroups")
         defaults.set(false, forKey: "showsGrid")
-        #expect(LayerVisibility(world: url, dimension: "minecraft:overworld", defaults: defaults).creatures.isEmpty)
-        #expect(LayerVisibility(world: url, dimension: "minecraft:the_nether", defaults: defaults).showsGrid)
+        #expect(LayerVisibility(settings: WorldSettings(world: url, defaults: defaults), dimension: "minecraft:overworld").creatures.isEmpty)
+        #expect(LayerVisibility(settings: WorldSettings(world: url, defaults: defaults), dimension: "minecraft:the_nether").showsGrid)
     }
 
     @Test func worldsAreIndependentAndRelocationPreservesEveryDimension() {
@@ -89,21 +89,22 @@ import Testing
 
         let first = URL(fileURLWithPath: "/First World"), second = URL(fileURLWithPath: "/Second World")
         let moved = URL(fileURLWithPath: "/Moved World")
-        let overworld = LayerVisibility(world: first, dimension: "minecraft:overworld", defaults: defaults)
-        let nether = LayerVisibility(world: first, dimension: "minecraft:the_nether", defaults: defaults)
+        let settings = WorldSettings(world: first, defaults: defaults)
+        let overworld = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
+        let nether = LayerVisibility(settings: settings, dimension: "minecraft:the_nether")
         overworld.showsGrid = true
         overworld.creatures = [.pet]
         nether.creatures = []
         nether.rememberTimeSpent(true)
-        let other = LayerVisibility(world: second, dimension: "minecraft:overworld", defaults: defaults)
+        let other = LayerVisibility(settings: WorldSettings(world: second, defaults: defaults), dimension: "minecraft:overworld")
         #expect(!other.showsGrid && !other.rememberedTimeSpent)
-        LayerVisibility(world: moved, dimension: "minecraft:the_end", defaults: defaults).showsGrid = true
-        overworld.relocate(to: moved)
-        let restored = LayerVisibility(world: moved, dimension: "minecraft:overworld", defaults: defaults)
-        let restoredNether = LayerVisibility(world: moved, dimension: "minecraft:the_nether", defaults: defaults)
+        LayerVisibility(settings: WorldSettings(world: moved, defaults: defaults), dimension: "minecraft:the_end").showsGrid = true
+        settings.relocate(to: moved)
+        let restored = LayerVisibility(settings: WorldSettings(world: moved, defaults: defaults), dimension: "minecraft:overworld")
+        let restoredNether = LayerVisibility(settings: WorldSettings(world: moved, defaults: defaults), dimension: "minecraft:the_nether")
         #expect(restored.showsGrid && restored.creatures == [.pet])
         #expect(restoredNether.creatures.isEmpty && restoredNether.rememberedTimeSpent)
-        #expect(LayerVisibility(world: moved, dimension: "minecraft:the_end", defaults: defaults).showsGrid)
+        #expect(LayerVisibility(settings: WorldSettings(world: moved, defaults: defaults), dimension: "minecraft:the_end").showsGrid)
         #expect(!other.showsGrid && !other.rememberedTimeSpent)
         #expect(defaults.dictionary(forKey: "mapLayers." + first.path) == nil)
     }
