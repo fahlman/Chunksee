@@ -17,10 +17,11 @@ enum ZoomPercentage {
 
     /// Manual entry shares the existing zoom limits. Fit World may still choose a smaller scale.
     static func scale(from percentage: String, locale: Locale) -> CGFloat? {
-        guard let number = try? Double(percentage.trimmingCharacters(in: .whitespacesAndNewlines),
-                                       format: .number.locale(locale).grouping(.never), lenient: false),
-              number.isFinite else { return nil }
-        let scale = CGFloat(number / 100)
+        let input = percentage.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Parsing a number alone accepts a valid prefix of malformed text, such as "100abc".
+        guard let match = try? input.wholeMatch(of: FloatingPointFormatStyle<Double>.number.locale(locale).grouping(.never)),
+              match.output.isFinite else { return nil }
+        let scale = CGFloat(match.output / 100)
         return (MapViewport.minimumManualScale...MapViewport.scaleRange.upperBound).contains(scale) ? scale : nil
     }
 }
