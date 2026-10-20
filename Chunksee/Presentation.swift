@@ -33,6 +33,7 @@ nonisolated enum LevelText {
 }
 
 /// Coordinate digits keep the same width in sidebar captions, detail rows and map readouts.
+/// Coordinates within prose keep the paragraph's normal typography.
 struct CoordinateText: View {
     private let text: Text
 

@@ -141,7 +141,7 @@ struct WorldInfoView: View {
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
                     LabeledContent {
-                        Text(borderDescription(details.borders[dimension.id]))
+                        CoordinateText(Text(borderDescription(details.borders[dimension.id])))
                     } label: {
                         Text(dimension.id, format: session.presentation.dimensionNameStyle)
                     }
