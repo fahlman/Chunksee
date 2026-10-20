@@ -69,7 +69,7 @@ struct InGameMapDetailView: View {
                     Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
                 }
                 LabeledContent("Center") {
-                    Text(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))).monospacedDigit()
+                    Text(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), format: Coordinates.Style()).monospacedDigit()
                 }
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {

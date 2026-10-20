@@ -98,7 +98,7 @@ struct CreatureDetailView: View {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
             } location: {
                 LabeledContent("Position") {
-                    Text(Coordinates.text(marker.position, y: marker.creature.y))
+                    Text(Coordinates(marker.position, y: marker.creature.y), format: Coordinates.Style())
                         .monospacedDigit()
                 }
                 if let carrier = marker.carrier {

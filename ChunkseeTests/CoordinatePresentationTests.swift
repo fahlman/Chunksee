@@ -18,8 +18,12 @@ import Testing
         let location = try #require(content.accessibleLocations(viewport: .init(center: position, scale: 32),
                                                                size: CGSize(width: 400, height: 300)).first)
         #expect(location.position == position && location.y == -0.1)
+        let coordinates = Coordinates(location.position, y: location.y)
+        for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
+            #expect(Coordinates.Style().locale(locale).format(coordinates) == "X -9  Y -1  Z -17")
+            #expect(Coordinates.Style(dimension: "Overworld").locale(locale).format(coordinates) == "Overworld · X -9  Y -1  Z -17")
+        }
         #expect(Coordinates.text(location.position, y: location.y) == "X -9  Y -1  Z -17")
-        #expect(Coordinates.text(location.position, y: location.y, dimension: "Overworld") == "Overworld · X -9  Y -1  Z -17")
         MapClipboard.copy(location.position, y: location.y, on: map, to: board)
         #expect(board.string(forType: .string) == "-9 -1 -17")
         #expect(map.unfinishedCoordinateReads == 0)

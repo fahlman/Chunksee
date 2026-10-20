@@ -211,7 +211,7 @@ struct PortalDetailView: View {
         Form {
             Section {
                 LabeledContent("Position") {
-                    Text(Coordinates.text(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
+                    Text(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY), format: Coordinates.Style())
                         .monospacedDigit()
                 }
             } header: {
