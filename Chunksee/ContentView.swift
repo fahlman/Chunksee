@@ -102,7 +102,10 @@ struct WorldView: View {
                     sidebarDisclosure.reveal(item, in: session)
                     sidebarRevealID = UUID()
                 }
+                // Scroll from the updated view. During onChange, the native List can still
+                // have the old collapsed rows, even though disclosure state has changed.
                 .task(id: sidebarRevealID) {
+                    guard !Task.isCancelled else { return }
                     if let item = session.selection.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
                 }
                 .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in

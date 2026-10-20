@@ -501,7 +501,10 @@ input through the List selection binding calls `choose` and requests sidebar foc
 sidebar tap also requests its existing focus, including when the already-selected row leaves the
 binding unchanged; it does not select, navigate or replace native row/control actions. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
-The view requests ancestor expansion and scrolling with SwiftUI. Selection and disclosure use
+The view requests ancestor expansion with SwiftUI, then scrolls from a view task keyed by the
+reveal request so the native List uses its expanded rows. Repeated requests still reveal the
+selected row after manual scrolling; cancellation discards replaced or closed-view requests.
+Selection and disclosure use
 one action shared with the behavioral tests. Search pins
 select an existing result row (the active query first, then a shown saved query). SearchModel owns
 the 200-row limit and deduplicated pins for the sidebar, map and click resolver, using the document’s
