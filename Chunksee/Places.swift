@@ -214,7 +214,7 @@ struct PortalDetailView: View {
                             coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
                             dimension: portal.dimension)
             } header: {
-                Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
+                InspectorHeading(title: Text("Nether Portal"), symbol: PlaceGroup.portal.symbol)
             }
             Section {
                 switch trip {

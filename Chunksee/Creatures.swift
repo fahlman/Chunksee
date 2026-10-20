@@ -95,7 +95,7 @@ struct CreatureDetailView: View {
     var body: some View {
         Form {
             CreatureDetailSections(session: session, creature: marker.creature) {
-                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
+                InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol)
             } location: {
                 LocationRow(title: Text("Position"), session: session,
                             coordinates: Coordinates(marker.position, y: marker.creature.y), dimension: marker.dimension)
@@ -120,7 +120,6 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
         Section {
             LabeledContent("Kind", value: ReadableName.from(creature.id))
             location
-            HealthRow(health: creature.health, maximum: creature.maxHealth)
             if let owner = creature.owner {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                 PetDetailRows(creature: creature)
@@ -134,6 +133,11 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
             }
         } header: {
             header
+        }
+        if HealthPresentation(health: creature.health, maximum: creature.maxHealth).isAvailable {
+            Section("Status") {
+                HealthRow(health: creature.health, maximum: creature.maxHealth)
+            }
         }
         if creature.owner != nil, let equipment = creature.equipment {
             EquipmentSection(items: equipment)
