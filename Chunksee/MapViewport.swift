@@ -15,6 +15,7 @@ nonisolated struct MapViewport: Equatable, Sendable {
     /// Continuous map geometry needs a divisor; tested against Kit's checked region origin.
     /// This is measured in blocks, independently of a rendered tile's pixel resolution.
     static let regionSideInBlocks: CGFloat = 512
+    var canZoomIn: Bool { scale < Self.scaleRange.upperBound }
     var canZoomOut: Bool { scale > Self.minimumManualScale }
     var isValid: Bool {
         Coordinates.block(center.x) != nil && Coordinates.block(center.y) != nil &&

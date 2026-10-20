@@ -99,7 +99,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
-| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift` | Local navigation/history, native map controls and zoom presets; MapModel owns viewport/depth |
+| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift` | Local navigation/history and native height/zoom popovers; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
@@ -282,6 +282,14 @@ saved places and coordinate-entry destinations use the center of their block for
 Viewport-to-region and grid conversions check finite values and integer bounds before forming
 ranges. Invalid persisted centers or zooms are ignored; an invalid live viewport cannot replace
 a previously valid saved view. Grid iteration checks its step arithmetic as well as its endpoints.
+The toolbar percentage opens a native SwiftUI zoom popover with a logarithmic slider, localized
+number entry, existing presets, −/+ buttons, Actual Size and Fit World. The titlebar has only the
+percentage control; menu/keyboard zoom commands remain available. Manual controls use 6.25% through
+3,200%; Fit World can remain smaller. Opening or dismissing the popover leaves a fitted scale
+unchanged. Slider changes apply continuously; Return or leaving the number field commits a valid
+edit, while invalid/out-of-range text returns to the current percentage. Escape discards an
+unsubmitted edit. MapModel's existing viewport remains the only zoom owner, separately per tab;
+the popover keeps only an unfinished text edit and its presentation state.
 Region/chunk index keys, tiles and scan results use Kit's RegionPosition and ChunkPosition
 directly. Kit owns chunk-to-region/local coordinates and checked chunk/region origins; app scans,
 hover reads, biome geometry and block-search pins use those properties. The previous x/z cache-key

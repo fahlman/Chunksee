@@ -99,10 +99,13 @@ import Testing
         let anchor = CGPoint(x: 600, y: 100)
         let before = viewport.blockPoint(at: anchor, in: size)
         viewport.zoom(by: 4, anchor: anchor, in: size)
-        #expect(viewport.scale == 4)
+        #expect(viewport.scale == 4 && viewport.canZoomIn)
         #expect(viewport.blockPoint(at: anchor, in: size) == before)
         viewport.zoom(by: 1000, anchor: anchor, in: size)
         #expect(viewport.scale == MapViewport.scaleRange.upperBound && viewport.scale == 32)   // 3,200%
+        #expect(!viewport.canZoomIn)
+        viewport.zoom(by: 0.5)
+        #expect(viewport.scale == 16 && viewport.canZoomIn)
     }
 
     @Test func dragMovesContentWithPointer() {
@@ -122,7 +125,7 @@ import Testing
         let regions: Set<RegionPosition> = [.init(x: -50_000, z: -50_000), .init(x: 50_000, z: 50_000)]
         var fitted = try #require(MapViewport.fitting(regions, in: size))
         let original = fitted
-        #expect(fitted.scale < 1.0 / 16 && !fitted.canZoomOut)
+        #expect(fitted.scale < 1.0 / 16 && !fitted.canZoomOut && fitted.canZoomIn)
         fitted.zoom(by: 0.5, anchor: CGPoint(x: 600, y: 100), in: size)
         #expect(fitted == original)
         fitted.zoom(by: 2)

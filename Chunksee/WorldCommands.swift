@@ -63,7 +63,7 @@ struct WorldCommands: Commands {
         CommandGroup(before: .sidebar) {
             Button("Zoom In") { session?.map?.zoom(by: 2) }
                 .keyboardShortcut("+")
-                .disabled((session?.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
+                .disabled(session?.map?.viewport.canZoomIn != true)
             Button("Zoom Out") { session?.map?.zoom(by: 0.5) }
                 .keyboardShortcut("-")
                 .disabled(session?.map?.viewport.canZoomOut != true)
@@ -158,7 +158,7 @@ struct WorldKeyboardShortcuts: View {
             Button("Zoom In") { session.map?.zoom(by: 2) }
                 .keyboardShortcut("=")
                 .disabled(focusedSession !== session ||
-                          (session.map?.viewport.scale ?? MapViewport.scaleRange.upperBound) >= MapViewport.scaleRange.upperBound)
+                          session.map?.viewport.canZoomIn != true)
             Button("Zoom Out") { session.map?.zoom(by: 0.5) }
                 .keyboardShortcut("_")
                 .disabled(focusedSession !== session ||
