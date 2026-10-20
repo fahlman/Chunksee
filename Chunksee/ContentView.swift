@@ -278,7 +278,8 @@ private struct PlayerRow: View {
 
     private var detail: String {
         guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
-        return Coordinates.text(CGPoint(x: position.x, y: position.z), dimension: session.presentation.dimensionName(position.dimension))
+        return Coordinates.text(CGPoint(x: position.x, y: position.z), y: position.y,
+                                dimension: session.presentation.dimensionName(position.dimension))
     }
 
     private var help: String {
@@ -407,6 +408,6 @@ private struct HitList: View {
 
     private func location(_ hit: SearchHit) -> String {
         guard let position = hit.position else { return hit.title }
-        return "\(hit.title) · \(Coordinates.text(position))"
+        return "\(hit.title) · \(Coordinates.text(position, y: hit.y.map(Double.init)))"
     }
 }
