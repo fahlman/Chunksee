@@ -76,7 +76,7 @@ struct InGameMapDetailView: View {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
                 }
             } header: {
-                InspectorHeading(title: Text("Map #\(map.id)"), symbol: "map")
+                InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol)
             }
             Section {
                 LabeledContent("Opacity") {

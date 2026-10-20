@@ -4,9 +4,11 @@ import SwiftUI
 
 /// A biome, as a sidebar group.
 nonisolated struct BiomeGroup: MapLayerGroup, Sendable {
+    static let symbol = "leaf.fill"
+
     var id: String
     var name: String { ReadableName.from(id) }
-    var symbol: String { "leaf" }
+    var symbol: String { Self.symbol }
 }
 
 /// A patch of neighboring chunks with the same biome: at the surface, or for a cave biome, anywhere

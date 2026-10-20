@@ -4,6 +4,8 @@ import SwiftUI
 /// How an item looks in a slot. Minecraft's textures can't be redistributed, so items are drawn as
 /// an SF Symbol for their category, tinted by their material.
 nonisolated enum ItemAppearance {
+    static let mapSymbol = "map.fill"
+
     static func symbol(for id: String) -> String {
         let name = ReadableName.identifierPath(id)
         func any(_ parts: [String]) -> Bool { parts.contains { name.hasSuffix($0) || name == $0 } }
@@ -18,7 +20,7 @@ nonisolated enum ItemAppearance {
         }
         if any(["potion", "_bottle", "dragon_breath"]) { return "flask.fill" }
         if any(["book", "book_and_quill"]) { return "book.closed.fill" }
-        if any(["map", "compass", "clock", "spyglass"]) { return "map.fill" }
+        if any(["map", "compass", "clock", "spyglass"]) { return mapSymbol }
         if any(["diamond", "emerald", "_ingot", "_nugget", "lapis_lazuli", "quartz", "amethyst_shard", "netherite_scrap", "raw_iron",
                 "raw_gold", "raw_copper", "coal", "charcoal", "redstone", "glowstone_dust"]) {
             return "diamond.fill"
