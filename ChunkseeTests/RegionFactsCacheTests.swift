@@ -117,10 +117,13 @@ import Testing
         let key = ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: facts.options)
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
         cache.store(facts, key: key)
-        let loaded = try #require(cache.load(key)?.containers.first?.items.first?.components)
-        #expect(loaded["minimum"] == .long(.min) && loaded["maximum"] == .long(.max))
-        #expect(loaded["infinite"] == .double(.infinity) && loaded["negativeInfinite"] == .float(-.infinity))
-        #expect(loaded["notANumber"]?.double?.isNaN == true)
+        let loaded = try #require(cache.load(key)?.containers.first?.items.first)
+        let expected = ItemStack(id: "minecraft:diamond", components: components)
+        // Compare the public persistence contract, including NBT's exact binary numbers.
+        // Sorted keys make the encoding independent of dictionary iteration order.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(try encoder.encode(loaded) == encoder.encode(expected))
     }
 
     @Test func failedReadsKeepPreviousIndexAndHeatUntilACompleteReplacementOrDeletion() async throws {
