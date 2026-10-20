@@ -26,7 +26,7 @@ struct SavedPlaceMenu: View {
                 }
             }
             .disabled(map == nil || !session.annotations.canVisit(place))
-            MeasureDistanceCommand(session: session, position: place.position, dimension: place.dimension, map: map)
+            MeasureDistanceCommand(session: session, position: place.position, dimension: place.dimension)
             Divider()
             Button("Remove", role: .destructive) { if !session.isClosed { session.savedPlaces.remove(place.id) } }
         }
@@ -38,17 +38,12 @@ private struct MeasureDistanceCommand: View {
     let session: WorldSession
     let position: CGPoint
     let dimension: String
-    let map: MapModel?
-
-    private var isAvailable: Bool {
-        !session.isClosed && session.selectedDimensionID == dimension && map?.dimension.id == dimension
-    }
 
     var body: some View {
         Button("Measure Distance from Here") {
-            if isAvailable { session.annotations.beginMeasurement(at: position, in: dimension) }
+            session.annotations.beginMeasurement(at: position, in: dimension)
         }
-        .disabled(!isAvailable)
+        .disabled(!session.annotations.canMeasure(in: dimension))
     }
 }
 
@@ -86,7 +81,7 @@ struct MapContextMenuContent: View {
                     if !session.isClosed { MapClipboard.copy(position, y: y, on: map, to: pasteboard) }
                 }
                 Button("Save Place…") { session.annotations.savePlace(at: position, in: map.dimension.id) }
-                MeasureDistanceCommand(session: session, position: position, dimension: map.dimension.id, map: map)
+                MeasureDistanceCommand(session: session, position: position, dimension: map.dimension.id)
             }
         }
         .disabled(session.isClosed)

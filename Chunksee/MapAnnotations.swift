@@ -44,8 +44,13 @@ final class MapAnnotations {
         if enabled, let selection = source?.selection, selection.mapSelection != nil { selection.inspector = nil }
     }
 
+    func canMeasure(in dimension: String) -> Bool {
+        guard let source, !source.isClosed, source.selectedDimensionID == dimension else { return false }
+        return source.map?.dimension.id == dimension
+    }
+
     func beginMeasurement(at point: CGPoint, in dimension: String) {
-        guard let source, !source.isClosed, source.selectedDimensionID == dimension else { return }
+        guard canMeasure(in: dimension) else { return }
         setRulerEnabled(true)
         ruler.clear()
         ruler.mark(point)
