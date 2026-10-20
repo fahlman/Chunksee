@@ -72,6 +72,12 @@
         }
       }
     },
+    "1 pixel for every %@" : {
+      "comment" : "The scale of a saved Minecraft map. The placeholder is a localized block count including its unit, such as 1 block or 16 blocks."
+    },
+    "%@ wide, centered at %@" : {
+      "comment" : "A dimension's limited world border. The first placeholder is a localized block count including its unit; the second is the center's X and Z coordinates."
+    },
     "%lld blocks · Y %lld to %lld" : {
       "comment" : "Block deposit count followed by its minimum and maximum height. Pluralize only the first argument.",
       "localizations" : {

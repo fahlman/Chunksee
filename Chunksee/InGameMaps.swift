@@ -59,6 +59,7 @@ struct InGameMapRow: View {
 struct InGameMapDetailView: View {
     let session: WorldSession
     let map: MapItem
+    @Environment(\.locale) private var locale
 
     var body: some View {
         @Bindable var selection = session.selection
@@ -68,7 +69,7 @@ struct InGameMapDetailView: View {
                 LabeledContent("Center") {
                     Text(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))).monospacedDigit()
                 }
-                LabeledContent("Scale", value: String(localized: "1 pixel for every \(map.blocksPerPixel) blocks"))
+                LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks(Double(map.blocksPerPixel), locale: locale))", locale: locale))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
                 }
