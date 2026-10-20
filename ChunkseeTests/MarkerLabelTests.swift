@@ -91,9 +91,9 @@ import Testing
         func render(includeOther: Bool, includeSelected: Bool = true) throws -> CGImage {
             let renderer = ImageRenderer(content: Canvas { context, _ in
                 let point = CGPoint(x: 140, y: 20)
-                let player = MarkerStyle.player(.player, outdated: false, selected: false)
+                let player = MarkerStyle.player(.player)
                     .label("Nearby player", id: "player", priority: .player, at: point, scale: 2, in: context)!
-                let pet = MarkerStyle.creature(.pet, selected: true)
+                let pet = MarkerStyle.creature(.pet)
                     .label("Selected pet", id: "pet", priority: .selected, at: point, scale: 2, in: context)!
                 #expect(player.placement.frame.intersects(pet.placement.frame))
                 let labels = (includeOther ? [player] : []) + (includeSelected ? [pet] : [])

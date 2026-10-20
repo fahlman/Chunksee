@@ -52,10 +52,10 @@ struct MapScene {
         let scale: CGFloat
         let style: MarkerStyle
         let labelPriority: MarkerLabelLayout.Priority
-        var selectedPortal = false
+        var isDimmed = false
 
         var id: String { label.id }
-        var frame: CGRect { style.geometry.frame(at: point, scale: scale) }
+        var frame: CGRect { MarkerGeometry.frame(at: point, scale: scale) }
 
         var accessibleLocation: AccessibleMapLocation {
             AccessibleMapLocation(id: id, name: label.accessibleName, position: position, y: y,
@@ -65,23 +65,17 @@ struct MapScene {
         func draw(in context: GraphicsContext,
                   portalStatus: (NetherPortal) -> PortalLinkStatus?,
                   symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
-            style.drawBody(at: point, scale: scale, in: context, symbol: symbol)
+            style.drawBody(at: point, scale: scale, selected: labelPriority == .selected, dimmed: isDimmed,
+                           in: context, symbol: symbol)
             if case .place(let marker) = label, let portal = marker.portal {
                 drawPortalState(status: portalStatus(portal), in: context)
             }
-            return style.label(label.name, id: id, priority: labelPriority, at: point, scale: scale, in: context)
+            return style.label(label.name, id: id, priority: labelPriority, at: point, scale: scale, dimmed: isDimmed, in: context)
         }
 
         /// Decorations don't enlarge the shared body or its pointer/accessibility target.
         private func drawPortalState(status: PortalLinkStatus?, in context: GraphicsContext) {
-            let radius = style.geometry.radius(at: scale)
-            if selectedPortal {
-                let ringRadius = radius + 5
-                let ring = Path(ellipseIn: CGRect(x: point.x - ringRadius, y: point.y - ringRadius,
-                                                width: ringRadius * 2, height: ringRadius * 2))
-                context.stroke(ring, with: .color(.white), lineWidth: 3)
-                context.stroke(ring, with: .color(.accentColor), lineWidth: 1.5)
-            }
+            let radius = MarkerGeometry.radius(at: scale)
             guard let status, status != .linked else { return }
             let badge = CGRect(x: point.x + radius - 4, y: point.y - radius - 4, width: 10, height: 10)
             context.fill(Path(ellipseIn: badge), with: .color(status == .noPartner ? .red : .orange))
@@ -163,7 +157,7 @@ struct MapScene {
             let outline = marker.bounds.applying(transform)
             let point = CGPoint(x: outline.midX, y: outline.midY)
             if let pointer {
-                let reach = MarkerGeometry.structure.hitRadius(at: viewport.scale)
+                let reach = MarkerGeometry.hitRadius(at: viewport.scale)
                 guard abs(point.x - pointer.x) <= reach, abs(point.y - pointer.y) <= reach else { return nil }
             } else {
                 guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return nil }
@@ -175,8 +169,7 @@ struct MapScene {
                 outline: outline, portalRoom: marker.portalRoom.map { viewport.viewPoint(for: $0, in: size) })
         }
         let candidateBounds = pointer.map { point in
-            let reach = max(MarkerGeometry.place(isPortal: true).hitRadius(at: viewport.scale),
-                            MarkerGeometry.creature(selected: true).hitRadius(at: viewport.scale))
+            let reach = MarkerGeometry.hitRadius(at: viewport.scale)
             return CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
         }
         var items: [Item] = []
@@ -185,11 +178,13 @@ struct MapScene {
             // Picking applies each body's exact radius below, including the boundary. Drawing
             // clips the broad bucket candidates before preparing styles or names.
             guard accessibilityBounds.contains(point) else { continue }
+            let selected = content.selectedItem == .place(marker.id)
+                || marker.portal.map { content.selection == .portal($0) } == true
             items.append(Item(label: .place(marker), layer: marker.portal == nil ? .place : .portal,
                 target: .row(.place(marker.id)), position: marker.position, y: Double(marker.y),
-                anchor: marker.position, point: point, scale: viewport.scale, style: .place(marker.group, claimed: marker.isClaimed),
-                labelPriority: content.selectedItem == .place(marker.id) ? .selected : .other,
-                selectedPortal: marker.portal.map { content.selection == .portal($0) } ?? false))
+                anchor: marker.position, point: point, scale: viewport.scale, style: .place(marker.group),
+                labelPriority: selected ? .selected : .other,
+                isDimmed: marker.isClaimed))
         }
         for marker in content.nearbyCreatures(viewport: viewport, size: size, bounds: candidateBounds) {
             let point = viewport.viewPoint(for: marker.position, in: size)
@@ -199,7 +194,7 @@ struct MapScene {
                 : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
             items.append(Item(label: .creature(marker), layer: .creature,
                 target: .row(.creature(marker.id)), position: marker.position, y: marker.creature.y,
-                anchor: marker.position, point: point, scale: viewport.scale, style: .creature(marker.group, selected: selected),
+                anchor: marker.position, point: point, scale: viewport.scale, style: .creature(marker.group),
                 labelPriority: priority))
         }
         firstPinIndex = items.count
@@ -210,7 +205,7 @@ struct MapScene {
             let selected = hit.id == content.selectedHitID
             items.append(Item(label: .pin(id: "search-" + hit.id, name: hit.title, detail: hit.detail), layer: .search,
                 target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
-                anchor: position, point: point, scale: viewport.scale, style: .search(selected: selected),
+                anchor: position, point: point, scale: viewport.scale, style: .search,
                 labelPriority: selected ? .selected : .other))
         }
         // Player captions can enter the view before their badge does. Keep that wider drawing
@@ -223,8 +218,9 @@ struct MapScene {
             items.append(Item(label: .pin(id: "player-" + marker.id, name: marker.label), layer: .player,
                 target: .row(.player(marker.playerID)), position: marker.position, y: marker.y,
                 anchor: marker.anchor, point: point, scale: viewport.scale,
-                style: .player(marker.kind, outdated: marker.isOutdated, selected: marker.kind == .player && selected),
-                labelPriority: selected || content.selectedItem == .player(marker.playerID) ? .selected : .player))
+                style: .player(marker.kind),
+                labelPriority: selected || content.selectedItem == .player(marker.playerID) ? .selected : .player,
+                isDimmed: marker.isOutdated))
         }
         for place in content.savedPlaces {
             let point = viewport.viewPoint(for: place.mapPosition, in: size)
@@ -258,7 +254,7 @@ struct MapScene {
         var distance = CGFloat.infinity
         func consider(_ item: Item) {
             let candidate = hypot(item.point.x - point.x, item.point.y - point.y)
-            guard candidate <= item.style.geometry.hitRadius(at: item.scale) else { return }
+            guard candidate <= MarkerGeometry.hitRadius(at: item.scale) else { return }
             if let best {
                 if item.layer.rawValue < best.layer.rawValue { return }
                 if item.layer == best.layer, candidate > distance { return }

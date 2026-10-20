@@ -87,12 +87,12 @@ import Testing
                     var point = viewport.viewPoint(for: CGPoint(x: x, y: 0), in: size)
                     point.y += offset
                     var expected: MapTarget?
-                    if let portal = nearest(places.filter { $0.portal != nil }, viewport: viewport, point: point, reach: { _ in scale == 32 ? 22 : 14 }, position: \.position) {
+                    if let portal = nearest(places.filter { $0.portal != nil }, viewport: viewport, point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
                         expected = .row(.place(portal.id))
                     } else if let pet = nearest(creatures.filter { scale >= 0.25 || content.selection == .creature($0) }, viewport: viewport,
-                                                point: point, reach: { scale == 32 ? 22 : content.selection == .creature($0) ? 15 : 12 }, position: \.position) {
+                                                point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
                         expected = .row(.creature(pet.id))
-                    } else if scale >= 0.125, let place = nearest(places, viewport: viewport, point: point, reach: { scale == 32 ? 22 : $0.portal != nil ? 14 : 12 }, position: \.position) {
+                    } else if scale >= 0.125, let place = nearest(places, viewport: viewport, point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
                         expected = .row(.place(place.id))
                     }
                     #expect(content.target(at: point, viewport: viewport, size: size) == expected)

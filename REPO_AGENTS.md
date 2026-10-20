@@ -98,7 +98,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Zoom-aware marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
-| `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, including overview minimums, selection sizes and close-zoom growth |
+| `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, with one common size at each zoom and selection-independent targets |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift` | Local navigation/history and native height/zoom popovers; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
@@ -378,31 +378,36 @@ single-player record when `level.dat` changes. An unreadable save retains the la
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
 
 Drawing, picking and accessibility share MarkerGeometry's badge radius at the scene's zoom.
-Badges retain their overview diameter until a block is larger, then grow with it up to 32 points.
+Every point badge has an 18-point body at overview zoom, then grows with a block up to 32 points
+(Ryan, 2026-10-20, #164). Marker kind and selection never change the body size or glyph box.
+MarkerStyle kinds supply only SF Symbols and colors. Every body is a circle, with one glyph box,
+border, selection highlight, dimmed opacity and caption font/layout. Captions appear from 200% or
+while selected for every kind; name/position/action data and collision priority remain in MapScene.
+Portal warning badges remain status information, and portal selection uses the common highlight.
 Symbols, caption offsets and portal decorations follow the body; picking adds the same six-point
 tolerance beyond it. Labels, structure outlines and portal status decorations do not
-enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
-cover that reach. Point picking also respects the drawing margin, so its larger tolerance cannot
+enlarge the body target. Selection uses the existing highlight rather than a larger body; nearby
+hit candidates cover the shared reach. Point picking also respects the drawing margin, so its larger tolerance cannot
 select a badge culled from the scene. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
 retain the saved coordinates. Structure and biome outlines keep their world bounds. Canvas
 accessibility children use the same badge-body frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.
 Panning, zoom and block-centered anchors therefore move their native accessibility frames
 along with the drawing, while the existing actions and visibility rules stay the same.
-MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
-layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
+MarkerStyle defines the common circle, border, selection highlight, dimming and caption
+layout/threshold. Only colors and SF Symbols vary by kind; the per-frame glyph
 cache keys the actual symbol and tint. Structure outlines/portal rooms, marker
 ordering, bounds culling and portal decorations belong to MapScene. Hidden captions do not format names or resolve text; semantic caption
-fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
-map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player
+font/layout is reused, and translucent caption fills are made only when shown. Outdated
+players and claimed places use one 0.6 dimming value, also used in the player sidebar. The player
 inspector and sidebar share the player's marker symbol. Beds and respawn markers share the filled
 bed symbol from PlaceGroup. Saved places retain the map pin; Other Places use a scope for a generic
 point, and Other Structures use a dashed square for a generic area. The portal inspector uses its
-group's symbol while retaining its singular title. No zoom-growth or visibility policy changes.
+group's symbol while retaining its singular title. Per-layer visibility remains with MapContent.
 Eligible marker captions share one collision layout in Canvas and export: selected items first,
 then players, then named pets, then other markers, with stable identity breaking ties. Lower-priority
-labels that overlap an accepted label's two-point margin are omitted. Existing zoom thresholds,
-marker bodies, hit targets and VoiceOver names remain available. Labels draw after the marker
+labels that overlap an accepted label's two-point margin are omitted. Marker bodies, hit targets
+and VoiceOver names remain available independently of caption collisions. Labels draw after the marker
 bodies; the ruler keeps its existing topmost position. Caption text is measured once for layout
 and drawing, and a spatial lookup limits comparisons to nearby accepted labels.
 
