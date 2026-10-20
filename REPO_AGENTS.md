@@ -425,6 +425,11 @@ the existing kind/position fallback policy. Block containers use their fixed blo
 Opened containers disappear from the group on the existing region refresh. Kit interpretation
 version 3 rereads cached containers for UUIDs; the app adds no second cache or file reader.
 
+Health, Absorption, Hunger and Experience use SavedStatusRow for aligned digits and saved-value
+help. HungerPresentation owns the game's food maximum and half-drumstick conversion; its gauge
+and CountedText label consume that same value and maximum, preserving the saved value in text.
+CountedText applies native grammar agreement to the maximum, like the hearts label.
+
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.

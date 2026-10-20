@@ -32,4 +32,24 @@ import Testing
         #expect(1.0.formatted(CountedText.hearts.locale(arabic)) == "١ heart")
         #expect(1234.5.formatted(CountedText.blocks.locale(arabic)) == "١٬٢٣٤٫٥ blocks")
     }
+
+    @Test func hungerLabelAndGaugeUseTheSameFoodMaximumAndHalfUnits() {
+        let english = Locale(identifier: "en_US")
+        for (food, value, fill, expected) in [
+            (0, 0.0, 0.0, "0 of 10 drumsticks"),
+            (1, 0.5, 0.05, "0.5 of 10 drumsticks"),
+            (17, 8.5, 0.85, "8.5 of 10 drumsticks"),
+            (20, 10.0, 1.0, "10 of 10 drumsticks"),
+            (24, 12.0, 1.0, "12 of 10 drumsticks"),
+        ] {
+            let reading = HungerPresentation(food: food)
+            #expect(reading.value == value)
+            #expect(reading.maximum == 10)
+            #expect(reading.gaugeValue / reading.maximum == fill)
+            #expect(reading.value.formatted(CountedText.hunger(of: reading.maximum).locale(english)) == expected)
+        }
+        #expect(0.0.formatted(CountedText.hunger(of: 1).locale(english)) == "0 of 1 drumstick")
+        #expect(1.0.formatted(CountedText.hunger(of: 2).locale(english)) == "1 of 2 drumsticks")
+        #expect(8.5.formatted(CountedText.hunger(of: 10).locale(Locale(identifier: "fr_FR"))) == "8,5 of 10 drumsticks")
+    }
 }
