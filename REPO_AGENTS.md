@@ -96,9 +96,9 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
-| `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
+| `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Zoom-aware marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
-| `MarkerGeometry.swift` | Fixed marker body/symbol dimensions and the pointer reach derived from each body's radius, including selection sizes |
+| `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, including overview minimums, selection sizes and close-zoom growth |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift` | Local navigation/history and native height/zoom popovers; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
@@ -376,13 +376,15 @@ Player refreshes reopen the world's metadata through ChunkseeKit, including the 
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
 
-Drawing and picking share MarkerGeometry's fixed badge radii, with six points of clicking
-tolerance beyond the body. Labels, structure outlines and portal status decorations do not
+Drawing, picking and accessibility share MarkerGeometry's badge radius at the scene's zoom.
+Badges retain their overview diameter until a block is larger, then grow with it up to 32 points.
+Symbols, caption offsets and portal decorations follow the body; picking adds the same six-point
+tolerance beyond it. Labels, structure outlines and portal status decorations do not
 enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
 cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
-retain the saved coordinates. Marker zoom growth stays separate. Canvas accessibility children use the same badge-body
-frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.
+retain the saved coordinates. Structure and biome outlines keep their world bounds. Canvas
+accessibility children use the same badge-body frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.
 Panning, zoom and block-centered anchors therefore move their native accessibility frames
 along with the drawing, while the existing actions and visibility rules stay the same.
 MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption

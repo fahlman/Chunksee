@@ -1,12 +1,12 @@
 import CoreGraphics
 
-/// Fixed badge bodies shared by drawing and pointer targets. Labels, structure outlines and
-/// portal status decorations do not enlarge the body; zoom growth is a separate policy.
+/// Badge bodies shared by drawing, pointer targets and accessibility. Keep overview badges
+/// legible, then let them fill one block at close zoom without exceeding 32 screen points.
 nonisolated enum MarkerGeometry: Sendable {
     case structure, place(isPortal: Bool), creature(selected: Bool), search(selected: Bool)
     case player(MapMarker.Kind), savedPlace
 
-    var radius: CGFloat {
+    private var minimumRadius: CGFloat {
         switch self {
         case .structure: 9
         case .place(let isPortal): isPortal ? 8 : 6
@@ -17,18 +17,25 @@ nonisolated enum MarkerGeometry: Sendable {
         }
     }
 
+    func radius(at scale: CGFloat) -> CGFloat {
+        guard scale.isFinite else { return minimumRadius }
+        return max(minimumRadius, min(scale, 32) / 2)
+    }
+
     /// The same body rectangle positions Canvas drawing and its accessibility child.
-    func frame(at point: CGPoint) -> CGRect {
-        CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+    func frame(at point: CGPoint, scale: CGFloat) -> CGRect {
+        let radius = radius(at: scale)
+        return CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
     }
 
     /// Preserve the six-point tolerance already used for places/portals, consistently across
     /// badge sizes and selection. A larger selected body therefore has a larger target too.
-    var hitRadius: CGFloat { radius + 6 }
+    func hitRadius(at scale: CGFloat) -> CGFloat { radius(at: scale) + 6 }
 
-    var symbolSide: CGFloat {
-        switch self {
-        case .structure: 12
+    func symbolSide(at scale: CGFloat) -> CGFloat {
+        let radius = radius(at: scale)
+        return switch self {
+        case .structure: radius * 4 / 3
         case .search: radius * 1.1
         case .player: radius * 1.15
         default: radius * 1.2

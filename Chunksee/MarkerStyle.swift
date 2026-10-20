@@ -1,7 +1,7 @@
 import CoreGraphics
 import SwiftUI
 
-/// Fixed marker presentation. Geometry also owns picking; groups keep their names and palette.
+/// Shared marker presentation. Geometry also owns picking; groups keep their names and palette.
 /// Different label/body styles are intentional and shared by on-screen and exported drawing.
 struct MarkerStyle {
     nonisolated struct Symbol: Hashable, Sendable {
@@ -109,14 +109,14 @@ struct MarkerStyle {
     }
 
     /// Callers keep their existing bounds tests, including structure areas and player labels.
-    func drawBody(at point: CGPoint, in context: GraphicsContext,
+    func drawBody(at point: CGPoint, scale: CGFloat, in context: GraphicsContext,
                   symbol resolve: (Symbol) -> GraphicsContext.ResolvedImage) {
         var context = context
         context.opacity = opacity
-        let path = shape.path(in: geometry.frame(at: point))
+        let path = shape.path(in: geometry.frame(at: point, scale: scale))
         context.fill(path, with: .color(fill))
         context.stroke(path, with: .color(stroke), lineWidth: lineWidth)
-        let side = geometry.symbolSide
+        let side = geometry.symbolSide(at: scale)
         context.draw(resolve(symbol), in: CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side))
     }
 
@@ -127,7 +127,7 @@ struct MarkerStyle {
         guard let caption, scale >= caption.minimumScale else { return nil }
         let text = context.resolve(Text(name()).font(caption.font).foregroundStyle(.white))
         let size = text.measure(in: caption.maximumSize)
-        let label = CGRect(x: point.x - size.width / 2 - caption.padding.width, y: point.y + geometry.radius + caption.gap,
+        let label = CGRect(x: point.x - size.width / 2 - caption.padding.width, y: point.y + geometry.radius(at: scale) + caption.gap,
                            width: size.width + caption.padding.width * 2, height: size.height + caption.padding.height * 2)
         return MarkerLabel(placement: .init(id: id(), priority: priority, frame: label), text: text,
                            background: (caption.background ?? fill).opacity(caption.backgroundOpacity), opacity: opacity)

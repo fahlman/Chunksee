@@ -85,11 +85,11 @@ import Testing
                               position: position, y: 48, title: "Sign", detail: "At the mine", count: 1)
         var second = first
         second.id = "second"; second.y = 62
-        let viewport = MapViewport(center: position, scale: 32)
+        let viewport = MapViewport(center: position, scale: 2)
         var content = MapContent(); content.hits = [first, second]; content.selectedHitID = first.id
         let items = content.scene(viewport: viewport, size: size).items
         let selected = try #require(items.first)
-        #expect(selected.style.geometry.frame(at: center) == MarkerGeometry.search(selected: true).frame(at: center))
+        #expect(selected.frame == CGRect(x: 190, y: 90, width: 20, height: 20))
         #expect(selected.frame.contains(center) && selected.point == center && selected.anchor == position)
         #expect(selected.position == position && selected.y == 48)
         #expect(selected.style.caption == nil)
@@ -100,7 +100,7 @@ import Testing
         content.hits.reverse()
         #expect(content.target(at: center, viewport: viewport, size: size) == selected.target)
         // A larger selected badge remains reachable where its smaller neighbor is not.
-        let outer = CGPoint(x: center.x + MarkerGeometry.search(selected: true).hitRadius, y: center.y)
+        let outer = CGPoint(x: center.x + 16, y: center.y)
         #expect(content.target(at: outer, viewport: viewport, size: size) == .searchHit(first.id))
         first.position = nil
         second.position = viewport.blockPoint(at: CGPoint(x: -21, y: 100), in: size)
