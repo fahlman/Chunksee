@@ -1,8 +1,8 @@
 import ChunkseeKit
 import SwiftUI
 
-/// Markers shared by drawing, picking and accessibility. Region buckets limit point candidates;
-/// structures retain their area bounds even when their badge is outside the viewport.
+/// Markers and areas shared by drawing, picking and accessibility. Region buckets limit point
+/// candidates; areas can remain visible while their representative point is outside the viewport.
 struct MapScene {
     // Picking priority is independent of array/drawing order: a portal wins over a creature
     // standing in it, even though creature bodies are drawn later.
@@ -113,20 +113,49 @@ struct MapScene {
         }
     }
 
+    struct BiomeItem {
+        let area: BiomeArea
+        let point: CGPoint
+        let frame: CGRect
+
+        var accessibleLocation: AccessibleMapLocation {
+            AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
+                position: area.position, y: nil, target: .row(.biome(area.id)), frame: frame)
+        }
+
+        func draw(in context: GraphicsContext, transform: CGAffineTransform) {
+            // Transform the potentially large paths only for drawing, never for picking or AX.
+            let color = Color(BiomeColors.color(for: area.group.id))
+            context.fill(area.chunks.applying(transform), with: .color(color.opacity(0.15)))
+            context.stroke(area.outline.applying(transform), with: .color(color.opacity(0.9)), lineWidth: 1.5)
+        }
+    }
+
+    let biomeAreas: [BiomeItem]
     let structures: [StructureItem]
     let items: [Item]
+    private let bounds: CGRect
     private let accessibilityBounds: CGRect
     private let firstPinIndex: Int
-    private let biomeAreas: [BiomeArea]
-    private let viewport: MapViewport
-    private let size: CGSize
+    private let biomeTransform: CGAffineTransform
 
     init(content: MapContent, viewport: MapViewport, size: CGSize, pickingAt pointer: CGPoint? = nil) {
-        self.viewport = viewport
-        self.size = size
-        biomeAreas = content.biomeAreas
         let bounds = CGRect(origin: .zero, size: size)
-        accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
+        self.bounds = bounds
+        let accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
+        self.accessibilityBounds = accessibilityBounds
+        let transform = CGAffineTransform(a: viewport.scale, b: 0, c: 0, d: viewport.scale,
+            tx: size.width / 2 - viewport.center.x * viewport.scale,
+            ty: size.height / 2 - viewport.center.y * viewport.scale)
+        biomeTransform = transform
+        // Areas have no pointer badge. Keep candidates whose shape or AX point is in view;
+        // a long area's representative point can be offscreen while its outline is visible.
+        biomeAreas = pointer == nil ? content.biomeAreas.compactMap { area in
+            let frame = area.bounds.applying(transform)
+            let point = viewport.viewPoint(for: area.position, in: size)
+            guard frame.intersects(bounds) || accessibilityBounds.contains(point) else { return nil }
+            return BiomeItem(area: area, point: point, frame: frame)
+        } : []
         structures = content.structures.compactMap { marker in
             let outline = CGRect(origin: viewport.viewPoint(for: marker.bounds.origin, in: size),
                 size: CGSize(width: marker.bounds.width * viewport.scale, height: marker.bounds.height * viewport.scale))
@@ -205,19 +234,17 @@ struct MapScene {
         self.items = items
     }
 
+    func drawBiomeAreas(in context: GraphicsContext) {
+        for area in biomeAreas where area.frame.intersects(bounds) {
+            area.draw(in: context, transform: biomeTransform)
+        }
+    }
+
     var accessibleLocations: [AccessibleMapLocation] {
         // Preserve traversal order: structures, Places, creatures, biome areas, then pin layers.
-        // Biome outlines remain drawn separately; they have no invisible pointer badge.
         var locations = structures.filter { accessibilityBounds.contains($0.item.point) }.map(\.item.accessibleLocation)
         locations += items[..<firstPinIndex].map(\.accessibleLocation)
-        for area in biomeAreas {
-            let point = viewport.viewPoint(for: area.position, in: size)
-            guard accessibilityBounds.contains(point) else { continue }
-            locations.append(AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
-                position: area.position, y: nil, target: .row(.biome(area.id)),
-                frame: CGRect(origin: viewport.viewPoint(for: area.bounds.origin, in: size),
-                              size: CGSize(width: area.bounds.width * viewport.scale, height: area.bounds.height * viewport.scale))))
-        }
+        locations += biomeAreas.filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
         locations += items[firstPinIndex...].filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
         return locations
     }
