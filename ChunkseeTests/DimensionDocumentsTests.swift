@@ -449,7 +449,8 @@ import Testing
     }
 
     @Test func focusedDocumentsSetPriorityAndInactiveSavesKeepTheFrontDimension() async throws {
-        let (url, resources) = try await makeResources()
+        let defaults = TestDefaults.make()
+        let (url, resources) = try await makeResources(defaults: defaults)
         defer { try? FileManager.default.removeItem(at: url) }
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
@@ -458,26 +459,26 @@ import Testing
         nether.map?.viewport = MapViewport(center: CGPoint(x: 15, y: 30), scale: 4)
         nether.becameActive()
         #expect(resources.activeDimensionID == "minecraft:the_nether")
-        #expect(resources.views.lastDimension == "minecraft:the_nether")
+        #expect(resources.settings.lastDimension == "minecraft:the_nether")
         overworld.becameActive(isTerminating: true)
         #expect(resources.activeDimensionID == "minecraft:the_nether")
-        #expect(resources.views.lastDimension == "minecraft:the_nether")
+        #expect(resources.settings.lastDimension == "minecraft:the_nether")
         overworld.saveView()
-        #expect(resources.views.lastDimension == "minecraft:the_nether")
-        #expect(resources.views.viewport(for: "minecraft:overworld") == overworld.map?.viewport)
+        #expect(resources.settings.lastDimension == "minecraft:the_nether")
+        #expect(resources.settings.viewport(for: "minecraft:overworld") == overworld.map?.viewport)
         overworld.close()
         await overworld.waitUntilClosed()
         overworld.becameActive() // a late focus update for a closed document is ignored
         #expect(resources.activeDimensionID == "minecraft:the_nether")
         end.becameActive()
-        #expect(resources.views.lastDimension == "minecraft:the_end")
+        #expect(resources.settings.lastDimension == "minecraft:the_end")
         nether.saveView()
         resources.close()
         await resources.waitUntilClosed()
         nether.becameActive()
-        #expect(resources.views.lastDimension == "minecraft:the_end")
+        #expect(resources.settings.lastDimension == "minecraft:the_end")
         let reopened = WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
-                                      savedSearches: resources.savedSearches, defaults: resources.defaults, cacheRoot: nil)
+                                      savedSearches: resources.savedSearches, defaults: defaults, cacheRoot: nil)
         #expect(reopened.defaultDimensionID == "minecraft:the_end")
         #expect(reopened.activeDimensionID == "minecraft:the_end")
         reopened.close()
@@ -485,15 +486,16 @@ import Testing
     }
 
     @Test func focusKeepsEachWorldsRememberedSelectionIndependent() async throws {
-        let (a, first) = try await makeResources()
-        let (b, second) = try await makeResources(defaults: first.defaults)
+        let defaults = TestDefaults.make()
+        let (a, first) = try await makeResources(defaults: defaults)
+        let (b, second) = try await makeResources(defaults: defaults)
         defer { try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
         let one = WorldSession(resources: first, dimensionID: "minecraft:the_nether")
         let two = WorldSession(resources: second, dimensionID: "minecraft:the_end")
         one.becameActive()
         two.becameActive()
-        #expect(first.views.lastDimension == "minecraft:the_nether")
-        #expect(second.views.lastDimension == "minecraft:the_end")
+        #expect(first.settings.lastDimension == "minecraft:the_nether")
+        #expect(second.settings.lastDimension == "minecraft:the_end")
         #expect(first.activeDimensionID == "minecraft:the_nether" && second.activeDimensionID == "minecraft:the_end")
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed()
@@ -503,18 +505,18 @@ import Testing
 
         let defaults = TestDefaults.make()
 
-        let views = RememberedViews(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults)
+        let views = WorldSettings(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults)
         let newURL = URL(fileURLWithPath: "/Worlds/Moved")
         let overworld = MapViewport(center: CGPoint(x: 120, y: -300), scale: 0.25)
         let nether = MapViewport(center: CGPoint(x: 15, y: -37), scale: 4)
         views.save(overworld, for: "minecraft:overworld", selected: "minecraft:overworld")
         views.save(nether, for: "minecraft:the_nether", selected: "minecraft:overworld")
         views.relocate(to: newURL)
-        let moved = RememberedViews(world: newURL, defaults: defaults)
+        let moved = WorldSettings(world: newURL, defaults: defaults)
         #expect(moved.viewport(for: "minecraft:overworld") == overworld)
         #expect(moved.viewport(for: "minecraft:the_nether") == nether)
         #expect(moved.lastDimension == "minecraft:overworld")
-        #expect(views.viewport(for: "minecraft:overworld") == nil)
+        #expect(WorldSettings(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults).viewport(for: "minecraft:overworld") == nil)
     }
 }
 

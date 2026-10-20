@@ -80,7 +80,7 @@ import Testing
                     session.saveView()
                     #expect(map.depth.cutawayY == y)
                     #expect(session.presentation.heightRange == ranges[id])
-                    #expect(resources.views.depth(for: id) == map.depth)
+                    #expect(resources.settings.depth(for: id) == map.depth)
                 }
                 let reopened = f.session(in: resources, dimensionID: id)
                 #expect(reopened.map?.depth.cutawayY == Int.max)

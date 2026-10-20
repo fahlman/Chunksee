@@ -306,9 +306,7 @@ final class WorldDocument: ReadableDocument {
         guard generation == applyGeneration else { return }
         let worldURL = current.worldURL
         if let oldSession, oldSession.url != worldURL {
-            oldSession.savedPlaces.relocate(to: worldURL)
-            oldSession.resources.views.relocate(to: worldURL)
-            oldSession.visibility.relocate(to: worldURL)
+            oldSession.resources.relocateSettings(to: worldURL)
         }
         let opened = try current.makeSession(in: model)
         adopted = true

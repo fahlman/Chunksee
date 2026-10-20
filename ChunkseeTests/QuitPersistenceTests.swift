@@ -28,12 +28,12 @@ import Testing
             overworld.map?.viewport = MapViewport(center: CGPoint(x: 123 + i, y: -456), scale: 2)
             nether.map?.viewport = MapViewport(center: CGPoint(x: -12, y: 34 + i), scale: 8)
             nether.map?.setDepth(MapDepth(y: 48, isSurface: false))
-            #expect(world.views.viewport(for: "minecraft:overworld") != overworld.map?.viewport)
+            #expect(world.settings.viewport(for: "minecraft:overworld") != overworld.map?.viewport)
         }
         #expect(menus.applicationShouldTerminate(NSApp) == .terminateNow)
         #expect(menus.isTerminating)
         for (i, world) in resources.enumerated() {
-            let saved = RememberedViews(world: worlds[i], defaults: defaults)
+            let saved = WorldSettings(world: worlds[i], defaults: defaults)
             #expect(saved.viewport(for: "minecraft:overworld") == sessions[i * 2].map?.viewport)
             #expect(saved.viewport(for: "minecraft:the_nether") == sessions[i * 2 + 1].map?.viewport)
             #expect(saved.depth(for: "minecraft:the_nether") == MapDepth(y: 48, isSurface: false))
@@ -47,7 +47,7 @@ import Testing
         await closed.waitUntilClosed()
         closed.map?.viewport = MapViewport(center: .zero, scale: 1)
         #expect(menus.applicationShouldTerminate(NSApp) == .terminateNow)
-        #expect(resources[0].views.viewport(for: "minecraft:overworld") == saved)
+        #expect(resources[0].settings.viewport(for: "minecraft:overworld") == saved)
         for world in resources { world.close(); await world.waitUntilClosed() }
     }
 }

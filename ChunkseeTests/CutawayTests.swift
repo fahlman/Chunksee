@@ -191,7 +191,7 @@ import Testing
         let old = URL(fileURLWithPath: "/Cutaway Old"), new = URL(fileURLWithPath: "/Cutaway New")
         let defaults = TestDefaults.make()
 
-        let source = RememberedViews(world: old, defaults: defaults), target = RememberedViews(world: new, defaults: defaults)
+        let source = WorldSettings(world: old, defaults: defaults), target = WorldSettings(world: new, defaults: defaults)
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
         source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil)
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
@@ -200,6 +200,6 @@ import Testing
         source.relocate(to: new)
         #expect(target.depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
         #expect(target.depth(for: "minecraft:the_nether") == MapDepth(y: 40, isSurface: true))
-        #expect(source.depth(for: "minecraft:overworld") == MapDepth())
+        #expect(WorldSettings(world: old, defaults: defaults).depth(for: "minecraft:overworld") == MapDepth())
     }
 }

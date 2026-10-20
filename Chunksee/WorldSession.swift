@@ -30,7 +30,6 @@ final class WorldSession {
     let selectedDimensionID: String?
     let map: MapModel?
     let navigation: MapNavigation
-    private var views: RememberedViews { resources.views }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
 
@@ -46,7 +45,7 @@ final class WorldSession {
             = { try await $0.tile(for: $1) }) {
         self.resources = resources
         let selected = dimensionID ?? resources.defaultDimensionID
-        visibility = LayerVisibility(world: resources.url, dimension: selected, defaults: resources.defaults)
+        visibility = LayerVisibility(settings: resources.settings, dimension: selected)
         search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index)
@@ -116,8 +115,8 @@ final class WorldSession {
         let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            renderTile: renderTile)
-        if let viewport = resources.views.viewport(for: dimension.id) { map.viewport = viewport }
-        map.setDepth(resources.views.depth(for: dimension.id))
+        if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
+        map.setDepth(resources.settings.depth(for: dimension.id))
         return map
     }
 
@@ -131,7 +130,7 @@ final class WorldSession {
     /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        views.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
+        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
     }
 }
 

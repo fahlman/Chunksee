@@ -17,16 +17,15 @@ nonisolated struct SavedPlace: Codable, Equatable, Identifiable, Sendable {
 @Observable
 final class SavedPlaces {
     private(set) var all: [SavedPlace]
-    private let defaults: UserDefaults
-    private let key: String
+    private let settings: WorldSettings
 
-    init(world: URL, defaults: UserDefaults) {
-        self.defaults = defaults
-        key = Self.key(for: world)
-        all = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([SavedPlace].self, from: $0) } ?? []
+    init(settings: WorldSettings) {
+        self.settings = settings
+        all = settings.savedPlaces
     }
 
-    private static func key(for world: URL) -> String { "savedPlaces." + world.standardizedFileURL.path }
+    /// A move may merge annotations already stored for the destination.
+    func reload() { all = settings.savedPlaces }
 
     @discardableResult
     func add(name: String, dimension: String, at point: CGPoint) -> SavedPlace? {
@@ -50,21 +49,7 @@ final class SavedPlaces {
         persist()
     }
 
-    /// Native document moves retain the world's annotations under its new folder URL.
-    func relocate(to world: URL) {
-        let newKey = Self.key(for: world)
-        guard newKey != key else { return }
-        let destination = SavedPlaces(world: world, defaults: defaults)
-        let ids = Set(destination.all.map(\.id))
-        destination.all.append(contentsOf: all.filter { !ids.contains($0.id) })
-        destination.persist()
-        defaults.removeObject(forKey: key)
-    }
-
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(all) else { return }
-        defaults.set(data, forKey: key)
-    }
+    private func persist() { settings.savePlaces(all) }
 }
 
 nonisolated struct SavedPlaceDraft: Identifiable {
