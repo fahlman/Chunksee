@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ (%lld)" : {
+      "comment" : "A sidebar group or saved-search heading followed by its result count. The first placeholder is an already named group or the user's literal search query; do not translate the placeholder's contents."
+    },
     "In about %@ of play" : {
       "comment" : "Approximate saved delay until the next wandering-trader spawn attempt. The placeholder is a fully localized duration in whole minutes, including its unit, such as 1 minute or 60 minutes."
     },

@@ -1,7 +1,12 @@
 import Foundation
 
-/// Fractional units share native number precision and grammatical agreement.
+/// Counted labels and fractional units use native number formatting and grammatical agreement.
 nonisolated enum CountedText {
+    static func label(_ name: String, count: Int?, locale: Locale = .current) -> String {
+        guard let count else { return name }
+        return String(localized: "\(name) (\(count))", locale: locale)
+    }
+
     static func hearts(_ count: Double, locale: Locale = .current) -> String {
         let format = format(locale)
         let shown = displayedCount(count, format: format)
