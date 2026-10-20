@@ -380,21 +380,37 @@ import Testing
         await resources.waitUntilClosed()
     }
 
-    @Test func savesDuringPlayDoNotPostponeTheRefresh() async throws {
-        let (url, resources) = try await makeResources()
-        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
-        resources.refreshDelay = .milliseconds(200)
-        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
-        let file = url.appendingPathComponent("DIM-1/region/r.0.0.mca")
-        try Data(count: 8192).write(to: file)
-        // The game keeps saving more often than the delay, as it does while a player explores. The
-        // sleep paces those saves; the loop ends as soon as the map shows the new region.
-        let start = ContinuousClock.now
-        while nether.map?.availableRegions.isEmpty == true, ContinuousClock.now - start < .seconds(2) {
-            resources.worldChanged([file])
-            try await Task.sleep(for: .milliseconds(50))
+    @Test(.timeLimit(.minutes(1))) func savesDuringPlayDoNotPostponeTheRefresh() async throws {
+        let url = try TestWorld.make(chunks: []), defaults = TestDefaults.make()
+        defer { try? FileManager.default.removeItem(at: url) }
+        for dimension in ["DIM-1", "DIM1"] {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent(dimension + "/region"), withIntermediateDirectories: true)
         }
+        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                                       watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let delay = AsyncReadGate<Void>()
+        resources.waitBeforeRefresh = { duration in
+            #expect(duration == .seconds(2))
+            await delay.read("refresh")
+        }
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let end = WorldSession(resources: resources, dimensionID: "minecraft:the_end")
+        let netherFile = url.appendingPathComponent("DIM-1/region/r.0.0.mca")
+        let endFile = url.appendingPathComponent("DIM1/region/r.1.-1.mca")
+        try Data(count: 8192).write(to: netherFile)
+        try Data(count: 8192).write(to: endFile)
+        resources.worldChanged([netherFile])
+        await delay.waitForRequest("refresh")
+        // Later saves must join the first pending refresh, including another dimension's changes.
+        resources.worldChanged([endFile])
+        resources.worldChanged([netherFile, endFile])
+        await delay.releaseAllAndFuture(with: ())
+        await resources.waitForRefresh()
+        #expect(await delay.requested == ["refresh"])
         #expect(nether.map?.availableRegions == [RegionPosition(x: 0, z: 0)])
+        #expect(end.map?.availableRegions == [RegionPosition(x: 1, z: -1)])
         resources.close()
         await resources.waitUntilClosed()
     }

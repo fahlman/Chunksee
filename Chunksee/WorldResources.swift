@@ -58,6 +58,8 @@ final class WorldResources {
     @ObservationIgnored private var pendingPlayers = false
     private let refreshWork: BackgroundWork.Scope
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
+    /// Tests can hold this boundary without making refresh correctness depend on scheduler speed.
+    @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     @ObservationIgnored private var isRefreshScheduled = false
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
@@ -268,8 +270,9 @@ final class WorldResources {
         guard !isRefreshScheduled else { return }
         isRefreshScheduled = true
         let delay = refreshDelay
+        let wait = waitBeforeRefresh
         refreshWork.start(priority: nil) { [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await wait(delay)
             guard !Task.isCancelled, let self else { return }
             // Changes from here on schedule the next refresh.
             self.isRefreshScheduled = false
