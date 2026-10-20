@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -12,17 +13,19 @@ import Testing
 
     func pos(_ x: Double, _ z: Double) -> NBT { .list([.double(x), .double(64), .double(z)]) }
 
-    var players: [PlayerInfo] {
+    var playerData: [(uuid: UUID, data: NBT)] {
         [
-            PlayerInfo(uuid: you, nbt: .compound([
+            (you, .compound([
                 "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"), "Pos": pos(-2806.6, -3895.2),
                 "LastDeathLocation": .compound(["dimension": .string("minecraft:the_nether"), "pos": .intArray([10, 70, 20])]),
                 "respawn": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-2811, 48, -3918])]),
             ])),
-            PlayerInfo(uuid: friend, nbt: .compound(["DataVersion": .int(2730), "Dimension": .string("minecraft:overworld"), "Pos": pos(99, -68)])),
-            PlayerInfo(uuid: legacy, nbt: .compound(["Dimension": .int(0), "Pos": pos(-12, 241)])),
+            (friend, .compound(["DataVersion": .int(2730), "Dimension": .string("minecraft:overworld"), "Pos": pos(99, -68)])),
+            (legacy, .compound(["Dimension": .int(0), "Pos": pos(-12, 241)])),
         ]
     }
+
+    var players: [PlayerInfo] { playerData.map { PlayerInfo(uuid: $0.uuid, nbt: $0.data) } }
 
     @Test func markersForTheOverworld() {
         let markers = PlayerPresentation.markers(for: players, in: "minecraft:overworld", singleplayerUUID: you, worldDataVersion: 5023)
@@ -44,13 +47,12 @@ import Testing
             try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/\(id)/region"), withIntermediateDirectories: true)
         }
         let playerDirectory = url.appendingPathComponent("players/data")
-        try FileManager.default.createDirectory(at: playerDirectory, withIntermediateDirectories: true)
-        let missingID = UUID(), missing = PlayerInfo(uuid: missingID, nbt: .compound([
+        let missingID = UUID(), missingData = NBT.compound([
             "Dimension": .string("example:missing"), "Pos": pos(1, 2),
-        ]))
-        for player in players + [missing] {
-            try Data(Compression.deflate(player.nbt.serialized(), gzip: true))
-                .write(to: playerDirectory.appendingPathComponent(player.uuid.uuidString.lowercased() + ".dat"))
+        ])
+        let missing = PlayerInfo(uuid: missingID, nbt: missingData)
+        for (uuid, data) in playerData + [(missingID, missingData)] {
+            try Fixtures.writeGzippedNBT(data, to: playerDirectory.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
         }
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
