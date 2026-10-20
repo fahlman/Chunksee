@@ -69,6 +69,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 ## Modules
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
+TradeText owns each complete villager offer for both the inspector and search results, including
+the received item, both possible costs, enchantments and the saved sold-out status. Matching still
+uses the separate searchable item names and identifiers, without presentation wording.
 ChunkseeIndex.StoredItemTotal owns storage quantities and outer-container counts, including nested
 items. StoredItem projects its results into app display names and count/name order; it does not
 repeat the aggregation. The app and isolated test host link both published products.
