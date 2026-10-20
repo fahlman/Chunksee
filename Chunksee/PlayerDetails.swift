@@ -138,19 +138,19 @@ struct PlayerDetailView: View {
             Section("Status") {
                 HealthRow(health: player.health, maximum: player.maxHealth)
                 if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption, locale: locale) {
-                    LabeledContent("Absorption", value: text)
+                    SavedStatusRow("Absorption") { Text(text) }
                 }
                 if let food = player.foodLevel {
-                    LabeledContent("Hunger") {
-                        Gauge(value: Double(min(food, 20)), in: 0...20) { EmptyView() } currentValueLabel: {
-                            Text(Double(food) / 2, format: CountedText.hunger).monospacedDigit()
+                    let reading = HungerPresentation(food: food)
+                    SavedStatusRow("Hunger") {
+                        Gauge(value: reading.gaugeValue, in: 0...reading.maximum) { EmptyView() } currentValueLabel: {
+                            Text(reading.value, format: CountedText.hunger(of: reading.maximum))
                         }
                         .tint(.orange)
                     }
-                    .help("Hunger recorded when Minecraft last saved")
                 }
                 if let level = player.experienceLevel {
-                    LabeledContent("Experience") {
+                    SavedStatusRow("Experience") {
                         Gauge(value: player.experienceProgress ?? 0, in: 0...1) { EmptyView() } currentValueLabel: {
                             Text("Level \(level)")
                         }

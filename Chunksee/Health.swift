@@ -1,6 +1,22 @@
 import Foundation
 import SwiftUI
 
+/// Status values use the same number styling and describe the same saved snapshot.
+struct SavedStatusRow<Content: View>: View {
+    let title: LocalizedStringKey
+    @ViewBuilder let content: Content
+
+    init(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        LabeledContent(title) { content.monospacedDigit() }
+            .help("Recorded when Minecraft last saved")
+    }
+}
+
 /// Saved health uses the same row, gauge and hearts precision for players and every creature.
 struct HealthRow: View {
     let health: Double?
@@ -11,19 +27,30 @@ struct HealthRow: View {
         let reading = HealthPresentation(health: health, maximum: maximum)
         if let text = reading.text(locale: locale) {
             let label: LocalizedStringKey = reading.health == nil ? "Maximum Health" : "Health"
-            LabeledContent(label) {
+            SavedStatusRow(label) {
                 if let value = reading.gaugeValue, let maximum = reading.maximum {
                     Gauge(value: value, in: 0...maximum) { EmptyView() } currentValueLabel: {
-                        Text(text).monospacedDigit()
+                        Text(text)
                     }
                     .tint(.red)
                 } else {
-                    Text(text).monospacedDigit()
+                    Text(text)
                 }
             }
-            .help("Health recorded when Minecraft last saved")
         }
     }
+}
+
+/// Both the gauge and its label count the game's half-drumstick food points identically.
+nonisolated struct HungerPresentation: Equatable, Sendable {
+    private static let maximumFood = 20
+    let food: Int
+
+    var value: Double { Self.drumsticks(food) }
+    var maximum: Double { Self.drumsticks(Self.maximumFood) }
+    var gaugeValue: Double { min(value, maximum) }
+
+    private static func drumsticks(_ food: Int) -> Double { Double(food) / 2 }
 }
 
 nonisolated struct HealthPresentation: Equatable, Sendable {
