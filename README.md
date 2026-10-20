@@ -12,8 +12,9 @@ with a link to this guide. Help opens only when requested.
 1. Choose **File ▸ Open…** and select a world's folder inside a `saves` folder in your Minecraft
    folder (usually Library ▸ Application Support ▸ minecraft in your home folder). Library is
    hidden, so in the Open panel press Shift-Command-G and enter
-   `~/Library/Application Support/minecraft`. Chunksee reads worlds saved by Minecraft 1.18 or later. For an older world, or a dimension
-   whose saved areas are all older, it says so in place of the map. To update it, select it in
+   `~/Library/Application Support/minecraft/saves`, then choose a world's folder. Chunksee reads
+   worlds saved by Minecraft 1.18 or later. For an older world, or a dimension whose saved areas
+   are all older, it says so in place of the map. To update it, select it in
    Minecraft's world list, choose **Upgrade and Play** if offered and return to the list, then choose
    **Edit ▸ Optimize World**.
 2. Each dimension opens as its own document: the Overworld, the Nether and the End. Each keeps its
@@ -66,18 +67,19 @@ with a link to this guide. Help opens only when requested.
    where its eye button keeps its pins on the map.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Each dimension's sidebar lists the players last seen there; choose one to jump to them and see their
-   inventory, health, gear and pets in the inspector, or click their marker for the same details. Hide markers with the people
-   button in the toolbar. To show names, choose your Minecraft folder in **Settings**, so Chunksee
+   inventory, health, gear and pets in the inspector, or click their marker for the same details.
+   Use the eye button beside a player in the sidebar to show or hide that player's markers.
+   To show names, choose your Minecraft folder in **Settings**, so Chunksee
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
 Enchantment labels retain the saved level, including `Sharpness I`. The nine single-level
 vanilla 26.3 enchantments omit `I`, as in Minecraft; unknown or modded enchantments keep it.
 
-Chunksee only reads your world; it never changes it. Each world opens as a native Mac document in
-its own window. **File ▸ Open Recent** and window restoration follow your macOS settings, including
+Chunksee only reads your world; it never changes it. Each dimension is a native Mac document in
+its own window or tab. **File ▸ Open Recent** and window restoration follow your macOS settings, including
 your preference for reopening windows after quitting. You can select several world folders in
-the Open panel; opening a world again brings its existing window forward. Clearing Open Recent
+the Open panel; opening a dimension again brings its existing window or tab forward. Clearing Open Recent
 leaves your open worlds available.
 
 Chunksee stays out of Finder’s **Open With** list because macOS identifies these world folders
@@ -87,7 +89,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 
 **View** includes zoom, World Info, Time Spent, sidebar and inspector commands. **Navigate** jumps
 to coordinates, the world spawn or another dimension and saves the current search. Choose
-**Navigate ▸ Go to Coordinates…** (**⌘⇧G**) and enter X and Z to center the current dimension's
+**Navigate ▸ Go to Coordinates…** (**⇧⌘G**) and enter X and Z to center the current dimension's
 map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
 **Locations** offers the saved last position, last death and respawn point when available. VoiceOver can also explore
 the individual visible map locations and center the map on them.
@@ -112,7 +114,7 @@ click two map points. The line and distance remain attached to those blocks as y
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**
 exits the tool. Each dimension keeps its own measurement.
 
-With **Grid** enabled, individual block lines appear at **8× zoom (800%)** and above.
+With **Grid** enabled, individual block lines appear at **800% zoom** and above.
 Chunk and region boundaries remain emphasized, with their coordinates along the map edges.
 
 Rendered map tiles are kept in Chunksee's cache folder, so reopening a world is nearly instant; any
