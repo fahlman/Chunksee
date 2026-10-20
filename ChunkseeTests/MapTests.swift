@@ -139,6 +139,23 @@ import Testing
         #expect(viewport.center == CGPoint(x: -10, y: 5))
     }
 
+    @Test func directionalCommandsUseTheCorrespondingViewAxisAtEveryZoom() {
+        for size in [CGSize(width: 1000, height: 600), CGSize(width: 600, height: 1000)] {
+            for scale in [CGFloat(0.125), 1, 8] {
+                let original = MapViewport(center: CGPoint(x: -100, y: 200), scale: scale)
+                var viewport = original
+                viewport.pan(.north, in: size)
+                #expect(viewport.center == CGPoint(x: -100, y: 200 - size.height / (4 * scale)))
+                viewport.pan(.south, in: size)
+                #expect(viewport == original)
+                viewport.pan(.west, in: size)
+                #expect(viewport.center == CGPoint(x: -100 - size.width / (4 * scale), y: 200))
+                viewport.pan(.east, in: size)
+                #expect(viewport == original)
+            }
+        }
+    }
+
     @Test func manualZoomIsBoundedWhileDistantTerrainCanStillFit() throws {
         var viewport = MapViewport()
         viewport.zoom(by: 0.000001)
