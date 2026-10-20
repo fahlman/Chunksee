@@ -22,7 +22,7 @@ import Testing
         do {
             try writeLevel(url, health: 4)
             let defaults = TestDefaults.make()
-            let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
             opened = resources
             resources.refreshDelay = .zero

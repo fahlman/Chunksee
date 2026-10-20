@@ -163,7 +163,7 @@ import Testing
     @Test func sessionsRestoreTheirOwnHeightAndSurfaceState() async throws {
         try await withFixture { f in
             try FileManager.default.createDirectory(at: f.url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-            let resources = WorldResources(snapshot: try await WorldSnapshot.read(f.url), names: PlayerNames(defaults: f.defaults),
+            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(f.url), names: PlayerNames(defaults: f.defaults),
                 savedSearches: SavedSearches(defaults: f.defaults), defaults: f.defaults, cacheRoot: nil)
             f.resources.append(resources)
             let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -187,19 +187,18 @@ import Testing
         }
     }
 
-    @Test func movedViewsMergeDimensionHeightsAndOlderPreferencesDefaultToSurface() {
-        let old = URL(fileURLWithPath: "/Cutaway Old"), new = URL(fileURLWithPath: "/Cutaway New")
+    @Test func reopenedViewsKeepDimensionHeightsAndOlderPreferencesDefaultToSurface() {
+        let id = UUID()
         let defaults = TestDefaults.make()
 
-        let source = WorldSettings(world: old, defaults: defaults), target = WorldSettings(world: new, defaults: defaults)
+        let source = WorldSettings(id: id, defaults: defaults), target = WorldSettings(id: id, defaults: defaults)
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
         source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil)
         #expect(source.depth(for: "minecraft:overworld") == MapDepth())
         source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil, depth: MapDepth(y: -23, isSurface: false))
         target.save(MapViewport(center: .zero, scale: 1), for: "minecraft:the_nether", selected: nil, depth: MapDepth(y: 40, isSurface: true))
-        source.relocate(to: new)
         #expect(target.depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
         #expect(target.depth(for: "minecraft:the_nether") == MapDepth(y: 40, isSurface: true))
-        #expect(WorldSettings(world: old, defaults: defaults).depth(for: "minecraft:overworld") == MapDepth())
+        #expect(WorldSettings(id: id, defaults: defaults).depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
     }
 }

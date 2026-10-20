@@ -78,7 +78,7 @@ final class WorldResources {
     /// Tests that inject file changes substitute the watcher so real notifications cannot race
     /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
-         defaults: UserDefaults, cacheRoot: URL?,
+         settings: WorldSettings, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
@@ -94,7 +94,7 @@ final class WorldResources {
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
         self.readRegion = readRegion
-        settings = WorldSettings(world: snapshot.access.url, defaults: defaults)
+        self.settings = settings
         savedPlaces = SavedPlaces(settings: settings)
         let readers = snapshot.dimensions.map { dimension in
             RegionReader(dimension: dimension,
@@ -111,11 +111,6 @@ final class WorldResources {
                 await Self.runCacheMaintenance(maintainCache, root: root, folder: folder)
             }
         }
-    }
-
-    func relocateSettings(to world: URL) {
-        settings.relocate(to: world)
-        savedPlaces.reload()
     }
 
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.

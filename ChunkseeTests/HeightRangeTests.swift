@@ -30,7 +30,7 @@ import Testing
         }
 
         func open() async throws -> WorldResources {
-            let opened = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            let opened = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                 savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
             resources = opened
             return opened
