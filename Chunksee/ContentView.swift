@@ -50,20 +50,20 @@ struct WorldView: View {
                     let index = session.presentation.selectedIndex
                     if !index.structures.isEmpty {
                         Section("Structures", isExpanded: layerExpanded(.structures)) {
-                            LayerGroups(markers: index.structures, origin: session.presentation.spawnPoint,
+                            LayerGroups(session: session, markers: index.structures, origin: session.presentation.spawnPoint,
                                         shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
                                         expandedGroups: $sidebarDisclosure.structures)
                         }
                     }
                     Section("Places", isExpanded: layerExpanded(.places)) {
                         SavedPlacesGroup(session: session, isExpanded: $sidebarDisclosure.showsSavedPlaces)
-                        LayerGroups(markers: index.places, origin: session.presentation.spawnPoint,
+                        LayerGroups(session: session, markers: index.places, origin: session.presentation.spawnPoint,
                                     shown: $visibility.places, item: { SidebarItem.place($0.id) },
                                     expandedGroups: $sidebarDisclosure.places)
                     }
                     if !index.creatures.isEmpty {
                         Section("Creatures", isExpanded: layerExpanded(.creatures)) {
-                            LayerGroups(markers: index.creatures, origin: session.presentation.spawnPoint,
+                            LayerGroups(session: session, markers: index.creatures, origin: session.presentation.spawnPoint,
                                         shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
                                         expandedGroups: $sidebarDisclosure.creatures)
                         }
@@ -71,7 +71,7 @@ struct WorldView: View {
                     // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
                     if !index.biomeAreas.isEmpty || !session.presentation.possibleBiomes.isEmpty {
                         Section("Biomes", isExpanded: layerExpanded(.biomes)) {
-                            LayerGroups(markers: index.biomeAreas, origin: session.presentation.spawnPoint,
+                            LayerGroups(session: session, markers: index.biomeAreas, origin: session.presentation.spawnPoint,
                                         shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes,
                                         item: { SidebarItem.biome($0.id) }, expandedGroups: $sidebarDisclosure.biomes)
                         }

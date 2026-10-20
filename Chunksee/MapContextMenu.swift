@@ -47,6 +47,26 @@ private struct MeasureDistanceCommand: View {
     }
 }
 
+/// The same location commands on map markers and their sidebar rows.
+struct LocationMenu: View {
+    let session: WorldSession
+    let map: MapModel
+    let position: CGPoint
+    let y: Double?
+    var pasteboard: NSPasteboard = .general
+
+    var body: some View {
+        Group {
+            Button("Copy Coordinates") {
+                if !session.isClosed { MapClipboard.copy(position, y: y, on: map, to: pasteboard) }
+            }
+            Button("Save Place…") { session.annotations.savePlace(at: position, in: map.dimension.id) }
+            MeasureDistanceCommand(session: session, position: position, dimension: map.dimension.id)
+        }
+        .disabled(session.isClosed)
+    }
+}
+
 /// Resolve the pointer once through the same hit test as selection, before the menu opens.
 struct MapContextMenuContent: View {
     private let session: WorldSession
@@ -77,11 +97,7 @@ struct MapContextMenuContent: View {
             if let place {
                 SavedPlaceMenu(session: session, place: place, map: map, pasteboard: pasteboard)
             } else {
-                Button("Copy Coordinates") {
-                    if !session.isClosed { MapClipboard.copy(position, y: y, on: map, to: pasteboard) }
-                }
-                Button("Save Place…") { session.annotations.savePlace(at: position, in: map.dimension.id) }
-                MeasureDistanceCommand(session: session, position: position, dimension: map.dimension.id)
+                LocationMenu(session: session, map: map, position: position, y: y, pasteboard: pasteboard)
             }
         }
         .disabled(session.isClosed)
