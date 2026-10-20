@@ -9,13 +9,21 @@ struct PlayerEffectsSection: View {
         if !effects.isEmpty {
             Section("Active Effects") {
                 ForEach(Array(effects.sorted { $0.id < $1.id }.enumerated()), id: \.offset) { _, effect in
-                    let name = PlayerEffectText.name(effect, locale: locale)
-                    LabeledContent(name, value: PlayerEffectText.duration(effect, locale: locale))
+                    let name = Text(effect, format: PlayerEffectText.NameStyle())
+                    LabeledContent {
+                        Text(PlayerEffectText.duration(effect, locale: locale))
+                    } label: {
+                        name
+                    }
                         .monospacedDigit()
                         // Form's labeled-value style discards an inner Text's accessibility
                         // label. Represent the row with the same native control and full units.
                         .accessibilityRepresentation {
-                            LabeledContent(name, value: PlayerEffectText.accessibleDuration(effect, locale: locale))
+                            LabeledContent {
+                                Text(PlayerEffectText.accessibleDuration(effect, locale: locale))
+                            } label: {
+                                name
+                            }
                         }
                 }
             }
@@ -26,18 +34,32 @@ struct PlayerEffectsSection: View {
 
 nonisolated enum PlayerEffectText {
     static func name(_ effect: StatusEffect, locale: Locale = .current) -> String {
-        let base: String
-        // Vanilla names that cannot be recovered by making the id readable. Keep modded ids
-        // on the ordinary fallback, rather than assigning them a vanilla effect's meaning.
-        switch effect.id {
-        case "minecraft:unluck": base = String(localized: "Bad Luck", locale: locale)
-        case "minecraft:dolphins_grace": base = String(localized: "Dolphin's Grace", locale: locale)
-        case "minecraft:hero_of_the_village": base = String(localized: "Hero of the Village", locale: locale)
-        case "minecraft:breath_of_the_nautilus": base = String(localized: "Breath of the Nautilus", locale: locale)
-        default: base = ReadableName.from(effect.id)
+        NameStyle().locale(locale).format(effect)
+    }
+
+    nonisolated struct NameStyle: FormatStyle, Sendable {
+        private var locale = Locale.autoupdatingCurrent
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
         }
-        guard effect.level > 1 else { return base }
-        return String(localized: "\(base) \(LevelText.numeral(effect.level))", locale: locale)
+
+        func format(_ effect: StatusEffect) -> String {
+            let base: String
+            // Vanilla names that cannot be recovered by making the id readable. Keep modded ids
+            // on the ordinary fallback, rather than assigning them a vanilla effect's meaning.
+            switch effect.id {
+            case "minecraft:unluck": base = String(localized: "Bad Luck", locale: locale)
+            case "minecraft:dolphins_grace": base = String(localized: "Dolphin's Grace", locale: locale)
+            case "minecraft:hero_of_the_village": base = String(localized: "Hero of the Village", locale: locale)
+            case "minecraft:breath_of_the_nautilus": base = String(localized: "Breath of the Nautilus", locale: locale)
+            default: base = ReadableName.from(effect.id)
+            }
+            guard effect.level > 1 else { return base }
+            return String(localized: "\(base) \(LevelText.numeral(effect.level))", locale: locale)
+        }
     }
 
     static func duration(_ effect: StatusEffect, locale: Locale = .current) -> String {
