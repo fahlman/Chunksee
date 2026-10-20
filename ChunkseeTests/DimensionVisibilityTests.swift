@@ -15,7 +15,7 @@ import Testing
         // Existing dimension settings have no saved-place flag, so their pins stay shown.
         settings.saveLayers([.showsGrid: true], for: "minecraft:overworld")
         func open() async throws -> WorldResources {
-            try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                savedSearches: SavedSearches(defaults: defaults),
                                settings: WorldSettings(id: worldID, defaults: defaults), cacheRoot: nil,
                                watchWorld: { _, _ in nil })
