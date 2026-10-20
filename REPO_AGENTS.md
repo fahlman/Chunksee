@@ -283,7 +283,8 @@ Viewport-to-region and grid conversions check finite values and integer bounds b
 ranges. Invalid persisted centers or zooms are ignored; an invalid live viewport cannot replace
 a previously valid saved view. Grid iteration checks its step arithmetic as well as its endpoints.
 The toolbar percentage opens a native SwiftUI zoom popover with a logarithmic slider, localized
-number entry, existing presets, Actual Size and Fit World. Manual controls use 6.25% through
+number entry, existing presets, −/+ buttons, Actual Size and Fit World. The titlebar has only the
+percentage control; menu/keyboard zoom commands remain available. Manual controls use 6.25% through
 3,200%; Fit World can remain smaller. Opening or dismissing the popover leaves a fitted scale
 unchanged. Slider changes apply continuously; Return or leaving the number field commits a valid
 edit, while invalid/out-of-range text returns to the current percentage. Escape discards an

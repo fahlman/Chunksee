@@ -15,12 +15,7 @@ struct MapToolbar: ToolbarContent {
                 .disabled(!session.navigation.canGoForward)
                 .help("Go forward to the next map view")
         }
-        ToolbarItemGroup {
-            Button("Zoom Out", systemImage: "minus.magnifyingglass") { map.zoom(by: 0.5) }
-                .disabled(!map.viewport.canZoomOut)
-            Button("Actual Size", systemImage: "1.magnifyingglass") { map.viewport.scale = 1 }
-            Button("Zoom In", systemImage: "plus.magnifyingglass") { map.zoom(by: 2) }
-                .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
+        ToolbarItem {
             MapZoomControl(session: session, map: map)
         }
         ToolbarItem {

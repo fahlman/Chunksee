@@ -27,7 +27,7 @@ with a link to this guide. Help opens only when requested.
 3. To move around the map, drag, scroll with two fingers on a trackpad, or use the arrow keys.
 4. To zoom, pinch, hold **⌘** while scrolling, use a mouse scroll wheel, or press **⌘+**, **⌘−** and **⌘0**.
    Zoom In and Zoom Out work with or without **Shift**, like Preview. The current zoom percentage
-   appears beside the toolbar's zoom controls; click it for a slider, editable percentage and presets.
+   appears in the toolbar; click it for a slider, −/+ buttons, editable percentage and presets.
    **Actual Size** returns to 100%; **Fit World** fits all saved terrain in the current dimension into
    the window. You can zoom in to 3,200%.
    To look underground, click **Surface** in the toolbar and choose **Cutaway**. Use the slider,

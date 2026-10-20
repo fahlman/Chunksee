@@ -76,22 +76,39 @@ private struct MapZoomPopover: View {
         percentage = ZoomPercentage.entry(map.viewport.scale, locale: locale)
     }
 
+    private func zoom(by factor: CGFloat) {
+        commitPercentage()
+        map.zoom(by: factor)
+        percentage = ZoomPercentage.entry(map.viewport.scale, locale: locale)
+        isPercentageFocused = false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Zoom").font(.headline)
-            // Equal travel doubles/halves zoom, keeping both ends of the range usable.
-            Slider(value: Binding {
-                log2(Double(sliderScale))
-            } set: { choose(CGFloat(exp2($0))) }, in: sliderRange) {
-                Text("Zoom")
-            } minimumValueLabel: {
-                Text(ZoomPercentage.text(MapViewport.minimumManualScale))
-            } maximumValueLabel: {
-                Text(ZoomPercentage.text(MapViewport.scaleRange.upperBound))
+            HStack {
+                Button("Zoom Out", systemImage: "minus") { zoom(by: 0.5) }
+                    .labelStyle(.iconOnly)
+                    .disabled(!map.viewport.canZoomOut)
+                    .accessibilityIdentifier("zoom-out")
+                // Equal travel doubles/halves zoom, keeping both ends of the range usable.
+                Slider(value: Binding {
+                    log2(Double(sliderScale))
+                } set: { choose(CGFloat(exp2($0))) }, in: sliderRange) {
+                    Text("Zoom")
+                } minimumValueLabel: {
+                    Text(ZoomPercentage.text(MapViewport.minimumManualScale))
+                } maximumValueLabel: {
+                    Text(ZoomPercentage.text(MapViewport.scaleRange.upperBound))
+                }
+                .labelsHidden()
+                .accessibilityIdentifier("zoom-slider")
+                .accessibilityValue(Text(ZoomPercentage.text(sliderScale)))
+                Button("Zoom In", systemImage: "plus") { zoom(by: 2) }
+                    .labelStyle(.iconOnly)
+                    .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
+                    .accessibilityIdentifier("zoom-in")
             }
-            .labelsHidden()
-            .accessibilityIdentifier("zoom-slider")
-            .accessibilityValue(Text(ZoomPercentage.text(sliderScale)))
 
             HStack {
                 Text("Zoom")
