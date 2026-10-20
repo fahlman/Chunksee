@@ -546,11 +546,12 @@ awaits the refresh scope; production still sleeps for `refreshDelay`. Its fixtur
 filesystem notifications so the test alone supplies the events being checked.
 
 Time Spent, Slime Chunks, Grid, marker-group headers, players and saved-search headings share
-MapVisibilityRow, including spacing, contained accessibility and row-scoped context menus.
+MapVisibilityRow, including spacing, combined accessibility and row-scoped context menus.
 Its eye buttons and context menus share one SwiftUI VisibilityCommand,
-all using Show on Map/Hide on Map. The eye remains a separate native accessibility control so
-expanding a disclosure row does not also change visibility. Existing model bindings own the
-settings; the command only toggles its binding.
+all using Show on Map/Hide on Map. SwiftUI's accessibilityActions exposes that same command as a
+named action; the visual eye is excluded from the combined label so a disclosure heading's
+primary action only expands or collapses it. Existing model bindings own the settings; the
+command only toggles its binding.
 Saved-search headings add Search for This and Remove in a separate native menu section.
 Those group commands belong to the heading, rather than its result rows. Row navigation help says Center the
 map, distinct from the visibility action.

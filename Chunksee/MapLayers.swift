@@ -123,10 +123,14 @@ struct MapVisibilityRow<Content: View, Commands: View>: View {
         HStack {
             content
             Spacer(minLength: 0)
-            if let isShown { VisibilityButton(isShown: isShown) }
+            if let isShown { VisibilityButton(isShown: isShown).accessibilityHidden(true) }
         }
-        // Keep the eye separate from a disclosure heading's own expand/collapse action.
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
+        // A button inside a native disclosure label can also run when that label is expanded.
+        // Expose the same command as a named action, leaving the primary row action to the List.
+        .accessibilityActions {
+            if let isShown { VisibilityCommand(isShown: isShown) }
+        }
         .contextMenu {
             Section { if let isShown { VisibilityCommand(isShown: isShown) } }
             Section { commands }
