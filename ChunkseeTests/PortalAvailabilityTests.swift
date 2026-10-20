@@ -82,7 +82,7 @@ import Testing
             await session.resources.index.waitForIndex()
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             #expect(session.dimensions.map(\.id) == ["minecraft:overworld"])
-            #expect(!session.resources.index.isIndexing && session.presentation.link(for: portal) == nil)
+            #expect(!session.resources.index.isIndexing && session.presentation.roundTrip(for: portal) == nil)
             #expect(!session.presentation.isWaitingForPortalLink(portal))
             #expect(session.presentation.portalsByDimension["minecraft:the_nether"] == nil)
         }
@@ -94,12 +94,17 @@ import Testing
             let (session, gate) = try await f.controlled()
             await gate.waitForRequest("nether")
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
-            #expect(session.presentation.isWaitingForPortalLink(portal) && session.presentation.link(for: portal) == nil)
+            #expect(session.presentation.isWaitingForPortalLink(portal) && session.presentation.roundTrip(for: portal) == nil)
+            // A cross-dimension jump can select its destination before that dimension publishes.
+            // The opposite side is known, but its return still needs the selected portal's scan.
+            let arriving = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: 1, y: 2, z: 1)])
+            #expect(session.presentation.roundTrip(for: arriving) == nil)
+            #expect(session.presentation.isWaitingForPortalLink(arriving))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
             #expect(!session.presentation.isWaitingForPortalLink(portal))
             #expect(session.presentation.portalsByDimension["minecraft:the_nether"]?.isEmpty == true)
-            if case .wouldCreateNewPortal? = session.presentation.link(for: portal) {} else { Issue.record("Known-empty target lost its existing prediction") }
+            if case .wouldCreateNewPortal? = session.presentation.roundTrip(for: portal) {} else { Issue.record("Known-empty target lost its existing prediction") }
         }
     }
 
@@ -108,16 +113,16 @@ import Testing
             let (session, gate) = try await f.controlled()
             await session.resources.index.waitForIndex()
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
-            #expect(session.presentation.link(for: portal) == nil && !session.presentation.isWaitingForPortalLink(portal))
+            #expect(session.presentation.roundTrip(for: portal) == nil && !session.presentation.isWaitingForPortalLink(portal))
             try f.addTarget()
             let snapshot = try await WorldSnapshot.read(f.url)
             session.resources.includeDimensions(from: snapshot)
             snapshot.access.release()
             await gate.waitForRequest("nether")
-            #expect(session.presentation.link(for: portal) == nil && session.presentation.isWaitingForPortalLink(portal))
+            #expect(session.presentation.roundTrip(for: portal) == nil && session.presentation.isWaitingForPortalLink(portal))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
-            #expect(!session.presentation.isWaitingForPortalLink(portal) && session.presentation.link(for: portal) != nil)
+            #expect(!session.presentation.isWaitingForPortalLink(portal) && session.presentation.roundTrip(for: portal) != nil)
         }
     }
 
@@ -128,7 +133,7 @@ import Testing
             await gate.waitForRequest("nether")
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             let unsupported = NetherPortal(dimension: "example:sky", blocks: [.init(x: 8, y: 2, z: 8)])
-            #expect(session.presentation.link(for: unsupported) == nil && !session.presentation.isWaitingForPortalLink(unsupported))
+            #expect(session.presentation.roundTrip(for: unsupported) == nil && !session.presentation.isWaitingForPortalLink(unsupported))
             #expect(session.presentation.isWaitingForPortalLink(portal))
             session.resources.close()
             await gate.waitForCancellation("nether")

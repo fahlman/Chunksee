@@ -78,15 +78,14 @@ final class DimensionPresentation {
     /// Every indexed portal in the Overworld and Nether, using SearchModel's shared publications.
     var portalsByDimension: [String: [NetherPortal]] { source?.search.portals ?? [:] }
 
-    func link(for portal: NetherPortal) -> NetherPortal.Link? {
-        guard let target = NetherPortal.targetDimension(from: portal.dimension),
-              let candidates = portalsByDimension[target] else { return nil }
-        return portal.link(into: candidates)
-    }
-
     func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
         guard let source, !source.isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
-        return source.resources.index.isWaitingForPortals(in: target)
+        return source.resources.index.isWaitingForPortals(in: target) ||
+            source.resources.index.isWaitingForPortals(in: portal.dimension)
+    }
+
+    func roundTrip(for portal: NetherPortal) -> NetherPortal.RoundTrip? {
+        PortalLinkStatus.roundTrip(of: portal, portals: portalsByDimension)
     }
 
     func linkStatus(for portal: NetherPortal) -> PortalLinkStatus? {
