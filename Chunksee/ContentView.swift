@@ -99,8 +99,11 @@ struct WorldView: View {
                 // A new dimension can receive its jump before this view appears.
                 .onChange(of: session.selection.sidebarRevealRequest, initial: true) {
                     guard session.selection.sidebarRevealRequest != nil, let item = session.selection.sidebarSelection else { return }
-                    sidebarDisclosure.reveal(item, in: session)
-                    sidebarRevealID = UUID()
+                    withAnimation(.default, completionCriteria: .removed) {
+                        sidebarDisclosure.reveal(item, in: session)
+                    } completion: {
+                        finishSidebarReveal(item)
+                    }
                 }
                 .onChange(of: sidebarRevealID) {
                     if let item = session.selection.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
@@ -198,7 +201,21 @@ struct WorldView: View {
     }
 
     private func selectOnMap(_ target: MapTarget?, y: Double?) {
-        if sidebarDisclosure.selectOnMap(target, y: y, in: session) { sidebarRevealID = UUID() }
+        var selected: SidebarItem?
+        withAnimation(.default, completionCriteria: .removed) {
+            if sidebarDisclosure.selectOnMap(target, y: y, in: session) {
+                selected = session.selection.sidebarSelection
+            }
+        } completion: {
+            if let selected { finishSidebarReveal(selected) }
+        }
+    }
+
+    private func finishSidebarReveal(_ item: SidebarItem) {
+        // Expansion above the visible rows can preserve their scroll position. Reveal the
+        // chosen row after that native adjustment, unless another action changed selection.
+        guard !session.isClosed, session.selection.sidebarSelection == item else { return }
+        sidebarRevealID = UUID()
     }
 
     private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {
