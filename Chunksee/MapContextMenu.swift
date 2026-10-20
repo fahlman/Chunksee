@@ -107,9 +107,10 @@ struct LocationRow: View {
     var body: some View {
         LabeledContent {
             CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)
+                .contentShape(Rectangle())
                 .contextMenu { commands }
         } label: {
-            title.contextMenu { commands }
+            title.contentShape(Rectangle()).contextMenu { commands }
         }
     }
 
