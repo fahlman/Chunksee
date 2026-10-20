@@ -46,7 +46,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,6 +54,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B2000000000000000000001A /* ChunkseeKit in Frameworks */,
+				B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -123,9 +123,6 @@
 				B10000000000000000000022 /* ChunkseeTests */,
 			);
 			name = ChunkseeTests;
-			packageProductDependencies = (
-				B30000000000000000000019 /* ChunkseeKitTestSupport */,
-			);
 			productName = ChunkseeTests;
 			productReference = B10000000000000000000021 /* ChunkseeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -148,6 +145,7 @@
 			name = ChunkseeTestHost;
 			packageProductDependencies = (
 				B20000000000000000000019 /* ChunkseeKit */,
+				B30000000000000000000019 /* ChunkseeKitTestSupport */,
 			);
 			productName = ChunkseeTestHost;
 			productReference = B20000000000000000000011 /* ChunkseeTestHost.app */;

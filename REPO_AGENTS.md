@@ -642,12 +642,16 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   Each suite uses an absolute preference domain inside a disposable temporary directory, so
   cfprefsd cannot recreate empty files in Preferences after host exit. Teardown removes the
   domain and its whole directory. Cache tests pass temporary roots or `nil`.
-- `ChunkseeTests` alone links `ChunkseeKitTestSupport` from the published pin. `TestWorld` keeps
+- The isolated `ChunkseeTestHost` links `ChunkseeKitTestSupport` alongside `ChunkseeKit` from the
+  published pin. The test bundle uses both through its existing host, keeping a single library
+  instance. Linking test support separately to the bundle makes Xcode 27.1 promote the shared
+  Kit target to a dynamic library, whose build graph cannot resolve its CZlib target.
+  `TestWorld` keeps
   app scenarios and session-opening conveniences, while shared `Fixtures` owns packing, section
   and chunk construction, region writing and compressed NBT files. App fixtures explicitly use
   26.3, yPos 0 and zero region timestamps; their status key follows the shared modern builder.
-  Tests for both uppercase and lowercase status remain. Production app and test-host targets
-  depend only on `ChunkseeKit`.
+  Tests for both uppercase and lowercase status remain. The production app depends only on
+  `ChunkseeKit`; shared fixture code is confined to the isolated test host.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running
