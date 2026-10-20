@@ -95,6 +95,11 @@ import Testing
             await gate.waitForRequest("nether")
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             #expect(session.presentation.isWaitingForPortalLink(portal) && session.presentation.roundTrip(for: portal) == nil)
+            // A cross-dimension jump can select its destination before that dimension publishes.
+            // The opposite side is known, but its return still needs the selected portal's scan.
+            let arriving = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: 1, y: 2, z: 1)])
+            #expect(session.presentation.roundTrip(for: arriving) == nil)
+            #expect(session.presentation.isWaitingForPortalLink(arriving))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
             #expect(!session.presentation.isWaitingForPortalLink(portal))

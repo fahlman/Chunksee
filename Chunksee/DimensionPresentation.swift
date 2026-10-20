@@ -80,7 +80,8 @@ final class DimensionPresentation {
 
     func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
         guard let source, !source.isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
-        return source.resources.index.isWaitingForPortals(in: target)
+        return source.resources.index.isWaitingForPortals(in: target) ||
+            source.resources.index.isWaitingForPortals(in: portal.dimension)
     }
 
     func roundTrip(for portal: NetherPortal) -> NetherPortal.RoundTrip? {
