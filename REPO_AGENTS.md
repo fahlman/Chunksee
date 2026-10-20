@@ -706,7 +706,9 @@ cannot be rendered. Region-file URLs use `Dimension.regionURL` for terrain, enti
 spawn navigation uses the library's paired saved position and dimension.
 
 The Slime Chunks toggle is initially off and remembered per dimension. It is available only for
-the Overworld when `WorldDetails` has a seed read by ChunkseeKit. `SlimeChunkLayer` builds a small
+the Overworld when `WorldDetails` has a seed read by ChunkseeKit. The View menu and sidebar share
+SlimeChunkLayer's visibility and availability; the row and command stay visible but disabled when
+unavailable. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
 change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer

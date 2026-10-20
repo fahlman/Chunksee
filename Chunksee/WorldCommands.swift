@@ -95,6 +95,10 @@ struct WorldCommands: Commands {
                 session?.heatMap.isShown ?? false
             } set: { session?.heatMap.isShown = $0 })
             .disabled(session?.map == nil)
+            Toggle("Slime Chunks", isOn: Binding {
+                session?.slimeChunks.isShown ?? false
+            } set: { session?.slimeChunks.isShown = $0 })
+            .disabled(session?.slimeChunks.isAvailable != true)
             Toggle("Grid", isOn: Binding {
                 session?.visibility.showsGrid ?? false
             } set: { session?.visibility.showsGrid = $0 })

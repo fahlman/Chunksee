@@ -34,12 +34,11 @@ struct WorldView: View {
                             Label("Time Spent", systemImage: "flame")
                         }
                         .help("Color the map by how long players spent near each chunk")
-                        if slimeChunks.isAvailable {
-                            MapVisibilityRow(isShown: $slimeChunks.isShown) {
-                                Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
-                            }
-                            .help("Mark Overworld chunks where slimes can spawn below Y 40")
+                        MapVisibilityRow(isShown: $slimeChunks.isShown) {
+                            Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
                         }
+                        .disabled(!slimeChunks.isAvailable)
+                        .help("Mark Overworld chunks where slimes can spawn below Y 40")
                         MapVisibilityRow(isShown: $visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }
