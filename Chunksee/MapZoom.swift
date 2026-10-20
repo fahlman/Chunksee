@@ -40,7 +40,6 @@ struct MapZoomControl: View {
                     .frame(minWidth: 56)
             }
         }
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Zoom")
         .accessibilityValue(Text(ZoomPercentage.text(map.viewport.scale)))
         .accessibilityIdentifier("zoom-control")
