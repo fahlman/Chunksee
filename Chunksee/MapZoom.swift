@@ -33,15 +33,14 @@ struct MapZoomControl: View {
 
     var body: some View {
         Button { showsPopover = true } label: {
-            Label {
+            HStack {
+                Image(systemName: "magnifyingglass")
                 Text(ZoomPercentage.text(map.viewport.scale))
                     .monospacedDigit()
                     .frame(minWidth: 56)
-            } icon: {
-                Image(systemName: "magnifyingglass")
             }
         }
-        .labelStyle(.titleAndIcon)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Zoom")
         .accessibilityValue(Text(ZoomPercentage.text(map.viewport.scale)))
         .accessibilityIdentifier("zoom-control")
@@ -115,7 +114,7 @@ private struct MapZoomPopover: View {
                     Image(systemName: "plus").frame(width: 16, height: 16)
                 }
                 .accessibilityLabel("Zoom In")
-                .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
+                .disabled(!map.viewport.canZoomIn)
                 .accessibilityIdentifier("zoom-in")
             }
 
@@ -130,6 +129,7 @@ private struct MapZoomPopover: View {
                         percentage = ZoomPercentage.entry(map.viewport.scale, locale: locale)
                         dismiss()
                     }
+                    .accessibilityLabel("Zoom percentage")
                     .accessibilityIdentifier("zoom-percentage")
                     .help("Enter a percentage from \(ZoomPercentage.text(MapViewport.minimumManualScale)) to \(ZoomPercentage.text(MapViewport.scaleRange.upperBound))")
                 Text("%")
@@ -144,6 +144,7 @@ private struct MapZoomPopover: View {
                 }
             }
             .pickerStyle(.menu)
+            .accessibilityLabel("Zoom presets")
             .accessibilityIdentifier("zoom-presets")
             HStack {
                 Button("Actual Size") { choose(1) }

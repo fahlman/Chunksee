@@ -30,4 +30,15 @@ import Testing
         #expect(ZoomPercentage.entry(MapViewport.scaleRange.lowerBound, locale: locale) == "0.000001")
         #expect(ZoomPercentage.entry(0.0000123456789, locale: locale) == "0.00123456789")
     }
+
+    @Test func zoomLimitsRemainAvailableForFittedAndManualViews() {
+        for scale in [MapViewport.scaleRange.lowerBound, MapViewport.minimumManualScale, 1, 16] {
+            let viewport = MapViewport(scale: scale)
+            #expect(viewport.canZoomIn)
+            #expect(viewport.canZoomOut == (scale > MapViewport.minimumManualScale))
+        }
+        let maximum = MapViewport(scale: MapViewport.scaleRange.upperBound)
+        #expect(!maximum.canZoomIn && maximum.canZoomOut)
+    }
+
 }
