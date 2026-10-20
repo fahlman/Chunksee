@@ -88,7 +88,7 @@ enum StructureTestWorld {
         func chunk(_ x: Int, _ z: Int, id: String, pieces: [NBT], finished: Bool = true) -> TestWorld.ChunkSpec {
             var spec = TestWorld.chunk(x: x, z: z, palette: ["minecraft:stone"]) { _, _, _ in 0 }
             var root = spec.nbt.compound!
-            root.removeValue(forKey: "Status")
+            root.removeValue(forKey: "status")
             root[statusKey] = .string(finished ? "minecraft:full" : "minecraft:structure_starts")
             var section = root["sections"]!.list![0].compound!
             section["biomes"] = .compound(["palette": .list([.string("minecraft:taiga")])])
@@ -440,7 +440,7 @@ enum StructureTestWorld {
         let unfinished = (2..<4).flatMap { x in (0..<2).map { z in
             var spec = TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
             var root = spec.nbt.compound!
-            root["Status"] = .string("minecraft:structure_starts")
+            root["status"] = .string("minecraft:structure_starts")
             var section = root["sections"]!.list![0].compound!
             section["biomes"] = .compound(["palette": .list([.string("minecraft:desert")])])
             root["sections"] = .list([.compound(section)])

@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.34.0`, resolved to `0.34.0` (`ca6a25d0360caab0c1d2dfd7304b33a4becad682`).
+  minor" from `0.35.0`, resolved to `0.35.0` (`f87bc30e5ad1ffbe280880e27d954e6826980ccb`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -642,6 +642,12 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   Each suite uses an absolute preference domain inside a disposable temporary directory, so
   cfprefsd cannot recreate empty files in Preferences after host exit. Teardown removes the
   domain and its whole directory. Cache tests pass temporary roots or `nil`.
+- `ChunkseeTests` alone links `ChunkseeKitTestSupport` from the published pin. `TestWorld` keeps
+  app scenarios and session-opening conveniences, while shared `Fixtures` owns packing, section
+  and chunk construction, region writing and compressed NBT files. App fixtures explicitly use
+  26.3, yPos 0 and zero region timestamps; their status key follows the shared modern builder.
+  Tests for both uppercase and lowercase status remain. Production app and test-host targets
+  depend only on `ChunkseeKit`.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running

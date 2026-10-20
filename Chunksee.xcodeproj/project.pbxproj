@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		B1000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000019 /* ChunkseeKit */; };
 		B2000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000019 /* ChunkseeKit */; };
+		B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000019 /* ChunkseeKitTestSupport */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +46,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,6 +123,9 @@
 				B10000000000000000000022 /* ChunkseeTests */,
 			);
 			name = ChunkseeTests;
+			packageProductDependencies = (
+				B30000000000000000000019 /* ChunkseeKitTestSupport */,
+			);
 			productName = ChunkseeTests;
 			productReference = B10000000000000000000021 /* ChunkseeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -540,7 +545,7 @@
 			repositoryURL = "https://github.com/fahlman/ChunkseeKit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.34.0;
+				minimumVersion = 0.35.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -555,6 +560,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B1000000000000000000001B /* XCRemoteSwiftPackageReference "ChunkseeKit" */;
 			productName = ChunkseeKit;
+		};
+		B30000000000000000000019 /* ChunkseeKitTestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1000000000000000000001B /* XCRemoteSwiftPackageReference "ChunkseeKit" */;
+			productName = ChunkseeKitTestSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
