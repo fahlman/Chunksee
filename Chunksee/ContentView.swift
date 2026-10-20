@@ -155,7 +155,7 @@ struct WorldView: View {
                     .toolbar {
                         ToolbarItem {
                             ShareLink(item: SharedMapImage { [session] in MapImage.render(session: session) },
-                                      preview: SharePreview("Map of \(session.presentation.displayName)", image: Image(systemName: "map"))) {
+                                      preview: SharePreview("Map of \(session.presentation.displayName)", image: Image(systemName: ItemAppearance.mapSymbol))) {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
                             .help("Share an image of the map as shown")

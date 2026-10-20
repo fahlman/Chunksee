@@ -137,7 +137,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .pet: CreatureGroup.pet.symbol
         case .villager: CreatureGroup.villager.symbol
         case .trade: "arrow.left.arrow.right"
-        case .biome: "leaf"
+        case .biome: BiomeGroup.symbol
         case .block: "cube"
         }
     }

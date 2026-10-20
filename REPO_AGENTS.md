@@ -439,6 +439,9 @@ version 3 rereads cached containers for UUIDs; the app adds no second cache or f
 InspectorHeading supplies the selected item's icon, headline and accessibility heading for
 creature, player, portal, in-game map, World Info and Storage panels. World Info and Storage
 share their symbol with the sidebar. The native Form/Table bodies keep their own layouts.
+ItemAppearance.mapSymbol supplies the same filled map glyph for inventory navigation items,
+the in-game-map inspector and map share preview. BiomeGroup owns the filled leaf used by its
+sidebar groups and the biome search kind; callers do not keep separate copies of those symbols.
 
 Health, Absorption, Hunger and Experience use SavedStatusRow for aligned digits and saved-value
 help. Creature health, including carried pets, appears under Status like player health; unavailable
