@@ -1,12 +1,14 @@
 import ChunkseeKit
 import SwiftUI
 
-struct SavedPlacesSection: View {
+struct SavedPlacesGroup: View {
     let session: WorldSession
+    @Binding var isExpanded: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
         @Bindable var visibility = session.visibility
-        Section {
+        DisclosureGroup(isExpanded: $isExpanded) {
             ForEach(session.annotations.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
                     Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
@@ -26,9 +28,11 @@ struct SavedPlacesSection: View {
                 .buttonStyle(.plain)
                 .disabled(session.map == nil)
                 .help("Save the location at the center of the map")
-        } header: {
+        } label: {
             MapVisibilityRow(isShown: $visibility.showsSavedPlaces) {
-                Label("Saved Places", systemImage: MarkerStyle.savedPlaceSymbol)
+                Label(CountedText.label(String(localized: "Saved Places", locale: locale),
+                                        count: session.annotations.listedPlaces.count, locale: locale),
+                      systemImage: MarkerStyle.savedPlaceSymbol)
             }
         }
     }
@@ -74,12 +78,6 @@ struct SavedPlaceEditor: View {
 
     private func save() {
         guard !session.isClosed else { dismiss(); return }
-        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if let id = draft.existingID {
-            session.savedPlaces.rename(id, to: name)
-        } else {
-            session.savedPlaces.add(name: name, dimension: draft.dimension, at: draft.position)
-        }
-        dismiss()
+        if session.annotations.commit(draft, name: name) { dismiss() }
     }
 }

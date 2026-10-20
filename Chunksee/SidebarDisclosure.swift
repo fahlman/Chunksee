@@ -13,6 +13,7 @@ struct SidebarDisclosure {
     var creatures: Set<CreatureGroup> = []
     var biomes: Set<BiomeGroup> = []
     var savedSearches: Set<UUID> = []
+    var showsSavedPlaces = true
     var showsInGameMaps = false
 
     /// The view and tests share this complete map-origin selection/reveal action.
@@ -42,7 +43,10 @@ struct SidebarDisclosure {
                 savedSearches.insert(saved.id)
             }
         case .inGameMap?: showsInGameMaps = true
-        case .worldInfo?, .storage?, .savedPlace?, .player?, nil: break
+        case .savedPlace?:
+            collapsedLayers.remove(.places)
+            showsSavedPlaces = true
+        case .worldInfo?, .storage?, .player?, nil: break
         }
     }
 }

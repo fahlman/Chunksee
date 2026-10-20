@@ -35,51 +35,45 @@ extension CreatureMarker: MapLayerMarker {
     var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
 }
 
-/// A sidebar section for one layer (structures, places, creatures or biomes). Groups are listed
+/// Sidebar groups for one layer (structures, places, creatures or biomes). Groups are listed
 /// by name; each expands into a list, nearest to `origin` first, whose rows are tagged with `item`
 /// for the sidebar's selection. With `shown`, each group can be shown or hidden on the map.
 /// `allGroups` are listed even when they have no markers, with a count of 0.
-struct LayerSection<Marker: MapLayerMarker>: View {
-    let title: LocalizedStringKey
+struct LayerGroups<Marker: MapLayerMarker>: View {
     let markers: [Marker]
     let origin: CGPoint
     var shown: Binding<Set<Marker.Group>>?
     var allGroups: [Marker.Group] = []
     let item: (Marker) -> SidebarItem
-    @Binding var isExpanded: Bool
     @Binding var expandedGroups: Set<Marker.Group>
     @Environment(\.locale) private var locale
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
         let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name < $1.name }
-        if !groups.isEmpty {
-            Section(title, isExpanded: $isExpanded) {
-                ForEach(groups, id: \.self) { group in
-                    if byGroup[group] == nil {
-                        row(group, count: 0)
-                    } else {
-                        DisclosureGroup(isExpanded: Binding {
-                            expandedGroups.contains(group)
-                        } set: {
-                            if $0 { expandedGroups.insert(group) } else { expandedGroups.remove(group) }
-                        }) {
-                            // The collection owns the same identity used by selection and scrolling.
-                            // An inner .id adds a dynamic row-list transformation for every marker.
-                            ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.marker.name)
-                                    CoordinateText(Coordinates(row.marker.position))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .tag(row.id)
-                                .help("Center the map on this location")
-                            }
-                        } label: {
-                            row(group, count: byGroup[group]?.count ?? 0)
+        ForEach(groups, id: \.self) { group in
+            if byGroup[group] == nil {
+                row(group, count: 0)
+            } else {
+                DisclosureGroup(isExpanded: Binding {
+                    expandedGroups.contains(group)
+                } set: {
+                    if $0 { expandedGroups.insert(group) } else { expandedGroups.remove(group) }
+                }) {
+                    // The collection owns the same identity used by selection and scrolling.
+                    // An inner .id adds a dynamic row-list transformation for every marker.
+                    ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.marker.name)
+                            CoordinateText(Coordinates(row.marker.position))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .tag(row.id)
+                        .help("Center the map on this location")
                     }
+                } label: {
+                    row(group, count: byGroup[group]?.count ?? 0)
                 }
             }
         }
