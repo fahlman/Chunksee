@@ -101,7 +101,8 @@ starts a new path.
 
 Choose **Navigate ▸ Save Place…** (**⌘D**) to name the location at the map's center, or right-click
 a map point and choose **Save Place…**. Your **Saved Places** appear in their dimension's sidebar and on the
-map; click a sidebar place to visit it, and use its context menu to rename or remove it. They are
+map; click a sidebar place to visit it. Its map and sidebar context menus both offer Rename,
+Copy Coordinates, Measure Distance from Here and Remove. Places are
 kept per world in Chunksee's preferences and remain available when the world is reopened or moved.
 
 Right-click or Control-click a marker or block and choose **Copy Coordinates** to copy X, Y and Z

@@ -84,7 +84,7 @@ import Testing
         }
     }
 
-    @Test func aSavedPinAndSidebarShareRenameCopyAndRemoveWithoutMovingTheMap() async throws {
+    @Test func aSavedPinAndSidebarShareCommandsWithoutMovingTheMap() async throws {
         try await withSession { session in
             let map = try #require(session.map)
             let place = try #require(session.savedPlaces.add(name: "Fixture", dimension: map.dimension.id, at: CGPoint(x: -8, y: -8)))
@@ -99,8 +99,8 @@ import Testing
                                                          content: content, size: size, pasteboard: board))
             let pinMenu = menu(root)
             let sidebarMenu = menu(SavedPlaceMenu(session: session, place: place, map: map, pasteboard: board))
-            #expect(sidebarMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "", "Remove"])
-            #expect(pinMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "", "Remove", "", "Measure Distance from Here"])
+            #expect(sidebarMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "Measure Distance from Here", "", "Remove"])
+            #expect(pinMenu.items.map(\.title) == sidebarMenu.items.map(\.title))
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             try perform("Rename…", in: pinMenu)
             #expect(session.annotations.draft?.existingID == place.id && session.annotations.draft?.name == place.name)
@@ -112,10 +112,13 @@ import Testing
                 try perform("Copy Coordinates", in: source)
                 await map.waitForCoordinateReads()
                 #expect(board.string(forType: .string) == "-8 2 -8")
+                session.annotations.ruler.isEnabled = false
+                session.annotations.ruler.clear()
+                try perform("Measure Distance from Here", in: source)
+                #expect(session.annotations.ruler.isEnabled && session.annotations.ruler.start?.position == place.position)
+                #expect(session.annotations.ruler.end == nil)
+                #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             }
-            try perform("Measure Distance from Here", in: pinMenu)
-            #expect(session.annotations.ruler.isEnabled && session.annotations.ruler.start?.position == place.position)
-            #expect(map.viewport == original)
             try perform("Remove", in: pinMenu)
             #expect(session.savedPlaces.all.isEmpty)
         }
@@ -189,6 +192,14 @@ import Testing
             let savedMenu = menu(SavedPlaceMenu(session: session, place: place, map: map, pasteboard: board))
             let copy = try #require(savedMenu.items.first { $0.title == "Copy Coordinates" })
             #expect(!copy.isEnabled)
+            let measure = try #require(savedMenu.items.first { $0.title == "Measure Distance from Here" })
+            #expect(!measure.isEnabled)
+            let localPlace = try #require(session.savedPlaces.add(name: "Local", dimension: map.dimension.id, at: .zero))
+            let withoutMap = menu(SavedPlaceMenu(session: session, place: localPlace, map: nil, pasteboard: board))
+            let unavailable = try #require(withoutMap.items.first { $0.title == "Measure Distance from Here" })
+            #expect(!unavailable.isEnabled)
+            for source in [savedMenu, withoutMap] { try perform("Measure Distance from Here", in: source) }
+            #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
             let root = try #require(MapContextMenuContent(at: CGPoint(x: 200, y: 150), session: session, map: map,
                                                          content: MapContent(), size: size, pasteboard: board))
             let mapMenu = menu(root)
@@ -201,7 +212,9 @@ import Testing
             try perform("Remove", in: savedMenu)
             try perform("Rename…", in: savedMenu)
             try perform("Copy Coordinates", in: mapMenu)
-            #expect(session.savedPlaces.all == [place] && session.annotations.draft == nil)
+            try perform("Measure Distance from Here", in: mapMenu)
+            #expect(session.savedPlaces.all == [place, localPlace] && session.annotations.draft == nil)
+            #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
             #expect(board.string(forType: .string) == "unchanged")
             #expect(MapContextMenuContent(at: .zero, session: session, map: map, content: MapContent(), size: size) == nil)
         }
