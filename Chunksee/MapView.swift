@@ -273,11 +273,6 @@ struct MapView: View {
                                at: map.viewport.viewPoint(for: creature.position, in: size),
                                in: context, bounds: bounds, symbol: symbol))
         }
-        for hit in content.hits {
-            guard let position = hit.position else { continue }
-            Self.drawPin(at: map.viewport.viewPoint(for: position, in: size), selected: hit.id == content.selectedHitID,
-                         in: context, bounds: bounds, symbol: symbol)
-        }
         for item in content.scene(viewport: map.viewport, size: size).items {
             add(item.draw(in: context, scale: map.viewport.scale, symbol: symbol))
         }
@@ -326,13 +321,6 @@ struct MapView: View {
         var mark = context.resolve(Text("!").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white))
         mark.shading = .color(.white)
         context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
-    }
-
-    /// A yellow search-result pin; the selected one has the larger shared geometry.
-    private static func drawPin(at point: CGPoint, selected: Bool, in context: GraphicsContext, bounds: CGRect,
-                                symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) {
-        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        MarkerStyle.search(selected: selected).drawBody(at: point, in: context, symbol: symbol)
     }
 
     private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String,
