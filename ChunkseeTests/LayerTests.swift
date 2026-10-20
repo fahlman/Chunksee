@@ -325,7 +325,7 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["“Summer”"])
-        #expect(session.search.results.first?.source == .layer(.creature(.pet)))
+        #expect(session.search.results.first?.source == .layer(.creature(.pet), markerID: summer.id))
     }
 }
 

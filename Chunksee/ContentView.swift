@@ -376,7 +376,7 @@ private struct SavedSearchesSection: View {
     }
 }
 
-/// A search's results; choosing one shows it on the map.
+/// A search's results; selection shares details and navigation with the item's other entry points.
 private struct HitList: View {
     let session: WorldSession
     let query: String
@@ -401,7 +401,6 @@ private struct HitList: View {
                 .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
-                .selectionDisabled(hit.position == nil)
             }
             if hits.total > hits.rows.count {
                 Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)
