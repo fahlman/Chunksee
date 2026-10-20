@@ -177,6 +177,6 @@ struct WorldInfoView: View {
     private func borderDescription(_ border: WorldBorder?) -> String {
         guard let border, border.isLimited else { return String(localized: "None") }
         guard let size = Coordinates.block(border.size), size >= 0 else { return String(localized: "Unknown") }
-        return String(localized: "\(size.formatted()) blocks wide, centered at \(Coordinates.text(x: border.centerX, z: border.centerZ))")
+        return String(localized: "\(CountedText.blocks(Double(size), locale: locale)) wide, centered at \(Coordinates.text(x: border.centerX, z: border.centerZ))", locale: locale)
     }
 }
