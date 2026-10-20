@@ -126,6 +126,7 @@ struct MapVisibilityRow<Content: View, Commands: View>: View {
             if let isShown { VisibilityButton(isShown: isShown).accessibilityHidden(true) }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(isShown?.wrappedValue == true ? "Shown on Map" : "Hidden on Map", isEnabled: isShown != nil)
         // A button inside a native disclosure label can also run when that label is expanded.
         // Expose the same command as a named action, leaving the primary row action to the List.
         .accessibilityActions {

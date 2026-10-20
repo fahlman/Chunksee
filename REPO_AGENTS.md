@@ -550,7 +550,8 @@ MapVisibilityRow, including spacing, combined accessibility and row-scoped conte
 Its eye buttons and context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI's accessibilityActions exposes that same command as a
 named action; the visual eye is excluded from the combined label so a disclosure heading's
-primary action only expands or collapses it. Existing model bindings own the settings; the
+primary action only expands or collapses it. The same binding supplies each eye row's localized
+Shown on Map/Hidden on Map accessibility value. Existing model bindings own the settings; the
 command only toggles its binding.
 Saved-search headings add Search for This and Remove in a separate native menu section.
 Those group commands belong to the heading, rather than its result rows. Row navigation help says Center the
