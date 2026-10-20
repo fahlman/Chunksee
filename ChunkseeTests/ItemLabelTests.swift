@@ -63,6 +63,20 @@ import Testing
         }
     }
 
+    @Test(arguments: [false, true])
+    func offersKeepBothCostsAndMakeSoldOutTradesExplicit(soldOut: Bool) throws {
+        let trade = try #require(Trade(.compound([
+            "buy": item("minecraft:emerald", count: 24, name: "Token"),
+            "buyB": item("minecraft:book", name: "Voucher"),
+            "sell": item("minecraft:enchanted_book", extra: [
+                "minecraft:stored_enchantments": .compound(["minecraft:mending": .int(1)]),
+            ]),
+            "uses": .int(soldOut ? 12 : 0), "maxUses": .int(12),
+        ])))
+        let offer = "1 Enchanted Book (Mending) for 24 Emerald “Token” + 1 Book “Voucher”"
+        #expect(TradeText.offer(trade) == offer + (soldOut ? " (sold out)" : ""))
+    }
+
     @Test func writtenBookKeepsKindTitleAuthorAndBodySearch() throws {
         let savedBook = item("minecraft:written_book", extra: ["minecraft:written_book_content": .compound([
             "title": .string("Travels"), "author": .string("Writer"), "pages": .list([.string("A desert village")]),

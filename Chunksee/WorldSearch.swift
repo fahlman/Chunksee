@@ -266,10 +266,7 @@ nonisolated enum WorldSearch {
             let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
             guard !matching.isEmpty else { return nil }
             let title = VillagerText.description(villager) ?? entry.value.name
-            let detail = matching.map { trade in
-                let offer = String(localized: "\(TradeText.describe(trade.sell)) for \(TradeText.cost(of: trade))")
-                return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
-            }.joined(separator: "; ")
+            let detail = matching.map(TradeText.offer).joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
                              dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: title, detail: detail, count: matching.count)

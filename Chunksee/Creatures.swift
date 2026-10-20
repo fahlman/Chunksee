@@ -145,14 +145,10 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
         if let trades = creature.villager?.trades, !trades.isEmpty {
             Section("Trades") {
                 ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
-                    HStack {
-                        Text(TradeText.cost(of: trade))
-                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                        Text(TradeText.describe(trade.sell))
-                    }
-                    .strikethrough(trade.isSoldOut)
-                    .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
-                    .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
+                    Text(TradeText.offer(trade))
+                        .strikethrough(trade.isSoldOut)
+                        .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
+                        .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
                 }
             }
         }
@@ -161,16 +157,23 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
 
 /// How villagers and their trades read, in the creature details and in trade search.
 nonisolated enum TradeText {
+    static func offer(_ trade: Trade) -> String {
+        let offer = String(localized: "\(describe(trade.sell)) for \(cost(of: trade))")
+        return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
+    }
+
     /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
     static func describe(_ item: ItemStack) -> String {
         let base = ItemAppearance.name(of: item, includingOne: true)
         let enchantments = item.enchantments.sorted { $0.key < $1.key }.map { enchantmentName($0.key, level: $0.value) }
-        return enchantments.isEmpty ? base : "\(base) (\(enchantments.joined(separator: ", ")))"
+        return enchantments.isEmpty ? base : String(localized: "\(base) (\(enchantments.joined(separator: ", ")))")
     }
 
     /// What the villager asks for: "24 Emerald + 1 Book".
     static func cost(of trade: Trade) -> String {
-        describe(trade.buy) + (trade.buyB.map { " + " + describe($0) } ?? "")
+        let first = describe(trade.buy)
+        guard let second = trade.buyB else { return first }
+        return String(localized: "\(first) + \(describe(second))")
     }
 
     /// The text trade search matches: every item's name and id, and the enchantments' names.

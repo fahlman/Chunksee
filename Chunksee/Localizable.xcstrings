@@ -1,6 +1,18 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ for %@" : {
+      "comment" : "A villager's trade offer, shared by its inspector and search results. The first placeholder is the received item and quantity; the second is the requested cost, which can include two items."
+    },
+    "%@ (sold out)" : {
+      "comment" : "A complete villager trade offer followed by its saved sold-out status."
+    },
+    "%@ + %@" : {
+      "comment" : "The two item quantities required by one villager trade. Both placeholders include the item name and quantity."
+    },
+    "%@ (%@)" : {
+      "comment" : "An item name and quantity followed by its enchantment descriptions in parentheses."
+    },
     "Set a measurement point" : {
       "comment" : "Accessibility hint for a map marker while the distance ruler is on. Activating the marker sets a ruler endpoint at its saved location."
     },
