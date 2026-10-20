@@ -27,13 +27,13 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .portal: "oval.portrait.fill"
         case .bell: "bell.fill"
         case .lodestone: "location.north.circle.fill"
-        case .bed: "bed.double"
+        case .bed: "bed.double.fill"
         case .workstation: "wrench.and.screwdriver.fill"
         case .beeNest: "hexagon.fill"
         case .lightningRod: "bolt.fill"
         case .spawner: "cube.transparent"
         case .unopenedLoot: "shippingbox.fill"
-        case .other: "mappin"
+        case .other: "scope"
         }
     }
 

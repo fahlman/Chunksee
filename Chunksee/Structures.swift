@@ -50,7 +50,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
         case .bastion: "crown.fill"
         case .netherFossil: "fossil.shell.fill"
         case .endCity: "building.2.crop.circle"
-        case .other: "mappin"
+        case .other: "square.dashed"
         }
     }
 

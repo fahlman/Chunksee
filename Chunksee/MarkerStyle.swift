@@ -57,7 +57,7 @@ struct MarkerStyle {
         switch kind {
         case .player: ("person.fill", .blue)
         case .death: ("xmark", .red)
-        case .respawn: ("bed.double.fill", .purple)
+        case .respawn: (PlaceGroup.bed.symbol, .purple)
         }
     }
 
