@@ -26,7 +26,7 @@ final class SelectionModel {
     var inspector: Inspector? {
         get {
             guard inspectorIsShown else { return nil }
-            switch selectedItem.flatMap(resolve) {
+            switch detailItem(selectedItem.flatMap(resolve)) {
             case .worldInfo?: return .world
             case .storage?: return .storage
             case .player(let player)?: return .player(player.uuid)
@@ -62,7 +62,7 @@ final class SelectionModel {
 
     var mapSelection: MapSelection? {
         guard inspectorIsShown, let source else { return nil }
-        switch selectedItem.flatMap(resolve) {
+        switch detailItem(selectedItem.flatMap(resolve)) {
         case .creature(let marker)?: return .creature(marker)
         case .place(let marker)?:
             if let portal = marker.portal { return .portal(portal) }
@@ -92,6 +92,23 @@ final class SelectionModel {
         }
     }
 
+    /// Keep the selected search row, but resolve its entity through the same live-data owner.
+    private func detailItem(_ resolved: ResolvedSidebarItem?) -> ResolvedSidebarItem? {
+        guard case .hit(let hit)? = resolved else { return resolved }
+        switch hit.source {
+        case .inventory(let id), .enderChest(let id): return resolve(.player(id))
+        case .layer(let layer, let id):
+            guard hit.dimension == source?.selectedDimensionID else { return nil }
+            switch layer {
+            case .structure: return resolve(.structure(id))
+            case .place: return resolve(.place(id))
+            case .creature: return resolve(.creature(id))
+            case .biome: return resolve(.biome(id))
+            }
+        case .container, .sign, .block: return resolved
+        }
+    }
+
     /// Every input path changes this identity. Overlay retention is independent of the row.
     private func select(_ item: SidebarItem?, height: Int? = nil, preservingGlobalRows: Bool = false) {
         guard let source, !source.isClosed else { return }
@@ -102,7 +119,7 @@ final class SelectionModel {
         let previous = inspector
         let resolved = item.flatMap(resolve)
         selectedItem = resolved == nil ? nil : item
-        switch resolved {
+        switch detailItem(resolved) {
         case .worldInfo?, .storage?, .player?, .creature?: overlayID = nil
         case .place(let marker)?:
             if marker.portal != nil { overlayID = nil }
@@ -145,9 +162,10 @@ final class SelectionModel {
                       height: BlockPosition.coordinate(containing: location.y), in: location.dimension)
             }
         case .hit(let hit):
-            guard let dimension = hit.dimension, let position = hit.position else { return }
-            focus(on: position, height: hit.y, in: dimension)
-            if case .layer(let layer) = hit.source {
+            if let dimension = hit.dimension, let position = hit.position {
+                focus(on: position, height: hit.y, in: dimension)
+            }
+            if case .layer(let layer, _) = hit.source {
                 switch layer {
                 case .structure(let group): source.visibility.structures.insert(group)
                 case .place(let group): source.visibility.places.insert(group)

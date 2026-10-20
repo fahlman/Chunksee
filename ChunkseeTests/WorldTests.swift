@@ -337,7 +337,7 @@ import Testing
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         #expect(search("structure:village").map(\.detail) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
-        #expect(search("structure:village").first?.source == .layer(.structure(.village)))
+        #expect(search("structure:village").first?.source == .layer(.structure(.village), markerID: village.id))
         #expect(search("place:bed").map(\.detail) == ["Bed"])
         #expect(search("pet:").map(\.detail).sorted() == ["Cat", "Summer"])
         #expect(search("pet:wolf").map(\.detail) == ["Summer"])
@@ -369,7 +369,7 @@ import Testing
         #expect(mending.map(\.title) == ["Librarian, Master"])
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
-        #expect(mending.first?.source == .layer(.creature(.villager)))
+        #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))
         // Buying counts too, and sold-out trades say so.
         #expect(search("trade:emerald").first?.count == 2)
         #expect(search("trade:bookshelf").first?.detail == "1 Bookshelf for 9 Emerald (sold out)")
@@ -390,7 +390,10 @@ import Testing
     @Test func biomePrefixSearchesBiomeAreasLargestFirst() {
         let hits = WorldSearch.search("biome:pale garden", in: index(), players: []) { _ in .named("") }
         #expect(hits.map(\.count) == [6, 4])
-        #expect(hits.allSatisfy { $0.detail == "Pale Garden" && $0.source == .layer(.biome(BiomeGroup(id: "minecraft:pale_garden"))) })
+        #expect(hits.allSatisfy { hit in
+            guard case .layer(.biome(let group), _) = hit.source else { return false }
+            return hit.detail == "Pale Garden" && group == BiomeGroup(id: "minecraft:pale_garden")
+        })
         #expect(hits.first?.title == "6 chunks")
         // The id works too, the prefix ignores case, and other searches don't list biomes.
         #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in .named("") }.count == 2)

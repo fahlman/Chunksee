@@ -157,8 +157,8 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case container(kind: String)
         case sign
-        /// A marker from a sidebar layer, by its kind.
-        case layer(Layer)
+        /// The current marker can supply details without parsing a hit's display text or ID.
+        case layer(Layer, markerID: String)
         /// A chunk's deposit of a notable block (ore, spawner…).
         case block(NotableBlock)
         case inventory(UUID)
@@ -270,7 +270,7 @@ nonisolated enum WorldSearch {
                 let offer = String(localized: "\(TradeText.describe(trade.sell)) for \(TradeText.cost(of: trade))")
                 return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
             }.joined(separator: "; ")
-            return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group)),
+            return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
                              dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: title, detail: detail, count: matching.count)
         }
@@ -282,7 +282,7 @@ nonisolated enum WorldSearch {
                                                                      y: (Marker) -> Int? = { _ in nil },
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
         entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map { entry in
-            SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value)), dimension: entry.dimension,
+            SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value), markerID: entry.value.id), dimension: entry.dimension,
                       position: entry.value.position, y: y(entry.value), title: entry.value.group.name, detail: entry.value.name,
                       count: count(entry.value))
         }
@@ -372,7 +372,7 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
-            hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group)),
+            hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
                                   dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(creature.y),
                                   title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
         }

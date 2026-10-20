@@ -225,6 +225,144 @@ import Testing
         await session.waitUntilClosed()
     }
 
+    @Test func searchRowsAndPinsReachTheSameCreatureAndPortalDetails() async throws {
+        let url = try selectionWorld(creatures: searchCreatures())
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let index = session.presentation.selectedIndex
+        let pet = try #require(index.creatures.first { $0.group == .pet })
+        let villager = try #require(index.creatures.first { $0.group == .villager })
+        let portal = try #require(index.places.first { $0.portal != nil }?.portal)
+        let map = try #require(session.presentation.inGameMaps.first)
+        let cases: [(String, MapSelection)] = [
+            ("pet:", .creature(pet)), ("Search Pet", .creature(pet)), ("creature:wolf", .creature(pet)),
+            ("villager:", .creature(villager)), ("trade:carrot", .creature(villager)), ("place:portal", .portal(portal)),
+        ]
+        let size = CGSize(width: 800, height: 600)
+        var disclosure = SidebarDisclosure()
+        for (query, expected) in cases {
+            session.search.text = query
+            await session.search.waitForSearch()
+            let hit = try #require(session.search.results.first), position = try #require(hit.position)
+            let row = SidebarItem.hit(query: query, id: hit.id)
+            session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
+            session.selection.show(map, keepingZoom: true)
+            session.selection.choose(row)
+            #expect(session.selection.sidebarSelection == row && session.selection.selectedHitID == hit.id)
+            #expect(session.selection.inspector == .selection && session.selection.mapSelection == expected)
+            #expect(MapContent(session: session).inGameMap == nil)
+            #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
+            #expect(session.map?.depth.y == hit.y)
+
+            // Exercise the drawn pin and accessibility target, with other layers hidden.
+            session.selection.inspector = nil
+            session.visibility.creatures = []
+            session.visibility.places = []
+            let viewport = MapViewport(center: position, scale: 2)
+            session.map?.viewport = viewport
+            let content = MapContent(session: session)
+            let pointer = try #require(content.hit(at: viewport.viewPoint(for: position, in: size), viewport: viewport, size: size))
+            let accessible = try #require(content.accessibleLocations(viewport: viewport, size: size).first { $0.target == .searchHit(hit.id) })
+            #expect(pointer.target == .searchHit(hit.id))
+            for (target, height) in [(Optional(pointer.target), pointer.y), (accessible.target, accessible.y)] {
+                disclosure.selectOnMap(target, y: height, in: session)
+                #expect(session.selection.sidebarSelection == row && session.selection.mapSelection == expected)
+                #expect(session.map?.viewport == viewport)
+                session.selection.inspector = nil
+            }
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func savedSearchDetailsUseLiveCreatureDataAndDisappearAfterRemoval() async throws {
+        let url = try selectionWorld(creatures: searchCreatures())
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        resources.refreshDelay = .zero
+        let session = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "pet:"
+        await session.search.waitForSearch()
+        let hit = try #require(session.search.results.first)
+        session.search.saveSearch()
+        session.search.text = ""
+        await session.search.waitForSearch()
+        let row = SidebarItem.hit(query: "pet:", id: hit.id)
+        session.selection.choose(row)
+        #expect(session.selection.inspector == .selection)
+        session.map?.setDepth(MapDepth(y: 101, isSurface: false))
+        let viewport = session.map?.viewport
+        let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
+        func save(_ creatures: [NBT]) throws {
+            let nbt = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures)])
+            try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: nbt)])).write(to: file)
+        }
+        try save(searchCreatures(health: 6))
+        resources.worldChanged([file])
+        await resources.waitForRefresh()
+        await session.search.waitForIndex()
+        await session.search.waitForSearch()
+        let current = try #require(session.presentation.selectedIndex.creatures.first { $0.group == .pet })
+        #expect(current.creature.health == 6 && session.selection.mapSelection == .creature(current))
+        #expect(session.selection.sidebarSelection == row && session.map?.viewport == viewport && session.map?.depth.cutawayY == 101)
+        try save([])
+        resources.worldChanged([file])
+        await resources.waitForRefresh()
+        await session.search.waitForIndex()
+        await session.search.waitForSearch()
+        #expect(session.selection.sidebarSelection == nil && session.selection.inspector == nil && session.selection.mapSelection == nil)
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func playerItemSearchShowsDetailsWithOrWithoutAMappableLocation() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        for (id, hasPosition) in [(playerID, true), (missingDimensionPlayerID, false)] {
+            let diamond = NBT.compound(["id": .string("minecraft:diamond"), "count": .int(1), "Slot": .byte(0)])
+            var data: [String: NBT] = ["DataVersion": .int(5023), "Inventory": .list([diamond]), "EnderItems": .list([diamond])]
+            if hasPosition {
+                data["Dimension"] = .string("minecraft:overworld")
+                data["Pos"] = .list([.double(-10), .double(64), .double(-20)])
+            }
+            try Data(Compression.deflate(NBT.compound(data).serialized(), gzip: true))
+                .write(to: url.appendingPathComponent("players/data/\(id.uuidString).dat"))
+        }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "diamond"
+        await session.search.waitForSearch()
+        #expect(session.search.results.count == 4)
+        let map = try #require(session.presentation.inGameMaps.first)
+        for hit in session.search.results {
+            let id: UUID
+            switch hit.source {
+            case .inventory(let player), .enderChest(let player): id = player
+            default: Issue.record("Expected a player's inventory or ender chest"); continue
+            }
+            session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
+            session.selection.show(map, keepingZoom: true)
+            let viewport = session.map?.viewport
+            let row = SidebarItem.hit(query: "diamond", id: hit.id)
+            session.selection.choose(row)
+            #expect(session.selection.sidebarSelection == row && session.selection.inspector == .player(id))
+            #expect(MapContent(session: session).selectedPlayerID == id && MapContent(session: session).inGameMap == nil)
+            if let position = hit.position {
+                #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
+            } else {
+                #expect(session.map?.viewport == viewport)
+            }
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
     @Test func mapOverlaySurvivesOtherMarkersAndStaleTargets() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -597,7 +735,22 @@ import Testing
         return url
     }
 
-    private func selectionWorld(petY: Double = 64) throws -> URL {
+    private func searchCreatures(health: Float = 8) -> [NBT] {
+        [
+            .compound(["id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Owner": .intArray([1, 2, 3, 4]),
+                       "Health": .float(health), "CustomName": .string("Search Pet"), "Pos": .list([.double(13), .double(64), .double(13)])]),
+            .compound(["id": .string("minecraft:villager"), "UUID": .intArray([5, 6, 7, 8]), "Health": .float(20),
+                       "Pos": .list([.double(8), .double(48), .double(9)]),
+                       "VillagerData": .compound(["profession": .string("minecraft:farmer"), "level": .int(1)]),
+                       "Offers": .compound(["Recipes": .list([.compound([
+                           "buy": .compound(["id": .string("minecraft:emerald"), "count": .int(1)]),
+                           "sell": .compound(["id": .string("minecraft:carrot"), "count": .int(1)]),
+                           "uses": .int(0), "maxUses": .int(12),
+                       ])])])]),
+        ]
+    }
+
+    private func selectionWorld(petY: Double = 64, creatures: [NBT]? = nil) throws -> URL {
         var chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         var root = chunk.nbt.compound!
         root["structures"] = .compound(["starts": .compound(["minecraft:village_plains": .compound([
@@ -611,7 +764,7 @@ import Testing
         chunk.nbt = .compound(root)
         let url = try TestWorld.make(chunks: [chunk])
         let dimension = url.appendingPathComponent("dimensions/minecraft/overworld")
-        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([.compound([
+        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures ?? [.compound([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10),
             "CustomName": .string("Map Fox"), "Pos": .list([.double(13), .double(petY), .double(13)]),
         ])])])
