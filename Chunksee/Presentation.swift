@@ -32,6 +32,20 @@ nonisolated enum LevelText {
     }
 }
 
+/// Coordinate digits keep the same width in sidebar captions, detail rows and map readouts.
+/// Coordinates within prose keep the paragraph's normal typography.
+struct CoordinateText: View {
+    private let text: Text
+
+    init(_ coordinates: Coordinates, dimension: String? = nil) {
+        text = Text(coordinates, format: Coordinates.Style(dimension: dimension))
+    }
+
+    init(_ text: Text) { self.text = text }
+
+    var body: some View { text.monospacedDigit() }
+}
+
 /// A map position with an optional saved height; formatting never invents a missing Y.
 nonisolated struct Coordinates: Equatable, Sendable {
     let point: CGPoint

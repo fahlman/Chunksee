@@ -98,8 +98,7 @@ struct CreatureDetailView: View {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
             } location: {
                 LabeledContent("Position") {
-                    Text(Coordinates(marker.position, y: marker.creature.y), format: Coordinates.Style())
-                        .monospacedDigit()
+                    CoordinateText(Coordinates(marker.position, y: marker.creature.y))
                 }
                 if let carrier = marker.carrier {
                     LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))

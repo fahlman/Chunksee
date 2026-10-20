@@ -245,7 +245,7 @@ private struct PlayerRow: View {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.presentation.name(of: player))
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    CoordinateText(Text(detail)).font(.caption).foregroundStyle(.secondary)
                 }
             } icon: {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
@@ -396,7 +396,7 @@ private struct HitList: View {
             ForEach(hits.rows) { hit in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(hit.detail).lineLimit(2)
-                    Text(location(hit)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    CoordinateText(Text(location(hit))).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))

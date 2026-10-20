@@ -87,9 +87,8 @@ struct WorldInfoView: View {
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = level.spawnPosition {
                     LabeledContent("World Spawn") {
-                        Text(Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y), format: Coordinates.Style())
+                        CoordinateText(Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y))
                     }
-                    .monospacedDigit()
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {
@@ -142,7 +141,7 @@ struct WorldInfoView: View {
             Section("World Border") {
                 ForEach(session.dimensions, id: \.id) { dimension in
                     LabeledContent {
-                        Text(borderDescription(details.borders[dimension.id]))
+                        CoordinateText(Text(borderDescription(details.borders[dimension.id])))
                     } label: {
                         Text(dimension.id, format: session.presentation.dimensionNameStyle)
                     }

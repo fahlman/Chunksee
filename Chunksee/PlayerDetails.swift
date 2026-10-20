@@ -201,10 +201,9 @@ struct PlayerDetailView: View {
         let location = saved.position
         return Button { session.routing.focus(on: location, blockPosition: saved.isBlockPosition) } label: {
             LabeledContent(saved.title) {
-                Text(Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
-                     format: Coordinates.Style(dimension: session.presentation.dimensionName(location.dimension)))
+                CoordinateText(Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
+                               dimension: session.presentation.dimensionName(location.dimension))
             }
-            .monospacedDigit()
         }
         .disabled(!session.dimensions.contains { $0.id == location.dimension })
     }

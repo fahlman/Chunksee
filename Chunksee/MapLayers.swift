@@ -69,7 +69,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                             ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(row.marker.name)
-                                    Text(Coordinates(row.marker.position), format: Coordinates.Style())
+                                    CoordinateText(Coordinates(row.marker.position))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

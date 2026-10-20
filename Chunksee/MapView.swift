@@ -274,8 +274,7 @@ struct MapView: View {
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 let block = Self.namesBlocks(at: map.viewport.scale) ? map.topBlock(at: hoverBlock) : nil
-                Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock)))
-                    .monospacedDigit()
+                CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
                 if let seed = content.slimeSeed, let description = SlimeChunks.description(at: hoverBlock, seed: seed) {
                     Text(description)
                 }
