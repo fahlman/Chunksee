@@ -9,8 +9,11 @@ nonisolated enum GameDuration {
         return .seconds(seconds)
     }
 
-    static func units(_ duration: Duration, locale: Locale = .current) -> String {
-        duration.formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide).locale(locale))
+    static func units(_ duration: Duration,
+                      allowed: Set<Duration.UnitsFormatStyle.Unit> = [.hours, .minutes, .seconds],
+                      locale: Locale = .current) -> String {
+        duration.formatted(.units(allowed: allowed, width: .wide,
+                                 fractionalPart: .hide(rounded: .down)).locale(locale))
     }
 
     static func elapsed(_ ticks: Int, locale: Locale = .current) -> String? {

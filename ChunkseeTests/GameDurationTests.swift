@@ -44,4 +44,26 @@ import Testing
         #expect(WorldDetails.clockTime(ofDayTicks: 0) == (6, 0))
         #expect(WorldDetails.clockTime(ofDayTicks: 18_000) == (0, 0))
     }
+
+    @Test func traderEstimatesUseWholeMinutesWithNativeUnits() {
+        for ticks in [Int.min, -1, 0, 1, 1199] {
+            #expect(WorldDetails.traderDelayDescription(ticks, locale: english) == "Within a minute of play")
+        }
+        for (ticks, expected) in [(1200, "1 minute"), (2399, "1 minute"), (2400, "2 minutes"),
+                                  (71_999, "59 minutes"), (72_000, "60 minutes"),
+                                  (1_480_800, "1,234 minutes")] {
+            #expect(WorldDetails.traderDelayDescription(ticks, locale: english) == "In about \(expected) of play")
+        }
+        #expect(WorldDetails.traderDelayDescription(1200, locale: Locale(identifier: "ar_EG")) == "In about دقيقة of play")
+    }
+
+    @Test func heatLegendUsesTheSameElapsedUnitsAndLocale() {
+        for (ticks, expected) in [(HeatMap.minimumTicks, "1 minute"), (72_000, "1 hour"),
+                                  (HeatMap.maximumTicks, "1,000 hours")] {
+            #expect(GameDuration.units(GameDuration.fromTicks(ticks), locale: english) == expected)
+            #expect(GameDuration.elapsed(ticks, locale: english) == expected)
+        }
+        #expect(GameDuration.units(GameDuration.fromTicks(72_000), locale: Locale(identifier: "fr_FR")) == "1 heure")
+        #expect(GameDuration.units(GameDuration.fromTicks(72_000), locale: Locale(identifier: "ar_EG")) == "ساعة")
+    }
 }
