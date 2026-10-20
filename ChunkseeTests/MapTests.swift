@@ -87,7 +87,8 @@ import Testing
     @Test func pointsAndAreasStayAlignedAcrossZoomLevels() throws {
         let center = CGPoint(x: -513.25, y: 768.5)
         let block = CGPoint(x: center.x + 128, y: center.y - 64)
-        for scale in [MapViewport.scaleRange.lowerBound, 1.0 / 16, 1.25, 32] {
+        let scales: [CGFloat] = [MapViewport.scaleRange.lowerBound, 1.0 / 16, 1.25, 32]
+        for scale in scales {
             let viewport = MapViewport(center: center, scale: scale)
             let transform = viewport.transform(in: size)
             let expected = CGPoint(x: 400 + 128 * scale, y: 300 - 64 * scale)
