@@ -4,6 +4,7 @@ import AppKit
 /// Keep native document commands and hide only actions that edit a world folder.
 final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
     private(set) var isTerminating = false
+    var prepareForTermination: (() -> Void)?
     private var updateScheduled = false
     private static let editingActions: Set<Selector> = [
         #selector(NSDocument.save(_:)),
@@ -27,8 +28,10 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // ScenePhase does not identify Quit. Ignore transient tab focus as AppKit closes windows;
-        // every document is read-only, so the normal immediate termination remains appropriate.
+        // flush pending viewport saves before replying. Process exit need not deinitialize the
+        // documents or finish the view's debounce task. The worlds themselves are read-only.
         isTerminating = true
+        prepareForTermination?()
         return .terminateNow
     }
 
