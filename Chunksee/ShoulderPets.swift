@@ -9,7 +9,7 @@ nonisolated struct ShoulderPet: Identifiable, Sendable {
     let creature: Creature
     let location: PlayerInfo.Location?
 
-    var name: String { creature.customName ?? ReadableName.from(creature.id) }
+    var name: String { creature.displayName }
 
     init(creature: Creature, carrier: PlayerInfo, index: Int) {
         self.creature = creature
@@ -61,14 +61,12 @@ struct ShoulderPetsSection: View {
             Section("On Shoulders") {
                 ForEach(pets) { pet in
                     DisclosureGroup {
-                        LabeledContent("Kind", value: ReadableName.from(pet.creature.id))
-                        HealthRow(health: pet.creature.health, maximum: pet.creature.maxHealth)
-                        if let owner = pet.creature.owner {
-                            LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
-                            PetDetailRows(creature: pet.creature)
-                        }
-                        if pet.location == nil {
-                            Text("Location unavailable").foregroundStyle(.secondary)
+                        CreatureDetailSections(session: session, creature: pet.creature) {
+                            EmptyView()
+                        } location: {
+                            if pet.location == nil {
+                                Text("Location unavailable").foregroundStyle(.secondary)
+                            }
                         }
                     } label: {
                         Label(pet.name, systemImage: "pawprint.fill")

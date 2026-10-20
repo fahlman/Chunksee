@@ -627,3 +627,8 @@ is used. A carried UUID replaces any stale region copy, and missing/unavailable 
 fall back to the bird's mounting position. The player's On Shoulders section retains its details
 even when it cannot be mapped. These are derived app publications, with no new file reader or
 disk cache; ordinary player and region refreshes replace them.
+
+Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
+markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,
+appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
+their headings and location presentation; a carried pet never displays its old mounting position.

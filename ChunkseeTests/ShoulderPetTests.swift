@@ -138,4 +138,20 @@ import Testing
         let unidentified = PlayerSnapshot([player(pets: [parrot(nil), parrot(nil)])]).shoulderPets
         #expect(unidentified.count == 2 && Set(unidentified.compactMap { $0.marker?.id }).count == 2)
     }
+
+    @Test func shoulderAndLocatedCreatureNamesShareCustomJobAndKindRules() throws {
+        let carrier = player(pets: [])
+        var villager = try VillagerTextTests().creature()
+        let cases = [(try #require(Creature(parrot(bird))), "Gray"),
+                     (villager, "Farmer"),
+                     (Creature(id: "minecraft:parrot", x: 0, y: 64, z: 0, owner: owner), "Parrot")]
+        for (creature, expected) in cases {
+            #expect(ShoulderPet(creature: creature, carrier: carrier, index: 0).name == expected)
+            #expect(CreatureMarker(creature, dimension: overworld)?.name == expected)
+        }
+        villager.customName = "Bob"
+        #expect(ShoulderPet(creature: villager, carrier: carrier, index: 0).name == "Bob")
+        #expect(CreatureMarker(villager, dimension: overworld)?.name == "Bob")
+    }
+
 }
