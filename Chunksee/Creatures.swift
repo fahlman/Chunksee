@@ -95,7 +95,7 @@ struct CreatureDetailView: View {
     var body: some View {
         Form {
             CreatureDetailSections(session: session, creature: marker.creature) {
-                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
+                InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol)
             } location: {
                 LabeledContent("Position") {
                     CoordinateText(Coordinates(marker.position, y: marker.creature.y))
