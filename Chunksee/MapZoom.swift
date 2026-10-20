@@ -19,7 +19,7 @@ enum ZoomPercentage {
     static func scale(from percentage: String, locale: Locale) -> CGFloat? {
         let input = percentage.trimmingCharacters(in: .whitespacesAndNewlines)
         // Parsing a number alone accepts a valid prefix of malformed text, such as "100abc".
-        guard let match = try? input.wholeMatch(of: FloatingPointFormatStyle<Double>.number.locale(locale).grouping(.never)),
+        guard let match = input.wholeMatch(of: FloatingPointFormatStyle<Double>.number.locale(locale).grouping(.never)),
               match.output.isFinite else { return nil }
         let scale = CGFloat(match.output / 100)
         return (MapViewport.minimumManualScale...MapViewport.scaleRange.upperBound).contains(scale) ? scale : nil
@@ -92,10 +92,12 @@ private struct MapZoomPopover: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Zoom").font(.headline)
             HStack {
-                Button("Zoom Out", systemImage: "minus") { zoom(by: 0.5) }
-                    .labelStyle(.iconOnly)
-                    .disabled(!map.viewport.canZoomOut)
-                    .accessibilityIdentifier("zoom-out")
+                Button { zoom(by: 0.5) } label: {
+                    Image(systemName: "minus").frame(width: 16, height: 16)
+                }
+                .accessibilityLabel("Zoom Out")
+                .disabled(!map.viewport.canZoomOut)
+                .accessibilityIdentifier("zoom-out")
                 // Equal travel doubles/halves zoom, keeping both ends of the range usable.
                 Slider(value: Binding {
                     log2(Double(sliderScale))
@@ -109,10 +111,12 @@ private struct MapZoomPopover: View {
                 .labelsHidden()
                 .accessibilityIdentifier("zoom-slider")
                 .accessibilityValue(Text(ZoomPercentage.text(sliderScale)))
-                Button("Zoom In", systemImage: "plus") { zoom(by: 2) }
-                    .labelStyle(.iconOnly)
-                    .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
-                    .accessibilityIdentifier("zoom-in")
+                Button { zoom(by: 2) } label: {
+                    Image(systemName: "plus").frame(width: 16, height: 16)
+                }
+                .accessibilityLabel("Zoom In")
+                .disabled(map.viewport.scale >= MapViewport.scaleRange.upperBound)
+                .accessibilityIdentifier("zoom-in")
             }
 
             HStack {
