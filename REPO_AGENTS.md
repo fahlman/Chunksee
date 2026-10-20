@@ -437,7 +437,9 @@ creature, player, portal, in-game map, World Info and Storage panels. World Info
 share their symbol with the sidebar. The native Form/Table bodies keep their own layouts.
 
 Health, Absorption, Hunger and Experience use SavedStatusRow for aligned digits and saved-value
-help. HungerPresentation owns the game's food maximum and half-drumstick conversion; its gauge
+help. Creature health, including carried pets, appears under Status like player health; unavailable
+health does not create an empty creature Status section. HealthPresentation owns that availability.
+HungerPresentation owns the game's food maximum and half-drumstick conversion; its gauge
 and CountedText label consume that same value and maximum, preserving the saved value in text.
 CountedText applies native grammar agreement to the maximum, like the hearts label.
 
