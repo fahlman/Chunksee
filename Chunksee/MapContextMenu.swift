@@ -87,14 +87,36 @@ struct LocationMenu: View {
 }
 
 extension View {
-    /// Form rows need an explicit hit area so their value opens the same menu as their label.
     func locationMenu(session: WorldSession, position: CGPoint?, dimension: String?, y: Double?) -> some View {
-        contentShape(Rectangle())
-            .contextMenu {
-                if let position, let dimension {
-                    LocationMenu(session: session, position: position, dimension: dimension, y: y)
-                }
+        contextMenu {
+            if let position, let dimension {
+                LocationMenu(session: session, position: position, dimension: dimension, y: y)
             }
+        }
+    }
+}
+
+/// A native Form lays out a LabeledContent's label and value separately; each needs its menu.
+struct LocationRow: View {
+    let title: Text
+    let session: WorldSession
+    let coordinates: Coordinates
+    let dimension: String?
+    var showsDimension = false
+
+    var body: some View {
+        LabeledContent {
+            CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)
+                .contextMenu { commands }
+        } label: {
+            title.contextMenu { commands }
+        }
+    }
+
+    @ViewBuilder private var commands: some View {
+        if let dimension {
+            LocationMenu(session: session, position: coordinates.point, dimension: dimension, y: coordinates.y)
+        }
     }
 }
 

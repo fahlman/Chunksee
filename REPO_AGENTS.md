@@ -607,13 +607,14 @@ uses the same trimmed-query rule in the sidebar and Navigate menu.
 
 LocationMenu supplies the same Copy Coordinates, Save Place and Measure Distance commands for
 map markers, generic layer/player/search/map rows, linked pets and inspector positions. Each caller
-supplies the saved position, dimension and optional height. The shared locationMenu modifier
-gives inspector rows one context-menu hit area spanning their label and coordinate value.
+supplies the saved position, dimension and optional height. LocationRow keeps native LabeledContent
+layout and attaches the same commands directly to both its label and coordinate value.
 CopyCoordinatesCommand uses the
 session's map only when its dimension matches; a saved height can be copied without a map, while
 unknown heights in other dimensions disable Copy rather than read unrelated terrain. Saved-place
 menus share that copy command. Measurement remains scoped to the current dimension through
-MapAnnotations; the menus do not change selection, viewport or jump policy.
+MapAnnotations. Opening a menu or copying/saving a location does not navigate; existing ruler
+and jump behavior is unchanged.
 
 MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
 measurement without reviving a draft. It refers weakly to the document for existing navigation,

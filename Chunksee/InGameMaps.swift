@@ -70,11 +70,8 @@ struct InGameMapDetailView: View {
                 LabeledContent("Area") {
                     Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
                 }
-                LabeledContent("Center") {
-                    CoordinateText(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)))
-                }
-                .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
-                              dimension: map.dimension, y: nil)
+                LocationRow(title: Text("Center"), session: session,
+                            coordinates: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), dimension: map.dimension)
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)

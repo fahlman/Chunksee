@@ -210,11 +210,9 @@ struct PortalDetailView: View {
         let trip = session.presentation.roundTrip(for: portal)
         Form {
             Section {
-                LabeledContent("Position") {
-                    CoordinateText(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
-                }
-                .locationMenu(session: session, position: CGPoint(x: portal.centerX, y: portal.centerZ),
-                              dimension: portal.dimension, y: Double(portal.minY))
+                LocationRow(title: Text("Position"), session: session,
+                            coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
+                            dimension: portal.dimension)
             } header: {
                 Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }

@@ -97,11 +97,8 @@ struct CreatureDetailView: View {
             CreatureDetailSections(session: session, creature: marker.creature) {
                 Label(marker.name, systemImage: marker.group.symbol).font(.headline)
             } location: {
-                LabeledContent("Position") {
-                    CoordinateText(Coordinates(marker.position, y: marker.creature.y))
-                }
-                .locationMenu(session: session, position: marker.position, dimension: marker.dimension,
-                              y: marker.creature.y)
+                LocationRow(title: Text("Position"), session: session,
+                            coordinates: Coordinates(marker.position, y: marker.creature.y), dimension: marker.dimension)
                 if let carrier = marker.carrier {
                     LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }
