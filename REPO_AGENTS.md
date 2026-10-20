@@ -381,7 +381,8 @@ Badges retain their overview diameter until a block is larger, then grow with it
 Symbols, caption offsets and portal decorations follow the body; picking adds the same six-point
 tolerance beyond it. Labels, structure outlines and portal status decorations do not
 enlarge the body target. Selected pets/search pins use their larger radius; nearby hit candidates
-cover that reach. Player drawing, picking and VoiceOver visibility/centering share an anchor:
+cover that reach. Point picking also respects the drawing margin, so its larger tolerance cannot
+select a badge culled from the scene. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
 retain the saved coordinates. Structure and biome outlines keep their world bounds. Canvas
 accessibility children use the same badge-body frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.

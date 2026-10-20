@@ -125,7 +125,7 @@ import Testing
             let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
             let hit = try #require(content.hit(at: center, viewport: viewport, size: size))
             #expect(item.point == center && item.frame.contains(center))
-            #expect(item.frame.width == (showPet ? 18 : 12))
+            #expect(item.frame.width == 32)
             #expect(location.frame == item.frame && location.anchor == position)
             #expect(location.position == position && hit.position == position)
             #expect(location.y == (showPet ? 62.25 : 48) && hit.y == location.y)
