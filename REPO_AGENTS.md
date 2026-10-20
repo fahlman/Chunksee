@@ -308,8 +308,10 @@ MapContent resolves the pointer once for selection, ruler clicks and context com
 Place and Measure use the same marker location, or the checked containing block when no marker is hit.
 Pointer and accessibility activation share the measuring-versus-selecting action; a measurement never
 moves the viewport or changes selection. Outside measuring mode, accessibility retains its centering action.
-A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
-available on the map. NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
+A saved-place pin and sidebar row share one SwiftUI menu for Rename, Copy, Measure and Remove.
+Saved places and other map locations use one measurement command. MapAnnotations.canMeasure owns
+its availability and the action's guard: an open document with that dimension's map.
+NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
 selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu
 does not supply that point. Held menus disable/guard commands when their document closes.
 
