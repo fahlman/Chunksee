@@ -449,7 +449,9 @@ names; both share level numeral presentation. Saved effect durations use native 
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
 `GameDuration` owns saved tick conversion and localized elapsed units. World Age and Time Played
 show completed seconds/minutes/hours rather than dropping every duration below an hour; effects
-keep rounding partial seconds up. The world's day-cycle clock remains a separate concept.
+keep rounding partial seconds up. Time Spent legend labels use those same native units. The
+trader estimate keeps its within-a-minute threshold and completed-minute approximation, using
+the same formatter restricted to minutes. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
 Empty or unavailable optional sections/values stay absent.
 

@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "In about %@ of play" : {
+      "comment" : "Approximate saved delay until the next wandering-trader spawn attempt. The placeholder is a fully localized duration in whole minutes, including its unit, such as 1 minute or 60 minutes."
+    },
+    "Within a minute of play" : {
+      "comment" : "The saved wandering-trader delay is less than one minute; this is a chance to spawn, not a guarantee."
+    },
     "Unopened Loot" : {
       "comment" : "Group and fallback name for a container whose loot has not been generated yet."
     },

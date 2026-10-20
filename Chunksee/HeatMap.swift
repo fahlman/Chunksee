@@ -120,6 +120,7 @@ final class HeatMapLayer {
 /// The heat map's color scale.
 struct HeatMapLegend: View {
     var isLoading: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -133,9 +134,9 @@ struct HeatMapLegend: View {
                 .clipShape(Capsule())
             // Labels sit where their times fall on the logarithmic scale.
             ZStack {
-                label("1 min", ticks: HeatMap.minimumTicks, anchor: 0)
-                label("1 hour", ticks: 72_000, anchor: 0.5)
-                label("1,000 hours", ticks: HeatMap.maximumTicks, anchor: 1)
+                label(ticks: HeatMap.minimumTicks, anchor: 0)
+                label(ticks: 72_000, anchor: 0.5)
+                label(ticks: HeatMap.maximumTicks, anchor: 1)
             }
             .font(.caption)
             .frame(width: 200, height: 14)
@@ -149,8 +150,8 @@ struct HeatMapLegend: View {
     }
 
     /// A label at a time's place on the 200-point bar; `anchor` 0 puts its leading edge there.
-    private func label(_ text: LocalizedStringKey, ticks: Int, anchor: CGFloat) -> some View {
-        Text(text)
+    private func label(ticks: Int, anchor: CGFloat) -> some View {
+        Text(GameDuration.units(GameDuration.fromTicks(ticks), locale: locale))
             .fixedSize()
             .alignmentGuide(HorizontalAlignment.center) { $0.width * anchor }
             .frame(width: 200, alignment: .center)
