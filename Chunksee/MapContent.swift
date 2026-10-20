@@ -101,20 +101,6 @@ struct MapContent {
             add("structure-" + marker.id, marker.name, marker.position, y: marker.y.map(Double.init),
                 frame: frame(.structure, at: marker.position), target: .row(.structure(marker.id)))
         }
-        for marker in nearbyPlaces(viewport: viewport, size: size) {
-            add("place-" + marker.id, marker.name, marker.position, y: Double(marker.y),
-                frame: frame(.place(isPortal: marker.group == .portal), at: marker.position), target: .row(.place(marker.id)))
-        }
-        for marker in nearbyCreatures(viewport: viewport, size: size) {
-            add("creature-" + marker.id, marker.name, marker.position, y: marker.creature.y,
-                frame: frame(.creature(selected: selection == .creature(marker)), at: marker.position), target: .row(.creature(marker.id)))
-        }
-        for area in biomeAreas {
-            add("biome-" + area.id, area.group.name, area.position,
-                frame: CGRect(origin: viewport.viewPoint(for: area.bounds.origin, in: size),
-                              size: CGSize(width: area.bounds.width * viewport.scale, height: area.bounds.height * viewport.scale)),
-                target: .row(.biome(area.id)))
-        }
         locations.append(contentsOf: scene(viewport: viewport, size: size).accessibleLocations)
         return locations
     }
@@ -137,20 +123,7 @@ struct MapContent {
             }
             return best
         }
-        if let hit = scene(viewport: viewport, size: size).hit(at: point) { return hit }
-        let reach = max(MarkerGeometry.place(isPortal: true).hitRadius, MarkerGeometry.creature(selected: true).hitRadius)
-        let bounds = CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
-        let places = nearbyPlaces(viewport: viewport, size: size, bounds: bounds)
-        if let portal = nearest(places.lazy.filter { $0.portal != nil }, within: { _ in MarkerGeometry.place(isPortal: true).hitRadius }, position: \.position) {
-            return MapHit(target: .row(.place(portal.id)), position: portal.position, y: Double(portal.y))
-        }
-        if let creature = nearest(nearbyCreatures(viewport: viewport, size: size, bounds: bounds),
-                                  within: { MarkerGeometry.creature(selected: selection == .creature($0)).hitRadius }, position: \.position) {
-            return MapHit(target: .row(.creature(creature.id)), position: creature.position, y: creature.creature.y)
-        }
-        if let place = nearest(places, within: { MarkerGeometry.place(isPortal: $0.group == .portal).hitRadius }, position: \.position) {
-            return MapHit(target: .row(.place(place.id)), position: place.position, y: Double(place.y))
-        }
+        if let hit = scene(viewport: viewport, size: size, pickingAt: point).hit(at: point) { return hit }
         if let structure = nearest(structures, within: { _ in MarkerGeometry.structure.hitRadius }, position: \.position) {
             return MapHit(target: .row(.structure(structure.id)), position: structure.position, y: structure.y.map(Double.init))
         }

@@ -1,15 +1,45 @@
+import ChunkseeKit
 import SwiftUI
 
-/// Viewport-local search, player and saved-place markers shared by drawing, picking and accessibility.
+/// Point markers shared by drawing, picking and accessibility. Region buckets limit candidates
+/// to the viewport for drawing, or to the pointer's reach for picking.
 struct MapScene {
+    // Picking priority is independent of array/drawing order: a portal wins over a creature
+    // standing in it, even though creature bodies are drawn later.
     enum Layer: Int {
-        case search, player, savedPlace
+        case place, creature, portal, search, player, savedPlace
+    }
+
+    /// Keep names lazy: most places/creatures have no visible caption at overview zoom, and
+    /// picking never needs their formatted names or prefixed accessibility IDs.
+    enum Label {
+        case place(PlaceMarker), creature(CreatureMarker)
+        case pin(id: String, name: String, detail: String? = nil)
+
+        var id: String {
+            switch self {
+            case .place(let marker): "place-" + marker.id
+            case .creature(let marker): "creature-" + marker.id
+            case .pin(let id, _, _): id
+            }
+        }
+
+        var name: String {
+            switch self {
+            case .place(let marker): marker.name
+            case .creature(let marker): marker.name
+            case .pin(_, let name, _): name
+            }
+        }
+
+        var accessibleName: String {
+            if case .pin(_, let name, let detail?) = self { return name + ", " + detail }
+            return name
+        }
     }
 
     struct Item {
-        let id: String
-        let name: String
-        var detail: String? = nil
+        let label: Label
         let layer: Layer
         let target: MapTarget
         /// Saved coordinates remain separate from the block-centered drawing anchor.
@@ -19,34 +49,89 @@ struct MapScene {
         let point: CGPoint
         let style: MarkerStyle
         let labelPriority: MarkerLabelLayout.Priority
+        var selectedPortal = false
 
+        var id: String { label.id }
         var frame: CGRect { style.geometry.frame(at: point) }
 
         var accessibleLocation: AccessibleMapLocation {
-            AccessibleMapLocation(id: id, name: detail.map { name + ", " + $0 } ?? name, position: position, y: y,
+            AccessibleMapLocation(id: id, name: label.accessibleName, position: position, y: y,
                                   target: target, anchor: anchor, frame: frame)
         }
 
         func draw(in context: GraphicsContext, scale: CGFloat,
+                  portalStatus: (NetherPortal) -> PortalLinkStatus?,
                   symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
             style.drawBody(at: point, in: context, symbol: symbol)
-            return style.label(name, id: id, priority: labelPriority, at: point, scale: scale, in: context)
+            if case .place(let marker) = label, let portal = marker.portal {
+                drawPortalState(status: portalStatus(portal), in: context)
+            }
+            return style.label(label.name, id: id, priority: labelPriority, at: point, scale: scale, in: context)
+        }
+
+        /// Decorations don't enlarge the shared body or its pointer/accessibility target.
+        private func drawPortalState(status: PortalLinkStatus?, in context: GraphicsContext) {
+            if selectedPortal {
+                let ring = Path(ellipseIn: CGRect(x: point.x - 13, y: point.y - 13, width: 26, height: 26))
+                context.stroke(ring, with: .color(.white), lineWidth: 3)
+                context.stroke(ring, with: .color(.accentColor), lineWidth: 1.5)
+            }
+            guard let status, status != .linked else { return }
+            let badge = CGRect(x: point.x + 4, y: point.y - 12, width: 10, height: 10)
+            context.fill(Path(ellipseIn: badge), with: .color(status == .noPartner ? .red : .orange))
+            var mark = context.resolve(Text("!").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white))
+            mark.shading = .color(.white)
+            context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
         }
     }
 
     let items: [Item]
     private let accessibilityBounds: CGRect
+    private let firstPinIndex: Int
+    private let biomeAreas: [BiomeArea]
+    private let viewport: MapViewport
+    private let size: CGSize
 
-    init(content: MapContent, viewport: MapViewport, size: CGSize) {
+    init(content: MapContent, viewport: MapViewport, size: CGSize, pickingAt pointer: CGPoint? = nil) {
+        self.viewport = viewport
+        self.size = size
+        biomeAreas = content.biomeAreas
         let bounds = CGRect(origin: .zero, size: size)
         accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
+        let candidateBounds = pointer.map { point in
+            let reach = max(MarkerGeometry.place(isPortal: true).hitRadius, MarkerGeometry.creature(selected: true).hitRadius)
+            return CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
+        }
         var items: [Item] = []
+        for marker in content.nearbyPlaces(viewport: viewport, size: size, bounds: candidateBounds) {
+            let point = viewport.viewPoint(for: marker.position, in: size)
+            // Picking applies each body's exact radius below, including the boundary. Drawing
+            // clips the broad bucket candidates before preparing styles or names.
+            guard pointer != nil || accessibilityBounds.contains(point) else { continue }
+            items.append(Item(label: .place(marker), layer: marker.portal == nil ? .place : .portal,
+                target: .row(.place(marker.id)), position: marker.position, y: Double(marker.y),
+                anchor: marker.position, point: point, style: .place(marker.group, claimed: marker.isClaimed),
+                labelPriority: content.selectedItem == .place(marker.id) ? .selected : .other,
+                selectedPortal: marker.portal.map { content.selection == .portal($0) } ?? false))
+        }
+        for marker in content.nearbyCreatures(viewport: viewport, size: size, bounds: candidateBounds) {
+            let point = viewport.viewPoint(for: marker.position, in: size)
+            guard pointer != nil || accessibilityBounds.contains(point) else { continue }
+            let selected = content.selection == .creature(marker)
+            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(marker.id) ? .selected
+                : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
+            items.append(Item(label: .creature(marker), layer: .creature,
+                target: .row(.creature(marker.id)), position: marker.position, y: marker.creature.y,
+                anchor: marker.position, point: point, style: .creature(marker.group, selected: selected),
+                labelPriority: priority))
+        }
+        firstPinIndex = items.count
         for hit in content.hits {
             guard let position = hit.position else { continue }
             let point = viewport.viewPoint(for: position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
             let selected = hit.id == content.selectedHitID
-            items.append(Item(id: "search-" + hit.id, name: hit.title, detail: hit.detail, layer: .search,
+            items.append(Item(label: .pin(id: "search-" + hit.id, name: hit.title, detail: hit.detail), layer: .search,
                 target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
                 anchor: position, point: point, style: .search(selected: selected),
                 labelPriority: selected ? .selected : .other))
@@ -58,7 +143,7 @@ struct MapScene {
             let point = viewport.viewPoint(for: marker.anchor, in: size)
             guard playerBounds.contains(point) else { continue }
             let selected = marker.playerID == content.selectedPlayerID
-            items.append(Item(id: "player-" + marker.id, name: marker.label, layer: .player,
+            items.append(Item(label: .pin(id: "player-" + marker.id, name: marker.label), layer: .player,
                 target: .row(.player(marker.playerID)), position: marker.position, y: marker.y,
                 anchor: marker.anchor, point: point,
                 style: .player(marker.kind, outdated: marker.isOutdated, selected: marker.kind == .player && selected),
@@ -67,7 +152,7 @@ struct MapScene {
         for place in content.savedPlaces {
             let point = viewport.viewPoint(for: place.mapPosition, in: size)
             guard accessibilityBounds.contains(point) else { continue }
-            items.append(Item(id: "saved-" + place.id.uuidString, name: place.name, layer: .savedPlace,
+            items.append(Item(label: .pin(id: "saved-" + place.id.uuidString, name: place.name), layer: .savedPlace,
                 target: .row(.savedPlace(place.id)), position: place.position, y: nil,
                 anchor: place.mapPosition, point: point, style: .savedPlace,
                 labelPriority: content.selectedItem == .savedPlace(place.id) ? .selected : .other))
@@ -76,7 +161,19 @@ struct MapScene {
     }
 
     var accessibleLocations: [AccessibleMapLocation] {
-        items.filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
+        // Preserve traversal order: Places, creatures, biome areas, then the three pin layers.
+        // Biome outlines remain drawn separately; they have no invisible pointer badge.
+        var locations = items[..<firstPinIndex].map(\.accessibleLocation)
+        for area in biomeAreas {
+            let point = viewport.viewPoint(for: area.position, in: size)
+            guard accessibilityBounds.contains(point) else { continue }
+            locations.append(AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
+                position: area.position, y: nil, target: .row(.biome(area.id)),
+                frame: CGRect(origin: viewport.viewPoint(for: area.bounds.origin, in: size),
+                              size: CGSize(width: area.bounds.width * viewport.scale, height: area.bounds.height * viewport.scale))))
+        }
+        locations += items[firstPinIndex...].filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
+        return locations
     }
 
     /// Higher layers win; within a layer choose the closest badge, then the later drawn item.
@@ -98,7 +195,7 @@ struct MapScene {
 }
 
 extension MapContent {
-    func scene(viewport: MapViewport, size: CGSize) -> MapScene {
-        MapScene(content: self, viewport: viewport, size: size)
+    func scene(viewport: MapViewport, size: CGSize, pickingAt point: CGPoint? = nil) -> MapScene {
+        MapScene(content: self, viewport: viewport, size: size, pickingAt: point)
     }
 }

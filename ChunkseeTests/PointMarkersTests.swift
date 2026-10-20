@@ -46,12 +46,15 @@ import Testing
                     }
                     let locations = content.accessibleLocations(viewport: viewport, size: size)
                     #expect(locations.map(\.id) == expectedPlaces.map { "place-" + $0.id } + expectedCreatures.map { "creature-" + $0.id })
+                    #expect(content.scene(viewport: viewport, size: size).items.map(\.id) == locations.map(\.id))
                     #expect(locations.map(\.name) == expectedPlaces.map(\.name) + expectedCreatures.map(\.name))
                     #expect(locations.map(\.position) == expectedPlaces.map(\.position) + expectedCreatures.map(\.position))
                     #expect(locations.map(\.target) == expectedPlaces.map { MapTarget.row(.place($0.id)) } + expectedCreatures.map { MapTarget.row(.creature($0.id)) })
                     if scale == 2 && shown.contains(.spawner) {
                         let candidates = content.nearbyPlaces(viewport: viewport, size: size)
                         #expect(candidates.count < 20)
+                        let pointer = CGPoint(x: size.width / 2, y: size.height / 2)
+                        #expect(content.scene(viewport: viewport, size: size, pickingAt: pointer).items.count < 20)
                         print("Point marker candidates: \(candidates.count) / \(places.count), center \(center), scale \(scale)")
                     }
                 }
