@@ -277,6 +277,58 @@ import Testing
         session.close(); await session.waitUntilClosed()
     }
 
+    @Test func choosingAHiddenSavedSearchResultRevealsItsPins() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let query = "place:spawner"
+        session.search.text = query
+        await session.search.waitForSearch()
+        let hit = try #require(session.search.results.first), position = try #require(hit.position)
+        let row = SidebarItem.hit(query: query, id: hit.id)
+        session.selection.choose(row)
+        #expect(session.savedSearches.all.isEmpty) // Active-only searches are never saved by selection.
+        session.search.saveSearch()
+        session.savedSearches.add("creature:fox")
+        let saved = try #require(session.savedSearches.all.first { $0.query == query })
+        let other = try #require(session.savedSearches.all.first { $0.query != query })
+        session.savedSearches.setShown(saved.id, false)
+        session.savedSearches.setShown(other.id, false)
+        session.search.text = ""
+        await session.search.waitForSearch()
+        #expect(MapContent(session: session).hits.isEmpty)
+        session.selection.choose(.hit(query: query, id: "missing"))
+        #expect(session.savedSearches.all.allSatisfy { !$0.isShown })
+
+        session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
+        session.map?.setDepth(MapDepth(y: 99, isSurface: false))
+        session.selection.choose(row)
+        #expect(session.selection.sidebarSelection == row && session.selection.selectedHitID == hit.id)
+        #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
+        #expect(session.map?.depth.cutawayY == 12)
+        #expect(session.savedSearches.all.first { $0.id == saved.id }?.isShown == true)
+        #expect(session.savedSearches.all.first { $0.id == other.id }?.isShown == false)
+        #expect(SavedSearches(defaults: defaults).all == session.savedSearches.all)
+        let content = MapContent(session: session)
+        #expect(content.hits.map(\.id) == [hit.id] && content.selectedHitID == hit.id)
+        let viewport = try #require(session.map?.viewport), size = CGSize(width: 800, height: 600)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).contains { $0.target == .searchHit(hit.id) })
+
+        session.savedSearches.remove(saved.id)
+        session.selection.choose(row)
+        #expect(!session.savedSearches.contains(query) && session.selection.sidebarSelection == nil)
+        session.savedSearches.add(query)
+        let replacement = try #require(session.savedSearches.all.first { $0.query == query })
+        session.savedSearches.setShown(replacement.id, false)
+        await session.search.waitForSearch()
+        session.close(); await session.waitUntilClosed()
+        session.selection.choose(row)
+        #expect(session.savedSearches.all.allSatisfy { !$0.isShown })
+    }
+
     @Test func savedSearchDetailsUseLiveCreatureDataAndDisappearAfterRemoval() async throws {
         let url = try selectionWorld(creatures: searchCreatures())
         defer { try? FileManager.default.removeItem(at: url) }

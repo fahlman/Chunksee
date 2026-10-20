@@ -556,6 +556,7 @@ disclosure use one action shared with the behavioral tests. Search pins
 select an existing result row (the active query first, then a shown saved query). SearchModel owns
 the 200-row limit and deduplicated pins for the sidebar, map and click resolver, using the document’s
 common dimension-listing predicate. Views and commands save queries through that same model.
+Choosing a saved-query result reveals that query through SavedSearches, like choosing a hidden layer row.
 Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
 

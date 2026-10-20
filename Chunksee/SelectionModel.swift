@@ -162,6 +162,10 @@ final class SelectionModel {
                       height: BlockPosition.coordinate(containing: location.y), in: location.dimension)
             }
         case .hit(let hit):
+            if case .hit(let query, _) = item,
+               let saved = source.savedSearches.all.first(where: { $0.query == query && !$0.isShown }) {
+                source.savedSearches.setShown(saved.id, true)
+            }
             if let dimension = hit.dimension, let position = hit.position {
                 focus(on: position, height: hit.y, in: dimension)
             }
