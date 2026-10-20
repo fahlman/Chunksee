@@ -52,12 +52,8 @@ struct InGameMapRow: View {
         .selectionDisabled(!session.presentation.canShow(map))
         .help(session.presentation.canShow(map) ? "Show this map where it belongs on the world map"
                                    : "This map was drawn in a dimension this world no longer has")
-        .contextMenu {
-            if let dimension = map.dimension {
-                LocationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
-                             dimension: dimension, y: nil)
-            }
-        }
+        .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
+                      dimension: map.dimension, y: nil)
     }
 }
 
@@ -77,12 +73,8 @@ struct InGameMapDetailView: View {
                 LabeledContent("Center") {
                     CoordinateText(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)))
                 }
-                .contextMenu {
-                    if let dimension = map.dimension {
-                        LocationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
-                                     dimension: dimension, y: nil)
-                    }
-                }
+                .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
+                              dimension: map.dimension, y: nil)
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)

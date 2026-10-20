@@ -86,6 +86,18 @@ struct LocationMenu: View {
     }
 }
 
+extension View {
+    /// Form rows need an explicit hit area so their value opens the same menu as their label.
+    func locationMenu(session: WorldSession, position: CGPoint?, dimension: String?, y: Double?) -> some View {
+        contentShape(Rectangle())
+            .contextMenu {
+                if let position, let dimension {
+                    LocationMenu(session: session, position: position, dimension: dimension, y: y)
+                }
+            }
+    }
+}
+
 /// Resolve the pointer once through the same hit test as selection, before the menu opens.
 struct MapContextMenuContent: View {
     private let session: WorldSession

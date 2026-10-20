@@ -213,10 +213,8 @@ struct PortalDetailView: View {
                 LabeledContent("Position") {
                     CoordinateText(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
                 }
-                .contextMenu {
-                    LocationMenu(session: session, position: CGPoint(x: portal.centerX, y: portal.centerZ),
-                                 dimension: portal.dimension, y: Double(portal.minY))
-                }
+                .locationMenu(session: session, position: CGPoint(x: portal.centerX, y: portal.centerZ),
+                              dimension: portal.dimension, y: Double(portal.minY))
             } header: {
                 Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }
@@ -237,10 +235,8 @@ struct PortalDetailView: View {
                         }
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
-                        .contextMenu {
-                            LocationMenu(session: session, position: CGPoint(x: target.centerX, y: target.centerZ),
-                                         dimension: target.dimension, y: Double(target.minY))
-                        }
+                        .locationMenu(session: session, position: CGPoint(x: target.centerX, y: target.centerZ),
+                                      dimension: target.dimension, y: Double(target.minY))
                 case .wouldCreateNewPortal(let destination)?:
                     Label("No portal in \(NetherPortal.targetDimension(from: portal.dimension) ?? "", format: session.presentation.dimensionNameStyle) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")

@@ -607,7 +607,9 @@ uses the same trimmed-query rule in the sidebar and Navigate menu.
 
 LocationMenu supplies the same Copy Coordinates, Save Place and Measure Distance commands for
 map markers, generic layer/player/search/map rows, linked pets and inspector positions. Each caller
-supplies the saved position, dimension and optional height. CopyCoordinatesCommand uses the
+supplies the saved position, dimension and optional height. The shared locationMenu modifier
+gives inspector rows one context-menu hit area spanning their label and coordinate value.
+CopyCoordinatesCommand uses the
 session's map only when its dimension matches; a saved height can be copied without a map, while
 unknown heights in other dimensions disable Copy rather than read unrelated terrain. Saved-place
 menus share that copy command. Measurement remains scoped to the current dimension through

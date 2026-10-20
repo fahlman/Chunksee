@@ -404,12 +404,8 @@ private struct HitList: View {
                 .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
-                .contextMenu {
-                    if let position = hit.position, let dimension = hit.dimension {
-                        LocationMenu(session: session, position: position, dimension: dimension,
-                                     y: hit.y.map(Double.init))
-                    }
-                }
+                .locationMenu(session: session, position: hit.position, dimension: hit.dimension,
+                              y: hit.y.map(Double.init))
             }
             if hits.total > hits.rows.count {
                 Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)

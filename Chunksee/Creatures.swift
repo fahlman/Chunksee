@@ -100,10 +100,8 @@ struct CreatureDetailView: View {
                 LabeledContent("Position") {
                     CoordinateText(Coordinates(marker.position, y: marker.creature.y))
                 }
-                .contextMenu {
-                    LocationMenu(session: session, position: marker.position, dimension: marker.dimension,
-                                 y: marker.creature.y)
-                }
+                .locationMenu(session: session, position: marker.position, dimension: marker.dimension,
+                              y: marker.creature.y)
                 if let carrier = marker.carrier {
                     LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }
