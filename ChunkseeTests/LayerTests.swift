@@ -158,6 +158,22 @@ enum StructureTestWorld {
         #expect(PortalLinkStatus.status(of: a, portals: ["minecraft:overworld": [a]]) == nil)  // Nether not loaded yet
     }
 
+    @Test func returnWouldCreateIsKnownOneWayRatherThanUnknown() throws {
+        let source = NetherPortal(dimension: NetherPortal.overworld, blocks: [.init(x: 7, y: 64, z: 0)])
+        let target = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: -16, y: 64, z: 0)])
+        let portals = [NetherPortal.overworld: [source], NetherPortal.nether: [target]]
+        #expect(PortalLinkStatus.status(of: source, portals: portals) == .oneWay)
+        let trip = try #require(PortalLinkStatus.roundTrip(of: source, portals: portals))
+        guard case .oneWay(let found, _, .wouldCreateNewPortal(let destination)) = trip else {
+            Issue.record("The inspector needs the known return-creates prediction")
+            return
+        }
+        #expect(found == target)
+        #expect(destination == .init(x: -128, y: 64, z: 0))
+        #expect(PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.overworld: [source]]) == nil)
+        #expect(PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.nether: [target]]) == nil)
+    }
+
     @Test func scannerReadsPoiFiles() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }

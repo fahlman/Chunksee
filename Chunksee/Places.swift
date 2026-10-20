@@ -179,25 +179,24 @@ nonisolated enum PlaceScanner {
 nonisolated enum PortalLinkStatus: Equatable, Sendable {
     /// Leads to a portal that leads back here.
     case linked
-    /// Leads to a portal that leads back to a different one.
+    /// Leads to a portal whose return goes elsewhere or would create a new portal.
     case oneWay
     /// No portal in range on the other side; the game would build a new one.
     case noPartner
 
-    /// A portal's status given every portal by dimension, or `nil` while the other side is unknown.
+    /// Unknown dimension scans stay distinct from known-empty lists.
+    static func roundTrip(of portal: NetherPortal, portals: [String: [NetherPortal]]) -> NetherPortal.RoundTrip? {
+        guard let target = NetherPortal.targetDimension(from: portal.dimension),
+              let candidates = portals[target], let origins = portals[portal.dimension] else { return nil }
+        return portal.roundTrip(into: candidates, returningThrough: origins)
+    }
+
     static func status(of portal: NetherPortal, portals: [String: [NetherPortal]]) -> PortalLinkStatus? {
-        func link(_ p: NetherPortal) -> NetherPortal.Link? {
-            guard let target = NetherPortal.targetDimension(from: p.dimension), let candidates = portals[target] else { return nil }
-            return p.link(into: candidates)
-        }
-        switch link(portal) {
-        case .portal(let target, _)?:
-            guard case .portal(let back, _)? = link(target) else { return nil }
-            return back == portal ? .linked : .oneWay
-        case .wouldCreateNewPortal?:
-            return .noPartner
-        case nil:
-            return nil
+        switch roundTrip(of: portal, portals: portals) {
+        case .twoWay?: .linked
+        case .oneWay?: .oneWay
+        case .wouldCreateNewPortal?: .noPartner
+        case nil: nil
         }
     }
 }
@@ -208,7 +207,7 @@ struct PortalDetailView: View {
     let portal: NetherPortal
 
     var body: some View {
-        let link = session.presentation.link(for: portal)
+        let trip = session.presentation.roundTrip(for: portal)
         Form {
             Section {
                 LabeledContent("Position") {
@@ -219,13 +218,20 @@ struct PortalDetailView: View {
                 Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             }
             Section {
-                switch link {
-                case .portal(let target, _)?:
+                switch trip {
+                case .twoWay(let target, _)?, .oneWay(let target, _, _)?:
                     Text("Leads to the portal in \(session.presentation.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
-                    if session.presentation.linkStatus(for: portal) == .oneWay, case .portal(let back, _)? = session.presentation.link(for: target) {
-                        Label("One-way: that portal leads back to a different one, at \(Coordinates.text(x: back.centerX, z: back.centerZ)).",
-                              systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                    if case .oneWay(_, _, let returning)? = trip {
+                        switch returning {
+                        case .portal(let back, _):
+                            Label("One-way: that portal leads back to a different one, at \(Coordinates.text(x: back.centerX, z: back.centerZ)).",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        case .wouldCreateNewPortal(let destination):
+                            Label("One-way: returning through that portal would build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
                 case .wouldCreateNewPortal(let destination)?:
@@ -243,7 +249,7 @@ struct PortalDetailView: View {
             } header: {
                 Text("Link")
             } footer: {
-                if link != nil {
+                if trip != nil {
                     Text("Predicted with Minecraft’s linking rule from the portal’s bottom center.")
                 }
             }
