@@ -111,6 +111,11 @@ final class WorldResources {
         }
     }
 
+    func relocateSettings(to world: URL) {
+        settings.relocate(to: world)
+        savedPlaces.reload()
+    }
+
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
     /// The snapshot's own access remains the caller's; this world keeps its original root access.
     func includeDimensions(from snapshot: WorldSnapshot) {
@@ -144,11 +149,6 @@ final class WorldResources {
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
-    }
-
-    func relocateSettings(to world: URL) {
-        settings.relocate(to: world)
-        savedPlaces.reload()
     }
 
     /// An initial document read keeps this world's access until it attaches a view or is dropped.
