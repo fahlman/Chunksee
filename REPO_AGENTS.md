@@ -389,7 +389,9 @@ cache keys the actual symbol and tint. Structure outlines/portal rooms, marker
 ordering, bounds culling and portal decorations belong to MapScene. Hidden captions do not format names or resolve text; semantic caption
 fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
 map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player
-and saved-place sidebar icons share their presentation owner, and the portal inspector uses its
+inspector and sidebar share the player's marker symbol. Beds and respawn markers share the filled
+bed symbol from PlaceGroup. Saved places retain the map pin; Other Places use a scope for a generic
+point, and Other Structures use a dashed square for a generic area. The portal inspector uses its
 group's symbol while retaining its singular title. No zoom-growth or visibility policy changes.
 Eligible marker captions share one collision layout in Canvas and export: selected items first,
 then players, then named pets, then other markers, with stable identity breaking ties. Lower-priority

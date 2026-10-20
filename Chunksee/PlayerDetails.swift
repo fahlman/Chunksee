@@ -107,7 +107,7 @@ struct PlayerDetailView: View {
                     LabeledContent("Last Saved") { Text(saved, format: .dateTime.year().month().day().hour().minute()) }
                 }
             } header: {
-                Label(session.presentation.name(of: player), systemImage: "person.fill").font(.headline)
+                Label(session.presentation.name(of: player), systemImage: MarkerStyle.playerAppearance(.player).symbol).font(.headline)
             }
             let locations = PlayerPresentation.locations(of: player)
             if !locations.isEmpty {
