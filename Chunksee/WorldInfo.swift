@@ -72,6 +72,7 @@ nonisolated struct WorldDetails: Sendable {
 /// World settings and state in the inspector: version, time, weather, the dragon, borders,
 /// mods and game rules.
 struct WorldInfoView: View {
+    static let symbol = "info.circle"
     let session: WorldSession
     @State private var showsSeed = false
     @Environment(\.locale) private var locale
@@ -101,7 +102,7 @@ struct WorldInfoView: View {
                     }
                 }
             } header: {
-                Text(session.presentation.displayName).font(.headline)
+                InspectorHeading(title: Text(session.presentation.displayName), symbol: Self.symbol)
             }
             Section("Time and Weather") {
                 if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks) {

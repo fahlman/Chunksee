@@ -432,6 +432,10 @@ the existing kind/position fallback policy. Block containers use their fixed blo
 Opened containers disappear from the group on the existing region refresh. Kit interpretation
 version 3 rereads cached containers for UUIDs; the app adds no second cache or file reader.
 
+InspectorHeading supplies the selected item's icon, headline and accessibility heading for
+creature, player, portal, in-game map, World Info and Storage panels. World Info and Storage
+share their symbol with the sidebar. The native Form/Table bodies keep their own layouts.
+
 Health, Absorption, Hunger and Experience use SavedStatusRow for aligned digits and saved-value
 help. HungerPresentation owns the game's food maximum and half-drumstick conversion; its gauge
 and CountedText label consume that same value and maximum, preserving the saved value in text.

@@ -24,10 +24,10 @@ struct WorldView: View {
                         SearchResultsSection(session: session)
                     }
                     Section("World") {
-                        Label("World Info", systemImage: "info.circle")
+                        Label("World Info", systemImage: WorldInfoView.symbol)
                             .tag(SidebarItem.worldInfo)
                             .help("Show the world’s settings, time, weather and game rules")
-                        Label("Storage", systemImage: "shippingbox")
+                        Label("Storage", systemImage: StorageView.symbol)
                             .tag(SidebarItem.storage)
                             .help("Show totals of the items stored in this dimension’s containers")
                         MapVisibilityRow(isShown: $heatMap.isShown) {

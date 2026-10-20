@@ -36,6 +36,7 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
 /// The inspector's storage summary for the selected dimension. Choosing an item searches for it,
 /// so its containers show in the sidebar and on the map.
 struct StorageView: View {
+    static let symbol = "shippingbox"
     let session: WorldSession
     @Environment(\.locale) private var locale
     @State private var sortOrder = [KeyPathComparator(\StoredItem.count, order: .reverse)]
@@ -44,7 +45,7 @@ struct StorageView: View {
     var body: some View {
         let items = session.presentation.selectedIndex.storage
         VStack(alignment: .leading, spacing: 8) {
-            Text("Storage").font(.headline)
+            InspectorHeading(title: Text("Storage"), symbol: Self.symbol)
             if session.search.isIndexing && items.isEmpty {
                 ProgressView("Reading containers…").controlSize(.small)
             } else if items.isEmpty {
