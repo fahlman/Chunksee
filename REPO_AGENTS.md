@@ -302,8 +302,10 @@ Region drawing/fitting also uses Kit's checked block origins. Continuous view ge
 block-size constant, tested against Kit; the tile renderer's pixel size is independent of it.
 The renderer owns its one-pixel-per-block canvas size; view rectangles remain CGFloat geometry.
 
-Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
-Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.
+MapContent resolves the pointer once for selection, ruler clicks and context commands. Copy, Save
+Place and Measure use the same marker location, or the checked containing block when no marker is hit.
+Pointer and accessibility activation share the measuring-versus-selecting action; a measurement never
+moves the viewport or changes selection. Outside measuring mode, accessibility retains its centering action.
 A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
 available on the map. NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
 selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu

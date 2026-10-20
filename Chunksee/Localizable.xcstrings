@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Set a measurement point" : {
+      "comment" : "Accessibility hint for a map marker while the distance ruler is on. Activating the marker sets a ruler endpoint at its saved location."
+    },
     "%@ (%lld)" : {
       "comment" : "A sidebar group or saved-search heading followed by its result count. The first placeholder is an already named group or the user's literal search query; do not translate the placeholder's contents."
     },
