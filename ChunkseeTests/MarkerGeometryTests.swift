@@ -82,8 +82,10 @@ import Testing
             let diameter: CGFloat = scale <= 18 ? 18 : scale
             let radius = diameter / 2
             let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
-            #expect(location.frame == CGRect(x: center.x - radius, y: center.y - radius, width: diameter, height: diameter))
-            let hit = try #require(content.hit(at: CGPoint(x: center.x + radius + 6, y: center.y), viewport: viewport, size: size))
+            #expect(location.frame.size == CGSize(width: diameter, height: diameter))
+            // Projecting fractional negative coordinates can shift the center by one ULP.
+            #expect(abs(location.frame.midX - center.x) < 0.000001 && abs(location.frame.midY - center.y) < 0.000001)
+            let hit = try #require(content.hit(at: CGPoint(x: center.x + radius + 5.999, y: center.y), viewport: viewport, size: size))
             #expect(hit.target == target && hit.position == location.position && hit.y == location.y)
             #expect(content.target(at: CGPoint(x: center.x + radius + 6.01, y: center.y), viewport: viewport, size: size) == nil)
         }
