@@ -536,8 +536,10 @@ map, distinct from the visibility action.
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
-snapshots. The native inspector visibility and an in-game map retained under nondetail markers
-are separate presentation state. Sidebar, pointer, VoiceOver and linked-pet input share that
+snapshots. A selected search result retains its search-row identity while its typed source identifies
+the marker or player whose current details are shown. A player inventory or ender-chest result
+remains selectable without a mappable location. The native inspector visibility and an in-game map
+retained under nondetail markers are separate presentation state. Sidebar, pointer, VoiceOver and linked-pet input share that
 selection transition. Selecting an item without details closes previous pet/player/portal details
 (Ryan, 2026-10-17, fahlman/Chunksee#167). Empty/stale map input clears transient row/pin selection
 while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
