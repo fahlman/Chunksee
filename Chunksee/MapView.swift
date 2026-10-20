@@ -131,7 +131,7 @@ struct MapView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(location.name)
-                    .accessibilityValue(Text(Coordinates.text(location.position, y: location.y)))
+                    .accessibilityValue(Text(Coordinates(location.position, y: location.y), format: Coordinates.Style()))
                     .accessibilityHint(Text("Center the map on this location"))
                     .accessibilityAction(named: Text("Copy Coordinates")) {
                         MapClipboard.copy(location.position, y: location.y, on: map)

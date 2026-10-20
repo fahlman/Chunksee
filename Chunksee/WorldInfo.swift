@@ -86,8 +86,10 @@ struct WorldInfoView: View {
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = level.spawnPosition {
-                    LabeledContent("World Spawn", value: Coordinates.text(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y))
-                        .monospacedDigit()
+                    LabeledContent("World Spawn") {
+                        Text(Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y), format: Coordinates.Style())
+                    }
+                    .monospacedDigit()
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {

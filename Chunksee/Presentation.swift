@@ -32,8 +32,20 @@ nonisolated enum LevelText {
     }
 }
 
-/// Block coordinates as lists and readouts show them: "X 10  Z -2".
-nonisolated enum Coordinates {
+/// A map position with an optional saved height; formatting never invents a missing Y.
+nonisolated struct Coordinates: Equatable, Sendable {
+    let point: CGPoint
+    let y: Double?
+
+    init(_ point: CGPoint, y: Double? = nil) {
+        self.point = point
+        self.y = y
+    }
+
+    init(_ point: CGPoint, y: Int) {
+        self.init(point, y: Double(y))
+    }
+
     /// Unreadable saved positions have no block coordinate; conversion must never trap.
     static func block(_ value: Double) -> Int? { BlockPosition.coordinate(containing: value) }
 
@@ -46,19 +58,39 @@ nonisolated enum Coordinates {
     }
 
     static func text(_ point: CGPoint, y: Double? = nil, dimension: String? = nil) -> String {
-        guard let x = block(point.x), let z = block(point.y) else { return String(localized: "Location unknown") }
-        var value = "X \(x)"
-        if let y {
-            guard let y = block(y) else { return String(localized: "Location unknown") }
-            value += "  Y \(y)"
-        }
-        value += "  Z \(z)"
-        return dimension.map { "\($0) · \(value)" } ?? value
+        Style(dimension: dimension).format(Coordinates(point, y: y))
     }
 
     /// X, Y and Z together, in Minecraft's order.
     static func text(_ point: CGPoint, y: Int, dimension: String? = nil) -> String {
         text(point, y: Double(y), dimension: dimension)
+    }
+
+    /// Display labels keep Minecraft's axis order and ungrouped block numbers.
+    nonisolated struct Style: FormatStyle, Sendable {
+        private var dimension: String?
+        private var locale: Locale = .autoupdatingCurrent
+
+        init(dimension: String? = nil) { self.dimension = dimension }
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
+        }
+
+        func format(_ coordinates: Coordinates) -> String {
+            guard let x = Coordinates.block(coordinates.point.x), let z = Coordinates.block(coordinates.point.y) else {
+                return String(localized: "Location unknown", locale: locale)
+            }
+            var value = "X \(x)"
+            if let y = coordinates.y {
+                guard let y = Coordinates.block(y) else { return String(localized: "Location unknown", locale: locale) }
+                value += "  Y \(y)"
+            }
+            value += "  Z \(z)"
+            return dimension.map { "\($0) · \(value)" } ?? value
+        }
     }
 }
 
