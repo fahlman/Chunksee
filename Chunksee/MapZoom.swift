@@ -33,10 +33,15 @@ struct MapZoomControl: View {
 
     var body: some View {
         Button { showsPopover = true } label: {
-            Text(ZoomPercentage.text(map.viewport.scale))
-                .monospacedDigit()
-                .frame(minWidth: 56)
+            Label {
+                Text(ZoomPercentage.text(map.viewport.scale))
+                    .monospacedDigit()
+                    .frame(minWidth: 56)
+            } icon: {
+                Image(systemName: "magnifyingglass")
+            }
         }
+        .labelStyle(.titleAndIcon)
         .accessibilityLabel("Zoom")
         .accessibilityValue(Text(ZoomPercentage.text(map.viewport.scale)))
         .accessibilityIdentifier("zoom-control")
