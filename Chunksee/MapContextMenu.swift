@@ -45,13 +45,12 @@ struct MapContextMenuContent: View {
     init?(at point: CGPoint, session: WorldSession, map: MapModel, content: MapContent,
           size: CGSize, pasteboard: NSPasteboard = .general) {
         guard !session.isClosed,
-              let coordinates = MapCoordinates(point: map.viewport.blockPoint(at: point, in: size)) else { return nil }
-        let hit = content.hit(at: point, viewport: map.viewport, size: size)
+              let location = content.location(at: point, viewport: map.viewport, size: size) else { return nil }
         self.session = session
         self.map = map
-        self.position = hit?.position ?? coordinates.position
-        self.y = hit?.y
-        if case .row(.savedPlace(let id))? = hit?.target {
+        self.position = location.position
+        self.y = location.y
+        if case .row(.savedPlace(let id))? = location.target {
             place = session.annotations.listedPlaces.first { $0.id == id }
         } else {
             place = nil

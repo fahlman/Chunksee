@@ -97,6 +97,13 @@ struct MapContent {
         // Biome areas remain accessible without an invisible pointer badge.
         scene(viewport: viewport, size: size, pickingAt: point).hit(at: point)
     }
+
+    /// A marker's saved location, or the empty block under the pointer, for every map action.
+    func location(at point: CGPoint, viewport: MapViewport, size: CGSize) -> (position: CGPoint, y: Double?, target: MapTarget?)? {
+        guard let block = MapCoordinates(point: viewport.blockPoint(at: point, in: size)) else { return nil }
+        let hit = hit(at: point, viewport: viewport, size: size)
+        return (hit?.position ?? block.position, hit?.y, hit?.target)
+    }
 }
 
 extension MapContent {
