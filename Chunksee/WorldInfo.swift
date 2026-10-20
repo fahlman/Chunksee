@@ -27,6 +27,13 @@ nonisolated struct WorldDetails: Sendable {
         GameRule.wanderingTraderSpawning.value(in: gameRules) == .bool(false)
     }
 
+    static func traderDelayDescription(_ ticks: Int, locale: Locale = .current) -> String {
+        let delay = GameDuration.fromTicks(ticks)
+        guard delay >= .seconds(60) else { return String(localized: "Within a minute of play", locale: locale) }
+        let minutes = GameDuration.units(delay, allowed: [.minutes], locale: locale)
+        return String(localized: "In about \(minutes) of play", locale: locale)
+    }
+
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
         var details = WorldDetails()
@@ -124,8 +131,7 @@ struct WorldInfoView: View {
                     if details.wanderingTradersAreOff {
                         Text("Turned off by a game rule").foregroundStyle(.secondary)
                     } else {
-                        LabeledContent("Next Chance", value: trader.spawnDelay < 1200 ? String(localized: "Within a minute of play")
-                                       : String(localized: "In about \(trader.spawnDelay / 1200) minutes of play"))
+                        LabeledContent("Next Chance", value: WorldDetails.traderDelayDescription(trader.spawnDelay, locale: locale))
                         LabeledContent("Odds", value: (Double(trader.spawnChance) / 100).formatted(.percent))
                             .help("The odds rise after each attempt that doesn’t bring a trader")
                     }
