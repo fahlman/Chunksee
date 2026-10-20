@@ -575,6 +575,9 @@ command only toggles its binding.
 Saved-search headings add Search for This and Remove in a separate native menu section.
 Those group commands belong to the heading, rather than its result rows. Row navigation help says Center the
 map, distinct from the visibility action.
+Layer-marker, player and search-result coordinate captions include their saved Y through the
+shared Coordinates formatter and CoordinateText. Missing heights stay absent; map centers,
+biome areas and saved-place annotations do not acquire an invented or terrain-derived Y.
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
