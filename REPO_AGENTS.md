@@ -73,8 +73,10 @@ WorldDetails keeps game rules by saved ID and derives sorted display rows. Wande
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
 disables spawning. Rows use saved IDs so equal readable names remain distinct.
 
-`DimensionPresentation.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
-and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
+`DimensionPresentation.NameStyle` owns world-aware dimension labels, derived from the live catalog
+for native Text and the `dimensionName` string adapter used by window titles and other consumers.
+It carries the locale and dimension IDs without retaining the document or introducing another catalog owner.
+Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
 well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;

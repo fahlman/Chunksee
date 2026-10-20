@@ -220,7 +220,7 @@ struct PortalDetailView: View {
             Section {
                 switch trip {
                 case .twoWay(let target, _)?, .oneWay(let target, _, _)?:
-                    Text("Leads to the portal in \(session.presentation.dimensionName(target.dimension)) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
+                    Text("Leads to the portal in \(target.dimension, format: session.presentation.dimensionNameStyle) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
                     if case .oneWay(_, _, let returning)? = trip {
                         switch returning {
                         case .portal(let back, _):
@@ -235,7 +235,7 @@ struct PortalDetailView: View {
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
                 case .wouldCreateNewPortal(let destination)?:
-                    Label("No portal in \(session.presentation.dimensionName(NetherPortal.targetDimension(from: portal.dimension) ?? "")) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
+                    Label("No portal in \(NetherPortal.targetDimension(from: portal.dimension) ?? "", format: session.presentation.dimensionNameStyle) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 case nil:

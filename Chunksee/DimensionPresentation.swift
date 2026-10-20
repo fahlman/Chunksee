@@ -42,17 +42,39 @@ final class DimensionPresentation {
     }
 
     func dimensionName(_ id: String) -> String {
-        let name = Self.dimensionName(id)
-        let isAmbiguous = source?.dimensions.contains { $0.id != id && Self.dimensionName($0.id) == name } ?? false
-        return isAmbiguous ? String(localized: "\(name) (\(id))") : name
+        dimensionNameStyle.format(id)
     }
 
-    private static func dimensionName(_ id: String) -> String {
-        switch id {
-        case "minecraft:overworld": String(localized: "Overworld")
-        case "minecraft:the_nether": String(localized: "The Nether")
-        case "minecraft:the_end": String(localized: "The End")
-        default: ReadableName.from(id)
+    var dimensionNameStyle: NameStyle {
+        NameStyle(dimensionIDs: source?.dimensions.map(\.id) ?? [])
+    }
+
+    /// Immutable naming context derived from the live catalog, without retaining the document.
+    nonisolated struct NameStyle: FormatStyle, Sendable {
+        private let dimensionIDs: [String]
+        private var locale = Locale.autoupdatingCurrent
+
+        init(dimensionIDs: [String]) { self.dimensionIDs = dimensionIDs }
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
+        }
+
+        func format(_ id: String) -> String {
+            let name = name(id)
+            let isAmbiguous = dimensionIDs.contains { $0 != id && self.name($0) == name }
+            return isAmbiguous ? String(localized: "\(name) (\(id))", locale: locale) : name
+        }
+
+        private func name(_ id: String) -> String {
+            switch id {
+            case "minecraft:overworld": String(localized: "Overworld", locale: locale)
+            case "minecraft:the_nether": String(localized: "The Nether", locale: locale)
+            case "minecraft:the_end": String(localized: "The End", locale: locale)
+            default: ReadableName.from(id)
+            }
         }
     }
 

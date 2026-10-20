@@ -134,9 +134,11 @@ struct WorldCommands: Commands {
             Menu("Dimension") {
                 if let session {
                     ForEach(session.dimensions, id: \.id) { dimension in
-                        Toggle(session.presentation.dimensionName(dimension.id), isOn: Binding {
+                        Toggle(isOn: Binding {
                             session.selectedDimensionID == dimension.id
-                        } set: { if $0 { session.routing.openDimension(dimension.id) } })
+                        } set: { if $0 { session.routing.openDimension(dimension.id) } }) {
+                            Text(dimension.id, format: session.presentation.dimensionNameStyle)
+                        }
                     }
                 }
             }
