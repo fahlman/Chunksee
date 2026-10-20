@@ -188,7 +188,7 @@ import Testing
             let board = NSPasteboard.withUniqueName()
             defer { board.releaseGlobally() }
 
-            func check<Marker: MapLayerMarker>(_ marker: Marker, content: MapContent?,
+            @MainActor func check<Marker: MapLayerMarker>(_ marker: Marker, content: MapContent?,
                                                copied: String, block: CGPoint) async throws {
                 map.viewport = MapViewport(center: marker.position, scale: 2)
                 let original = map.viewport
