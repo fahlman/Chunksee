@@ -34,10 +34,7 @@ nonisolated struct TileCache: Sendable {
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
     static func worldFolder(forWorldAt world: URL, root: URL?) -> URL? {
-        // A stable FNV-1a hash of the world's path keeps different worlds' tiles apart.
-        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
-        for byte in world.standardizedFileURL.path.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
-        return root?.appendingPathComponent(String(hash, radix: 16), isDirectory: true)
+        root?.appendingPathComponent(CacheKey.hash(world.standardizedFileURL.path), isDirectory: true)
     }
 
     /// The cache directory for one dimension of one world, by default inside the app's Caches folder.
@@ -82,11 +79,8 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, cutawayY: Int? = nil) -> Key? {
-        // FileManager rather than URL resource values, which are cached on the URL and can be stale.
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: regionFile.path),
-              let size = (attributes[.size] as? NSNumber)?.intValue,
-              let modified = attributes[.modificationDate] as? Date else { return nil }
-        return Key(region: region, fileSize: size, modified: Int64(modified.timeIntervalSince1970 * 1_000_000), cutawayY: cutawayY)
+        guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
+        return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY)
     }
 
     func load(_ key: Key) -> [UInt8]? {
