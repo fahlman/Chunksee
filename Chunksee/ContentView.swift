@@ -6,7 +6,6 @@ struct WorldView: View {
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
-    @State private var sidebarPosition = ScrollPosition(idType: SidebarItem.self)
     @State private var showsCoordinateSheet = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
@@ -19,7 +18,7 @@ struct WorldView: View {
         @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
-            ScrollViewReader { _ in
+            ScrollViewReader { proxy in
                 List(selection: sidebarSelection) {
                     if search.isActive {
                         SearchResultsSection(session: session)
@@ -93,7 +92,6 @@ struct WorldView: View {
                         }
                     }
                 }
-                .scrollPosition($sidebarPosition)
                 .focused($isSidebarFocused)
                 // Clicking the selected row need not change the List binding, but must still
                 // move keyboard input from the map to the sidebar. Keep native row/control actions.
@@ -105,7 +103,7 @@ struct WorldView: View {
                     sidebarRevealID = UUID()
                 }
                 .onChange(of: sidebarRevealID) {
-                    if let item = session.selection.sidebarSelection { sidebarPosition.scrollTo(id: item, anchor: .center) }
+                    if let item = session.selection.sidebarSelection { proxy.scrollTo(item) }
                 }
                 .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
                     if let item = items.first { session.selection.choose(item) }
