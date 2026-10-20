@@ -5,7 +5,8 @@ struct SavedPlacesSection: View {
     let session: WorldSession
 
     var body: some View {
-        Section("Saved Places") {
+        @Bindable var visibility = session.visibility
+        Section {
             ForEach(session.annotations.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
                     Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
@@ -25,6 +26,10 @@ struct SavedPlacesSection: View {
                 .buttonStyle(.plain)
                 .disabled(session.map == nil)
                 .help("Save the location at the center of the map")
+        } header: {
+            MapVisibilityRow(isShown: $visibility.showsSavedPlaces) {
+                Label("Saved Places", systemImage: MarkerStyle.savedPlaceSymbol)
+            }
         }
     }
 }

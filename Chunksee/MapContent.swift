@@ -134,7 +134,7 @@ extension MapContent {
         selection = session.selection.mapSelection
         selectedItem = session.selection.sidebarSelection
         selectedPlayerID = if case .player(let uuid)? = session.selection.inspector { uuid } else { nil }
-        savedPlaces = session.savedPlaces.all.filter { $0.dimension == id }
+        savedPlaces = session.visibility.showsSavedPlaces ? session.savedPlaces.all.filter { $0.dimension == id } : []
         ruler = session.annotations.ruler
     }
 }

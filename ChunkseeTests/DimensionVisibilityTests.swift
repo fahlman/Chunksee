@@ -4,6 +4,58 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct DimensionVisibilityTests {
+    @Test func savedPlaceVisibilityFiltersTheMapButKeepsAnnotationsAndRestoresPerDimension() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
+        let defaults = TestDefaults.make(), worldID = UUID()
+        let settings = WorldSettings(id: worldID, defaults: defaults)
+        // Existing dimension settings have no saved-place flag, so their pins stay shown.
+        settings.saveLayers([.showsGrid: true], for: "minecraft:overworld")
+        func open() async throws -> WorldResources {
+            try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                               savedSearches: SavedSearches(defaults: defaults),
+                               settings: WorldSettings(id: worldID, defaults: defaults), cacheRoot: nil,
+                               watchWorld: { _, _ in nil })
+        }
+        let resources = try await open()
+        defer { resources.close() }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let home = try #require(resources.savedPlaces.add(name: "Home", dimension: "minecraft:overworld", at: CGPoint(x: -100, y: 100)))
+        let fortress = try #require(resources.savedPlaces.add(name: "Fortress", dimension: "minecraft:the_nether", at: .zero))
+        let viewport = MapViewport(center: home.mapPosition, scale: 2), size = CGSize(width: 200, height: 200)
+        let center = CGPoint(x: 100, y: 100)
+        #expect(overworld.visibility.showsSavedPlaces && nether.visibility.showsSavedPlaces)
+        #expect(MapContent(session: overworld).target(at: center, viewport: viewport, size: size) == .row(.savedPlace(home.id)))
+        overworld.visibility.showsSavedPlaces = false
+        let hidden = MapContent(session: overworld)
+        #expect(hidden.savedPlaces.isEmpty && MapContent(session: nether).savedPlaces == [fortress])
+        #expect(hidden.target(at: center, viewport: viewport, size: size) != .row(.savedPlace(home.id)))
+        #expect(!hidden.accessibleLocations(viewport: viewport, size: size).contains { $0.target == .row(.savedPlace(home.id)) })
+        #expect(overworld.annotations.listedPlaces == [home] && resources.savedPlaces.all == [home, fortress])
+        overworld.selection.choose(.savedPlace(home.id))
+        #expect(overworld.visibility.showsSavedPlaces && MapContent(session: overworld).savedPlaces == [home])
+        #expect(overworld.selection.sidebarSelection == .savedPlace(home.id))
+        overworld.visibility.showsSavedPlaces = false
+        resources.close()
+        await resources.waitUntilClosed()
+        overworld.annotations.visit(home)
+        #expect(!overworld.visibility.showsSavedPlaces)
+
+        let reopened = try await open()
+        defer { reopened.close() }
+        let restored = WorldSession(resources: reopened, dimensionID: "minecraft:overworld")
+        let restoredNether = WorldSession(resources: reopened, dimensionID: "minecraft:the_nether")
+        #expect(!restored.visibility.showsSavedPlaces && restoredNether.visibility.showsSavedPlaces)
+        #expect(MapContent(session: restored).savedPlaces.isEmpty && MapContent(session: restoredNether).savedPlaces == [fortress])
+        #expect(restored.annotations.listedPlaces == [home] && restored.visibility.showsGrid)
+        #expect(defaults.object(forKey: "showsSavedPlaces") == nil)
+        reopened.close()
+        await reopened.waitUntilClosed()
+    }
+
     @Test func dimensionTabsRetainTheirOwnControlsWhenAnotherTabChangesAndAfterReopening() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }

@@ -34,8 +34,9 @@ final class MapAnnotations {
     }
 
     func visit(_ place: SavedPlace) {
-        guard let source, canVisit(place) else { return }
+        guard let source, !source.isClosed, canVisit(place) else { return }
         if source.routing.route(to: place.dimension, perform: { $0.annotations.visit(place) }) { return }
+        source.visibility.showsSavedPlaces = true
         source.navigation.goToCoordinates(place.position)
     }
 

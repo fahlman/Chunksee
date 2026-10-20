@@ -116,12 +116,15 @@ import Testing
         var opened = recordOpens(of: overworld)
         let netherDocument = resources.documentURL(for: "minecraft:the_nether")
         let place = try #require(overworld.savedPlaces.add(name: "Nether Base", dimension: "minecraft:the_nether", at: CGPoint(x: 9, y: -7)))
+        overworld.visibility.showsSavedPlaces = false
+        nether.visibility.showsSavedPlaces = false
         overworld.annotations.visit(place)
         let jumpOpened = await opened.next(isolation: #isolation)
         #expect(jumpOpened == netherDocument)
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
         #expect(!overworld.navigation.canGoBack && overworld.annotations.ruler.distance == 5 && nether.annotations.ruler.start == nil)
         #expect(nether.map?.viewport == MapViewport(center: place.mapPosition, scale: 4))
+        #expect(!overworld.visibility.showsSavedPlaces && nether.visibility.showsSavedPlaces)
         nether.navigation.goBack()
         #expect(nether.map?.viewport == targetView && !nether.navigation.canGoBack)
         nether.navigation.goForward()

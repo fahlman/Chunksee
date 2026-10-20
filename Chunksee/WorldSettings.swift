@@ -7,7 +7,7 @@ final class WorldSettings {
     enum Layer: String, CaseIterable {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
-        case hiddenPlayers, showsGrid, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
+        case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
 
         fileprivate static let legacy: [Layer] = [.structures, .places, .creatures, .biomes, .hiddenPlayers, .showsGrid]
     }

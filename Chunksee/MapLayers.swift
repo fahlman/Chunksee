@@ -172,6 +172,7 @@ final class LayerVisibility {
     var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
     /// Chunk and region lines; off at first.
     var showsGrid: Bool { didSet { saveValue(showsGrid, Keys.showsGrid) } }
+    var showsSavedPlaces: Bool { didSet { saveValue(showsSavedPlaces, Keys.showsSavedPlaces) } }
 
     private let settings: WorldSettings
     private let dimension: String?
@@ -192,12 +193,13 @@ final class LayerVisibility {
         biomes = Set((values[Keys.biomes] as? [String] ?? []).map(BiomeGroup.init(id:)))
         hiddenPlayers = Set((values[Keys.hiddenPlayers] as? [String] ?? []).compactMap(UUID.init(uuidString:)))
         showsGrid = values[Keys.showsGrid] as? Bool ?? false
+        showsSavedPlaces = values[Keys.showsSavedPlaces] as? Bool ?? true
         if previous == nil {
             write([
                 Keys.structures: structures.map(\.rawValue).sorted(), Keys.places: places.map(\.rawValue).sorted(),
                 Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
                 Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
-                Keys.timeSpent: false,
+                Keys.timeSpent: false, Keys.showsSavedPlaces: showsSavedPlaces,
             ])
         }
     }
