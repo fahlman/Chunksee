@@ -293,13 +293,14 @@ nonisolated struct RegionTileRenderer: Sendable {
                 for y in stride(from: 15, through: 0, by: -1) where remaining > 0 {
                     let absoluteY = low + y
                     guard absoluteY >= minY else { break }
+                    let planeStart = ChunkSection.blockIndex(x: 0, y: y, z: 0)
                     for i in 0..<256 {
                         switch state[i] {
                         case .done:
                             continue
                         case .ceiling:
                             guard absoluteY <= start[i] else { continue }
-                            let p = uniform ? 0 : indices[y << 8 | i]
+                            let p = uniform ? 0 : indices[planeStart + i]
                             switch resolve(section: s, palette: p) {
                             case .clear:
                                 state[i] = .searching
@@ -312,7 +313,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                             }
                         case .searching:
                             guard absoluteY <= start[i] else { continue }
-                            let p = uniform ? 0 : indices[y << 8 | i]
+                            let p = uniform ? 0 : indices[planeStart + i]
                             switch resolve(section: s, palette: p) {
                             case .solid(let color):
                                 result[i] = Column(y: absoluteY, color: color, waterDepth: 0, section: s, palette: p)
@@ -329,7 +330,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                                 continue
                             }
                         case .water:
-                            if case .water = resolve(section: s, palette: uniform ? 0 : indices[y << 8 | i]) {
+                            if case .water = resolve(section: s, palette: uniform ? 0 : indices[planeStart + i]) {
                                 depth[i] += 1
                                 if depth[i] >= RegionTileRenderer.maximumWaterDepth { finishWater(i) }
                             } else {

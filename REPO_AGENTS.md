@@ -59,7 +59,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.35.0`, resolved to `0.35.0` (`f87bc30e5ad1ffbe280880e27d954e6826980ccb`).
+  minor" from `0.36.0`, resolved to `0.36.0` (`5a98138634d922a85018bbbf1f111bce3c19a0ac`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -303,6 +303,8 @@ encoding is unchanged. Unrepresentable chunk origins do not become map areas or 
 Region drawing/fitting also uses Kit's checked block origins. Continuous view geometry uses one
 block-size constant, tested against Kit; the tile renderer's pixel size is independent of it.
 The renderer owns its one-pixel-per-block canvas size; view rectangles remain CGFloat geometry.
+Batched column scans use Kit's ChunkSection.blockIndex for each Y plane, sharing block layout
+with the reader. The app retains palette batching, material colors and roof/water presentation.
 
 MapContent resolves the pointer once for selection, ruler clicks and context commands. Copy, Save
 Place and Measure use the same marker location, or the checked containing block when no marker is hit.
