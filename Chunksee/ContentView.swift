@@ -48,21 +48,35 @@ struct WorldView: View {
                     if !session.savedSearches.all.isEmpty {
                         SavedSearchesSection(session: session, expanded: $sidebarDisclosure.savedSearches)
                     }
-                    SavedPlacesSection(session: session)
                     let index = session.presentation.selectedIndex
-                    LayerSection(title: "Structures", markers: index.structures, origin: session.presentation.spawnPoint,
-                                 shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
-                                 isExpanded: layerExpanded(.structures), expandedGroups: $sidebarDisclosure.structures)
-                    LayerSection(title: "Places", markers: index.places, origin: session.presentation.spawnPoint,
-                                 shown: $visibility.places, item: { SidebarItem.place($0.id) },
-                                 isExpanded: layerExpanded(.places), expandedGroups: $sidebarDisclosure.places)
-                    LayerSection(title: "Creatures", markers: index.creatures, origin: session.presentation.spawnPoint,
-                                 shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
-                                 isExpanded: layerExpanded(.creatures), expandedGroups: $sidebarDisclosure.creatures)
+                    if !index.structures.isEmpty {
+                        Section("Structures", isExpanded: layerExpanded(.structures)) {
+                            LayerGroups(markers: index.structures, origin: session.presentation.spawnPoint,
+                                        shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
+                                        expandedGroups: $sidebarDisclosure.structures)
+                        }
+                    }
+                    Section("Places", isExpanded: layerExpanded(.places)) {
+                        SavedPlacesGroup(session: session, isExpanded: $sidebarDisclosure.showsSavedPlaces)
+                        LayerGroups(markers: index.places, origin: session.presentation.spawnPoint,
+                                    shown: $visibility.places, item: { SidebarItem.place($0.id) },
+                                    expandedGroups: $sidebarDisclosure.places)
+                    }
+                    if !index.creatures.isEmpty {
+                        Section("Creatures", isExpanded: layerExpanded(.creatures)) {
+                            LayerGroups(markers: index.creatures, origin: session.presentation.spawnPoint,
+                                        shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
+                                        expandedGroups: $sidebarDisclosure.creatures)
+                        }
+                    }
                     // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
-                    LayerSection(title: "Biomes", markers: index.biomeAreas, origin: session.presentation.spawnPoint,
-                                 shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes, item: { SidebarItem.biome($0.id) },
-                                 isExpanded: layerExpanded(.biomes), expandedGroups: $sidebarDisclosure.biomes)
+                    if !index.biomeAreas.isEmpty || !session.presentation.possibleBiomes.isEmpty {
+                        Section("Biomes", isExpanded: layerExpanded(.biomes)) {
+                            LayerGroups(markers: index.biomeAreas, origin: session.presentation.spawnPoint,
+                                        shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes,
+                                        item: { SidebarItem.biome($0.id) }, expandedGroups: $sidebarDisclosure.biomes)
+                        }
+                    }
                     if !session.presentation.inGameMaps.isEmpty {
                         Section("In-Game Maps", isExpanded: $sidebarDisclosure.showsInGameMaps) {
                             ForEach(session.presentation.inGameMaps, id: \.id) { map in

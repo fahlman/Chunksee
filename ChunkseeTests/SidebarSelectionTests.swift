@@ -154,6 +154,7 @@ import Testing
         session.map?.viewport = viewport
         var disclosure = SidebarDisclosure()
         disclosure.collapsedLayers = [.structures, .places, .creatures, .biomes]
+        disclosure.showsSavedPlaces = false
         let cases: [(CGPoint, SidebarItem)] = [
             (structure.position, .structure(structure.id)), (spawner.position, .place(spawner.id)),
             (portal.position, .place(portal.id)), (creature.position, .creature(creature.id)),
@@ -178,6 +179,7 @@ import Testing
                                          viewport: viewport, size: CGSize(width: 800, height: 600)) == nil)
         disclosure.selectOnMap(location.target, y: location.y, in: session)
         #expect(disclosure.collapsedLayers.isEmpty)
+        #expect(disclosure.showsSavedPlaces)
         #expect(disclosure.structures == [structure.group] && disclosure.places == [.portal, .spawner])
         #expect(disclosure.creatures == [creature.group] && disclosure.biomes == [biome.group])
         // Repeating the same map choice reopens its ancestors after a manual collapse.

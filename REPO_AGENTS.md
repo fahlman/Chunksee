@@ -517,7 +517,11 @@ document's new URL. Direct world/session opening conveniences exist only in Test
 always obtains identity through its document reader. App-wide preferences stay separate.
 
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
-fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, grid and Time Spent.
+fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, saved places, grid and Time Spent.
+Saved Places defaults to shown for new and older settings. Hiding its pins keeps the sidebar
+list and annotations; creating or visiting one reveals them in its dimension, while renaming leaves
+visibility unchanged. MapAnnotations owns editor commits and their shared reveal path. MapContent applies
+the flag once for drawing, picking, accessibility and export.
 Existing app-wide preferences seed a new scope once; later tab changes never write the old keys
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
@@ -550,8 +554,11 @@ The continuous-save regression controls the existing delay through `waitBeforeRe
 awaits the refresh scope; production still sleeps for `refreshDelay`. Its fixture disables real
 filesystem notifications so the test alone supplies the events being checked.
 
-Time Spent, Slime Chunks, Grid, marker-group headers, players and saved-search headings share
+Time Spent, Slime Chunks, Grid, marker-group headers, players, Saved Places and saved-search headings share
 MapVisibilityRow, including spacing, combined accessibility and row-scoped context menus.
+Saved Places is a counted disclosure group under the plain Places section, at the same depth as
+the other marker groups. WorldView composes native sections; LayerGroups owns marker grouping and
+rows. SidebarDisclosure reveals Saved Places and its Places ancestor for map-origin selection.
 Its eye buttons and context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI's accessibilityActions exposes that same command as a
 named action; the visual eye is excluded from the combined label so a disclosure heading's

@@ -4,6 +4,43 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct SavedPlacesTests {
+    @Test func committingANewPlaceRevealsItsDimensionButRenamingDoesNot() async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
+        let defaults = TestDefaults.make()
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                           savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { resources.close() }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        let view = overworld.map?.viewport
+        overworld.visibility.showsSavedPlaces = false
+        nether.visibility.showsSavedPlaces = false
+        let draft = SavedPlaceDraft(name: "", dimension: "minecraft:overworld", position: CGPoint(x: -8, y: 20))
+        #expect(!overworld.annotations.commit(draft, name: "  "))
+        #expect(!overworld.visibility.showsSavedPlaces && resources.savedPlaces.all.isEmpty)
+        #expect(overworld.annotations.commit(draft, name: "Home"))
+        let home = try #require(resources.savedPlaces.all.first)
+        #expect(overworld.visibility.showsSavedPlaces && !nether.visibility.showsSavedPlaces)
+        #expect(MapContent(session: overworld).savedPlaces == [home])
+        #expect(overworld.map?.viewport == view && !overworld.navigation.canGoBack)
+        overworld.visibility.showsSavedPlaces = false
+        let edit = SavedPlaceDraft(existingID: home.id, name: home.name, dimension: home.dimension, position: home.position)
+        #expect(overworld.annotations.commit(edit, name: "Renamed"))
+        #expect(resources.savedPlaces.all.first?.name == "Renamed" && !overworld.visibility.showsSavedPlaces)
+        let other = SavedPlaceDraft(name: "", dimension: "minecraft:the_nether", position: .zero)
+        #expect(nether.annotations.commit(other, name: "Fortress"))
+        #expect(nether.visibility.showsSavedPlaces && !overworld.visibility.showsSavedPlaces)
+        #expect(MapContent(session: nether).savedPlaces.map(\.name) == ["Fortress"])
+        let saved = resources.savedPlaces.all
+        resources.close()
+        await resources.waitUntilClosed()
+        #expect(!overworld.annotations.commit(draft, name: "Too Late"))
+        #expect(!overworld.visibility.showsSavedPlaces && resources.savedPlaces.all == saved)
+    }
+
     @Test func placesPersistPerWorldAndRenamingAndRemovalAreRemembered() throws {
 
         let defaults = TestDefaults.make()
