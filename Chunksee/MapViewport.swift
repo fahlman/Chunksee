@@ -103,6 +103,21 @@ nonisolated struct MapViewport: Equatable, Sendable {
         center.y -= viewDelta.height / scale
     }
 
+    enum Direction { case north, south, west, east }
+
+    /// Keyboard and accessibility commands move a quarter of the view along that axis.
+    mutating func pan(_ direction: Direction, in size: CGSize) {
+        let step = CGSize(width: size.width / 4, height: size.height / 4)
+        let delta: CGSize
+        switch direction {
+        case .north: delta = CGSize(width: 0, height: step.height)
+        case .south: delta = CGSize(width: 0, height: -step.height)
+        case .west: delta = CGSize(width: step.width, height: 0)
+        case .east: delta = CGSize(width: -step.width, height: 0)
+        }
+        pan(by: delta)
+    }
+
     /// Manual zoom stops at 1/16×. Smaller fitted views can zoom in gradually, but not farther out.
     mutating func zoom(by factor: CGFloat) {
         scale = min(max(scale * factor, min(scale, Self.minimumManualScale)), Self.scaleRange.upperBound)
