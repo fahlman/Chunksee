@@ -214,7 +214,7 @@ struct WorldView: View {
     private func finishSidebarReveal(_ item: SidebarItem) {
         // Expansion above the visible rows can preserve their scroll position. Reveal the
         // chosen row after that native adjustment, unless another action changed selection.
-        guard session.selection.sidebarSelection == item else { return }
+        guard !session.isClosed, session.selection.sidebarSelection == item else { return }
         sidebarRevealID = UUID()
     }
 
