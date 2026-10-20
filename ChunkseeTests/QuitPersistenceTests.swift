@@ -18,7 +18,7 @@ import Testing
             let url = try TestWorld.make(chunks: [])
             worlds.append(url)
             try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-            let world = model.resources(for: try await WorldSnapshot.read(url))
+            let world = try model.resources(for: try await WorldSnapshot.read(url))
             resources.append(world)
             let overworld = WorldSession(resources: world, dimensionID: "minecraft:overworld")
             let nether = WorldSession(resources: world, dimensionID: "minecraft:the_nether")
@@ -33,7 +33,7 @@ import Testing
         #expect(menus.applicationShouldTerminate(NSApp) == .terminateNow)
         #expect(menus.isTerminating)
         for (i, world) in resources.enumerated() {
-            let saved = WorldSettings(world: worlds[i], defaults: defaults)
+            let saved = WorldSettings(id: world.settings.worldID, defaults: defaults)
             #expect(saved.viewport(for: "minecraft:overworld") == sessions[i * 2].map?.viewport)
             #expect(saved.viewport(for: "minecraft:the_nether") == sessions[i * 2 + 1].map?.viewport)
             #expect(saved.depth(for: "minecraft:the_nether") == MapDepth(y: 48, isSurface: false))

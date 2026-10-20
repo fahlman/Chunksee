@@ -26,7 +26,7 @@ import Testing
             defaults = TestDefaults.make()
             documents = try World(contentsOf: worldURL).dimensions().map { $0.documentURL(inWorldAt: worldURL) }
             model = AppModel(defaults: defaults, cacheRoot: nil, readWorld: { try await probe.read($0) })
-            model.worldFolders.remember(url)
+            try model.worldFolders.remember(url)
             try writePlayer(health: 20)
             let folder = url.appendingPathComponent("data/minecraft/maps")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -244,7 +244,7 @@ import Testing
         let first = try Fixture(probe: Reads(paused: false)), second = try Fixture(probe: Reads(paused: false))
         do {
             try second.writePlayer(health: 7)
-            first.model.worldFolders.remember(second.url)
+            try first.model.worldFolders.remember(second.url)
             let one = try first.attach(try await first.read(first.documents[0]))
             let two = try first.attach(try await first.read(second.documents[0]))
             #expect(one.resources !== two.resources)

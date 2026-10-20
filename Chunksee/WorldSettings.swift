@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// One world's persisted presentation, shared by its dimension documents. Feature models own
-/// live state; this owner alone handles its storage, legacy import and native folder moves.
+/// live state; its bookmark identity keeps this storage independent of the folder's path.
 final class WorldSettings {
     enum Layer: String, CaseIterable {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
@@ -13,22 +13,37 @@ final class WorldSettings {
     }
 
     private let defaults: UserDefaults
-    private var key: String
+    let worldID: UUID
+    private let key: String
 
-    init(world: URL, defaults: UserDefaults) {
-        self.defaults = defaults
-        key = Self.key(for: world)
-        guard defaults.dictionary(forKey: key) == nil else { return }
-        let path = world.standardizedFileURL.path
-        var imported = defaults.dictionary(forKey: "mapView." + path) ?? [:]
-        imported["version"] = 1
-        imported["layers"] = defaults.dictionary(forKey: "mapLayers." + path)
-        imported["places"] = defaults.data(forKey: "savedPlaces." + path)
-        defaults.set(imported, forKey: key)
-        for prefix in ["mapView.", "mapLayers.", "savedPlaces."] { defaults.removeObject(forKey: prefix + path) }
+    convenience init(folder: WorldFolders.Folder, defaults: UserDefaults) {
+        self.init(id: folder.id, defaults: defaults, legacyPaths: [folder.url.path, folder.legacyPath].compactMap { $0 })
     }
 
-    private static func key(for world: URL) -> String { "worldSettings." + world.standardizedFileURL.path }
+    init(id: UUID, defaults: UserDefaults, legacyPaths: [String] = []) {
+        self.defaults = defaults
+        worldID = id
+        key = "worldSettings." + id.uuidString
+        guard defaults.dictionary(forKey: key) == nil else { return }
+        func legacy(_ path: String) -> [String: Any] {
+            if let existing = defaults.dictionary(forKey: "worldSettings." + path) { return existing }
+            var value = defaults.dictionary(forKey: "mapView." + path) ?? [:]
+            value["layers"] = defaults.dictionary(forKey: "mapLayers." + path)
+            value["places"] = defaults.data(forKey: "savedPlaces." + path)
+            return value
+        }
+        var imported: [String: Any] = [:]
+        var paths: Set<String> = []
+        for path in legacyPaths where paths.insert(path).inserted {
+            imported = Self.merging(legacy(path), into: imported)
+        }
+        imported["version"] = 1
+        defaults.set(imported, forKey: key)
+        for path in paths {
+            for prefix in ["worldSettings.", "mapView.", "mapLayers.", "savedPlaces."] { defaults.removeObject(forKey: prefix + path) }
+        }
+    }
+
     private var stored: [String: Any] { defaults.dictionary(forKey: key) ?? ["version": 1] }
 
     var lastDimension: String? { stored["dimension"] as? String }
@@ -97,29 +112,23 @@ final class WorldSettings {
         defaults.set(saved, forKey: key)
     }
 
-    /// Retain all dimensions and annotations. Sibling tabs still closing at the old URL share
-    /// this owner, so their final saves follow the new key instead of recreating the old one.
-    func relocate(to world: URL) {
-        let destinationKey = Self.key(for: world)
-        guard destinationKey != key else { return }
-        let destination = WorldSettings(world: world, defaults: defaults)
-        let moving = stored
-        var merged = destination.stored
+    /// A pre-migration move may have records at both paths. Keep the previous view choices and
+    /// the destination's existing annotation for duplicate IDs, matching the old move policy.
+    private static func merging(_ moving: [String: Any], into destination: [String: Any]) -> [String: Any] {
+        var merged = destination
         for section in ["views", "depths", "layers"] {
             merged[section] = (merged[section] as? [String: Any] ?? [:]).merging(moving[section] as? [String: Any] ?? [:]) { _, current in current }
         }
         if let dimension = moving["dimension"] { merged["dimension"] = dimension }
-        // Keep the destination's existing annotation for duplicate IDs, as before. Panning
-        // never decodes or re-encodes this payload; only annotation edits and a move do.
+        // A sole opaque payload survives migration unchanged. Panning never decodes it.
         if merged["places"] == nil { merged["places"] = moving["places"] }
         else if moving["places"] != nil {
-            let existing = destination.savedPlaces
+            let existing = (destination["places"] as? Data).flatMap { try? JSONDecoder().decode([SavedPlace].self, from: $0) } ?? []
+            let savedPlaces = (moving["places"] as? Data).flatMap { try? JSONDecoder().decode([SavedPlace].self, from: $0) } ?? []
             let ids = Set(existing.map(\.id))
             let places = existing + savedPlaces.filter { !ids.contains($0.id) }
             if let data = try? JSONEncoder().encode(places) { merged["places"] = data }
         }
-        defaults.set(merged, forKey: destinationKey)
-        defaults.removeObject(forKey: key)
-        key = destinationKey
+        return merged
     }
 }

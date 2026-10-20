@@ -22,7 +22,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let reads = RegionReads()
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero
@@ -49,7 +49,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let reads = RegionReads()
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero

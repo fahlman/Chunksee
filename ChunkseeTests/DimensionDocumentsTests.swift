@@ -10,7 +10,7 @@ import Testing
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM1/region"), withIntermediateDirectories: true)
         let defaults = suppliedDefaults ?? TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         return (url, resources)
     }
@@ -259,7 +259,7 @@ import Testing
         let defaults = TestDefaults.make()
 
         let folders = WorldFolders(defaults: defaults)
-        folders.remember(url)
+        try folders.remember(url)
         let documents = try World(contentsOf: url).dimensions().map { $0.documentURL(inWorldAt: url) }
         #expect(documents.map(\.lastPathComponent).sorted() == ["DIM-1", "region"])
         let overworld = try await DimensionSnapshot.read(url.appendingPathComponent("region"), folders: folders)
@@ -277,8 +277,8 @@ import Testing
         let folders = WorldFolders(defaults: defaults)
         let nether = url.appendingPathComponent("DIM-1")
         await #expect(throws: WorldOpenError.needsWorldFolder) { try await DimensionSnapshot.read(nether, folders: folders) }
-        folders.remember(url)
-        folders.remember(url) // remembering again keeps one bookmark
+        try folders.remember(url)
+        try folders.remember(url) // remembering again keeps one bookmark
         #expect((defaults.array(forKey: "worldFolderBookmarks") ?? []).count == 1)
         let snapshot = try await DimensionSnapshot.read(nether, folders: folders)
         guard case .snapshot(let world) = snapshot.source else { Issue.record("A fresh read reused an opening"); return }
@@ -386,7 +386,7 @@ import Testing
         for dimension in ["DIM-1", "DIM1"] {
             try FileManager.default.createDirectory(at: url.appendingPathComponent(dimension + "/region"), withIntermediateDirectories: true)
         }
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
         defer { resources.close() }
@@ -421,7 +421,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<RegionFacts>()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { _, _ in await gate.read("region") })
         await gate.waitForRequest("region")
@@ -493,7 +493,7 @@ import Testing
         await resources.waitUntilClosed()
         nether.becameActive()
         #expect(resources.settings.lastDimension == "minecraft:the_end")
-        let reopened = WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
+        let reopened = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
                                       savedSearches: resources.savedSearches, defaults: defaults, cacheRoot: nil)
         #expect(reopened.defaultDimensionID == "minecraft:the_end")
         #expect(reopened.activeDimensionID == "minecraft:the_end")
@@ -515,24 +515,6 @@ import Testing
         #expect(first.activeDimensionID == "minecraft:the_nether" && second.activeDimensionID == "minecraft:the_end")
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed()
-    }
-
-    @Test func movingAWorldRetainsAllDimensionViews() {
-
-        let defaults = TestDefaults.make()
-
-        let views = WorldSettings(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults)
-        let newURL = URL(fileURLWithPath: "/Worlds/Moved")
-        let overworld = MapViewport(center: CGPoint(x: 120, y: -300), scale: 0.25)
-        let nether = MapViewport(center: CGPoint(x: 15, y: -37), scale: 4)
-        views.save(overworld, for: "minecraft:overworld", selected: "minecraft:overworld")
-        views.save(nether, for: "minecraft:the_nether", selected: "minecraft:overworld")
-        views.relocate(to: newURL)
-        let moved = WorldSettings(world: newURL, defaults: defaults)
-        #expect(moved.viewport(for: "minecraft:overworld") == overworld)
-        #expect(moved.viewport(for: "minecraft:the_nether") == nether)
-        #expect(moved.lastDimension == "minecraft:overworld")
-        #expect(WorldSettings(world: URL(fileURLWithPath: "/Worlds/Old"), defaults: defaults).viewport(for: "minecraft:overworld") == nil)
     }
 }
 

@@ -46,8 +46,8 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     grants a reopened or restored dimension document only its own folder; the world's
     `level.dat`, players and other dimensions are read through that bookmark.
   - It never writes to a world folder.
-  - Saved places are annotations in the app's local preferences, keyed by world URL; native
-    document moves migrate them and remembered views. Navigation history and ruler endpoints
+  - Saved places are annotations in the app's local preferences, keyed by the world bookmark's
+    persistent identity, which survives folder moves. Navigation history and ruler endpoints
     belong to each dimension view, and are never stored in the world.
   - For player names, it reads `usercache.json` files under a Minecraft folder the user chooses in
     Settings (kept as a read-only bookmark). With online lookup on, it sends the UUIDs of players it
@@ -104,7 +104,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `WorldSettings.swift` | One versioned per-world presentation store, legacy import and native move migration, shared by the live feature models |
+| `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
@@ -478,13 +478,19 @@ dimension shows its player, including a death or respawn point of somebody liste
 dimension or with no current position; it selects a row only when this dimension lists them.
 
 WorldSettings owns one versioned preference record per world for views, cutaway depths, front
-dimension, layer controls and saved places. Opening it imports the former mapView, mapLayers
-and savedPlaces path keys once, then removes those old keys. WorldResources shares this owner;
-SavedPlaces and each dimension's LayerVisibility retain their existing live state. Annotation
-JSON is encoded only for annotation edits or move merging, never for viewport/layer saves.
-One relocation call merges all sections on a native world move; sibling tabs still closing use
-the owner's updated destination key. The store remains path-keyed in this consolidation slice;
-bookmark-backed stable identity is the next part of #170. App-wide preferences stay separate.
+dimension, layer controls and saved places. WorldFolders associates a persistent UUID with each
+read-only bookmark in its existing registry; the opening reader resolves it off-main and passes
+the identity to WorldSettings. The resolved bookmark URL retains security scope; canonical paths
+are only comparisons, never replacements for that access URL. Native folder moves keep that UUID;
+separately opened copies get their own, and unresolved bookmarks retain their identity. No identifier is written into a world.
+Opening settings imports the former path-keyed worldSettings/mapView/mapLayers/savedPlaces once,
+using the current path and the bookmark's original path even after a rename while closed. Legacy
+move collisions keep source view choices and destination annotation names, as before. Thereafter
+no settings relocation is needed. WorldResources shares this owner; SavedPlaces and each dimension's
+LayerVisibility retain their live state. Annotation JSON is encoded only for annotation edits or
+legacy move merging, never for viewport/layer saves. Live file readers still follow the native
+document's new URL. Direct world/session opening conveniences exist only in TestWorld; production
+always obtains identity through its document reader. App-wide preferences stay separate.
 
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
 fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, grid and Time Spent.

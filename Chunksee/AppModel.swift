@@ -43,7 +43,7 @@ final class AppModel {
     }
 
     /// The open resources of a snapshot's world, which its other dimensions share, or new ones.
-    func resources(for snapshot: WorldSnapshot) -> WorldResources {
+    func resources(for snapshot: WorldSnapshot, folder: WorldFolders.Folder) -> WorldResources {
         openWorlds = openWorlds.filter { $0.value.value.map { !$0.isClosed } ?? false }
         let key = snapshot.access.url.resolvingSymlinksInPath().path
         if let open = openWorlds[key]?.value {
@@ -52,7 +52,7 @@ final class AppModel {
             return open
         }
         let resources = WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
-                                       defaults: defaults, cacheRoot: cacheRoot)
+                                       settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot)
         openWorlds[key] = WeakResources(resources)
         return resources
     }
@@ -63,8 +63,8 @@ final class AppModel {
     }
 
     /// URLs are resolved by the reader off the main actor, before looking up shared resources.
-    func initialDimension(at documentURL: URL, in worldURL: URL) async throws -> DimensionSnapshot? {
-        let opening = try await openingWorld(worldURL, documentURL: documentURL)
+    func initialDimension(at documentURL: URL, in folder: WorldFolders.Folder) async throws -> DimensionSnapshot? {
+        let opening = try await openingWorld(folder, documentURL: documentURL)
         do {
             try Task.checkCancellation()
             guard let resources = opening.resources else { throw CancellationError() }
@@ -74,7 +74,7 @@ final class AppModel {
                 opening.finish()
                 return nil
             }
-            return DimensionSnapshot(source: .opening(opening), worldURL: resources.url,
+            return DimensionSnapshot(source: .opening(opening), folder: folder,
                                      dimensionID: dimensionID, documentURL: documentURL)
         } catch {
             opening.finish()
@@ -82,8 +82,9 @@ final class AppModel {
         }
     }
 
-    private func openingWorld(_ url: URL, documentURL: URL) async throws -> WorldOpening {
+    private func openingWorld(_ folder: WorldFolders.Folder, documentURL: URL) async throws -> WorldOpening {
         try Task.checkCancellation()
+        let url = folder.url
         let key = url.path
         if let open = openWorlds[key]?.value, !open.isClosed { return try open.opening() }
         let pending: OpeningRead
@@ -103,7 +104,7 @@ final class AppModel {
                     guard waiting.requests.values.contains(where: { paths.contains($0.path) }) else { throw WorldOpenError.notADimension }
                 }
                 catch { snapshot.access.release(); throw error }
-                return try self.resources(for: snapshot).opening()
+                return try self.resources(for: snapshot, folder: folder).opening()
             }
             pending = OpeningRead(id: id, task: task)
             openingReads[key] = pending

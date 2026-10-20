@@ -49,9 +49,9 @@ import Testing
 
     @Test func invalidSavedViewsAreIgnoredAndDoNotOverwriteGoodViews() throws {
         let defaults = TestDefaults.make()
-        let world = URL(fileURLWithPath: "/tmp/Map Range Safety")
-        let views = WorldSettings(world: world, defaults: defaults)
-        let key = "worldSettings." + world.path, dimension = "minecraft:overworld"
+        let world = UUID()
+        let views = WorldSettings(id: world, defaults: defaults)
+        let key = "worldSettings." + world.uuidString, dimension = "minecraft:overworld"
         for invalid in [[Double.nan, 0, 1], [0, .infinity, 1], [Double(Int.max), 0, 1], [0, 0, .nan], [0, 0, .infinity], [0, 0, -1]] {
             defaults.set(["views": [dimension: invalid]], forKey: key)
             #expect(views.viewport(for: dimension) == nil)

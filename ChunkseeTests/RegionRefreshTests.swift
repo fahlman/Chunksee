@@ -62,7 +62,7 @@ import Testing
     private func resources(_ url: URL, reads: Reads,
                            watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
                                        readRegion: { dimension, region in
                                            await reads.record(dimension.id, region)

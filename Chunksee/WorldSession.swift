@@ -33,13 +33,6 @@ final class WorldSession {
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
 
-    convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
-                     defaults: UserDefaults, cacheRoot: URL?,
-                     readRegion: @escaping RegionReader.Read = RegionReader.scan) {
-        self.init(resources: WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
-                                           defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
-    }
-
     init(resources: WorldResources, dimensionID: String? = nil,
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) }) {
@@ -59,17 +52,6 @@ final class WorldSession {
         heatMap.restoreVisibility(from: visibility)
         slimeChunks.restoreVisibility(from: visibility)
         resources.attach(self)
-    }
-
-    /// Opens a world folder. `url` must come from the Open panel or a resolved bookmark.
-    /// `defaults` keeps which layers are shown and where the map was, and saved searches unless
-    /// `savedSearches` is given; `cacheRoot` holds tiles and scans (`nil` keeps nothing). Tests pass
-    /// their own so they leave the app's alone.
-    static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults,
-                     cacheRoot: URL?) async throws -> WorldSession {
-        let snapshot = try await WorldSnapshot.read(url)
-        return WorldSession(snapshot: snapshot, names: names, savedSearches: savedSearches ?? SavedSearches(defaults: defaults),
-                            defaults: defaults, cacheRoot: cacheRoot)
     }
 
     /// Closing drains this dimension's reads; the world's shared reads stay alive for the others.

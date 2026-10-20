@@ -82,7 +82,7 @@ import Testing
         var sessions: [WorldSession] = []
         for url in urls {
             let snapshot = try await WorldSnapshot.read(url)
-            sessions.append(WorldSession(snapshot: snapshot, names: model.names, savedSearches: model.savedSearches,
+            sessions.append(try WorldSession(snapshot: snapshot, names: model.names, savedSearches: model.savedSearches,
                                          defaults: TestDefaults.make(), cacheRoot: nil))
         }
         let first = sessions[0]
@@ -104,7 +104,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<RegionFacts>()
-        let session = WorldSession(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let session = try WorldSession(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                    readRegion: { _, _ in await gate.read("region") })
         await gate.waitForRequest("region")

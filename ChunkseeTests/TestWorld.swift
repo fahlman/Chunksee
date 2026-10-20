@@ -93,3 +93,41 @@ nonisolated enum TestWorld {
         return file
     }
 }
+
+// Focused model tests open synthetic worlds directly; production goes through DocumentGroup's
+// reader. Both paths use the real bookmark identity and settings owner, with explicit stores.
+extension WorldSession {
+    convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
+                     defaults: UserDefaults, cacheRoot: URL?,
+                     readRegion: @escaping RegionReader.Read = RegionReader.scan) throws {
+        self.init(resources: try WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
+                                           defaults: defaults, cacheRoot: cacheRoot, readRegion: readRegion))
+    }
+
+    static func open(_ url: URL, names: PlayerNames, savedSearches: SavedSearches? = nil, defaults: UserDefaults,
+                     cacheRoot: URL?) async throws -> WorldSession {
+        let snapshot = try await WorldSnapshot.read(url)
+        return try WorldSession(snapshot: snapshot, names: names, savedSearches: savedSearches ?? SavedSearches(defaults: defaults),
+                            defaults: defaults, cacheRoot: cacheRoot)
+    }
+
+}
+
+extension WorldResources {
+    convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
+                     defaults: UserDefaults, cacheRoot: URL?,
+                     watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
+                     readRegion: @escaping RegionReader.Read = RegionReader.scan,
+                     maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) throws {
+        let folder = try WorldFolders(defaults: defaults).remember(snapshot.access.url)
+        self.init(snapshot: snapshot, names: names, savedSearches: savedSearches,
+                  settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot,
+                  watchWorld: watchWorld, readRegion: readRegion, maintainCache: maintainCache)
+    }
+}
+
+extension AppModel {
+    func resources(for snapshot: WorldSnapshot) throws -> WorldResources {
+        resources(for: snapshot, folder: try worldFolders.remember(snapshot.access.url))
+    }
+}

@@ -231,7 +231,7 @@ import Testing
         }
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<Void>()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
                                        maintainCache: { _, folder in
             await gate.read("maintenance")
