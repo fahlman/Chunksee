@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import Foundation
 import SwiftUI
@@ -19,17 +20,10 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
 
     /// Totals for every item kind, most first.
     static func totals(in containers: [ItemContainer]) -> [StoredItem] {
-        var totals: [String: (count: Int, containers: Int)] = [:]
-        for container in containers {
-            var here: [String: Int] = [:]
-            for item in container.items.flatMap(\.allItems) { here[item.id, default: 0] += item.count }
-            for (id, count) in here {
-                totals[id, default: (0, 0)].count += count
-                totals[id, default: (0, 0)].containers += 1
-            }
+        StoredItemTotal.totals(in: containers).map {
+            StoredItem(id: $0.id, name: ReadableName.from($0.id), count: $0.count, containers: $0.containers)
         }
-        return totals.map { StoredItem(id: $0.key, name: ReadableName.from($0.key), count: $0.value.count, containers: $0.value.containers) }
-            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
+        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
     }
 }
 

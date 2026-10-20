@@ -11,9 +11,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 - **First scope:** open a world and show a top-down view of it.
 - **Later:** overlays for strongholds, villages and other structures. These aren't approved for
   work yet.
-- **Dependency direction:** **Chunksee app → ChunkseeKit**. ChunkseeKit is the open-source engine
-  that reads world files (fahlman/ChunkseeKit). This app owns presentation only. World-format
-  rules belong in ChunkseeKit and are never re-implemented here.
+- **Dependency direction:** **Chunksee app → ChunkseeKit and ChunkseeIndex**. ChunkseeKit is the
+  open-source engine that reads world files (fahlman/ChunkseeKit); the same package's ChunkseeIndex
+  product owns shared aggregation. This app owns presentation. World-format rules belong in
+  ChunkseeKit and are never re-implemented here.
 
 ## Approved decisions (Ryan, 2026-10-09)
 
@@ -59,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.36.0`, resolved to `0.36.0` (`5a98138634d922a85018bbbf1f111bce3c19a0ac`).
+  minor" from `0.37.0`, resolved to `0.37.0` (`0774ad259bbfb69075817180a28135e58e33c172`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -68,6 +69,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 ## Modules
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
+ChunkseeIndex.StoredItemTotal owns storage quantities and outer-container counts, including nested
+items. StoredItem projects its results into app display names and count/name order; it does not
+repeat the aggregation. The app and isolated test host link both published products.
 
 WorldDetails keeps game rules by saved ID and derives sorted display rows. Wandering-trader
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
@@ -665,8 +669,8 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   Each suite uses an absolute preference domain inside a disposable temporary directory, so
   cfprefsd cannot recreate empty files in Preferences after host exit. Teardown removes the
   domain and its whole directory. Cache tests pass temporary roots or `nil`.
-- The isolated `ChunkseeTestHost` links `ChunkseeKitTestSupport` alongside `ChunkseeKit` from the
-  published pin. The test bundle uses both through its existing host, keeping a single library
+- The isolated `ChunkseeTestHost` links `ChunkseeKitTestSupport` alongside `ChunkseeKit` and
+  `ChunkseeIndex` from the published pin. The test bundle uses them through its existing host, keeping a single library
   instance. Linking test support separately to the bundle makes Xcode 27.1 promote the shared
   Kit target to a dynamic library, whose build graph cannot resolve its CZlib target.
   `TestWorld` keeps
@@ -674,7 +678,7 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   and chunk construction, region writing and compressed NBT files. App fixtures explicitly use
   26.3, yPos 0 and zero region timestamps; their status key follows the shared modern builder.
   Tests for both uppercase and lowercase status remain. The production app depends only on
-  `ChunkseeKit`; shared fixture code is confined to the isolated test host.
+  `ChunkseeKit` and `ChunkseeIndex`; shared fixture code is confined to the isolated test host.
   Player fixtures keep their original NBT inputs for file writes through Fixtures.writeGzippedNBT;
   neither the app nor its tests read raw save data back from PlayerInfo.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving

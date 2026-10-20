@@ -10,6 +10,8 @@
 		B1000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000019 /* ChunkseeKit */; };
 		B2000000000000000000001A /* ChunkseeKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000019 /* ChunkseeKit */; };
 		B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = B30000000000000000000019 /* ChunkseeKitTestSupport */; };
+		B4000000000000000000001A /* ChunkseeIndex in Frameworks */ = {isa = PBXBuildFile; productRef = B40000000000000000000019 /* ChunkseeIndex */; };
+		B5000000000000000000001A /* ChunkseeIndex in Frameworks */ = {isa = PBXBuildFile; productRef = B50000000000000000000019 /* ChunkseeIndex */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,6 +41,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B1000000000000000000001A /* ChunkseeKit in Frameworks */,
+				B4000000000000000000001A /* ChunkseeIndex in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,6 +58,7 @@
 			files = (
 				B2000000000000000000001A /* ChunkseeKit in Frameworks */,
 				B3000000000000000000001A /* ChunkseeKitTestSupport in Frameworks */,
+				B5000000000000000000001A /* ChunkseeIndex in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -101,6 +105,7 @@
 			name = Chunksee;
 			packageProductDependencies = (
 				B10000000000000000000019 /* ChunkseeKit */,
+				B40000000000000000000019 /* ChunkseeIndex */,
 			);
 			productName = Chunksee;
 			productReference = B10000000000000000000011 /* Chunksee.app */;
@@ -146,6 +151,7 @@
 			packageProductDependencies = (
 				B20000000000000000000019 /* ChunkseeKit */,
 				B30000000000000000000019 /* ChunkseeKitTestSupport */,
+				B50000000000000000000019 /* ChunkseeIndex */,
 			);
 			productName = ChunkseeTestHost;
 			productReference = B20000000000000000000011 /* ChunkseeTestHost.app */;
@@ -543,7 +549,7 @@
 			repositoryURL = "https://github.com/fahlman/ChunkseeKit.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.36.0;
+				minimumVersion = 0.37.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -563,6 +569,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B1000000000000000000001B /* XCRemoteSwiftPackageReference "ChunkseeKit" */;
 			productName = ChunkseeKitTestSupport;
+		};
+		B40000000000000000000019 /* ChunkseeIndex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1000000000000000000001B /* XCRemoteSwiftPackageReference "ChunkseeKit" */;
+			productName = ChunkseeIndex;
+		};
+		B50000000000000000000019 /* ChunkseeIndex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1000000000000000000001B /* XCRemoteSwiftPackageReference "ChunkseeKit" */;
+			productName = ChunkseeIndex;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
