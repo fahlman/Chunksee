@@ -43,7 +43,7 @@ struct WorldView: View {
                         MapVisibilityRow(isShown: $visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }
-                        .help("Show block, chunk and region lines; block lines appear from 8× zoom")
+                        .help("Show block, chunk and region lines; block lines appear from \(ZoomPercentage.text(MapGrid.minimumBlockSpacing)) zoom")
                     }
                     if !session.savedSearches.all.isEmpty {
                         SavedSearchesSection(session: session, expanded: $sidebarDisclosure.savedSearches)
