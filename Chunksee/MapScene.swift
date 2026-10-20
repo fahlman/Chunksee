@@ -1,23 +1,24 @@
 import ChunkseeKit
 import SwiftUI
 
-/// Point markers shared by drawing, picking and accessibility. Region buckets limit candidates
-/// to the viewport for drawing, or to the pointer's reach for picking.
+/// Markers shared by drawing, picking and accessibility. Region buckets limit point candidates;
+/// structures retain their area bounds even when their badge is outside the viewport.
 struct MapScene {
     // Picking priority is independent of array/drawing order: a portal wins over a creature
     // standing in it, even though creature bodies are drawn later.
     enum Layer: Int {
-        case place, creature, portal, search, player, savedPlace
+        case structure, place, creature, portal, search, player, savedPlace
     }
 
     /// Keep names lazy: most places/creatures have no visible caption at overview zoom, and
     /// picking never needs their formatted names or prefixed accessibility IDs.
     enum Label {
-        case place(PlaceMarker), creature(CreatureMarker)
+        case structure(StructureMarker), place(PlaceMarker), creature(CreatureMarker)
         case pin(id: String, name: String, detail: String? = nil)
 
         var id: String {
             switch self {
+            case .structure(let marker): "structure-" + marker.id
             case .place(let marker): "place-" + marker.id
             case .creature(let marker): "creature-" + marker.id
             case .pin(let id, _, _): id
@@ -26,6 +27,7 @@ struct MapScene {
 
         var name: String {
             switch self {
+            case .structure(let marker): marker.name
             case .place(let marker): marker.name
             case .creature(let marker): marker.name
             case .pin(_, let name, _): name
@@ -85,6 +87,33 @@ struct MapScene {
         }
     }
 
+    /// Area decorations belong only to structures; point items need no storage for them.
+    struct StructureItem {
+        let item: Item
+        let outline: CGRect
+        let portalRoom: CGPoint?
+
+        func draw(in context: GraphicsContext, scale: CGFloat,
+                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
+            if scale >= 0.25 {
+                let path = Path(outline)
+                context.fill(path, with: .color(item.style.fill.opacity(0.12)))
+                context.stroke(path, with: .color(item.style.fill.opacity(0.8)),
+                               style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+            }
+            let label = item.draw(in: context, scale: scale, portalStatus: { _ in nil }, symbol: symbol)
+            if scale >= 0.25, let point = portalRoom {
+                let ring = Path(ellipseIn: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14))
+                context.fill(ring, with: .color(.black.opacity(0.7)))
+                var sparkle = context.resolve(Image(systemName: "sparkles"))
+                sparkle.shading = .color(.mint)
+                context.draw(sparkle, in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
+            }
+            return label
+        }
+    }
+
+    let structures: [StructureItem]
     let items: [Item]
     private let accessibilityBounds: CGRect
     private let firstPinIndex: Int
@@ -98,6 +127,22 @@ struct MapScene {
         biomeAreas = content.biomeAreas
         let bounds = CGRect(origin: .zero, size: size)
         accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
+        structures = content.structures.compactMap { marker in
+            let outline = CGRect(origin: viewport.viewPoint(for: marker.bounds.origin, in: size),
+                size: CGSize(width: marker.bounds.width * viewport.scale, height: marker.bounds.height * viewport.scale))
+            let point = CGPoint(x: outline.midX, y: outline.midY)
+            if let pointer {
+                let reach = MarkerGeometry.structure.hitRadius
+                guard abs(point.x - pointer.x) <= reach, abs(point.y - pointer.y) <= reach else { return nil }
+            } else {
+                guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return nil }
+            }
+            return StructureItem(item: Item(label: .structure(marker), layer: .structure,
+                target: .row(.structure(marker.id)), position: marker.position, y: marker.y.map(Double.init),
+                anchor: marker.position, point: point, style: .structure(marker.group),
+                labelPriority: content.selectedItem == .structure(marker.id) ? .selected : .other),
+                outline: outline, portalRoom: marker.portalRoom.map { viewport.viewPoint(for: $0, in: size) })
+        }
         let candidateBounds = pointer.map { point in
             let reach = max(MarkerGeometry.place(isPortal: true).hitRadius, MarkerGeometry.creature(selected: true).hitRadius)
             return CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
@@ -161,9 +206,10 @@ struct MapScene {
     }
 
     var accessibleLocations: [AccessibleMapLocation] {
-        // Preserve traversal order: Places, creatures, biome areas, then the three pin layers.
+        // Preserve traversal order: structures, Places, creatures, biome areas, then pin layers.
         // Biome outlines remain drawn separately; they have no invisible pointer badge.
-        var locations = items[..<firstPinIndex].map(\.accessibleLocation)
+        var locations = structures.filter { accessibilityBounds.contains($0.item.point) }.map(\.item.accessibleLocation)
+        locations += items[..<firstPinIndex].map(\.accessibleLocation)
         for area in biomeAreas {
             let point = viewport.viewPoint(for: area.position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
@@ -180,16 +226,18 @@ struct MapScene {
     func hit(at point: CGPoint) -> MapHit? {
         var best: Item?
         var distance = CGFloat.infinity
-        for item in items {
+        func consider(_ item: Item) {
             let candidate = hypot(item.point.x - point.x, item.point.y - point.y)
-            guard candidate <= item.style.geometry.hitRadius else { continue }
+            guard candidate <= item.style.geometry.hitRadius else { return }
             if let best {
-                if item.layer.rawValue < best.layer.rawValue { continue }
-                if item.layer == best.layer, candidate > distance { continue }
+                if item.layer.rawValue < best.layer.rawValue { return }
+                if item.layer == best.layer, candidate > distance { return }
             }
             best = item
             distance = candidate
         }
+        for structure in structures { consider(structure.item) }
+        for item in items { consider(item) }
         return best.map { MapHit(target: $0.target, position: $0.position, y: $0.y) }
     }
 }

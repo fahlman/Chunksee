@@ -84,25 +84,7 @@ struct MapContent {
     /// The individual locations represented by Canvas. Names and actions remain available
     /// to VoiceOver even though Canvas itself creates no accessibility children.
     func accessibleLocations(viewport: MapViewport, size: CGSize) -> [AccessibleMapLocation] {
-        var locations: [AccessibleMapLocation] = []
-        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
-        // Ids and names are built only for locations in view: a world can have thousands of
-        // spawners and other places off screen.
-        func add(_ id: @autoclosure () -> String, _ name: @autoclosure () -> String, _ position: CGPoint,
-                 y: Double? = nil, anchor: CGPoint? = nil, frame: @autoclosure () -> CGRect,
-                 target: @autoclosure () -> MapTarget? = nil) {
-            guard bounds.contains(viewport.viewPoint(for: anchor ?? position, in: size)) else { return }
-            locations.append(.init(id: id(), name: name(), position: position, y: y, target: target(), anchor: anchor, frame: frame()))
-        }
-        func frame(_ geometry: MarkerGeometry, at position: CGPoint) -> CGRect {
-            geometry.frame(at: viewport.viewPoint(for: position, in: size))
-        }
-        for marker in structures {
-            add("structure-" + marker.id, marker.name, marker.position, y: marker.y.map(Double.init),
-                frame: frame(.structure, at: marker.position), target: .row(.structure(marker.id)))
-        }
-        locations.append(contentsOf: scene(viewport: viewport, size: size).accessibleLocations)
-        return locations
+        scene(viewport: viewport, size: size).accessibleLocations
     }
 
     /// Hit tests only drawn markers. Match drawing order for overlapping badges, preserving a
@@ -112,24 +94,8 @@ struct MapContent {
     }
 
     func hit(at point: CGPoint, viewport: MapViewport, size: CGSize) -> MapHit? {
-        func nearest<Item>(_ items: some Sequence<Item>, within reach: (Item) -> CGFloat,
-                           position: (Item) -> CGPoint) -> Item? {
-            var best: Item?
-            var distance = CGFloat.infinity
-            for item in items {
-                let location = viewport.viewPoint(for: position(item), in: size)
-                let candidate = hypot(location.x - point.x, location.y - point.y)
-                if candidate <= reach(item), candidate <= distance { best = item; distance = candidate }
-            }
-            return best
-        }
-        if let hit = scene(viewport: viewport, size: size, pickingAt: point).hit(at: point) { return hit }
-        if let structure = nearest(structures, within: { _ in MarkerGeometry.structure.hitRadius }, position: \.position) {
-            return MapHit(target: .row(.structure(structure.id)), position: structure.position, y: structure.y.map(Double.init))
-        }
-        // Biomes draw areas, not badges at their representative position. They remain available
-        // through the sidebar and accessibility locations without an invisible pointer target.
-        return nil
+        // Biome areas remain accessible without an invisible pointer badge.
+        scene(viewport: viewport, size: size, pickingAt: point).hit(at: point)
     }
 }
 
