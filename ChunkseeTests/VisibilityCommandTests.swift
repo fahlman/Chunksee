@@ -17,8 +17,8 @@ import Testing
         let world = URL(fileURLWithPath: "/Visibility Commands")
         let defaults = TestDefaults.make()
 
-        let first = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
-        let other = LayerVisibility(world: world, dimension: "minecraft:the_nether", defaults: defaults)
+        let first = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld")
+        let other = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:the_nether")
         func exercise<Group: Hashable>(_ group: Group, _ keyPath: ReferenceWritableKeyPath<LayerVisibility, Set<Group>>) throws {
             first[keyPath: keyPath] = [group]
             other[keyPath: keyPath] = [group]
@@ -27,7 +27,7 @@ import Testing
             }
             try perform(binding, title: "Hide on Map")
             #expect(first[keyPath: keyPath].isEmpty && other[keyPath: keyPath] == [group])
-            let restored = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
+            let restored = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld")
             #expect(restored[keyPath: keyPath].isEmpty)
             try perform(binding, title: "Show on Map")
             #expect(first[keyPath: keyPath] == [group] && other[keyPath: keyPath] == [group])
@@ -43,8 +43,8 @@ import Testing
         let world = URL(fileURLWithPath: "/Player Visibility Commands")
         let defaults = TestDefaults.make()
 
-        let first = LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults)
-        let other = LayerVisibility(world: world, dimension: "minecraft:the_nether", defaults: defaults)
+        let first = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld")
+        let other = LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:the_nether")
         let player = UUID(), alreadyHidden = UUID()
         first.hiddenPlayers = [alreadyHidden]
         other.hiddenPlayers = []
@@ -53,7 +53,7 @@ import Testing
         }
         try perform(binding, title: "Hide on Map")
         #expect(first.hiddenPlayers == [alreadyHidden, player] && other.hiddenPlayers.isEmpty)
-        #expect(LayerVisibility(world: world, dimension: "minecraft:overworld", defaults: defaults).hiddenPlayers == [alreadyHidden, player])
+        #expect(LayerVisibility(settings: WorldSettings(world: world, defaults: defaults), dimension: "minecraft:overworld").hiddenPlayers == [alreadyHidden, player])
         try perform(binding, title: "Show on Map")
         #expect(first.hiddenPlayers == [alreadyHidden] && other.hiddenPlayers.isEmpty)
     }

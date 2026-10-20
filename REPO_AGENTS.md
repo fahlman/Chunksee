@@ -104,6 +104,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
+| `WorldSettings.swift` | One versioned per-world presentation store, legacy import and native move migration, shared by the live feature models |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
@@ -143,7 +144,7 @@ window controller; SwiftUI still owns the document, URL, window and native tabs.
 observation reapplies the model’s display name if native restoration resets it; moving or closing
 the view ends that observation. The adapter never edits a file URL or document contents.
 The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
-Each dimension's map position is remembered in `RememberedViews`.
+Each dimension's map position is remembered in the world's `WorldSettings`.
 WorldView owns the transient Go to Coordinates sheet flag. Navigate's command uses the focused
 scene binding, while the sheet keeps its existing native controls and calls MapNavigation.
 Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
@@ -210,7 +211,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
 The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
-Standard controls determine their sizing, with no fixed frames. RememberedViews stores depth per
+Standard controls determine their sizing, with no fixed frames. WorldSettings stores depth per
 dimension alongside the viewport, including moves.
 Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
 (Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
@@ -470,6 +471,15 @@ without a mappable position keep selectable rows for their details. Any player m
 dimension shows its player, including a death or respawn point of somebody listed in another
 dimension or with no current position; it selects a row only when this dimension lists them.
 
+WorldSettings owns one versioned preference record per world for views, cutaway depths, front
+dimension, layer controls and saved places. Opening it imports the former mapView, mapLayers
+and savedPlaces path keys once, then removes those old keys. WorldResources shares this owner;
+SavedPlaces and each dimension's LayerVisibility retain their existing live state. Annotation
+JSON is encoded only for annotation edits or move merging, never for viewport/layer saves.
+One relocation call merges all sections on a native world move; sibling tabs still closing use
+the owner's updated destination key. The store remains path-keyed in this consolidation slice;
+bookmark-backed stable identity is the next part of #170. App-wide preferences stay separate.
+
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
 fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, grid and Time Spent.
 Existing app-wide preferences seed a new scope once; later tab changes never write the old keys
@@ -532,7 +542,7 @@ uses the same trimmed-query rule in the sidebar and Navigate menu.
 
 MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
 measurement without reviving a draft. It refers weakly to the document for existing navigation,
-selection and cross-dimension routing; SavedPlaces remains the sole persistent per-world owner.
+selection and cross-dimension routing; SavedPlaces owns live annotations and WorldSettings persists them.
 Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
 MapContent constructs its value directly from the document’s live models for drawing and export.
 It keeps no document reference or separate cache; SwiftUI observation follows those same models.

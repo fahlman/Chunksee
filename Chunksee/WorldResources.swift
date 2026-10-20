@@ -38,8 +38,7 @@ final class WorldResources {
     let savedPlaces: SavedPlaces
     var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
-    let views: RememberedViews
-    let defaults: UserDefaults
+    let settings: WorldSettings
     let cacheRoot: URL?
     let playerRoster: PlayerRoster
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
@@ -71,7 +70,7 @@ final class WorldResources {
 
     var url: URL { access.url }
     var defaultDimensionID: String? {
-        views.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
+        settings.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
     }
 
     /// Tests that inject file changes substitute the watcher so real notifications cannot race
@@ -91,17 +90,16 @@ final class WorldResources {
         playerRoster = PlayerRoster(snapshot.players)
         self.names = names
         self.savedSearches = savedSearches
-        self.defaults = defaults
         self.cacheRoot = cacheRoot
         self.readRegion = readRegion
-        views = RememberedViews(world: snapshot.access.url, defaults: defaults)
-        savedPlaces = SavedPlaces(world: snapshot.access.url, defaults: defaults)
+        settings = WorldSettings(world: snapshot.access.url, defaults: defaults)
+        savedPlaces = SavedPlaces(settings: settings)
         let readers = snapshot.dimensions.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
                          read: readRegion)
         }
-        let last = views.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
+        let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension)
@@ -111,6 +109,11 @@ final class WorldResources {
                 await Self.runCacheMaintenance(maintainCache, root: root, folder: folder)
             }
         }
+    }
+
+    func relocateSettings(to world: URL) {
+        settings.relocate(to: world)
+        savedPlaces.reload()
     }
 
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
