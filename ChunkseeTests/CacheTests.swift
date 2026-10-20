@@ -6,6 +6,43 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct TileCacheTests {
+    @Test func sharedKeyPrimitivesKeepDiskNamesAndReadFreshFileAttributes() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheKeyTests-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let world = URL(fileURLWithPath: "/Worlds/A folder/../München")
+        #expect(TileCache.worldFolder(forWorldAt: world, root: root)?.lastPathComponent == "308b90831c3d6a14")
+        #expect(TileCache.worldFolder(forWorldAt: world, root: nil) == nil)
+
+        let file = root.appendingPathComponent("r.-1.2.mca"), missing = root.appendingPathComponent("missing.mca")
+        let region = RegionPosition(x: -1, z: 2)
+        let date = Date(timeIntervalSince1970: 1_790_000_000.5)
+        try Data([1, 2, 3]).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+        // Prime Foundation's URL metadata before changing this same URL's file.
+        _ = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let original = try #require(TileCache.key(for: region, regionFile: file))
+        #expect(original.fileName == "r.-1.2.surface.3.1790000000500000.v8.lzfse")
+        #expect(TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName
+                == "r.-1.2.cutaway.y-16.3.1790000000500000.v8.lzfse")
+        #expect(ScanCache.fingerprint([file, missing]) == "573ac917b6c1e815")
+        #expect(ScanCache.fingerprint([missing, file]) != ScanCache.fingerprint([file, missing]))
+
+        try Data([1, 2, 3, 4]).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+        let resized = try #require(TileCache.key(for: region, regionFile: file))
+        #expect(resized.fileSize == 4 && resized.modified == original.modified)
+        #expect(ScanCache.fingerprint([file, missing]) == "c5830d16238e6a68")
+
+        try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(1)], ofItemAtPath: file.path)
+        let touched = try #require(TileCache.key(for: region, regionFile: file))
+        #expect(touched.fileSize == 4 && touched.modified == original.modified + 1_000_000)
+        #expect(ScanCache.fingerprint([file, missing]) == "d789b310e6f2543d")
+        try FileManager.default.removeItem(at: file)
+        #expect(TileCache.key(for: region, regionFile: file) == nil)
+        #expect(ScanCache.fingerprint([file, missing]) == "8c8a4f8e0f4479e5")
+    }
+
     @Test func oldTilesAreRebuiltByScanningBlocksWhenHeightmapWidthIsAmbiguous() async throws {
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:grass_block"]) { _, y, _ in
             y == 10 ? 1 : 0
