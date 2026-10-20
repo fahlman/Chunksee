@@ -14,6 +14,7 @@ final class WorldIndexStore {
     private(set) var readers: [RegionReader]
     private let readDimension: @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex
     @ObservationIgnored private var indexTask: Task<Void, Never>?
+    @ObservationIgnored private var creatureProjection: (revision: Int, players: PlayerSnapshot, index: SearchIndex)?
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
     /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
     @ObservationIgnored private var queuedPass: Pass?
@@ -41,6 +42,21 @@ final class WorldIndexStore {
         self.readers = readers
         self.readDimension = readDimension
         rebuild(firstDimension: firstDimension)
+    }
+
+    /// One derived creature publication per index/player snapshot, shared across dimension tabs.
+    /// Panning and editing a query neither decode player NBT nor rebuild the region buckets.
+    func index(including players: PlayerSnapshot) -> SearchIndex {
+        guard !players.shoulderPets.isEmpty else {
+            creatureProjection = nil
+            return index
+        }
+        if let projection = creatureProjection, projection.revision == revision, projection.players === players {
+            return projection.index
+        }
+        let projected = index.including(players.shoulderPets)
+        creatureProjection = (revision, players, projected)
+        return projected
     }
 
     /// Missing results mean loading only when an actual reader is still due to publish them.

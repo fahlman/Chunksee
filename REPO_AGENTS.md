@@ -627,5 +627,16 @@ Personal phrases and absent-owner names stay with PlayerPresentation, preserving
 Player files use the same vanilla location rules regardless of unrelated extra fields; the app
 checks coordinate availability and presentation. Unknown numeric dimensions remain unavailable.
 Vanilla legacy dimensions and datapack dimensions still work; World Info retains its Modded line.
-RegionFacts are adopted by the shared region reader; shoulder-pet presentation remains
-separate from publishing its library API.
+RegionFacts are adopted by the shared region reader. PlayerSnapshot reads Kit's shoulder pets
+once per accepted player publication. WorldIndexStore derives their combined creature index once
+per player/index snapshot, shared by all dimension searches, sidebars, maps and pet links. A carried
+bird's saved owner stays distinct from its carrier; only the carrier's validated saved location
+is used. A carried UUID replaces any stale region copy, and missing/unavailable locations never
+fall back to the bird's mounting position. The player's On Shoulders section retains its details
+even when it cannot be mapped. These are derived app publications, with no new file reader or
+disk cache; ordinary player and region refreshes replace them.
+
+Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
+markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,
+appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
+their headings and location presentation; a carried pet never displays its old mounting position.

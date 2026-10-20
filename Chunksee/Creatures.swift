@@ -50,15 +50,12 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     var creature: Creature
     var group: CreatureGroup
     var dimension: String
+    /// Present only for a player-carried pet; this is independent of its saved owner.
+    var carrier: UUID?
 
     var position: CGPoint { CGPoint(x: creature.x, y: creature.z) }
 
-    /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
-    var name: String {
-        if let name = creature.customName { return name }
-        if let villager = creature.villager, let job = VillagerText.jobName(villager) { return job }
-        return ReadableName.from(creature.id)
-    }
+    var name: String { creature.displayName }
 
     init?(_ creature: Creature, dimension: String) {
         guard let group = CreatureGroup.group(for: creature),
@@ -81,53 +78,82 @@ nonisolated enum CreatureScanner {
     }
 }
 
-/// Details of the selected creature in the inspector: kind, owner, and a villager's job and trades.
+extension Creature {
+    /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
+    nonisolated var displayName: String {
+        if let customName { return customName }
+        if let villager, let job = VillagerText.jobName(villager) { return job }
+        return ReadableName.from(id)
+    }
+}
+
+/// Details of the selected creature in the inspector.
 struct CreatureDetailView: View {
     let session: WorldSession
     let marker: CreatureMarker
 
     var body: some View {
         Form {
-            Section {
-                LabeledContent("Kind", value: ReadableName.from(marker.creature.id))
+            CreatureDetailSections(session: session, creature: marker.creature) {
+                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
+            } location: {
                 LabeledContent("Position") {
                     Text(Coordinates.text(marker.position, y: marker.creature.y))
                         .monospacedDigit()
                 }
-                HealthRow(health: marker.creature.health, maximum: marker.creature.maxHealth)
-                if let owner = marker.creature.owner {
-                    LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
-                    PetDetailRows(creature: marker.creature)
-                }
-                if let villager = marker.creature.villager {
-                    if let job = VillagerText.description(villager) {
-                        LabeledContent("Job", value: job)
-                    } else if marker.creature.id == "minecraft:villager" {
-                        LabeledContent("Job", value: String(localized: "None yet"))
-                    }
-                }
-            } header: {
-                Label(marker.name, systemImage: marker.group.symbol).font(.headline)
-            }
-            if marker.creature.owner != nil, let equipment = marker.creature.equipment {
-                EquipmentSection(items: equipment)
-            }
-            if let trades = marker.creature.villager?.trades, !trades.isEmpty {
-                Section("Trades") {
-                    ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
-                        HStack {
-                            Text(TradeText.cost(of: trade))
-                            Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                            Text(TradeText.describe(trade.sell))
-                        }
-                        .strikethrough(trade.isSoldOut)
-                        .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
-                        .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
-                    }
+                if let carrier = marker.carrier {
+                    LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The same applicable details appear for a located creature and a player-carried creature.
+/// Callers supply their heading and location without duplicating pet, equipment or trade rules.
+struct CreatureDetailSections<Header: View, Location: View>: View {
+    let session: WorldSession
+    let creature: Creature
+    @ViewBuilder var header: Header
+    @ViewBuilder var location: Location
+
+    var body: some View {
+        Section {
+            LabeledContent("Kind", value: ReadableName.from(creature.id))
+            location
+            HealthRow(health: creature.health, maximum: creature.maxHealth)
+            if let owner = creature.owner {
+                LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
+                PetDetailRows(creature: creature)
+            }
+            if let villager = creature.villager {
+                if let job = VillagerText.description(villager) {
+                    LabeledContent("Job", value: job)
+                } else if creature.id == "minecraft:villager" {
+                    LabeledContent("Job", value: String(localized: "None yet"))
+                }
+            }
+        } header: {
+            header
+        }
+        if creature.owner != nil, let equipment = creature.equipment {
+            EquipmentSection(items: equipment)
+        }
+        if let trades = creature.villager?.trades, !trades.isEmpty {
+            Section("Trades") {
+                ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
+                    HStack {
+                        Text(TradeText.cost(of: trade))
+                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                        Text(TradeText.describe(trade.sell))
+                    }
+                    .strikethrough(trade.isSoldOut)
+                    .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
+                    .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
+                }
+            }
+        }
     }
 }
 
