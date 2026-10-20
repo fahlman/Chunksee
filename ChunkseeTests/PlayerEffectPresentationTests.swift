@@ -20,6 +20,10 @@ import Testing
         ]))
         #expect(player.activeEffects.map { PlayerEffectText.name($0, locale: english) }
                 == entries.map(\.1) + ["Resistance 256"])
+        for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
+            let style = PlayerEffectText.NameStyle().locale(locale)
+            #expect(player.activeEffects.map { style.format($0) } == entries.map(\.1) + ["Resistance 256"])
+        }
         let legacy = PlayerInfo(uuid: UUID(), nbt: .compound([
             "ActiveEffects": .list([.compound(["Id": .byte(27), "Amplifier": .byte(1), "Duration": .int(1680)])]),
         ]))

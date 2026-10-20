@@ -454,8 +454,10 @@ index and open/select in the destination dimension document. No owner is inferre
 Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
-not a live countdown. Effect names have their own vanilla exceptions, independent of enchantment
-names; both share level numeral presentation. Saved effect durations use native localized clocks
+not a live countdown. PlayerEffectText.NameStyle owns effect names and vanilla exceptions,
+independent of enchantment names; both share level numeral presentation. Visible effect rows and
+their accessibility representation use that native style, and the string adapter forwards to it.
+Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
 `GameDuration` owns saved tick conversion and the configured native Duration.UnitsFormatStyle.
 Views format validated durations directly through SwiftUI Text; string consumers use that same style.
