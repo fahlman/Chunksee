@@ -125,7 +125,8 @@ struct MapVisibilityRow<Content: View, Commands: View>: View {
             Spacer(minLength: 0)
             if let isShown { VisibilityButton(isShown: isShown) }
         }
-        .accessibilityElement(children: .combine)
+        // Keep the eye separate from a disclosure heading's own expand/collapse action.
+        .accessibilityElement(children: .contain)
         .contextMenu {
             Section { if let isShown { VisibilityCommand(isShown: isShown) } }
             Section { commands }
