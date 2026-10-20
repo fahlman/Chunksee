@@ -12,7 +12,8 @@ enum Inspector: Equatable {
 
 /// A sidebar row that can be selected. Choosing it shows its item: World Info and Storage in the
 /// inspector, everything else on the map.
-enum SidebarItem: Hashable {
+// These identities contain only immutable value IDs; scrolling can pass them between actors.
+nonisolated enum SidebarItem: Hashable, Sendable {
     case worldInfo
     case storage
     case savedPlace(UUID)
