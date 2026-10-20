@@ -438,7 +438,10 @@ empty stacks are omitted, and material tint applies to symbols while text uses s
 CountedText is the shared Foundation FormatStyle for fractional heart/block units, used directly by
 SwiftUI Text and by string consumers. Its locale modifier follows the native formatting contract;
 rounding and grammatical agreement remain owned by that one style.
-Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
+ItemAppearance.LabelStyle supplies native equipment Text and the name adapter used by trades and
+tooltips. Its existing item/count helpers own kind, custom name, book title/author and optional one;
+the style passes its locale through those helpers. Durability wording is shared too.
+Format parsing and applicability stay in Kit.
 The RegionFacts cache rereads earlier entries with Kit 0.29's versioned pet health, equipped modifiers,
 shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
 preserved legacy item wear, structure heights, cave-biome membership, checked entity-container

@@ -13,7 +13,7 @@ struct EquipmentSection: View {
                     LabeledContent(EquipmentPresentation.slot(row.slot)) {
                         VStack(alignment: .trailing) {
                             Label {
-                                Text(ItemAppearance.name(of: row.item)).foregroundStyle(.primary)
+                                Text(row.item, format: ItemAppearance.LabelStyle()).foregroundStyle(.primary)
                             } icon: {
                                 Image(systemName: ItemAppearance.symbol(for: row.item.id))
                                     .foregroundStyle(ItemAppearance.tint(for: row.item.id))
