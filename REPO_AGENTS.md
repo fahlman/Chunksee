@@ -515,6 +515,9 @@ tracks overlapping player reads and supplies the refresh-only drain; world close
 drains them through the common registry. The two-second scheduling window, changed-region
 aggregation and newest-player-read publication guard remain owned by WorldResources. It no longer
 keeps another refresh-task dictionary, cancel-all loop or drain loop.
+The continuous-save regression controls the existing delay through `waitBeforeRefresh`, then
+awaits the refresh scope; production still sleeps for `refreshDelay`. Its fixture disables real
+filesystem notifications so the test alone supplies the events being checked.
 
 The eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on
