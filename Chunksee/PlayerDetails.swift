@@ -206,8 +206,6 @@ struct PlayerDetailView: View {
                         dimension: location.dimension, showsDimension: true)
         }
         .disabled(!session.dimensions.contains { $0.id == location.dimension })
-        .locationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
-                      dimension: location.dimension, y: location.y)
     }
 
 }

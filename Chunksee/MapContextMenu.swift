@@ -96,7 +96,7 @@ extension View {
     }
 }
 
-/// A native Form lays out a LabeledContent's label and value separately; each needs its menu.
+/// Coordinates use their location commands instead of LabeledContent's automatic text-selection menu.
 struct LocationRow: View {
     let title: Text
     let session: WorldSession
@@ -107,17 +107,11 @@ struct LocationRow: View {
     var body: some View {
         LabeledContent {
             CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)
-                .contentShape(Rectangle())
-                .contextMenu { commands }
+                .textSelection(.disabled)
         } label: {
-            title.contentShape(Rectangle()).contextMenu { commands }
+            title
         }
-    }
-
-    @ViewBuilder private var commands: some View {
-        if let dimension {
-            LocationMenu(session: session, position: coordinates.point, dimension: dimension, y: coordinates.y)
-        }
+        .locationMenu(session: session, position: coordinates.point, dimension: dimension, y: coordinates.y)
     }
 }
 

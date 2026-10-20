@@ -608,7 +608,9 @@ uses the same trimmed-query rule in the sidebar and Navigate menu.
 LocationMenu supplies the same Copy Coordinates, Save Place and Measure Distance commands for
 map markers, generic layer/player/search/map rows, linked pets and inspector positions. Each caller
 supplies the saved position, dimension and optional height. LocationRow keeps native LabeledContent
-layout and attaches the same commands directly to both its label and coordinate value.
+layout and one menu for its label and value. Its value disables LabeledContent's automatic text
+selection, whose native text menu otherwise intercepts right-clicks; Copy Coordinates remains the
+shared command and produces Minecraft's space-separated XYZ. Other form values retain text selection.
 CopyCoordinatesCommand uses the
 session's map only when its dimension matches; a saved height can be copied without a map, while
 unknown heights in other dimensions disable Copy rather than read unrelated terrain. Saved-place
