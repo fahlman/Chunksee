@@ -60,7 +60,8 @@ import Testing
         #expect(gray.creature.maxHealth == 6)
         #expect(gray.creature.appearance?.variant == "minecraft:gray")
         #expect(first.presentation.linkedPets(to: owner).map(\.id) == [gray.id])
-        #expect(second.presentation.linkedPets(to: carrier).map(\.creature.uuid) == [otherBird])
+        #expect(second.presentation.linkedPets(to: carrier).isEmpty)
+        #expect(second.resources.playerSnapshot.shoulderPets.filter { $0.carrier == carrier }.map(\.creature.uuid) == [bird, otherBird])
 
         second.selection.choose(.creature(gray.id))
         #expect(second.selection.mapSelection == .creature(gray))
@@ -115,6 +116,33 @@ import Testing
         #expect(current.id == moved.id && current.carrier == nil && current.position.x == 13.5)
         #expect(session.selection.mapSelection == .creature(current))
         #expect(session.resources.playerSnapshot.shoulderPets.isEmpty)
+        session.close()
+        await session.waitUntilClosed()
+    }
+
+    @Test func anOwnersShoulderPetReturnsToLinkedPetsWhenItLands() async throws {
+        let url = try makeWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try save(playerData(pets: [parrot(bird, owner: carrier)]), in: url)
+        let session = try await PlayerInspectorTests().open(url)
+        defer { session.close() }
+        session.resources.refreshDelay = .zero
+        let carried = try #require(session.resources.playerSnapshot.shoulderPets.first)
+        #expect(carried.creature.owner == carrier && carried.carrier == carrier)
+        #expect(session.presentation.linkedPets(to: carrier).isEmpty)
+
+        var landed = try #require(parrot(bird, owner: carrier).compound)
+        landed["Pos"] = .list([.double(13.5), .double(49), .double(-4.5)])
+        let region = try PlayerInspectorTests().savePets([.compound(landed)], in: url)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: region.path)
+        let playerFile = try save(playerData(pets: []), in: url)
+        session.resources.worldChanged([playerFile, region])
+        await session.resources.waitForRefresh()
+        await session.search.waitForIndex()
+        #expect(session.resources.playerSnapshot.shoulderPets.isEmpty)
+        let linked = try #require(session.presentation.linkedPets(to: carrier).first)
+        #expect(linked.id == carried.id && linked.carrier == nil && linked.creature.owner == carrier)
+        #expect(linked.position == CGPoint(x: 13.5, y: -4.5))
         session.close()
         await session.waitUntilClosed()
     }
