@@ -103,7 +103,9 @@ struct WorldView: View {
                     sidebarRevealID = UUID()
                 }
                 .onChange(of: sidebarRevealID) {
-                    if let item = session.selection.sidebarSelection { proxy.scrollTo(item) }
+                    if let item = session.selection.sidebarSelection {
+                        withAnimation { proxy.scrollTo(item, anchor: .center) }
+                    }
                 }
                 .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
                     if let item = items.first { session.selection.choose(item) }
