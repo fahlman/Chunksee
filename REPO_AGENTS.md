@@ -545,11 +545,13 @@ The continuous-save regression controls the existing delay through `waitBeforeRe
 awaits the refresh scope; production still sleeps for `refreshDelay`. Its fixture disables real
 filesystem notifications so the test alone supplies the events being checked.
 
-Time Spent, Slime Chunks, Grid and marker-group headers share MapVisibilityRow.
-Their eye buttons and layer/player/saved-search context menus share one SwiftUI VisibilityCommand,
+Time Spent, Slime Chunks, Grid, marker-group headers, players and saved-search headings share
+MapVisibilityRow, including spacing, combined accessibility and row-scoped context menus.
+Its eye buttons and context menus share one SwiftUI VisibilityCommand,
 all using Show on Map/Hide on Map. SwiftUI exposes the button as a named accessibility action on
 combined rows. Existing model bindings own the settings; the command only toggles its binding.
-Saved-search menus also retain Search for This and Remove. Row navigation help says Center the
+Saved-search headings add Search for This and Remove in a separate native menu section.
+Those group commands belong to the heading, rather than its result rows. Row navigation help says Center the
 map, distinct from the visibility action.
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
