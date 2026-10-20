@@ -31,7 +31,7 @@ nonisolated struct ScanCache: Sendable {
         var optionsHash: String {
             // Length-prefix IDs so even unfamiliar saved names cannot alias another set.
             let ids = options.blockIDs.map { $0.sorted().map { "\($0.utf8.count):\($0)" }.joined() } ?? "all"
-            return ScanCache.hash("\(options.biomeSampleY.map(String.init) ?? "surface");\(options.height.map(String.init) ?? "unknown");\(ids)")
+            return CacheKey.hash("\(options.biomeSampleY.map(String.init) ?? "surface");\(options.height.map(String.init) ?? "unknown");\(ids)")
         }
     }
 
@@ -90,20 +90,12 @@ nonisolated struct ScanCache: Sendable {
     static func fingerprint(_ sources: [URL]) -> String {
         var text = ""
         for url in sources {
-            // FileManager rather than URL resource values, which are cached on the URL and can be stale.
-            if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-               let size = (attributes[.size] as? NSNumber)?.intValue, let modified = attributes[.modificationDate] as? Date {
-                text += "\(size):\(Int64(modified.timeIntervalSince1970 * 1_000_000));"
+            if let stamp = CacheKey.fileStamp(for: url) {
+                text += "\(stamp.size):\(stamp.modified);"
             } else {
                 text += "-;"
             }
         }
-        return hash(text)
-    }
-
-    private static func hash(_ text: String) -> String {
-        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
-        for byte in text.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3 }
-        return String(hash, radix: 16)
+        return CacheKey.hash(text)
     }
 }

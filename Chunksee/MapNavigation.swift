@@ -30,8 +30,7 @@ final class MapNavigation {
 
     /// Coordinate entry and saved-place jumps keep zoom and center on the containing block.
     func goToCoordinates(_ point: CGPoint) {
-        guard let coordinates = MapCoordinates(point: point) else { return }
-        navigate { $0.viewport.center = coordinates.center }
+        focus(on: point, blockPosition: true, keepingZoom: true)
     }
 
     func fitWorld() {
