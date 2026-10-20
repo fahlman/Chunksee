@@ -54,7 +54,7 @@ import Testing
                                   (1_480_800, "1,234 minutes")] {
             #expect(WorldDetails.traderDelayDescription(ticks, locale: english) == "In about \(expected) of play")
         }
-        #expect(WorldDetails.traderDelayDescription(1200, locale: Locale(identifier: "ar_EG")) == "In about دقيقة of play")
+        #expect(WorldDetails.traderDelayDescription(1200, locale: Locale(identifier: "ar_EG")) == "In about \u{2068}دقيقة\u{2069} of play")
     }
 
     @Test func heatLegendUsesTheSameElapsedUnitsAndLocale() {
@@ -63,7 +63,7 @@ import Testing
             #expect(GameDuration.units(GameDuration.fromTicks(ticks), locale: english) == expected)
             #expect(GameDuration.elapsed(ticks, locale: english) == expected)
         }
-        #expect(GameDuration.units(GameDuration.fromTicks(72_000), locale: Locale(identifier: "fr_FR")) == "1 heure")
+        #expect(GameDuration.units(GameDuration.fromTicks(72_000), locale: Locale(identifier: "fr_FR")) == "1\u{00a0}heure")
         #expect(GameDuration.units(GameDuration.fromTicks(72_000), locale: Locale(identifier: "ar_EG")) == "ساعة")
     }
 }
