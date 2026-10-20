@@ -11,7 +11,7 @@ import Testing
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let world = URL(fileURLWithPath: "/Worlds/A folder/../München")
-        #expect(TileCache.worldFolder(forWorldAt: world, root: root)?.lastPathComponent == "72b28e9d5a31a16a")
+        #expect(TileCache.worldFolder(forWorldAt: world, root: root)?.lastPathComponent == "308b90831c3d6a14")
         #expect(TileCache.worldFolder(forWorldAt: world, root: nil) == nil)
 
         let file = root.appendingPathComponent("r.-1.2.mca"), missing = root.appendingPathComponent("missing.mca")
