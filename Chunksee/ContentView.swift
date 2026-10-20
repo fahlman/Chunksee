@@ -102,15 +102,8 @@ struct WorldView: View {
                     sidebarDisclosure.reveal(item, in: session)
                     sidebarRevealID = UUID()
                 }
-                // Scroll from the updated view. During onChange, the native List can still
-                // have the old collapsed rows, even though disclosure state has changed.
-                .task(id: sidebarRevealID) {
-                    print("CodexReveal task", sidebarRevealID, "cancelled", Task.isCancelled, "selection", String(describing: session.selection.sidebarSelection))
-                    guard !Task.isCancelled else { return }
-                    if let item = session.selection.sidebarSelection {
-                        print("CodexReveal scroll", item)
-                        proxy.scrollTo(item, anchor: .center)
-                    }
+                .onChange(of: sidebarRevealID) {
+                    if let item = session.selection.sidebarSelection { proxy.scrollTo(item, anchor: .center) }
                 }
                 .contextMenu(forSelectionType: SidebarItem.self) { _ in } primaryAction: { items in
                     if let item = items.first { session.selection.choose(item) }
@@ -205,10 +198,7 @@ struct WorldView: View {
     }
 
     private func selectOnMap(_ target: MapTarget?, y: Double?) {
-        if sidebarDisclosure.selectOnMap(target, y: y, in: session) {
-            sidebarRevealID = UUID()
-            print("CodexReveal request", sidebarRevealID, String(describing: session.selection.sidebarSelection))
-        }
+        if sidebarDisclosure.selectOnMap(target, y: y, in: session) { sidebarRevealID = UUID() }
     }
 
     private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {
