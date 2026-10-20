@@ -123,7 +123,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
-| `MapScene.swift` | Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; region buckets keep drawing and pointer candidates local |
+| `MapScene.swift` | Structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; region buckets keep drawing and pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
@@ -361,8 +361,10 @@ then retain their exact bounds/zoom/distance checks. Fit World visits occupied b
 empty space. MapScene creates their shared items from those candidates, deferring formatted names
 until a caption or accessibility label needs them. Picking queries the pointer's reach rather than
 building every item in the viewport. Its priority keeps portals ahead of creatures independently
-of drawing order; accessibility retains Places, creatures, biome areas, search, players, saved places.
-Structure areas keep their existing path; the smaller player/search/saved-place lists use the scene.
+of drawing order; accessibility retains structures, Places, creatures, biome areas, search, players, saved places.
+Structure items share badge coordinates/targets with their area outline and portal-room decoration.
+Area culling keeps visible outlines even when their badge is offscreen; only the badge is a pointer
+target or accessibility child. Point items carry no area-decoration storage.
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
@@ -378,7 +380,7 @@ Panning, zoom and block-centered anchors therefore move their native accessibili
 along with the drawing, while the existing actions and visibility rules stay the same.
 MarkerStyle defines the existing circle/rounded bodies, borders, glyph tints, opacity and caption
 layout/thresholds. Body and caption drawing are shared across marker kinds; the per-frame glyph
-cache keys the actual symbol and tint. Structure outlines/portal rooms remain in MapView; point
+cache keys the actual symbol and tint. Structure outlines/portal rooms, marker
 ordering, bounds culling and portal decorations belong to MapScene. Hidden captions do not format names or resolve text; semantic caption
 fonts/layout are reused, and translucent caption fills are made only when shown. Existing outdated
 map-player (0.55), sidebar-player (0.6) and claimed-place (0.65) dimming remain distinct. The player

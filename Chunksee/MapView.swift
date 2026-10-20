@@ -153,35 +153,6 @@ struct MapView: View {
         .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
     }
 
-    /// A structure's icon at its center; zoomed in, also its outline (from 1/4×), its name (from
-    /// 1/2×) and, for strongholds, the End portal room.
-    private static func draw(_ structure: StructureMarker, selected: Bool, viewport: MapViewport, in context: GraphicsContext,
-                             size: CGSize, bounds: CGRect, symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
-        let topLeft = viewport.viewPoint(for: structure.bounds.origin, in: size)
-        let outline = CGRect(origin: topLeft, size: CGSize(width: structure.bounds.width * viewport.scale,
-                                                           height: structure.bounds.height * viewport.scale))
-        guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return nil }
-        let style = MarkerStyle.structure(structure.group), color = style.fill
-        if viewport.scale >= 0.25 {
-            let path = Path(outline)
-            context.fill(path, with: .color(color.opacity(0.12)))
-            context.stroke(path, with: .color(color.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
-        }
-        let center = CGPoint(x: outline.midX, y: outline.midY)
-        style.drawBody(at: center, in: context, symbol: symbol)
-
-        if viewport.scale >= 0.25, let room = structure.portalRoom {
-            let p = viewport.viewPoint(for: room, in: size)
-            let ring = Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14))
-            context.fill(ring, with: .color(.black.opacity(0.7)))
-            var sparkle = context.resolve(Image(systemName: "sparkles"))
-            sparkle.shading = .color(.mint)
-            context.draw(sparkle, in: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
-        }
-        return style.label(structure.name, id: "structure-" + structure.id, priority: selected ? .selected : .other,
-                           at: center, scale: viewport.scale, in: context)
-    }
-
     /// Draws the map: terrain tiles, then every overlay, bottom to top. The map view and image
     /// export both draw through this, so an exported image matches the screen.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
@@ -248,11 +219,11 @@ struct MapView: View {
             symbols[key] = image
             return image
         }
-        for structure in content.structures {
-            add(Self.draw(structure, selected: content.selectedItem == .structure(structure.id),
-                          viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol))
+        let scene = content.scene(viewport: map.viewport, size: size)
+        for structure in scene.structures {
+            add(structure.draw(in: context, scale: map.viewport.scale, symbol: symbol))
         }
-        for item in content.scene(viewport: map.viewport, size: size).items {
+        for item in scene.items {
             add(item.draw(in: context, scale: map.viewport.scale, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
