@@ -62,6 +62,8 @@ nonisolated struct HealthPresentation: Equatable, Sendable {
         self.maximum = maximum.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
     }
 
+    var isAvailable: Bool { health != nil || maximum != nil }
+
     /// The gauge stays within its range while the text preserves the actual saved value.
     var gaugeValue: Double? {
         guard let health, let maximum else { return nil }

@@ -34,6 +34,7 @@ import Testing
             let reading = HealthPresentation(health: health, maximum: maximum)
             #expect(reading.text(locale: english) == text)
             #expect(reading.gaugeValue == gauge)
+            #expect(reading.isAvailable == (text != nil))
         }
         #expect(HealthPresentation.hearts(0.5, locale: english) == "0.25 hearts")
         #expect(HealthPresentation.hearts(.infinity, locale: english) == nil)
