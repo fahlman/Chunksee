@@ -35,17 +35,22 @@ nonisolated struct MapViewport: Equatable, Sendable {
 
     /// The view point of a world block position (the inverse of `blockPoint(at:in:)`).
     func viewPoint(for block: CGPoint, in size: CGSize) -> CGPoint {
-        CGPoint(x: (block.x - center.x) * scale + size.width / 2,
-                y: (block.y - center.y) * scale + size.height / 2)
+        block.applying(transform(in: size))
+    }
+
+    /// The same world-to-view mapping for points, tiles and area paths.
+    func transform(in size: CGSize) -> CGAffineTransform {
+        CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                          tx: size.width / 2 - center.x * scale,
+                          ty: size.height / 2 - center.y * scale)
     }
 
     /// Where a region's tile is drawn in a view of `size`.
     func viewRect(for region: RegionPosition, in size: CGSize) -> CGRect? {
         guard let origin = region.blockOrigin else { return nil }
         let side = Self.regionSideInBlocks
-        return CGRect(x: (CGFloat(origin.x) - center.x) * scale + size.width / 2,
-                      y: (CGFloat(origin.z) - center.y) * scale + size.height / 2,
-                      width: side * scale, height: side * scale)
+        return CGRect(x: CGFloat(origin.x), y: CGFloat(origin.z), width: side, height: side)
+            .applying(transform(in: size))
     }
 
     /// The block of region coordinates that intersects the view.

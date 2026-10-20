@@ -184,15 +184,8 @@ struct MapView: View {
             layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
         }
-        // Biome areas: a light fill and an outline along chunk edges, in the biome's color.
-        let toView = CGAffineTransform(a: map.viewport.scale, b: 0, c: 0, d: map.viewport.scale,
-                                       tx: size.width / 2 - map.viewport.center.x * map.viewport.scale,
-                                       ty: size.height / 2 - map.viewport.center.y * map.viewport.scale)
-        for area in content.biomeAreas where area.bounds.applying(toView).intersects(bounds) {
-            let color = Color(BiomeColors.color(for: area.group.id))
-            context.fill(area.chunks.applying(toView), with: .color(color.opacity(0.15)))
-            context.stroke(area.outline.applying(toView), with: .color(color.opacity(0.9)), lineWidth: 1.5)
-        }
+        let scene = content.scene(viewport: map.viewport, size: size)
+        scene.drawBiomeAreas(in: context)
         for region in visible {
             if let image = content.slimeChunks[region], let rect = map.viewport.viewRect(for: region, in: size) {
                 context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
@@ -219,7 +212,6 @@ struct MapView: View {
             symbols[key] = image
             return image
         }
-        let scene = content.scene(viewport: map.viewport, size: size)
         for structure in scene.structures {
             add(structure.draw(in: context, scale: map.viewport.scale, symbol: symbol))
         }

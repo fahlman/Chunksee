@@ -94,7 +94,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
-| `MapViewport.swift` | Conversions between view points and world blocks, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
+| `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate labels using ChunkseeKit’s checked block conversion, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Fixed marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
@@ -123,7 +123,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
-| `MapScene.swift` | Structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; region buckets keep drawing and pointer candidates local |
+| `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
@@ -365,6 +365,11 @@ of drawing order; accessibility retains structures, Places, creatures, biome are
 Structure items share badge coordinates/targets with their area outline and portal-room decoration.
 Area culling keeps visible outlines even when their badge is offscreen; only the badge is a pointer
 target or accessibility child. Point items carry no area-decoration storage.
+Biome scene items share their projected area frame between drawing/export and accessibility.
+Their shapes still draw when the representative chunk is offscreen; accessibility retains its
+20-point representative-location margin. World-space fill/outline paths are transformed only
+when drawn, and pointer-only scenes skip biome items entirely. Biomes have no invisible badge
+target. Their original paint order below the grid, border and marker bodies stays unchanged.
 Player refreshes reopen the world's metadata through ChunkseeKit, including the embedded
 single-player record when `level.dat` changes. An unreadable save retains the last good players;
 a successful empty read clears them. Opening metadata for the world details stays read-on-open.
