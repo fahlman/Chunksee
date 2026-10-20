@@ -250,7 +250,7 @@ private struct PlayerRow: View {
             } icon: {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
-            .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.playerSidebarDimmedOpacity)
+            .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.dimmedOpacity)
             .help(help)
             Spacer(minLength: 0)
             VisibilityButton(isShown: visibility)

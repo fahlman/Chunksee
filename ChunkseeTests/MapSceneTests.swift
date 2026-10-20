@@ -71,12 +71,11 @@ import Testing
         #expect(location.position == position && hit.position == position)
         #expect(location.y == 48 && hit.y == 48)
         #expect(location.target == hit.target && hit.target == item.target)
-        #expect(item.labelPriority == .selected && item.style.opacity == 0.55)
-        // A selected sidebar row still wins label collisions after the inspector closes.
-        #expect(item.style.lineWidth == 1.5)
+        #expect(item.labelPriority == .selected && item.isDimmed)
+        // Sidebar and inspector selection use the same highlight state.
         content.selectedPlayerID = marker.playerID
         let highlighted = try #require(content.scene(viewport: viewport, size: size).items.first)
-        #expect(highlighted.style.lineWidth == (kind == .player ? 2.5 : 1.5))
+        #expect(highlighted.labelPriority == .selected && highlighted.frame == item.frame)
     }
 
     @Test func searchPinsShareSelectedGeometryAndSavedCoordinatesWithoutOffscreenTargets() throws {
@@ -85,23 +84,23 @@ import Testing
                               position: position, y: 48, title: "Sign", detail: "At the mine", count: 1)
         var second = first
         second.id = "second"; second.y = 62
-        let viewport = MapViewport(center: position, scale: 32)
+        let viewport = MapViewport(center: position, scale: 2)
         var content = MapContent(); content.hits = [first, second]; content.selectedHitID = first.id
         let items = content.scene(viewport: viewport, size: size).items
         let selected = try #require(items.first)
-        #expect(selected.style.geometry.frame(at: center) == MarkerGeometry.search(selected: true).frame(at: center))
+        #expect(selected.frame == CGRect(x: 191, y: 91, width: 18, height: 18))
         #expect(selected.frame.contains(center) && selected.point == center && selected.anchor == position)
         #expect(selected.position == position && selected.y == 48)
-        #expect(selected.style.caption == nil)
         let locations = content.accessibleLocations(viewport: viewport, size: size)
         #expect(locations.map(\.name) == ["Sign, At the mine", "Sign, At the mine"])
         #expect(locations[0].frame == selected.frame && locations[0].position == position && locations[0].y == 48)
         #expect(content.hit(at: center, viewport: viewport, size: size)?.y == 62)
         content.hits.reverse()
         #expect(content.target(at: center, viewport: viewport, size: size) == selected.target)
-        // A larger selected badge remains reachable where its smaller neighbor is not.
-        let outer = CGPoint(x: center.x + MarkerGeometry.search(selected: true).hitRadius, y: center.y)
+        // Selection keeps the same body and picking boundary as its neighbor.
+        let outer = CGPoint(x: center.x + 15, y: center.y)
         #expect(content.target(at: outer, viewport: viewport, size: size) == .searchHit(first.id))
+        #expect(content.target(at: CGPoint(x: center.x + 15.01, y: center.y), viewport: viewport, size: size) == nil)
         first.position = nil
         second.position = viewport.blockPoint(at: CGPoint(x: -21, y: 100), in: size)
         content.hits = [first, second]
@@ -125,7 +124,7 @@ import Testing
             let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
             let hit = try #require(content.hit(at: center, viewport: viewport, size: size))
             #expect(item.point == center && item.frame.contains(center))
-            #expect(item.frame.width == (showPet ? 18 : 12))
+            #expect(item.frame.width == 32)
             #expect(location.frame == item.frame && location.anchor == position)
             #expect(location.position == position && hit.position == position)
             #expect(location.y == (showPet ? 62.25 : 48) && hit.y == location.y)
@@ -149,7 +148,7 @@ import Testing
         let viewport = MapViewport(center: place.position, scale: 2)
         let scene = content.scene(viewport: viewport, size: size)
         #expect(scene.items.map(\.target) == [.row(.place(place.id)), .row(.creature(pet.id)), .searchHit(hit.id)])
-        #expect(scene.items.first?.selectedPortal == true)
+        #expect(scene.items.first?.labelPriority == .selected)
         #expect(content.accessibleLocations(viewport: viewport, size: size).map(\.target) == [
             .row(.place(place.id)), .row(.creature(pet.id)), .row(.biome(content.biomeAreas[0].id)), .searchHit(hit.id),
         ])

@@ -37,7 +37,7 @@ import Testing
         #expect(location.name == "Stronghold" && item.labelPriority == .selected)
         #expect(structure.outline == CGRect(x: 100, y: 40, width: 200, height: 120))
         #expect(structure.portalRoom == viewport.viewPoint(for: try #require(marker.portalRoom), in: size))
-        let reach = item.style.geometry.hitRadius
+        let reach = MarkerGeometry.hitRadius(at: viewport.scale)
         #expect(content.target(at: CGPoint(x: center.x + reach, y: center.y), viewport: viewport, size: size) == item.target)
         #expect(content.target(at: CGPoint(x: center.x + reach + 0.01, y: center.y), viewport: viewport, size: size) == nil)
         // A legacy marker without saved vertical bounds must still ask the terrain for Y.

@@ -213,10 +213,10 @@ struct MapView: View {
             return image
         }
         for structure in scene.structures {
-            add(structure.draw(in: context, scale: map.viewport.scale, symbol: symbol))
+            add(structure.draw(in: context, symbol: symbol))
         }
         for item in scene.items {
-            add(item.draw(in: context, scale: map.viewport.scale, portalStatus: portalStatus, symbol: symbol))
+            add(item.draw(in: context, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: map.viewport, size: size)

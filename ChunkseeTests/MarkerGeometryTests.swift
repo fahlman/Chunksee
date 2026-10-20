@@ -32,43 +32,118 @@ import Testing
         return StructureMarker(try #require(StructureStart.starts(inChunk: nbt).first))
     }
 
-    @Test func selectedPetAndSearchBodiesHaveLargerClickTargets() throws {
+    @Test func badgesKeepOneSizeWhenSelectedThenGrowWithTheBlockUpToTheCap() throws {
+        let pet = try pet()
+        var content = MapContent(); content.creatures = [pet]
+        let cases: [(scale: CGFloat, diameter: CGFloat)] = [
+            (2, 18), (12, 18), (16, 18), (18, 18), (22, 22), (32, 32), (64, 32),
+        ]
+        for sample in cases {
+            let viewport = MapViewport(center: pet.position, scale: sample.scale)
+            for selected in [false, true] {
+                content.selection = selected ? .creature(pet) : nil
+                let item = try #require(content.scene(viewport: viewport, size: size).items.first)
+                let diameter = sample.diameter
+                #expect(item.frame.size == CGSize(width: diameter, height: diameter))
+                #expect(item.frame.midX == size.width / 2 && item.frame.midY == size.height / 2)
+                #expect(item.anchor == pet.position && item.position == pet.position && item.y == 63)
+            }
+        }
+    }
+
+    @Test(arguments: [CGFloat(2), 16, 18, 24, 32])
+    func everyMarkerKindSharesOneBodyAndPickingBoundaryAtEachZoom(_ scale: CGFloat) throws {
+        let pet = try pet(), search = search(), structure = try structure()
+        let portal = PlaceMarker(NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: -2, y: 64, z: 1)]))
+        let spawner = PlaceMarker(Spawner(x: 2, y: 64, z: -1, mob: "minecraft:zombie"))
+        let saved = SavedPlace(name: "Home", dimension: "minecraft:overworld", x: 1, z: 2)
+        var cases: [(MapContent, CGPoint, MapTarget)] = []
+        var content = MapContent(); content.structures = [structure]
+        cases.append((content, structure.position, .row(.structure(structure.id))))
+        for place in [portal, spawner] {
+            content = MapContent(); content.places = [place]
+            cases.append((content, place.position, .row(.place(place.id))))
+        }
+        content = MapContent(); content.creatures = [pet]
+        cases.append((content, pet.position, .row(.creature(pet.id))))
+        content = MapContent(); content.hits = [search]
+        cases.append((content, try #require(search.position), .searchHit(search.id)))
+        content = MapContent(); content.savedPlaces = [saved]
+        cases.append((content, saved.mapPosition, .row(.savedPlace(saved.id))))
+        for kind in [MapMarker.Kind.player, .death, .respawn] {
+            let marker = MapMarker(id: "grown-\(kind)", playerID: UUID(), kind: kind,
+                position: CGPoint(x: -8.7, y: -16.2), y: 48, label: "Friend", isOutdated: false)
+            content = MapContent(); content.players = [marker]
+            cases.append((content, marker.anchor, .row(.player(marker.playerID))))
+        }
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        for (content, anchor, target) in cases {
+            let viewport = MapViewport(center: anchor, scale: scale)
+            let diameter: CGFloat = scale <= 18 ? 18 : scale
+            let radius = diameter / 2
+            let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
+            #expect(location.frame.size == CGSize(width: diameter, height: diameter))
+            // Projecting fractional negative coordinates can shift the center by one ULP.
+            #expect(abs(location.frame.midX - center.x) < 0.000001 && abs(location.frame.midY - center.y) < 0.000001)
+            let hit = try #require(content.hit(at: CGPoint(x: center.x + radius + 5.999, y: center.y), viewport: viewport, size: size))
+            #expect(hit.target == target && hit.position == location.position && hit.y == location.y)
+            #expect(content.target(at: CGPoint(x: center.x + radius + 6.01, y: center.y), viewport: viewport, size: size) == nil)
+        }
+    }
+
+    @Test func closeZoomDoesNotPickPointBadgesOutsideTheDrawingMargin() throws {
+        let viewport = MapViewport(center: .zero, scale: 32)
+        let position = viewport.blockPoint(at: CGPoint(x: -21, y: size.height / 2), in: size)
+        let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: position.x, y: 64, z: position.y,
+            owner: UUID()), dimension: "minecraft:overworld"))
+        var content = MapContent(); content.creatures = [pet]
+        #expect(content.scene(viewport: viewport, size: size).items.isEmpty)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).isEmpty)
+        #expect(content.target(at: CGPoint(x: 0, y: size.height / 2), viewport: viewport, size: size) == nil)
+    }
+
+    @Test func selectionHighlightsPetAndSearchBodiesWithoutChangingTheirSizeOrClickTargets() throws {
         let pet = try pet(), hit = search()
         var content = MapContent()
         content.creatures = [pet]
         var viewport = MapViewport(center: pet.position, scale: 2)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let near = CGPoint(x: center.x, y: center.y + 14.5)
-        #expect(content.target(at: near, viewport: viewport, size: size) == nil)
+        let ordinary = try #require(content.scene(viewport: viewport, size: size).items.first)
+        #expect(content.target(at: near, viewport: viewport, size: size) == .row(.creature(pet.id)))
         content.selection = .creature(pet)
+        let selected = try #require(content.scene(viewport: viewport, size: size).items.first)
+        #expect(ordinary.frame == selected.frame && ordinary.labelPriority != .selected && selected.labelPriority == .selected)
         #expect(content.target(at: near, viewport: viewport, size: size) == .row(.creature(pet.id)))
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
         content.creatures = []; content.selection = nil; content.hits = [hit]
         viewport.center = .zero
-        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 12.5), viewport: viewport, size: size) == .searchHit(hit.id))
-        #expect(content.target(at: near, viewport: viewport, size: size) == nil)
-        content.selectedHitID = hit.id
+        let pin = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(content.target(at: near, viewport: viewport, size: size) == .searchHit(hit.id))
-        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 16.01), viewport: viewport, size: size) == nil)
+        content.selectedHitID = hit.id
+        let selectedPin = try #require(content.scene(viewport: viewport, size: size).items.first)
+        #expect(pin.frame == selectedPin.frame && pin.labelPriority != .selected && selectedPin.labelPriority == .selected)
+        #expect(content.target(at: near, viewport: viewport, size: size) == .searchHit(hit.id))
+        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
     }
 
-    @Test func largerFixedBadgesGetTheSameClickToleranceWithoutChangingTheirCoordinateSnapshot() throws {
+    @Test func commonSizedBadgesKeepTheirCoordinateSnapshot() throws {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let id = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
         let player = MapMarker(id: "fixture-player", playerID: id, kind: .player,
                                position: CGPoint(x: -20, y: -30), y: 64, label: "Friend", isOutdated: false)
         var content = MapContent()
         content.players = [player]
-        var viewport = MapViewport(center: player.position, scale: 32)
-        let hit = content.hit(at: CGPoint(x: center.x + 16.5, y: center.y), viewport: viewport, size: size)
+        var viewport = MapViewport(center: player.position, scale: 2)
+        let hit = content.hit(at: CGPoint(x: center.x + 14.5, y: center.y), viewport: viewport, size: size)
         #expect(hit?.target == .row(.player(id)))
         #expect(hit?.position == player.position && hit?.y == 64)
-        #expect(content.target(at: CGPoint(x: center.x + 17.01, y: center.y), viewport: viewport, size: size) == nil)
+        #expect(content.target(at: CGPoint(x: center.x + 15.01, y: center.y), viewport: viewport, size: size) == nil)
 
         let place = SavedPlace(name: "Fixture", dimension: "minecraft:overworld", x: 0, z: 0)
         content.players = []; content.savedPlaces = [place]; viewport.center = place.mapPosition
-        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 13.5), viewport: viewport, size: size) == .row(.savedPlace(place.id)))
-        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 14.01), viewport: viewport, size: size) == nil)
+        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 14.5), viewport: viewport, size: size) == .row(.savedPlace(place.id)))
+        #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
         let structure = try structure()
         content.savedPlaces = []; content.structures = [structure]; viewport.center = structure.position
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 14.5), viewport: viewport, size: size) == .row(.structure(structure.id)))
@@ -98,7 +173,7 @@ import Testing
         content.creatures = [selected]; content.selection = .creature(selected)
         let viewport = MapViewport(center: selected.position, scale: 32)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let edge = CGPoint(x: center.x + 14.99, y: center.y)
+        let edge = CGPoint(x: center.x + 21.99, y: center.y)
         #expect(viewport.blockPoint(at: edge, in: size).x > 512)
         #expect(content.target(at: edge, viewport: viewport, size: size) == .row(.creature(selected.id)))
         let closer = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 512.2, y: 64, z: 8,
@@ -110,11 +185,11 @@ import Testing
     }
 
     @Test(arguments: [MapMarker.Kind.death, .respawn])
-    func playerLocationBadgesRetainTheirOwnBodySize(_ kind: MapMarker.Kind) {
+    func playerLocationBadgesShareTheCommonBodySize(_ kind: MapMarker.Kind) {
         let marker = MapMarker(id: "location", playerID: UUID(), kind: kind, position: .zero,
                                y: 64, label: "Location", isOutdated: false)
         var content = MapContent(); content.players = [marker]
-        let viewport = MapViewport(center: marker.anchor, scale: 32)
+        let viewport = MapViewport(center: marker.anchor, scale: 2)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         #expect(content.target(at: CGPoint(x: center.x + 14.99, y: center.y), viewport: viewport, size: size) == .row(.player(marker.playerID)))
         #expect(content.target(at: CGPoint(x: center.x + 15.01, y: center.y), viewport: viewport, size: size) == nil)
@@ -137,7 +212,7 @@ import Testing
         #expect(marker.anchor == expected)
     }
 
-    @Test(arguments: [0.25, 2.0, 32.0])
+    @Test(arguments: [0.25, 2.0, 16.0, 18.0, 24.0, 32.0])
     func accessibilityFramesFollowDrawnBodiesWhenPannedAndZoomed(_ scale: Double) throws {
         let pet = try pet(), search = search(), structure = try structure()
         let portal = PlaceMarker(NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: -2, y: 64, z: 1)]))
@@ -156,12 +231,12 @@ import Testing
             content.selectedHitID = selected ? search.id : nil
             let expected: [(String, CGPoint, CGFloat)] = [
                 ("structure-" + structure.id, structure.position, 9),
-                ("place-" + portal.id, portal.position, 8),
-                ("place-" + spawner.id, spawner.position, 6),
-                ("creature-" + pet.id, pet.position, selected ? 9 : 6),
-                ("search-" + search.id, search.position!, selected ? 10 : 7),
-                ("saved-" + saved.id.uuidString, saved.mapPosition, 8),
-            ] + players.map { ("player-" + $0.id, $0.anchor, $0.kind == .player ? 11 : 9) }
+                ("place-" + portal.id, portal.position, 9),
+                ("place-" + spawner.id, spawner.position, 9),
+                ("creature-" + pet.id, pet.position, 9),
+                ("search-" + search.id, search.position!, 9),
+                ("saved-" + saved.id.uuidString, saved.mapPosition, 9),
+            ] + players.map { ("player-" + $0.id, $0.anchor, 9) }
             let locations = content.accessibleLocations(viewport: viewport, size: size)
             for (id, anchor, radius) in expected {
                 let point = viewport.viewPoint(for: anchor, in: size)
@@ -169,7 +244,8 @@ import Testing
                 let frame = try #require(locations.first { $0.id == id }?.frame)
                 #expect(frame.contains(point))
                 #expect(frame.midX == point.x && frame.midY == point.y)
-                #expect(frame.width == radius * 2 && frame.height == radius * 2)
+                let diameter = scale > 18 ? scale : radius * 2
+                #expect(frame.width == diameter && frame.height == diameter)
             }
         }
     }
@@ -244,23 +320,19 @@ import Testing
 
     @Test func captionsFormatNamesOnlyWhenTheyAreShown() throws {
         let probe = NameProbe()
-        let cases: [(MarkerStyle, CGFloat, Bool)] = [
-            (.place(.spawner, claimed: false), 1, false),
-            (.structure(try structure().group), 0.49, false),
-            (.player(.death, outdated: true, selected: false), 4, false),
-            (.search(selected: true), 4, false),
-            (.place(.spawner, claimed: false), 2, true),
-            (.creature(try pet().group, selected: true), 0.0625, true),
-            (.player(.player, outdated: true, selected: true), 0.0625, true),
-        ]
-        for (style, scale, expected) in cases {
-            let before = probe.calls
-            let renderer = ImageRenderer(content: Canvas { context, _ in
-                style.label(probe.name(), id: "fixture", priority: .other,
-                            at: CGPoint(x: 120, y: 30), scale: scale, in: context)?.draw(in: context)
-            }.frame(width: 240, height: 100))
-            _ = try #require(renderer.cgImage)
-            #expect((probe.calls > before) == expected)
+        let styles: [MarkerStyle] = [.place(.spawner), .structure(try structure().group),
+                                    .player(.death), .search, .creature(try pet().group), .savedPlace]
+        for style in styles {
+            for (scale, priority, expected) in [(CGFloat(1), MarkerLabelLayout.Priority.other, false),
+                                               (2, .other, true), (0.0625, .selected, true)] {
+                let before = probe.calls
+                let renderer = ImageRenderer(content: Canvas { context, _ in
+                    style.label(probe.name(), id: "fixture", priority: priority,
+                                at: CGPoint(x: 120, y: 30), scale: scale, in: context)?.draw(in: context)
+                }.frame(width: 240, height: 100))
+                _ = try #require(renderer.cgImage)
+                #expect((probe.calls > before) == expected)
+            }
         }
     }
 

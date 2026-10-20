@@ -91,9 +91,9 @@ import Testing
         func render(includeOther: Bool, includeSelected: Bool = true) throws -> CGImage {
             let renderer = ImageRenderer(content: Canvas { context, _ in
                 let point = CGPoint(x: 140, y: 20)
-                let player = MarkerStyle.player(.player, outdated: false, selected: false)
+                let player = MarkerStyle.player(.player)
                     .label("Nearby player", id: "player", priority: .player, at: point, scale: 2, in: context)!
-                let pet = MarkerStyle.creature(.pet, selected: true)
+                let pet = MarkerStyle.creature(.pet)
                     .label("Selected pet", id: "pet", priority: .selected, at: point, scale: 2, in: context)!
                 #expect(player.placement.frame.intersects(pet.placement.frame))
                 let labels = (includeOther ? [player] : []) + (includeSelected ? [pet] : [])
@@ -120,7 +120,7 @@ import Testing
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
-        map.viewport.scale = 0.0625
+        map.viewport.scale = 2
         let markers = ["a", "b"].map {
             MapMarker(id: $0, playerID: UUID(), kind: .player, position: .zero,
                       y: 64, label: "Player " + $0, isOutdated: false)
@@ -131,15 +131,20 @@ import Testing
         content.players.reverse()
         let after = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
         #expect(try matchingPixels(before, after))
-        // Closing the inspector removes its body highlight but leaves the sidebar row selected.
-        // That selected row must still win the label collision.
+        // A selected sidebar row keeps its highlight and wins the label collision,
+        // including when its inspector is closed.
         content.selectedItem = .player(markers[1].playerID)
         let selected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
         #expect(try !matchingPixels(selected, before))
-        content.selectedItem = nil
-        content.players[0].id = "0"
+        // Keep both bodies and their selection states identical. Giving both candidates the
+        // winner's name provides a reference image independent of label collision priority.
+        content.players = content.players.map {
+            MapMarker(id: $0.id, playerID: $0.playerID, kind: $0.kind, position: $0.position,
+                      y: $0.y, label: markers[1].label, isOutdated: $0.isOutdated)
+        }
         let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
         #expect(try matchingPixels(selected, expected))
+        content.players = markers
         let names = content.accessibleLocations(viewport: map.viewport, size: size).map(\.name)
         #expect(Set(names) == ["Player a", "Player b"])
         #expect(content.target(at: CGPoint(x: 200, y: 100), viewport: map.viewport, size: size) != nil)
