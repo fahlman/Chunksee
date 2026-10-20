@@ -235,7 +235,7 @@ private struct PlayerRow: View {
     let player: PlayerInfo
 
     var body: some View {
-        HStack {
+        MapVisibilityRow(isShown: visibility) {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.presentation.name(of: player))
@@ -246,14 +246,9 @@ private struct PlayerRow: View {
             }
             .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.dimmedOpacity)
             .help(help)
-            Spacer(minLength: 0)
-            VisibilityButton(isShown: visibility)
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
-        .accessibilityElement(children: .combine)
-        // Native rows combine their controls; keep the same command reachable by menu and VoiceOver.
-        .contextMenu { VisibilityCommand(isShown: visibility) }
     }
 
     private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
@@ -353,17 +348,12 @@ private struct SavedSearchesSection: View {
                 }) {
                     HitList(session: session, query: saved.query)
                 } label: {
-                    HStack {
+                    MapVisibilityRow(isShown: visibility) {
                         Label(CountedText.label(saved.query, count: session.search.isIndexing ? nil : hits.total, locale: locale), systemImage: "magnifyingglass")
-                        Spacer()
-                        VisibilityButton(isShown: visibility)
+                    } commands: {
+                        Button("Search for This") { session.search.text = saved.query }
+                        Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
                     }
-                }
-                .contextMenu {
-                    VisibilityCommand(isShown: visibility)
-                    Divider()
-                    Button("Search for This") { session.search.text = saved.query }
-                    Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
                 }
             }
         }

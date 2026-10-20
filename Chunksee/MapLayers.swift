@@ -103,18 +103,39 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     }
 }
 
-/// Overlay and marker-group rows share their eye control and native context command.
-struct MapVisibilityRow<Content: View>: View {
-    var isShown: Binding<Bool>?
-    @ViewBuilder let content: Content
+/// Every eye row shares spacing, accessibility and menu placement; callers add only their own commands.
+struct MapVisibilityRow<Content: View, Commands: View>: View {
+    private let isShown: Binding<Bool>?
+    private let content: Content
+    private let commands: Commands
+
+    init(isShown: Binding<Bool>?, @ViewBuilder content: () -> Content, @ViewBuilder commands: () -> Commands) {
+        self.isShown = isShown
+        self.content = content()
+        self.commands = commands()
+    }
+
+    init(isShown: Binding<Bool>?, @ViewBuilder content: () -> Content) where Commands == EmptyView {
+        self.init(isShown: isShown, content: content, commands: { EmptyView() })
+    }
 
     var body: some View {
         HStack {
             content
-            Spacer()
-            if let isShown { VisibilityButton(isShown: isShown) }
+            Spacer(minLength: 0)
+            if let isShown { VisibilityButton(isShown: isShown).accessibilityHidden(true) }
         }
-        .contextMenu { if let isShown { VisibilityCommand(isShown: isShown) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isShown?.wrappedValue == true ? "Shown on Map" : "Hidden on Map", isEnabled: isShown != nil)
+        // A button inside a native disclosure label can also run when that label is expanded.
+        // Expose the same command as a named action, leaving the primary row action to the List.
+        .accessibilityActions {
+            if let isShown { VisibilityCommand(isShown: isShown) }
+        }
+        .contextMenu {
+            Section { if let isShown { VisibilityCommand(isShown: isShown) } }
+            Section { commands }
+        }
     }
 }
 
