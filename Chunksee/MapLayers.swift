@@ -93,16 +93,28 @@ struct LayerSection<Marker: MapLayerMarker>: View {
                 if $0 { shown.wrappedValue.insert(group) } else { shown.wrappedValue.remove(group) }
             }
         }
-        return HStack {
+        return MapVisibilityRow(isShown: visibility) {
             Label(CountedText.label(group.name, count: count, locale: locale), systemImage: group.symbol)
-            Spacer()
-            if let visibility { VisibilityButton(isShown: visibility) }
         }
-        .contextMenu { if let visibility { VisibilityCommand(isShown: visibility) } }
     }
 
     private func nearestFirst(_ markers: [Marker]) -> [Marker] {
         markers.sorted { hypot($0.position.x - origin.x, $0.position.y - origin.y) < hypot($1.position.x - origin.x, $1.position.y - origin.y) }
+    }
+}
+
+/// Overlay and marker-group rows share their eye control and native context command.
+struct MapVisibilityRow<Content: View>: View {
+    var isShown: Binding<Bool>?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack {
+            content
+            Spacer()
+            if let isShown { VisibilityButton(isShown: isShown) }
+        }
+        .contextMenu { if let isShown { VisibilityCommand(isShown: isShown) } }
     }
 }
 
