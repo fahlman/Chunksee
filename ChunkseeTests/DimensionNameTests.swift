@@ -37,6 +37,12 @@ import Testing
         #expect(session.presentation.dimensionName("mod_b:sky_realm") == "Sky Realm (mod_b:sky_realm)")
         #expect(session.presentation.dimensionName("unavailable:void_realm") == "Void Realm")
         #expect(session.presentation.dimensionName("minecraft:the_end") == "The End")
+        for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
+            let style = session.presentation.dimensionNameStyle.locale(locale)
+            #expect(style.format("mod_a:caves") == "Caves (mod_a:caves)")
+            #expect(style.format("mod_a:sky_realm") == "Sky Realm")
+            #expect(style.format("mod_b:sky_realm") == "Sky Realm (mod_b:sky_realm)")
+        }
         session.close()
         await session.waitUntilClosed()
     }

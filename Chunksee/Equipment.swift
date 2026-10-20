@@ -13,7 +13,7 @@ struct EquipmentSection: View {
                     LabeledContent(EquipmentPresentation.slot(row.slot)) {
                         VStack(alignment: .trailing) {
                             Label {
-                                Text(ItemAppearance.name(of: row.item)).foregroundStyle(.primary)
+                                Text(row.item, format: ItemAppearance.LabelStyle()).foregroundStyle(.primary)
                             } icon: {
                                 Image(systemName: ItemAppearance.symbol(for: row.item.id))
                                     .foregroundStyle(ItemAppearance.tint(for: row.item.id))
@@ -24,7 +24,7 @@ struct EquipmentSection: View {
                                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             }
                             ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
-                                Text(TradeText.enchantmentName(id, level: row.item.enchantments[id] ?? 1))
+                                Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }

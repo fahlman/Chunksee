@@ -36,9 +36,10 @@ import Testing
         #expect(WorldSearch.summary(of: apples, words: ["apple"])?.text == "3 Apple, 2 Apple")
         #expect(WorldSearch.summary(of: apples, words: ["first:apple"])?.count == 2)
         let plain = ItemStack(id: "minecraft:diamond", count: 1234)
-        #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "en_US")) == "1,234 Diamond")
-        #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "fr_FR")) == "1\u{202f}234 Diamond")
-        #expect(ItemAppearance.name(of: plain, locale: Locale(identifier: "ar_EG")) == "١٬٢٣٤ Diamond")
+        let style = ItemAppearance.LabelStyle()
+        #expect(style.locale(Locale(identifier: "en_US")).format(plain) == "1,234 Diamond")
+        #expect(style.locale(Locale(identifier: "fr_FR")).format(plain) == "1\u{202f}234 Diamond")
+        #expect(style.locale(Locale(identifier: "ar_EG")).format(plain) == "١٬٢٣٤ Diamond")
     }
 
     @Test func tradeSearchFindsCustomNamesOnEveryCostAndRetainsEnchantments() throws {

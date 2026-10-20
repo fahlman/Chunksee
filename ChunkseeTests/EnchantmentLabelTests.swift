@@ -1,4 +1,5 @@
 import ChunkseeKit
+import Foundation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -33,6 +34,12 @@ import Testing
         #expect(TradeText.enchantmentName("minecraft:lunge", level: 1) == "Lunge I")
         #expect(TradeText.enchantmentName("minecraft:sharpness", level: 0) == "Sharpness 0")
         #expect(TradeText.enchantmentName("minecraft:sharpness", level: 11) == "Sharpness 11")
+        for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
+            let style = TradeText.EnchantmentStyle(level: 1).locale(locale)
+            #expect(style.format("minecraft:mending") == "Mending")
+            #expect(style.format("minecraft:sharpness") == "Sharpness I")
+            #expect(style.format("example:mending") == "Mending I")
+        }
         #expect(PlayerEffectText.name(StatusEffect(id: "minecraft:strength", amplifier: 0, durationTicks: 20)) == "Strength")
     }
 }

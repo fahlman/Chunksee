@@ -145,6 +145,19 @@ import Testing
             try perform("Measure Distance from Here", in: markerMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -9, y: -9))
 
+            // The same off-center pointer click while measuring uses the marker, not the block
+            // behind its badge. Both entry paths keep whole-block endpoints at negative positions.
+            let markerLocation = try #require(content.location(at: click, viewport: map.viewport, size: size))
+            var tappedRuler = MapRuler()
+            tappedRuler.isEnabled = true
+            tappedRuler.mark(markerLocation.position)
+            #expect(tappedRuler.start == session.annotations.ruler.start)
+            #expect(markerLocation.y == 63.9)
+            let endLocation = try #require(content.location(at: CGPoint(x: 300, y: 150), viewport: map.viewport, size: size))
+            tappedRuler.mark(endLocation.position)
+            session.annotations.ruler.mark(endLocation.position)
+            #expect(tappedRuler.distance == 50 && session.annotations.ruler.distance == 50)
+
             let emptyRoot = try #require(MapContextMenuContent(at: click, session: session, map: map,
                                                               content: MapContent(), size: size, pasteboard: board))
             let emptyMenu = menu(emptyRoot)
@@ -156,6 +169,12 @@ import Testing
             session.annotations.draft = nil
             try perform("Measure Distance from Here", in: emptyMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -5, y: -9))
+            tappedRuler.clear()
+            let emptyLocation = try #require(MapContent().location(at: click, viewport: map.viewport, size: size))
+            tappedRuler.mark(emptyLocation.position)
+            #expect(tappedRuler.start == session.annotations.ruler.start)
+            #expect(emptyLocation.target == nil && emptyLocation.y == nil)
+            #expect(content.location(at: CGPoint(x: CGFloat.nan, y: 0), viewport: map.viewport, size: size) == nil)
             #expect(map.viewport == original)
         }
     }

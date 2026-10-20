@@ -50,6 +50,15 @@ struct MapView: View {
         return [position, slime].joined(separator: "; ")
     }
 
+    private func activate(_ position: CGPoint?, target: MapTarget?, y: Double?) {
+        isFocused = true
+        if session.annotations.ruler.isEnabled {
+            if let position { session.annotations.ruler.mark(position) }
+        } else {
+            onSelect(target, y)
+        }
+    }
+
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
@@ -60,13 +69,8 @@ struct MapView: View {
         .gesture(dragGesture)
         .simultaneousGesture(magnifyGesture)
         .simultaneousGesture(SpatialTapGesture().onEnded { value in
-            isFocused = true   // clicking the map gives it the arrow keys again
-            if session.annotations.ruler.isEnabled {
-                session.annotations.ruler.mark(map.viewport.blockPoint(at: value.location, in: size))
-            } else {
-                let hit = content.hit(at: value.location, viewport: map.viewport, size: size)
-                onSelect(hit?.target, hit?.y)
-            }
+            let location = content.location(at: value.location, viewport: map.viewport, size: size)
+            activate(location?.position, target: location?.target, y: location?.y)
         })
         .scrollWheelInput(contextContent: { point in
             MapContextMenuContent(at: point, session: session, map: map, content: content, size: size)
@@ -115,7 +119,7 @@ struct MapView: View {
         }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Map of \(session.presentation.dimensionName(map.dimension.id))"))
+        .accessibilityLabel(Text("Map of \(map.dimension.id, format: session.presentation.dimensionNameStyle)"))
         .accessibilityIdentifier("world-map")
         .accessibilityValue(Text(accessibilityReadout))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
@@ -123,16 +127,18 @@ struct MapView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                     Button {
-                        isFocused = true
-                        session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
-                        onSelect(location.target, location.y)
+                        if !session.annotations.ruler.isEnabled {
+                            session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
+                        }
+                        activate(location.position, target: location.target, y: location.y)
                     } label: {
                         Color.clear.frame(width: location.frame.width, height: location.frame.height)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(location.name)
                     .accessibilityValue(Text(Coordinates(location.position, y: location.y), format: Coordinates.Style()))
-                    .accessibilityHint(Text("Center the map on this location"))
+                    .accessibilityHint(session.annotations.ruler.isEnabled
+                        ? Text("Set a measurement point") : Text("Center the map on this location"))
                     .accessibilityAction(named: Text("Copy Coordinates")) {
                         MapClipboard.copy(location.position, y: location.y, on: map)
                     }

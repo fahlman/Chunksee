@@ -73,8 +73,10 @@ WorldDetails keeps game rules by saved ID and derives sorted display rows. Wande
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
 disables spawning. Rows use saved IDs so equal readable names remain distinct.
 
-`DimensionPresentation.dimensionName` owns world-aware dimension labels for menus, prompts, accessibility
-and location/detail rows. Colliding readable labels include their full IDs; unique labels stay
+`DimensionPresentation.NameStyle` owns world-aware dimension labels, derived from the live catalog
+for native Text and the `dimensionName` string adapter used by window titles and other consumers.
+It carries the locale and dimension IDs without retaining the document or introducing another catalog owner.
+Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
 well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;
@@ -302,8 +304,10 @@ Region drawing/fitting also uses Kit's checked block origins. Continuous view ge
 block-size constant, tested against Kit; the tile renderer's pixel size is independent of it.
 The renderer owns its one-pixel-per-block canvas size; view rectangles remain CGFloat geometry.
 
-Map context commands resolve the pointer once through the selection hit test. Copy, Save Place and
-Measure use the same clicked marker anchor, or the containing pointer block when no marker is hit.
+MapContent resolves the pointer once for selection, ruler clicks and context commands. Copy, Save
+Place and Measure use the same marker location, or the checked containing block when no marker is hit.
+Pointer and accessibility activation share the measuring-versus-selecting action; a measurement never
+moves the viewport or changes selection. Outside measuring mode, accessibility retains its centering action.
 A saved-place pin shares the sidebar's SwiftUI Rename, Copy and Remove commands, with Measure
 available on the map. NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
 selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu
@@ -436,7 +440,10 @@ empty stacks are omitted, and material tint applies to symbols while text uses s
 CountedText is the shared Foundation FormatStyle for fractional heart/block units, used directly by
 SwiftUI Text and by string consumers. Its locale modifier follows the native formatting contract;
 rounding and grammatical agreement remain owned by that one style.
-Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
+ItemAppearance.LabelStyle supplies native equipment Text and the name adapter used by trades and
+tooltips. Its existing item/count helpers own kind, custom name, book title/author and optional one;
+the style passes its locale through those helpers. Durability wording is shared too.
+Format parsing and applicability stay in Kit.
 The RegionFacts cache rereads earlier entries with Kit 0.29's versioned pet health, equipped modifiers,
 shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
 preserved legacy item wear, structure heights, cave-biome membership, checked entity-container
@@ -458,6 +465,9 @@ keep rounding partial seconds up. Time Spent legend labels use those same native
 trader estimate keeps its within-a-minute threshold and completed-minute approximation, using
 the same formatter restricted to minutes. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
+TradeText.EnchantmentStyle owns the enchantment name/level phrase for native Text and the string
+adapter used by trades and tooltips. Its verified single-level exceptions remain distinct from
+effect rules; both use the same LevelText numerals.
 Empty or unavailable optional sections/values stay absent.
 
 WorldResources owns one observable PlayerRoster for all dimension searches and inspectors. Each
