@@ -251,7 +251,7 @@ import Testing
             let hit = try #require(session.search.results.first), position = try #require(hit.position)
             let row = SidebarItem.hit(query: query, id: hit.id)
             session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
-            session.selection.show(map, keepingZoom: true)
+            session.selection.show(map)
             session.selection.choose(row)
             #expect(session.selection.sidebarSelection == row && session.selection.selectedHitID == hit.id)
             #expect(session.selection.inspector == .selection && session.selection.mapSelection == expected)
@@ -402,7 +402,7 @@ import Testing
             default: Issue.record("Expected a player's inventory or ender chest"); continue
             }
             session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
-            session.selection.show(map, keepingZoom: true)
+            session.selection.show(map)
             let viewport = session.map?.viewport
             let row = SidebarItem.hit(query: "diamond", id: hit.id)
             session.selection.choose(row)
@@ -534,7 +534,7 @@ import Testing
         // They replace an in-game map overlay, like a pet.
         let map = try #require(session.presentation.inGameMaps.first { $0.id == 3 })
         let death = try #require(markers.first { $0.playerID == away })
-        session.selection.show(map, keepingZoom: true)
+        session.selection.show(map)
         disclosure.selectOnMap(.row(.player(death.playerID)), y: nil, in: session)
         #expect(MapContent(session: session).inGameMap == nil && session.selection.inspector == .player(away))
         session.close(); await session.waitUntilClosed()
@@ -602,12 +602,12 @@ import Testing
         // A retained overlay is independent of the row and survives every nondetail choice.
         let map = try #require(session.presentation.inGameMaps.first)
         for row in plainRows {
-            session.selection.show(map, keepingZoom: true)
+            session.selection.show(map)
             session.selection.choose(row)
             #expect(session.selection.sidebarSelection == row && session.selection.mapSelection == .inGameMap(map))
             #expect(session.selection.inspector == .selection && MapContent(session: session).inGameMap?.map.id == map.id)
         }
-        session.selection.show(map, keepingZoom: true)
+        session.selection.show(map)
         session.selection.mapClicked(nil, y: nil)
         #expect(session.selection.sidebarSelection == .inGameMap(map.id) && session.selection.mapSelection == .inGameMap(map))
         session.selection.mapClicked(.searchHit(hit.id), y: nil)

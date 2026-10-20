@@ -142,19 +142,19 @@ final class SelectionModel {
             source.annotations.visit(place)
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
-            source.navigation.focus(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position)
         case .place(let marker):
             source.visibility.places.insert(marker.group)
-            source.navigation.focus(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position)
         case .creature(let marker):
             source.visibility.creatures.insert(marker.group)
-            source.navigation.focus(on: marker.position, keepingZoom: true)
+            source.navigation.focus(on: marker.position)
         case .biome(let area):
             source.visibility.biomes.insert(area.group)
-            source.navigation.focus(on: area.position, keepingZoom: true)
+            source.navigation.focus(on: area.position)
         case .inGameMap(let map):
             guard source.presentation.canShow(map) else { return }
-            show(map, keepingZoom: true)
+            show(map)
         case .player(let player):
             source.visibility.hiddenPlayers.remove(player.uuid)
             if source.routing.canFocus(player), let location = player.position {
@@ -208,7 +208,7 @@ final class SelectionModel {
     private func focus(on position: CGPoint, height: Int?, in dimension: String) {
         guard let source, !source.isClosed, MapCoordinates(point: position) != nil else { return }
         if source.routing.route(to: dimension, perform: { $0.selection.focus(on: position, height: height, in: dimension) }) { return }
-        source.navigation.focus(on: position, keepingZoom: true)
+        source.navigation.focus(on: position)
         followHeight(height)
     }
 
@@ -229,11 +229,10 @@ final class SelectionModel {
         sidebarRevealRequest = UUID()
     }
 
-    func show(_ portal: NetherPortal, keepingZoom: Bool = false) {
+    func show(_ portal: NetherPortal) {
         guard let source else { return }
-        if source.routing.route(to: portal.dimension, perform: { $0.selection.show(portal, keepingZoom: keepingZoom) }) { return }
-        source.routing.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ),
-                     keepingZoom: keepingZoom)
+        if source.routing.route(to: portal.dimension, perform: { $0.selection.show(portal) }) { return }
+        source.routing.focus(on: PlayerInfo.Location(dimension: portal.dimension, x: portal.centerX, y: Double(portal.minY), z: portal.centerZ))
         select(.place(PlaceMarker(portal).id), height: portal.minY)
     }
 
@@ -245,12 +244,11 @@ final class SelectionModel {
         return image
     }
 
-    func show(_ map: MapItem, keepingZoom: Bool = false) {
+    func show(_ map: MapItem) {
         // Never draw a map from a missing dimension over another dimension's terrain.
         guard let source, source.presentation.canShow(map), let dimension = map.dimension else { return }
-        if source.routing.route(to: dimension, perform: { $0.selection.show(map, keepingZoom: keepingZoom) }) { return }
-        source.navigation.focus(on: CGPoint(x: map.centerX, y: map.centerZ), keepingZoom: keepingZoom,
-                                fittingScale: InGameMapImage.fittingScale(for: map))
+        if source.routing.route(to: dimension, perform: { $0.selection.show(map) }) { return }
+        source.navigation.focus(on: CGPoint(x: map.centerX, y: map.centerZ))
         select(.inGameMap(map.id))
     }
 
