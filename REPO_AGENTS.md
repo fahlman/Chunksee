@@ -629,6 +629,9 @@ unknown heights in other dimensions disable Copy rather than read unrelated terr
 menus share that copy command. Measurement remains scoped to the current dimension through
 MapAnnotations. Opening a menu or copying/saving a location does not navigate; existing ruler
 and jump behavior is unchanged.
+Committing a new place enables Saved Places in its destination through WorldResources, which updates
+open documents' LayerVisibility or remembers the layer for a later opening. It never opens or activates
+that dimension; choosing a saved place still performs the native cross-dimension jump.
 
 MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
 measurement without reviving a draft. It refers weakly to the document for existing navigation,

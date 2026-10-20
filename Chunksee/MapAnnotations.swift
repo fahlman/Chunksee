@@ -40,20 +40,16 @@ final class MapAnnotations {
             source.savedPlaces.rename(id, to: name)
         } else {
             guard let place = source.savedPlaces.add(name: name, dimension: draft.dimension, at: draft.position) else { return false }
-            reveal(place, navigating: false)
+            source.resources.showSavedPlaces(in: place.dimension)
         }
         return true
     }
 
     func visit(_ place: SavedPlace) {
-        reveal(place, navigating: true)
-    }
-
-    private func reveal(_ place: SavedPlace, navigating: Bool) {
         guard let source, !source.isClosed, canVisit(place) else { return }
-        if source.routing.route(to: place.dimension, perform: { $0.annotations.reveal(place, navigating: navigating) }) { return }
-        source.visibility.showsSavedPlaces = true
-        if navigating { source.navigation.goToCoordinates(place.position) }
+        if source.routing.route(to: place.dimension, perform: { $0.annotations.visit(place) }) { return }
+        source.resources.showSavedPlaces(in: place.dimension)
+        source.navigation.goToCoordinates(place.position)
     }
 
     func setRulerEnabled(_ enabled: Bool) {

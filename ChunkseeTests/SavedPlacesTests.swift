@@ -41,6 +41,46 @@ import Testing
         #expect(!overworld.visibility.showsSavedPlaces && resources.savedPlaces.all == saved)
     }
 
+    @Test(arguments: [false, true])
+    func savingInAnotherDimensionRevealsItsLayerWithoutNavigating(destinationIsOpen: Bool) async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
+        let defaults = TestDefaults.make()
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+                                           savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { resources.close() }
+        let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        overworld.visibility.showsSavedPlaces = false
+        nether.visibility.showsSavedPlaces = false
+        nether.visibility.showsGrid = true
+        let sourceView = MapViewport(center: CGPoint(x: 120, y: -80), scale: 0.25)
+        let destinationView = MapViewport(center: CGPoint(x: 15, y: -10), scale: 8)
+        overworld.map?.viewport = sourceView
+        nether.map?.viewport = destinationView
+        overworld.becameActive()
+        if !destinationIsOpen {
+            nether.close()
+            await nether.waitUntilClosed()
+        }
+        // No native opener is needed to save a bookmark in another dimension.
+        overworld.annotations.savePlace(at: CGPoint(x: -8, y: 20), in: "minecraft:the_nether")
+        let draft = try #require(overworld.annotations.draft)
+        #expect(overworld.annotations.commit(draft, name: "Death Point"))
+        #expect(resources.activeDimensionID == "minecraft:overworld")
+        #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)
+        #expect(!overworld.visibility.showsSavedPlaces && !overworld.navigation.canGoBack)
+        #expect(resources.settings.layers(for: "minecraft:the_nether")?[.showsSavedPlaces] as? Bool == true)
+        let destination = destinationIsOpen ? nether : WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        #expect(destination.visibility.showsSavedPlaces && destination.visibility.showsGrid)
+        #expect(destination.map?.viewport == destinationView && !destination.navigation.canGoBack)
+        #expect(destination.annotations.listedPlaces.map(\.name) == ["Death Point"])
+        #expect(overworld.annotations.listedPlaces.isEmpty)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func placesPersistPerWorldAndRenamingAndRemovalAreRemembered() throws {
 
         let defaults = TestDefaults.make()
