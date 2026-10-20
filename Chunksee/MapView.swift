@@ -38,7 +38,6 @@ struct MapView: View {
     @State private var hoverPoint: CGPoint?
     @FocusState private var isFocused: Bool
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.locale) private var locale
 
     private var zoomPercentage: String {
         ZoomPercentage.text(map.viewport.scale)
@@ -256,7 +255,7 @@ struct MapView: View {
             if session.annotations.ruler.isEnabled {
                 Image(systemName: "ruler")
                 if let distance = session.annotations.ruler.distance {
-                    Text(CountedText.blocks(distance, locale: locale))
+                    Text(distance, format: CountedText.blocks)
                         .monospacedDigit()
                 } else {
                     Text(session.annotations.ruler.start == nil ? "Click the first point" : "Click the second point")

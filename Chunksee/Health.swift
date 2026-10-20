@@ -44,11 +44,11 @@ nonisolated struct HealthPresentation: Equatable, Sendable {
     func text(locale: Locale = .current) -> String? {
         guard let health else { return maximum.flatMap { Self.hearts($0, locale: locale) } }
         guard let maximum else { return Self.hearts(health, locale: locale) }
-        return CountedText.hearts(health / 2, of: maximum / 2, locale: locale)
+        return CountedText.hearts(of: maximum / 2).locale(locale).format(health / 2)
     }
 
     static func hearts(_ health: Double, locale: Locale = .current) -> String? {
         guard health.isFinite, health >= 0 else { return nil }
-        return CountedText.hearts(health / 2, locale: locale)
+        return CountedText.hearts.locale(locale).format(health / 2)
     }
 }
