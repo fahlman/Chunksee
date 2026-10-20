@@ -128,7 +128,7 @@ subtitle. Names do not replace identifiers or document URLs.
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
-| `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
+| `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder

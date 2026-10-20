@@ -4,6 +4,15 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct CountLabelTests {
+    @Test func headingsGroupCountsAndDistinguishUnknownFromZero() {
+        let english = Locale(identifier: "en_US")
+        #expect(CountedText.label("Monster Spawners", count: 11_000, locale: english) == "Monster Spawners (11,000)")
+        #expect(CountedText.label("place:spawner", count: 11_000, locale: english) == "place:spawner (11,000)")
+        #expect(CountedText.label("pet:Wolf", count: 0, locale: english) == "pet:Wolf (0)")
+        #expect(CountedText.label("pet:Wolf", count: nil, locale: english) == "pet:Wolf")
+        #expect(CountedText.label("place:spawner", count: 11_000, locale: Locale(identifier: "de_DE")) == "place:spawner (11.000)")
+    }
+
     @Test func catalogPluralizesBiomeAreasAndBlockDepositsOnTheirProductionPaths() throws {
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)
