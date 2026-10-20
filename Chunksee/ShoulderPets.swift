@@ -60,16 +60,12 @@ struct ShoulderPetsSection: View {
         if !pets.isEmpty {
             Section("On Shoulders") {
                 ForEach(pets) { pet in
-                    DisclosureGroup {
-                        CreatureDetailSections(session: session, creature: pet.creature) {
-                            EmptyView()
-                        } location: {
-                            if pet.location == nil {
-                                Text("Location unavailable").foregroundStyle(.secondary)
-                            }
-                        }
-                    } label: {
+                    CreatureDetailSections(session: session, creature: pet.creature) {
                         Label(pet.name, systemImage: "pawprint.fill")
+                    } location: {
+                        if pet.location == nil {
+                            Text("Location unavailable").foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
