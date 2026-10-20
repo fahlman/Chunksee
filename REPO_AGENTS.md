@@ -777,7 +777,10 @@ per player/index snapshot, shared by all dimension searches, sidebars, maps and 
 bird's saved owner stays distinct from its carrier; only the carrier's validated saved location
 is used. A carried UUID replaces any stale region copy, and missing/unavailable locations never
 fall back to the bird's mounting position. The player's On Shoulders section retains its details
-even when it cannot be mapped. These are derived app publications, with no new file reader or
+even when it cannot be mapped. DimensionPresentation omits that player's own carried pets from
+Linked Pets, so each appears once in the inspector. Owned pets carried by someone else retain
+their links, and a pet that lands returns to Linked Pets on the shared index refresh.
+These are derived app publications, with no new file reader or
 disk cache; ordinary player and region refreshes replace them.
 
 Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
