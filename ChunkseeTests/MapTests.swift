@@ -84,6 +84,29 @@ import Testing
         #expect(viewport.viewRect(for: RegionPosition(x: -1, z: -1), in: size) == CGRect(x: -112, y: -212, width: 512, height: 512))
     }
 
+    @Test func pointsAndAreasStayAlignedAcrossZoomLevels() throws {
+        let center = CGPoint(x: -513.25, y: 768.5)
+        let block = CGPoint(x: center.x + 128, y: center.y - 64)
+        for scale in [MapViewport.scaleRange.lowerBound, 1.0 / 16, 1.25, 32] {
+            let viewport = MapViewport(center: center, scale: scale)
+            let transform = viewport.transform(in: size)
+            let expected = CGPoint(x: 400 + 128 * scale, y: 300 - 64 * scale)
+            for point in [block.applying(transform), viewport.viewPoint(for: block, in: size)] {
+                #expect(abs(point.x - expected.x) < 0.00000001)
+                #expect(abs(point.y - expected.y) < 0.00000001)
+                let restored = viewport.blockPoint(at: point, in: size)
+                #expect(abs(restored.x - block.x) < 0.00001)
+                #expect(abs(restored.y - block.y) < 0.00001)
+            }
+            let area = CGRect(x: -1024, y: 512, width: 512, height: 512).applying(transform)
+            let tile = try #require(viewport.viewRect(for: RegionPosition(x: -2, z: 1), in: size))
+            #expect(tile == area)
+            #expect(abs(tile.width - 512 * scale) < 0.00000001)
+            #expect(abs(tile.height - 512 * scale) < 0.00000001)
+            #expect(viewport.viewPoint(for: CGPoint(x: -1024, y: 512), in: size) == tile.origin)
+        }
+    }
+
     @Test func visibleRegionsAreNearestFirst() {
         let viewport = MapViewport(center: CGPoint(x: 256, y: 256), scale: 1)
         let available = Set((-1...1).flatMap { x in (-1...1).map { RegionPosition(x: x, z: $0) } })

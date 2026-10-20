@@ -144,9 +144,7 @@ struct MapScene {
         self.bounds = bounds
         let accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
         self.accessibilityBounds = accessibilityBounds
-        let transform = CGAffineTransform(a: viewport.scale, b: 0, c: 0, d: viewport.scale,
-            tx: size.width / 2 - viewport.center.x * viewport.scale,
-            ty: size.height / 2 - viewport.center.y * viewport.scale)
+        let transform = viewport.transform(in: size)
         biomeTransform = transform
         // Areas have no pointer badge. Keep candidates whose shape or AX point is in view;
         // a long area's representative point can be offscreen while its outline is visible.
@@ -157,8 +155,7 @@ struct MapScene {
             return BiomeItem(area: area, point: point, frame: frame)
         } : []
         structures = content.structures.compactMap { marker in
-            let outline = CGRect(origin: viewport.viewPoint(for: marker.bounds.origin, in: size),
-                size: CGSize(width: marker.bounds.width * viewport.scale, height: marker.bounds.height * viewport.scale))
+            let outline = marker.bounds.applying(transform)
             let point = CGPoint(x: outline.midX, y: outline.midY)
             if let pointer {
                 let reach = MarkerGeometry.structure.hitRadius
