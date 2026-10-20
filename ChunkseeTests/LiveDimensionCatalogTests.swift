@@ -20,7 +20,7 @@ import Testing
             url = try TestWorld.make(chunks: [chunk])
             defaults = TestDefaults.make()
             model = AppModel(defaults: defaults, cacheRoot: nil)
-            model.worldFolders.remember(url)
+            try model.worldFolders.remember(url)
         }
 
         func open(_ document: URL) async throws -> WorldSession {
@@ -48,7 +48,7 @@ import Testing
 
         func blockedIndex() async throws -> (WorldResources, AsyncReadGate<RegionFacts>, Reads) {
             let gate = AsyncReadGate<RegionFacts>(), calls = Reads()
-            let resource = WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
+            let resource = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
                 savedSearches: model.savedSearches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region in
                     let count = await calls.next(dimension.id)
                     if dimension.id == "minecraft:overworld", count == 0 { return await gate.read("overworld") }
@@ -120,7 +120,7 @@ import Testing
             let second = try await secondTask.value, third = try await thirdTask.value
             #expect(second.map != nil && third.map != nil)
             #expect(second.resources === resources && third.resources === resources)
-            #expect(f.model.resources(for: oldSnapshot) === resources)
+            #expect(try f.model.resources(for: oldSnapshot) === resources)
             #expect(Set(resources.dimensions.map(\.id)) == ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"])
             #expect(resources.readers["minecraft:overworld"] === oldReader)
             await resources.index.waitForIndex()

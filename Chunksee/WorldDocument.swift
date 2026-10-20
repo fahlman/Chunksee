@@ -80,52 +80,6 @@ nonisolated struct WorldSnapshot: Sendable {
     }
 }
 
-/// The world folders the user opened. A dimension's document is a folder inside its world, and
-/// the sandbox grants a reopened document only its own folder, so access to the world itself,
-/// for `level.dat`, players and the other dimensions, is kept here as app-scoped bookmarks.
-nonisolated final class WorldFolders: Sendable {
-    // Apple documents UserDefaults as thread-safe; the lock keeps each read-modify-write whole.
-    nonisolated(unsafe) private let defaults: UserDefaults
-    private let lock = Mutex(())
-    private static let key = "worldFolderBookmarks"
-
-    init(defaults: UserDefaults) { self.defaults = defaults }
-
-    /// Call while the folder is accessible, as it is right after the Open panel chose it.
-    func remember(_ world: URL) {
-        guard let bookmark = try? world.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess]) else { return }
-        lock.withLock { _ in
-            let others = resolved().filter { $0.url.standardizedFileURL != world.standardizedFileURL }
-            defaults.set(others.map(\.bookmark) + [bookmark], forKey: Self.key)
-        }
-    }
-
-    /// The remembered world folder that contains `url`, wherever it has since moved.
-    func world(containing url: URL) -> URL? {
-        lock.withLock { _ in
-            let worlds = resolved()
-            defaults.set(worlds.map(\.bookmark), forKey: Self.key)
-            let path = url.resolvingSymlinksInPath().path
-            return worlds.map { $0.url.resolvingSymlinksInPath() }
-                .filter { path.hasPrefix($0.path + "/") }
-                .max { $0.path.count < $1.path.count }
-        }
-    }
-
-    /// Resolves every bookmark, dropping those whose folders are gone and refreshing stale ones.
-    private func resolved() -> [(url: URL, bookmark: Data)] {
-        (defaults.array(forKey: Self.key) as? [Data] ?? []).compactMap { data in
-            var isStale = false
-            guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, bookmarkDataIsStale: &isStale) else { return nil }
-            guard isStale else { return (url, data) }
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-            let refreshed = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess])
-            return (url, refreshed ?? data)
-        }
-    }
-}
-
 extension ChunkseeKit.Dimension {
     /// The folder that is this dimension's document. In the older layout the Overworld's files sit
     /// directly in the world folder, which isn't a document, so its region folder stands in.
@@ -141,7 +95,7 @@ nonisolated struct DimensionSnapshot: Sendable {
         case opening(WorldOpening)
     }
     let source: Source
-    let worldURL: URL
+    let folder: WorldFolders.Folder
     let dimensionID: String
     let documentURL: URL
 
@@ -164,14 +118,14 @@ nonisolated struct DimensionSnapshot: Sendable {
     }
 
     private static func readContents(_ url: URL, folders: WorldFolders) throws -> DimensionSnapshot {
-        guard let worldURL = folders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
-        let world = try WorldSnapshot.readContents(worldURL)
+        guard let folder = folders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
+        let world = try WorldSnapshot.readContents(folder.url)
         let path = url.resolvingSymlinksInPath().path
         guard let dimensionID = world.dimensionDocuments[path] else {
             world.access.release()
             throw WorldOpenError.notADimension
         }
-        return DimensionSnapshot(source: .snapshot(world), worldURL: world.access.url,
+        return DimensionSnapshot(source: .snapshot(world), folder: folder,
                                  dimensionID: dimensionID, documentURL: url)
     }
 
@@ -188,7 +142,7 @@ nonisolated struct DimensionSnapshot: Sendable {
     func makeSession(in model: AppModel) throws -> WorldSession {
         switch source {
         case .snapshot(let world):
-            return WorldSession(resources: model.resources(for: world), dimensionID: dimensionID)
+            return WorldSession(resources: model.resources(for: world, folder: folder), dimensionID: dimensionID)
         case .opening(let opening):
             guard let resources = opening.resources, !resources.isClosed else { throw CancellationError() }
             let session = WorldSession(resources: resources, dimensionID: dimensionID)
@@ -233,13 +187,13 @@ final class WorldDocument: ReadableDocument {
                 let world = try World(contentsOf: source)
                 let dimensions = world.dimensions().map { $0.documentURL(inWorldAt: source) }
                 try Task.checkCancellation()
-                folders.remember(source)
+                try folders.remember(source)
                 return .world(dimensions: dimensions)
             } catch WorldError.missingLevelDat {
                 do {
                     if let model, await reuseOpenWorld() {
-                        guard let worldURL = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
-                        if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: worldURL) {
+                        guard let folder = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
+                        if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: folder) {
                             do { try Task.checkCancellation() }
                             catch { await snapshot.discardUnused(); throw error }
                             return .dimension(snapshot)
@@ -304,10 +258,6 @@ final class WorldDocument: ReadableDocument {
         await oldSession?.waitUntilClosed()
         try Task.checkCancellation()
         guard generation == applyGeneration else { return }
-        let worldURL = current.worldURL
-        if let oldSession, oldSession.url != worldURL {
-            oldSession.resources.relocateSettings(to: worldURL)
-        }
         let opened = try current.makeSession(in: model)
         adopted = true
         if let oldSession { opened.restoreView(from: oldSession) }

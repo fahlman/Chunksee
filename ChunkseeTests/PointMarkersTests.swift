@@ -183,7 +183,7 @@ import Testing
         try Data(TestWorld.regionFile([spec])).write(to: nether.appendingPathComponent("r.0.0.mca"))
         let state = MovingMarkers()
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _ in try await state.read(dimension.id) })
         resources.refreshDelay = .zero

@@ -53,7 +53,7 @@ import Testing
                 .write(to: playerDirectory.appendingPathComponent(player.uuid.uuidString.lowercased() + ".dat"))
         }
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")

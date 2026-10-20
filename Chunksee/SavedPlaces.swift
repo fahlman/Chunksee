@@ -24,9 +24,6 @@ final class SavedPlaces {
         all = settings.savedPlaces
     }
 
-    /// A move may merge annotations already stored for the destination.
-    func reload() { all = settings.savedPlaces }
-
     @discardableResult
     func add(name: String, dimension: String, at point: CGPoint) -> SavedPlace? {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)

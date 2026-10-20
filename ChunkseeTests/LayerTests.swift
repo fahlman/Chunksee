@@ -508,7 +508,7 @@ enum StructureTestWorld {
         try FileManager.default.createDirectory(at: netherFolder, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([chunk(ticks: HeatMap.minimumTicks)])).write(to: netherFolder.appendingPathComponent("r.0.0.mca"))
         let defaults = TestDefaults.make()
-        let resources = WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")

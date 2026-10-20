@@ -42,9 +42,10 @@ import Testing
 
     @Test func theGridSettingIsRemembered() {
         let defaults = TestDefaults.make()
-        #expect(!LayerVisibility(settings: WorldSettings(world: URL(fileURLWithPath: "/Grid Test"), defaults: defaults), dimension: "minecraft:overworld").showsGrid)
-        LayerVisibility(settings: WorldSettings(world: URL(fileURLWithPath: "/Grid Test"), defaults: defaults), dimension: "minecraft:overworld").showsGrid = true
-        #expect(LayerVisibility(settings: WorldSettings(world: URL(fileURLWithPath: "/Grid Test"), defaults: defaults), dimension: "minecraft:overworld").showsGrid)
+        let worldID = UUID()
+        #expect(!LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
+        LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid = true
+        #expect(LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
     }
 }
 
