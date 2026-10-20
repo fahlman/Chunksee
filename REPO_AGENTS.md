@@ -450,7 +450,9 @@ Player health shows the actual saved maximum when available; active effects show
 not a live countdown. Effect names have their own vanilla exceptions, independent of enchantment
 names; both share level numeral presentation. Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
-`GameDuration` owns saved tick conversion and localized elapsed units. World Age and Time Played
+`GameDuration` owns saved tick conversion and the configured native Duration.UnitsFormatStyle.
+Views format validated durations directly through SwiftUI Text; string consumers use that same style.
+World Age and Time Played
 show completed seconds/minutes/hours rather than dropping every duration below an hour; effects
 keep rounding partial seconds up. Time Spent legend labels use those same native units. The
 trader estimate keeps its within-a-minute threshold and completed-minute approximation, using

@@ -119,14 +119,13 @@ nonisolated struct StatisticRow: Identifiable, Sendable {
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
     @Binding var showsAllStatistics: Bool
-    @Environment(\.locale) private var locale
 
     var body: some View {
         if let records {
             if let stats = records.statistics {
                 Section("Statistics") {
-                    if let ticks = stats.playTime, let elapsed = GameDuration.elapsed(ticks, locale: locale) {
-                        LabeledContent("Time Played", value: elapsed)
+                    if let ticks = stats.playTime, let elapsed = GameDuration.elapsed(ticks) {
+                        LabeledContent("Time Played") { Text(elapsed, format: GameDuration.units()) }
                     }
                     if let kills = stats.value("minecraft:mob_kills") { LabeledContent("Mobs Killed", value: kills.formatted()) }
                     if let deaths = stats.value("minecraft:deaths") { LabeledContent("Deaths", value: deaths.formatted()) }

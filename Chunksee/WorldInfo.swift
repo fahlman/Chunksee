@@ -30,7 +30,7 @@ nonisolated struct WorldDetails: Sendable {
     static func traderDelayDescription(_ ticks: Int, locale: Locale = .current) -> String {
         let delay = GameDuration.fromTicks(ticks)
         guard delay >= .seconds(60) else { return String(localized: "Within a minute of play", locale: locale) }
-        let minutes = GameDuration.units(delay, allowed: [.minutes], locale: locale)
+        let minutes = delay.formatted(GameDuration.units(allowed: [.minutes]).locale(locale))
         return String(localized: "In about \(minutes) of play", locale: locale)
     }
 
@@ -103,8 +103,8 @@ struct WorldInfoView: View {
                 Text(session.presentation.displayName).font(.headline)
             }
             Section("Time and Weather") {
-                if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks, locale: locale) {
-                    LabeledContent("World Age", value: elapsed)
+                if let ticks = level.time, let elapsed = GameDuration.elapsed(ticks) {
+                    LabeledContent("World Age") { Text(elapsed, format: GameDuration.units()) }
                         .help("Time the world has been running in the game, at 20 ticks a second")
                 }
                 if let ticks = details.dayTime {

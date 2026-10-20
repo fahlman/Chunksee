@@ -49,7 +49,7 @@ nonisolated enum PlayerEffectText {
 
     static func accessibleDuration(_ effect: StatusEffect, locale: Locale = .current) -> String {
         guard let saved = savedDuration(effect) else { return String(localized: "Infinite", locale: locale) }
-        return GameDuration.units(saved, locale: locale)
+        return saved.formatted(GameDuration.units().locale(locale))
     }
 
     private static func savedDuration(_ effect: StatusEffect) -> Duration? {
