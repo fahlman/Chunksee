@@ -48,6 +48,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
     let item: (Marker) -> SidebarItem
     @Binding var isExpanded: Bool
     @Binding var expandedGroups: Set<Marker.Group>
+    @Environment(\.locale) private var locale
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
@@ -93,7 +94,7 @@ struct LayerSection<Marker: MapLayerMarker>: View {
             }
         }
         return HStack {
-            Label("\(group.name) (\(count))", systemImage: group.symbol)
+            Label(CountedText.label(group.name, count: count, locale: locale), systemImage: group.symbol)
             Spacer()
             if let visibility { VisibilityButton(isShown: visibility) }
         }

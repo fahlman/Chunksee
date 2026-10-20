@@ -343,6 +343,7 @@ private struct SearchResultsSection: View {
 private struct SavedSearchesSection: View {
     let session: WorldSession
     @Binding var expanded: Set<UUID>
+    @Environment(\.locale) private var locale
 
     var body: some View {
         Section("Saved Searches") {
@@ -359,7 +360,7 @@ private struct SavedSearchesSection: View {
                     HitList(session: session, query: saved.query)
                 } label: {
                     HStack {
-                        Label(session.search.isIndexing ? saved.query : "\(saved.query) (\(hits.total))", systemImage: "magnifyingglass")
+                        Label(CountedText.label(saved.query, count: session.search.isIndexing ? nil : hits.total, locale: locale), systemImage: "magnifyingglass")
                         Spacer()
                         VisibilityButton(isShown: visibility)
                     }
