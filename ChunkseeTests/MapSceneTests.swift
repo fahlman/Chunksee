@@ -1,3 +1,4 @@
+import ChunkseeKit
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -107,6 +108,59 @@ import Testing
         #expect(content.scene(viewport: viewport, size: size).items.isEmpty)
         #expect(content.accessibleLocations(viewport: viewport, size: size).isEmpty)
         #expect(content.target(at: CGPoint(x: -21, y: 100), viewport: viewport, size: size) == nil)
+    }
+
+    @Test func placesAndCreaturesSharePhysicalCoordinatesAndSelectedFrames() throws {
+        let spawner = PlaceMarker(Spawner(x: -9, y: 48, z: -17, mob: "minecraft:zombie"))
+        let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: -8.7, y: 62.25, z: -16.2,
+            customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
+        var content = MapContent()
+        for showPet in [false, true] {
+            content.places = showPet ? [] : [spawner]
+            content.creatures = showPet ? [pet] : []
+            content.selection = showPet ? .creature(pet) : nil
+            let position = showPet ? pet.position : spawner.position
+            let viewport = MapViewport(center: position, scale: 32)
+            let item = try #require(content.scene(viewport: viewport, size: size).items.first)
+            let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
+            let hit = try #require(content.hit(at: center, viewport: viewport, size: size))
+            #expect(item.point == center && item.frame.contains(center))
+            #expect(item.frame.width == (showPet ? 18 : 12))
+            #expect(location.frame == item.frame && location.anchor == position)
+            #expect(location.position == position && hit.position == position)
+            #expect(location.y == (showPet ? 62.25 : 48) && hit.y == location.y)
+            #expect(location.target == hit.target && hit.target == item.target)
+            #expect(location.name == (showPet ? "Summer" : "Zombie Spawner"))
+            #expect(item.labelPriority == (showPet ? .selected : .other))
+        }
+    }
+
+    @Test func portalPriorityKeepsCreatureDrawingAndBiomeAccessibilityOrder() throws {
+        let portal = NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: 0, y: 64, z: 0)])
+        let place = PlaceMarker(portal)
+        let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: place.position.x, y: 64,
+            z: place.position.y, owner: UUID()), dimension: portal.dimension))
+        var content = MapContent()
+        content.places = [place]; content.creatures = [pet]; content.selection = .portal(portal)
+        content.biomeAreas = BiomeScanner.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
+        let hit = SearchHit(id: "pin", source: .sign, dimension: portal.dimension,
+            position: place.position, y: 70, title: "Sign", detail: "Overlapping", count: 1)
+        content.hits = [hit]
+        let viewport = MapViewport(center: place.position, scale: 2)
+        let scene = content.scene(viewport: viewport, size: size)
+        #expect(scene.items.map(\.target) == [.row(.place(place.id)), .row(.creature(pet.id)), .searchHit(hit.id)])
+        #expect(scene.items.first?.selectedPortal == true)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).map(\.target) == [
+            .row(.place(place.id)), .row(.creature(pet.id)), .row(.biome(content.biomeAreas[0].id)), .searchHit(hit.id),
+        ])
+        #expect(content.target(at: center, viewport: viewport, size: size) == .searchHit(hit.id))
+        content.hits = []
+        #expect(content.target(at: center, viewport: viewport, size: size) == .row(.place(place.id)))
+        content.places = []
+        #expect(content.target(at: center, viewport: viewport, size: size) == .row(.creature(pet.id)))
+        content.creatures = []
+        let biomePoint = viewport.viewPoint(for: content.biomeAreas[0].position, in: size)
+        #expect(content.target(at: biomePoint, viewport: viewport, size: size) == nil)
     }
 
 }

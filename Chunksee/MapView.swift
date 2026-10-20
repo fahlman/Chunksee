@@ -182,7 +182,6 @@ struct MapView: View {
                            at: center, scale: viewport.scale, in: context)
     }
 
-    /// A ring around the selected portal, and a warning badge on portals that don't link both ways.
     /// Draws the map: terrain tiles, then every overlay, bottom to top. The map view and image
     /// export both draw through this, so an exported image matches the screen.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
@@ -253,28 +252,8 @@ struct MapView: View {
             add(Self.draw(structure, selected: content.selectedItem == .structure(structure.id),
                           viewport: map.viewport, in: context, size: size, bounds: bounds, symbol: symbol))
         }
-        // Individual places are tiny; zoomed far out, only portals stay (they're few and useful).
-        for place in content.nearbyPlaces(viewport: map.viewport, size: size) {
-            let point = map.viewport.viewPoint(for: place.position, in: size)
-            add(Self.drawBadge(style: .place(place.group, claimed: place.isClaimed), name: place.name,
-                               id: "place-" + place.id, priority: content.selectedItem == .place(place.id) ? .selected : .other,
-                               scale: map.viewport.scale, at: point, in: context, bounds: bounds, symbol: symbol))
-            if let portal = place.portal {
-                Self.drawPortalState(at: point, selected: content.selection == .portal(portal), status: portalStatus(portal), in: context)
-            }
-        }
-        // Many creatures stand in villages and pens; individually they show from 1/4 zoom.
-        for creature in content.nearbyCreatures(viewport: map.viewport, size: size) {
-            let selected = content.selection == .creature(creature)
-            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(creature.id) ? .selected
-                : creature.group == .pet && creature.creature.customName != nil ? .namedPet : .other
-            add(Self.drawBadge(style: .creature(creature.group, selected: selected), name: creature.name,
-                               id: "creature-" + creature.id, priority: priority, scale: map.viewport.scale,
-                               at: map.viewport.viewPoint(for: creature.position, in: size),
-                               in: context, bounds: bounds, symbol: symbol))
-        }
         for item in content.scene(viewport: map.viewport, size: size).items {
-            add(item.draw(in: context, scale: map.viewport.scale, symbol: symbol))
+            add(item.draw(in: context, scale: map.viewport.scale, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: map.viewport, size: size)
@@ -307,30 +286,6 @@ struct MapView: View {
         }
         for line in grid.vertical where grid.isLabeled(line) { label(line.block, at: CGPoint(x: line.position, y: 0)) }
         for line in grid.horizontal where grid.isLabeled(line) { label(line.block, at: CGPoint(x: 0, y: line.position)) }
-    }
-
-    private static func drawPortalState(at point: CGPoint, selected: Bool, status: PortalLinkStatus?, in context: GraphicsContext) {
-        if selected {
-            let ring = Path(ellipseIn: CGRect(x: point.x - 13, y: point.y - 13, width: 26, height: 26))
-            context.stroke(ring, with: .color(.white), lineWidth: 3)
-            context.stroke(ring, with: .color(.accentColor), lineWidth: 1.5)
-        }
-        guard let status, status != .linked else { return }
-        let badge = CGRect(x: point.x + 4, y: point.y - 12, width: 10, height: 10)
-        context.fill(Path(ellipseIn: badge), with: .color(status == .noPartner ? .red : .orange))
-        var mark = context.resolve(Text("!").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white))
-        mark.shading = .color(.white)
-        context.draw(mark, at: CGPoint(x: badge.midX, y: badge.midY))
-    }
-
-    private static func drawBadge(style: @autoclosure () -> MarkerStyle, name: @autoclosure () -> String,
-                                  id: @autoclosure () -> String, priority: MarkerLabelLayout.Priority, scale: CGFloat,
-                                  at point: CGPoint, in context: GraphicsContext, bounds: CGRect,
-                                  symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
-        guard bounds.insetBy(dx: -20, dy: -20).contains(point) else { return nil }
-        let style = style()
-        style.drawBody(at: point, in: context, symbol: symbol)
-        return style.label(name(), id: id(), priority: priority, at: point, scale: scale, in: context)
     }
 
     private var statusBar: some View {
