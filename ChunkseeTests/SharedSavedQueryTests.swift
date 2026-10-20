@@ -146,12 +146,12 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func player(_ revision: Int32) -> PlayerInfo {
-            PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
+            PlayerInfo(uuid: uuid, nbt: .compound(["XpLevel": .int(revision)]))
         }
         func document(_ players: PlayerRoster) -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
-                        execute: { await gate.read(String($0.players[0].nbt["Revision"]!.int!)) }, indexStore: index)
+                        execute: { await gate.read(String($0.players[0].experienceLevel!)) }, indexStore: index)
         }
         let players = PlayerRoster([player(1)])
         let first = document(players), second = document(players)
@@ -181,13 +181,13 @@ import Testing
         let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func player(_ revision: Int32) -> PlayerInfo {
-            PlayerInfo(uuid: uuid, nbt: .compound(["Revision": .int(revision)]))
+            PlayerInfo(uuid: uuid, nbt: .compound(["XpLevel": .int(revision)]))
         }
         let players = PlayerRoster([player(1)])
         func document(_ label: String) -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
-                        execute: { await gate.read("\(label)-\($0.players[0].nbt["Revision"]!.int!)") })
+                        execute: { await gate.read("\(label)-\($0.players[0].experienceLevel!)") })
         }
         let first = document("first"), second = document("second")
         await first.waitForIndex()
@@ -317,13 +317,14 @@ import Testing
     @Test func sharedKeysIncludeIndexVersionAndPlayerPublication() async {
         let cache = SavedQueryResults(work: BackgroundWork()), gate = AsyncReadGate<SavedQueryResults.Results>()
         let uuid = UUID(), other = UUID(), date = Date(timeIntervalSince1970: 1)
-        let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
+        let playerData = NBT.compound([:])
+        let player = PlayerInfo(uuid: uuid, nbt: playerData)
         let original = PlayerSnapshot([player])
         let sources = [
             SearchSources(names: [:], playerSnapshot: original, indexRevision: 0),
             SearchSources(names: [:], playerSnapshot: original, indexRevision: 1),
-            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: player.nbt)]), indexRevision: 1),
-            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: player.nbt, lastSaved: date)]), indexRevision: 1),
+            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: playerData)]), indexRevision: 1),
+            SearchSources(names: [:], playerSnapshot: PlayerSnapshot([PlayerInfo(uuid: other, nbt: playerData, lastSaved: date)]), indexRevision: 1),
         ]
         cache.keep(["saved"])
         await gate.releaseAllAndFuture(with: ["saved": [hit("Result")]])
