@@ -9,7 +9,7 @@ struct SavedPlacesSection: View {
             ForEach(session.annotations.listedPlaces) { place in
                 VStack(alignment: .leading, spacing: 2) {
                     Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
-                    Text(Coordinates(place.position), format: Coordinates.Style())
+                    CoordinateText(Coordinates(place.position))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -46,7 +46,7 @@ struct SavedPlaceEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(draft.existingID == nil ? "Save Place" : "Rename Place").font(.headline)
-            Text(Coordinates(draft.position), format: Coordinates.Style(dimension: session.presentation.dimensionName(draft.dimension)))
+            CoordinateText(Coordinates(draft.position), dimension: session.presentation.dimensionName(draft.dimension))
                 .foregroundStyle(.secondary)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)

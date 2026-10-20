@@ -14,9 +14,9 @@ struct LinkedPetsSection: View {
                     Button { session.selection.showLinkedPet(pet, ownedBy: playerID) } label: {
                         VStack(alignment: .leading) {
                             Label(pet.name, systemImage: "pawprint.fill")
-                            Text(Coordinates(pet.position, y: pet.creature.y),
-                                 format: Coordinates.Style(dimension: session.presentation.dimensionName(pet.dimension)))
-                                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            CoordinateText(Coordinates(pet.position, y: pet.creature.y),
+                                           dimension: session.presentation.dimensionName(pet.dimension))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .accessibilityIdentifier("linked-pet-\(pet.id)")

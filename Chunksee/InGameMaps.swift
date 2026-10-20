@@ -42,7 +42,7 @@ struct InGameMapRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Map #\(map.id)")
-                Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)")
+                CoordinateText(Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -69,7 +69,7 @@ struct InGameMapDetailView: View {
                     Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
                 }
                 LabeledContent("Center") {
-                    Text(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), format: Coordinates.Style()).monospacedDigit()
+                    CoordinateText(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)))
                 }
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {

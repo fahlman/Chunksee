@@ -211,8 +211,7 @@ struct PortalDetailView: View {
         Form {
             Section {
                 LabeledContent("Position") {
-                    Text(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY), format: Coordinates.Style())
-                        .monospacedDigit()
+                    CoordinateText(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
                 }
             } header: {
                 Label("Nether Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
