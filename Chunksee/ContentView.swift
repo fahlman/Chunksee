@@ -30,25 +30,19 @@ struct WorldView: View {
                         Label("Storage", systemImage: "shippingbox")
                             .tag(SidebarItem.storage)
                             .help("Show totals of the items stored in this dimension’s containers")
-                        Toggle(isOn: $heatMap.isShown) {
+                        MapVisibilityRow(isShown: $heatMap.isShown) {
                             Label("Time Spent", systemImage: "flame")
                         }
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
                         .help("Color the map by how long players spent near each chunk")
                         if slimeChunks.isAvailable {
-                            Toggle(isOn: $slimeChunks.isShown) {
+                            MapVisibilityRow(isShown: $slimeChunks.isShown) {
                                 Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
                             }
-                            .toggleStyle(.switch)
-                            .controlSize(.mini)
                             .help("Mark Overworld chunks where slimes can spawn below Y 40")
                         }
-                        Toggle(isOn: $visibility.showsGrid) {
+                        MapVisibilityRow(isShown: $visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
                         .help("Show block, chunk and region lines; block lines appear from 8× zoom")
                     }
                     if !session.savedSearches.all.isEmpty {
