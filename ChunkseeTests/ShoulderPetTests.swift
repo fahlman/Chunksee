@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import Testing
 @testable import ChunkseeTestHost
 
@@ -21,25 +22,24 @@ import Testing
         return .compound(fields)
     }
 
-    func player(pets: [NBT], dimension: NBT = .string("minecraft:the_nether"),
-                position: [Double]? = [-8.7, 70.75, 2.2]) -> PlayerInfo {
+    func playerData(pets: [NBT], dimension: NBT = .string("minecraft:the_nether"),
+                    position: [Double]? = [-8.7, 70.75, 2.2]) -> NBT {
         var fields: [String: NBT] = ["DataVersion": .int(5023), "Dimension": dimension]
         if let position { fields["Pos"] = .list(position.map(NBT.double)) }
         for (key, pet) in zip(["ShoulderEntityLeft", "ShoulderEntityRight"], pets) { fields[key] = pet }
-        return PlayerInfo(uuid: carrier, nbt: .compound(fields))
+        return .compound(fields)
     }
 
-    @discardableResult func save(_ player: PlayerInfo, in url: URL) throws -> URL {
-        let file = url.appendingPathComponent("players/data/\(player.uuid.uuidString.lowercased()).dat")
-        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(Compression.deflate(player.nbt.serialized(), gzip: true)).write(to: file)
+    @discardableResult func save(_ data: NBT, in url: URL) throws -> URL {
+        let file = url.appendingPathComponent("players/data/\(carrier.uuidString.lowercased()).dat")
+        try Fixtures.writeGzippedNBT(data, to: file)
         return file
     }
 
     func makeWorld() throws -> URL {
         let url = try PlayerInspectorTests().makeWorld()
         try PlayerInspectorTests().savePets([parrot(bird)], in: url)
-        try save(player(pets: [parrot(bird), parrot(otherBird, name: "Blue", owner: carrier)]), in: url)
+        try save(playerData(pets: [parrot(bird), parrot(otherBird, name: "Blue", owner: carrier)]), in: url)
         return url
     }
 
@@ -92,7 +92,7 @@ import Testing
         let old = try #require(session.presentation.linkedPets(to: owner).first)
         session.search.text = "pet: Gray"
         await session.search.waitForSearch()
-        let movedFile = try save(player(pets: [parrot(bird)], dimension: .string(overworld), position: [12.5, 48.75, -4.5]), in: url)
+        let movedFile = try save(playerData(pets: [parrot(bird)], dimension: .string(overworld), position: [12.5, 48.75, -4.5]), in: url)
         session.resources.worldChanged([movedFile])
         await session.resources.waitForRefresh()
         await session.search.waitForSearch()
@@ -107,7 +107,7 @@ import Testing
         landed["Pos"] = .list([.double(13.5), .double(49), .double(-4.5)])
         let region = try PlayerInspectorTests().savePets([.compound(landed)], in: url)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: region.path)
-        let playerFile = try save(player(pets: [], dimension: .string(overworld), position: [12.5, 48.75, -4.5]), in: url)
+        let playerFile = try save(playerData(pets: [], dimension: .string(overworld), position: [12.5, 48.75, -4.5]), in: url)
         session.resources.worldChanged([playerFile, region])
         await session.resources.waitForRefresh()
         await session.search.waitForIndex()
@@ -120,11 +120,12 @@ import Testing
     }
 
     @Test func unavailableCarriersKeepDetailsAndNeverUseMountingCoordinates() throws {
-        let players = [player(pets: [parrot(bird)], position: nil),
-                       player(pets: [parrot(bird)], position: [.nan, 64, 0]),
-                       player(pets: [parrot(bird)], dimension: .int(999)),
-                       player(pets: [parrot(bird)], dimension: .string("mod:unavailable"))]
-        for player in players {
+        let inputs = [playerData(pets: [parrot(bird)], position: nil),
+                      playerData(pets: [parrot(bird)], position: [.nan, 64, 0]),
+                      playerData(pets: [parrot(bird)], dimension: .int(999)),
+                      playerData(pets: [parrot(bird)], dimension: .string("mod:unavailable"))]
+        for input in inputs {
+            let player = PlayerInfo(uuid: carrier, nbt: input)
             let snapshot = PlayerSnapshot([player])
             let carried = try #require(snapshot.shoulderPets.first)
             #expect(snapshot.shoulderPets.count == 1 && carried.name == "Gray" && carried.creature.owner == owner)
@@ -135,12 +136,12 @@ import Testing
             #expect(projected.creatures.isEmpty)
             #expect(projected.dimensions.keys.sorted() == [overworld])
         }
-        let unidentified = PlayerSnapshot([player(pets: [parrot(nil), parrot(nil)])]).shoulderPets
+        let unidentified = PlayerSnapshot([PlayerInfo(uuid: carrier, nbt: playerData(pets: [parrot(nil), parrot(nil)]))]).shoulderPets
         #expect(unidentified.count == 2 && Set(unidentified.compactMap { $0.marker?.id }).count == 2)
     }
 
     @Test func shoulderAndLocatedCreatureNamesShareCustomJobAndKindRules() throws {
-        let carrier = player(pets: [])
+        let carrier = PlayerInfo(uuid: self.carrier, nbt: playerData(pets: []))
         var villager = try VillagerTextTests().creature()
         let cases = [(try #require(Creature(parrot(bird))), "Gray"),
                      (villager, "Farmer"),

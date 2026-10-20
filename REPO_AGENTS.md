@@ -666,6 +666,8 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   26.3, yPos 0 and zero region timestamps; their status key follows the shared modern builder.
   Tests for both uppercase and lowercase status remain. The production app depends only on
   `ChunkseeKit`; shared fixture code is confined to the isolated test host.
+  Player fixtures keep their original NBT inputs for file writes through Fixtures.writeGzippedNBT;
+  neither the app nor its tests read raw save data back from PlayerInfo.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running
