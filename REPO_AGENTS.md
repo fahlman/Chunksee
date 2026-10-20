@@ -308,6 +308,9 @@ with the reader. The app retains palette batching, material colors and roof/wate
 
 MapContent resolves the pointer once for selection, ruler clicks and context commands. Copy, Save
 Place and Measure use the same marker location, or the checked containing block when no marker is hit.
+LocationMenu supplies those same three commands for the Structures, Places, Creatures and Biomes
+sidebar rows. MapLayerMarker supplies the saved Y to both the row menu and map scene; unknown heights
+use the map's terrain read. Group visibility and saved-place Rename/Remove menus remain separate.
 Pointer and accessibility activation share the measuring-versus-selecting action; a measurement never
 moves the viewport or changes selection. Outside measuring mode, accessibility retains its centering action.
 A saved-place pin and sidebar row share one SwiftUI menu for Rename, Copy, Measure and Remove.

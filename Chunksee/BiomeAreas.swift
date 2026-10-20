@@ -23,6 +23,7 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var chunks: Path
     var outline: Path
     var name: String { String(localized: "\(chunkCount) chunks") }
+    var yCoordinate: Double? { nil }
     var searchText: String { group.name + " " + group.id }
 }
 

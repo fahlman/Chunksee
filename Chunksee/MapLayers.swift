@@ -13,6 +13,8 @@ nonisolated protocol MapLayerMarker: Identifiable where ID == String {
     var group: Group { get }
     var name: String { get }
     var position: CGPoint { get }
+    /// Saved Y for map and sidebar coordinate commands; nil uses the map's terrain.
+    var yCoordinate: Double? { get }
     /// What a search filter such as `structure:` matches: the name and kind, plus anything else
     /// that identifies the marker.
     var searchText: String { get }
@@ -26,12 +28,15 @@ extension StructureGroup: MapLayerGroup {}
 extension PlaceGroup: MapLayerGroup {}
 extension CreatureGroup: MapLayerGroup {}
 extension StructureMarker: MapLayerMarker {
+    var yCoordinate: Double? { y.map(Double.init) }
     var searchText: String { name + " " + group.name + " " + structureID }
 }
 extension PlaceMarker: MapLayerMarker {
+    var yCoordinate: Double? { Double(y) }
     var searchText: String { [name, group.name, type, mob ?? "", lootTable ?? ""].joined(separator: " ") }
 }
 extension CreatureMarker: MapLayerMarker {
+    var yCoordinate: Double? { creature.y }
     var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
 }
 
@@ -40,6 +45,7 @@ extension CreatureMarker: MapLayerMarker {
 /// for the sidebar's selection. With `shown`, each group can be shown or hidden on the map.
 /// `allGroups` are listed even when they have no markers, with a count of 0.
 struct LayerGroups<Marker: MapLayerMarker>: View {
+    let session: WorldSession
     let markers: [Marker]
     let origin: CGPoint
     var shown: Binding<Set<Marker.Group>>?
@@ -71,6 +77,12 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                         }
                         .tag(row.id)
                         .help("Center the map on this location")
+                        .contextMenu {
+                            if let map = session.map {
+                                LocationMenu(session: session, map: map, position: row.marker.position,
+                                             y: row.marker.yCoordinate)
+                            }
+                        }
                     }
                 } label: {
                     row(group, count: byGroup[group]?.count ?? 0)

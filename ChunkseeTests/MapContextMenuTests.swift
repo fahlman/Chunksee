@@ -182,6 +182,70 @@ import Testing
         }
     }
 
+    @Test func layerRowsAndMapMarkersShareLocationCommandsAndHeights() async throws {
+        try await withSession { session in
+            let map = try #require(session.map)
+            let board = NSPasteboard.withUniqueName()
+            defer { board.releaseGlobally() }
+
+            @MainActor func check<Marker: MapLayerMarker>(_ marker: Marker, content: MapContent?,
+                                               copied: String, block: CGPoint) async throws {
+                map.viewport = MapViewport(center: marker.position, scale: 2)
+                let original = map.viewport
+                var sources = [menu(LocationMenu(session: session, map: map, position: marker.position,
+                                                 y: marker.yCoordinate, pasteboard: board))]
+                if let content {
+                    let root = try #require(MapContextMenuContent(at: CGPoint(x: 204, y: 150), session: session,
+                                                                 map: map, content: content, size: size,
+                                                                 pasteboard: board))
+                    sources.append(menu(root))
+                }
+                for source in sources {
+                    #expect(source.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here"])
+                    board.clearContents()
+                    board.setString("previous", forType: .string)
+                    try perform("Copy Coordinates", in: source)
+                    if marker.yCoordinate != nil { #expect(map.unfinishedCoordinateReads == 0) }
+                    await map.waitForCoordinateReads()
+                    #expect(board.string(forType: .string) == copied)
+                    try perform("Save Place…", in: source)
+                    #expect(session.annotations.draft?.position == block)
+                    #expect(session.annotations.draft?.dimension == map.dimension.id)
+                    session.annotations.draft = nil
+                    session.annotations.ruler.clear()
+                    try perform("Measure Distance from Here", in: source)
+                    #expect(session.annotations.ruler.start?.position == block)
+                    #expect(map.viewport == original && session.selection.sidebarSelection == nil)
+                }
+            }
+
+            let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: -8.7, y: 63.9, z: -8.1,
+                                                           owner: UUID()), dimension: map.dimension.id))
+            var content = MapContent()
+            content.creatures = [pet]
+            try await check(pet, content: content, copied: "-9 63 -9", block: CGPoint(x: -9, y: -9))
+
+            let place = PlaceMarker(Spawner(x: -7, y: -23, z: -4, mob: "minecraft:zombie"))
+            content = MapContent()
+            content.places = [place]
+            try await check(place, content: content, copied: "-7 -23 -4", block: CGPoint(x: -7, y: -4))
+
+            var structure = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
+                                              pieces: [("piece", [-14, -60, -14, -11, -41, -11])]))
+            content = MapContent()
+            content.structures = [structure]
+            try await check(structure, content: content, copied: "-12 -50 -12", block: CGPoint(x: -12, y: -12))
+            structure.y = nil
+            content.structures = [structure]
+            try await check(structure, content: content, copied: "-12 2 -12", block: CGPoint(x: -12, y: -12))
+
+            let biome = BiomeArea(id: "plains", group: BiomeGroup(id: "minecraft:plains"), chunkCount: 1,
+                                 position: CGPoint(x: -8, y: -8), bounds: CGRect(x: -16, y: -16, width: 16, height: 16),
+                                 chunks: Path(), outline: Path())
+            try await check(biome, content: nil, copied: "-8 2 -8", block: CGPoint(x: -8, y: -8))
+        }
+    }
+
     @Test func closedDocumentsAndUnavailableDimensionsCannotCopyOrChangeTheirAnnotations() async throws {
         try await withSession { session in
             let map = try #require(session.map)
@@ -208,9 +272,10 @@ import Testing
             let root = try #require(MapContextMenuContent(at: CGPoint(x: 200, y: 150), session: session, map: map,
                                                          content: MapContent(), size: size, pasteboard: board))
             let mapMenu = menu(root)
+            let rowMenu = menu(LocationMenu(session: session, map: map, position: .zero, y: 64, pasteboard: board))
             session.close()
             await session.waitUntilClosed()
-            for source in [savedMenu, mapMenu] {
+            for source in [savedMenu, mapMenu, rowMenu] {
                 source.update()
                 for item in source.items where !item.isSeparatorItem { #expect(!item.isEnabled) }
             }
@@ -218,6 +283,9 @@ import Testing
             try perform("Rename…", in: savedMenu)
             try perform("Copy Coordinates", in: mapMenu)
             try perform("Measure Distance from Here", in: mapMenu)
+            try perform("Copy Coordinates", in: rowMenu)
+            try perform("Save Place…", in: rowMenu)
+            try perform("Measure Distance from Here", in: rowMenu)
             #expect(session.savedPlaces.all == [place] && session.annotations.draft == nil)
             #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
             #expect(board.string(forType: .string) == "unchanged")

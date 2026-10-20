@@ -163,7 +163,7 @@ struct MapScene {
                 guard outline.insetBy(dx: -40, dy: -40).intersects(bounds) else { return nil }
             }
             return StructureItem(item: Item(label: .structure(marker), layer: .structure,
-                target: .row(.structure(marker.id)), position: marker.position, y: marker.y.map(Double.init),
+                target: .row(.structure(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .structure(marker.group),
                 labelPriority: content.selectedItem == .structure(marker.id) ? .selected : .other),
                 outline: outline, portalRoom: marker.portalRoom.map { viewport.viewPoint(for: $0, in: size) })
@@ -181,7 +181,7 @@ struct MapScene {
             let selected = content.selectedItem == .place(marker.id)
                 || marker.portal.map { content.selection == .portal($0) } == true
             items.append(Item(label: .place(marker), layer: marker.portal == nil ? .place : .portal,
-                target: .row(.place(marker.id)), position: marker.position, y: Double(marker.y),
+                target: .row(.place(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .place(marker.group),
                 labelPriority: selected ? .selected : .other,
                 isDimmed: marker.isClaimed))
@@ -193,7 +193,7 @@ struct MapScene {
             let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(marker.id) ? .selected
                 : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
             items.append(Item(label: .creature(marker), layer: .creature,
-                target: .row(.creature(marker.id)), position: marker.position, y: marker.creature.y,
+                target: .row(.creature(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .creature(marker.group),
                 labelPriority: priority))
         }
