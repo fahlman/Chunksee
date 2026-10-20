@@ -621,6 +621,8 @@ supplies the saved position, dimension and optional height. LocationRow keeps na
 layout and one menu for its label and value. Its value disables LabeledContent's automatic text
 selection, whose native text menu otherwise intercepts right-clicks; Copy Coordinates remains the
 shared command and produces Minecraft's space-separated XYZ. Other form values retain text selection.
+Player-location buttons attach that same menu to the button, outside its navigation-disabled state,
+so a saved location can still be copied or saved when its dimension is unavailable.
 CopyCoordinatesCommand uses the
 session's map only when its dimension matches; a saved height can be copied without a map, while
 unknown heights in other dimensions disable Copy rather than read unrelated terrain. Saved-place

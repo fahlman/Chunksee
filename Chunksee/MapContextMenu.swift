@@ -102,11 +102,10 @@ struct LocationRow: View {
     let session: WorldSession
     let coordinates: Coordinates
     let dimension: String?
-    var showsDimension = false
 
     var body: some View {
         LabeledContent {
-            CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)
+            CoordinateText(coordinates)
                 .textSelection(.disabled)
         } label: {
             title
