@@ -65,7 +65,9 @@ struct InGameMapDetailView: View {
         @Bindable var selection = session.selection
         Form {
             Section {
-                LabeledContent("Area", value: "\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
+                LabeledContent("Area") {
+                    Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
+                }
                 LabeledContent("Center") {
                     Text(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))).monospacedDigit()
                 }
