@@ -120,7 +120,6 @@ final class HeatMapLayer {
 /// The heat map's color scale.
 struct HeatMapLegend: View {
     var isLoading: Bool
-    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -151,7 +150,7 @@ struct HeatMapLegend: View {
 
     /// A label at a time's place on the 200-point bar; `anchor` 0 puts its leading edge there.
     private func label(ticks: Int, anchor: CGFloat) -> some View {
-        Text(GameDuration.units(GameDuration.fromTicks(ticks), locale: locale))
+        Text(GameDuration.fromTicks(ticks), format: GameDuration.units())
             .fixedSize()
             .alignmentGuide(HorizontalAlignment.center) { $0.width * anchor }
             .frame(width: 200, alignment: .center)
