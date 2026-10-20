@@ -21,7 +21,7 @@ struct SavedPlacesGroup: View {
                 .id(SidebarItem.savedPlace(place.id))
                 .selectionDisabled(!session.annotations.canVisit(place))
                 .contextMenu {
-                    SavedPlaceMenu(session: session, place: place, map: session.map)
+                    SavedPlaceMenu(session: session, place: place)
                 }
             }
             Button("Save Place…", systemImage: "mappin.and.ellipse") { session.annotations.savePlace() }

@@ -89,6 +89,12 @@ struct WorldInfoView: View {
                     LabeledContent("World Spawn") {
                         CoordinateText(Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y))
                     }
+                    .contextMenu {
+                        if let dimension = level.spawnDimension {
+                            LocationMenu(session: session, position: CGPoint(x: spawn.x, y: spawn.z),
+                                         dimension: dimension, y: Double(spawn.y))
+                        }
+                    }
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {

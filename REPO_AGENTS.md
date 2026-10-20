@@ -605,6 +605,14 @@ Choosing a saved-query result reveals that query through SavedSearches, like cho
 Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
 
+LocationMenu supplies the same Copy Coordinates, Save Place and Measure Distance commands for
+map markers, generic layer/player/search/map rows, linked pets and inspector positions. Each caller
+supplies the saved position, dimension and optional height. CopyCoordinatesCommand uses the
+session's map only when its dimension matches; a saved height can be copied without a map, while
+unknown heights in other dimensions disable Copy rather than read unrelated terrain. Saved-place
+menus share that copy command. Measurement remains scoped to the current dimension through
+MapAnnotations; the menus do not change selection, viewport or jump policy.
+
 MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
 measurement without reviving a draft. It refers weakly to the document for existing navigation,
 selection and cross-dimension routing; SavedPlaces owns live annotations and WorldSettings persists them.

@@ -79,8 +79,8 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                         .help("Center the map on this location")
                         .contextMenu {
                             if let map = session.map {
-                                LocationMenu(session: session, map: map, position: row.marker.position,
-                                             y: row.marker.yCoordinate)
+                                LocationMenu(session: session, position: row.marker.position,
+                                             dimension: map.dimension.id, y: row.marker.yCoordinate)
                             }
                         }
                     }
