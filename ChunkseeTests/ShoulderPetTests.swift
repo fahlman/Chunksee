@@ -72,7 +72,8 @@ import Testing
         #expect(location.target == .row(.creature(gray.id)))
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
-        MapClipboard.copy(location.position, y: location.y, on: try #require(second.map), to: board)
+        let map = try #require(second.map)
+        MapClipboard.copy(location.position, y: location.y, on: map, to: board)
         #expect(board.string(forType: .string) == "-9 70 2")
 
         first.search.text = "pet: Gray"

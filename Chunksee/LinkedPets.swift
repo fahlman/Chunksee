@@ -21,6 +21,8 @@ struct LinkedPetsSection: View {
                     }
                     .accessibilityIdentifier("linked-pet-\(pet.id)")
                     .help("Show this pet on the map")
+                    .locationMenu(session: session, position: pet.position, dimension: pet.dimension,
+                                  y: pet.creature.y)
                 }
             }
         }

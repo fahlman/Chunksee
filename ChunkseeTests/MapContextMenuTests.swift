@@ -98,7 +98,7 @@ import Testing
             let root = try #require(MapContextMenuContent(at: CGPoint(x: 206, y: 150), session: session, map: map,
                                                          content: content, size: size, pasteboard: board))
             let pinMenu = menu(root)
-            let sidebarMenu = menu(SavedPlaceMenu(session: session, place: place, map: map, pasteboard: board))
+            let sidebarMenu = menu(SavedPlaceMenu(session: session, place: place, pasteboard: board))
             #expect(sidebarMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "Measure Distance from Here", "", "Remove"])
             #expect(pinMenu.items.map(\.title) == sidebarMenu.items.map(\.title))
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
@@ -192,7 +192,7 @@ import Testing
                                                copied: String, block: CGPoint) async throws {
                 map.viewport = MapViewport(center: marker.position, scale: 2)
                 let original = map.viewport
-                var sources = [menu(LocationMenu(session: session, map: map, position: marker.position,
+                var sources = [menu(LocationMenu(session: session, position: marker.position, dimension: map.dimension.id,
                                                  y: marker.yCoordinate, pasteboard: board))]
                 if let content {
                     let root = try #require(MapContextMenuContent(at: CGPoint(x: 204, y: 150), session: session,
@@ -246,6 +246,71 @@ import Testing
         }
     }
 
+    @Test func otherDimensionMenusCopySavedHeightsButNeverReadThisMapsTerrain() async throws {
+        try await withSession { session in
+            let map = try #require(session.map)
+            let board = NSPasteboard.withUniqueName()
+            defer { board.releaseGlobally() }
+            let position = CGPoint(x: -8.7, y: -8.1)
+            let original = map.viewport
+            for dimension in ["minecraft:the_nether", "missing:dimension"] {
+                let saved = menu(LocationMenu(session: session, position: position, dimension: dimension,
+                                              y: -1.2, pasteboard: board))
+                #expect(try #require(saved.items.first { $0.title == "Copy Coordinates" }).isEnabled)
+                #expect(!(try #require(saved.items.first { $0.title == "Measure Distance from Here" }).isEnabled))
+                try perform("Copy Coordinates", in: saved)
+                #expect(board.string(forType: .string) == "-9 -2 -9")
+                #expect(map.unfinishedCoordinateReads == 0)
+                try perform("Save Place…", in: saved)
+                #expect(session.annotations.draft?.dimension == dimension)
+                #expect(session.annotations.draft?.position == CGPoint(x: -9, y: -9))
+                session.annotations.draft = nil
+                try perform("Measure Distance from Here", in: saved)
+                #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
+
+                let unknown = menu(LocationMenu(session: session, position: position, dimension: dimension,
+                                                y: nil, pasteboard: board))
+                #expect(!(try #require(unknown.items.first { $0.title == "Copy Coordinates" }).isEnabled))
+                board.clearContents()
+                board.setString("unchanged", forType: .string)
+                try perform("Copy Coordinates", in: unknown)
+                let place = try #require(session.savedPlaces.add(name: "Elsewhere", dimension: dimension, at: position))
+                let savedPlace = menu(SavedPlaceMenu(session: session, place: place, pasteboard: board))
+                #expect(!(try #require(savedPlace.items.first { $0.title == "Copy Coordinates" }).isEnabled))
+                try perform("Copy Coordinates", in: savedPlace)
+                #expect(board.string(forType: .string) == "unchanged")
+                #expect(map.unfinishedCoordinateReads == 0 && map.viewport == original)
+                #expect(session.selection.sidebarSelection == nil)
+            }
+        }
+    }
+
+    @Test func savedCoordinatesCopyWithoutAMapUntilTheDocumentCloses() async throws {
+        try await withSession { session in
+            let dimension = "missing:dimension"
+            let unmapped = WorldSession(resources: session.resources, dimensionID: dimension)
+            #expect(unmapped.map == nil)
+            let board = NSPasteboard.withUniqueName()
+            defer { board.releaseGlobally() }
+            let saved = menu(LocationMenu(session: unmapped, position: CGPoint(x: -8.7, y: 12.3),
+                                          dimension: dimension, y: 64.9, pasteboard: board))
+            #expect(try #require(saved.items.first { $0.title == "Copy Coordinates" }).isEnabled)
+            try perform("Copy Coordinates", in: saved)
+            #expect(board.string(forType: .string) == "-9 64 12")
+            unmapped.close()
+            await unmapped.waitUntilClosed()
+            board.clearContents()
+            board.setString("after close", forType: .string)
+            saved.update()
+            for item in saved.items { #expect(!item.isEnabled) }
+            try perform("Copy Coordinates", in: saved)
+            try perform("Save Place…", in: saved)
+            try perform("Measure Distance from Here", in: saved)
+            #expect(board.string(forType: .string) == "after close")
+            #expect(unmapped.annotations.draft == nil && !unmapped.annotations.ruler.isEnabled)
+        }
+    }
+
     @Test func closedDocumentsAndUnavailableDimensionsCannotCopyOrChangeTheirAnnotations() async throws {
         try await withSession { session in
             let map = try #require(session.map)
@@ -253,13 +318,13 @@ import Testing
             let board = NSPasteboard.withUniqueName()
             defer { board.releaseGlobally() }
             board.setString("unchanged", forType: .string)
-            let savedMenu = menu(SavedPlaceMenu(session: session, place: place, map: map, pasteboard: board))
+            let savedMenu = menu(SavedPlaceMenu(session: session, place: place, pasteboard: board))
             let copy = try #require(savedMenu.items.first { $0.title == "Copy Coordinates" })
             #expect(!copy.isEnabled)
             let measure = try #require(savedMenu.items.first { $0.title == "Measure Distance from Here" })
             #expect(!measure.isEnabled)
             let unmapped = WorldSession(resources: session.resources, dimensionID: place.dimension)
-            let withoutMap = menu(SavedPlaceMenu(session: unmapped, place: place, map: unmapped.map, pasteboard: board))
+            let withoutMap = menu(SavedPlaceMenu(session: unmapped, place: place, pasteboard: board))
             let unavailable = try #require(withoutMap.items.first { $0.title == "Measure Distance from Here" })
             #expect(unmapped.map == nil && !unavailable.isEnabled && !unmapped.annotations.canMeasure(in: place.dimension))
             for source in [savedMenu, withoutMap] { try perform("Measure Distance from Here", in: source) }
@@ -272,7 +337,7 @@ import Testing
             let root = try #require(MapContextMenuContent(at: CGPoint(x: 200, y: 150), session: session, map: map,
                                                          content: MapContent(), size: size, pasteboard: board))
             let mapMenu = menu(root)
-            let rowMenu = menu(LocationMenu(session: session, map: map, position: .zero, y: 64, pasteboard: board))
+            let rowMenu = menu(LocationMenu(session: session, position: .zero, dimension: map.dimension.id, y: 64, pasteboard: board))
             session.close()
             await session.waitUntilClosed()
             for source in [savedMenu, mapMenu, rowMenu] {

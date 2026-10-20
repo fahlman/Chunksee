@@ -153,6 +153,17 @@ final class WorldResources {
         for session in sessions.values { session.value?.saveView() }
     }
 
+    /// Saving a place reveals its layer without opening or activating its dimension document.
+    func showSavedPlaces(in dimension: String) {
+        guard !isClosed else { return }
+        let documents = sessions.values.compactMap(\.value).filter { !$0.isClosed && $0.selectedDimensionID == dimension }
+        if documents.isEmpty {
+            LayerVisibility(settings: settings, dimension: dimension).showsSavedPlaces = true
+        } else {
+            for document in documents { document.visibility.showsSavedPlaces = true }
+        }
+    }
+
     /// An initial document read keeps this world's access until it attaches a view or is dropped.
     func opening() throws -> WorldOpening {
         guard !isClosed else { throw CancellationError() }

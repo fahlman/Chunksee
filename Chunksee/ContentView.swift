@@ -259,6 +259,11 @@ private struct PlayerRow: View {
             }
             .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.dimmedOpacity)
             .help(help)
+        } commands: {
+            if let location = PlayerPresentation.position(of: player) {
+                LocationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
+                             dimension: location.dimension, y: location.y)
+            }
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
@@ -399,6 +404,8 @@ private struct HitList: View {
                 .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
+                .locationMenu(session: session, position: hit.position, dimension: hit.dimension,
+                              y: hit.y.map(Double.init))
             }
             if hits.total > hits.rows.count {
                 Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)

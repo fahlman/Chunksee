@@ -210,9 +210,9 @@ struct PortalDetailView: View {
         let trip = session.presentation.roundTrip(for: portal)
         Form {
             Section {
-                LabeledContent("Position") {
-                    CoordinateText(Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY))
-                }
+                LocationRow(title: Text("Position"), session: session,
+                            coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
+                            dimension: portal.dimension)
             } header: {
                 InspectorHeading(title: Text("Nether Portal"), symbol: PlaceGroup.portal.symbol)
             }
@@ -233,6 +233,8 @@ struct PortalDetailView: View {
                         }
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
+                        .locationMenu(session: session, position: CGPoint(x: target.centerX, y: target.centerZ),
+                                      dimension: target.dimension, y: Double(target.minY))
                 case .wouldCreateNewPortal(let destination)?:
                     Label("No portal in \(NetherPortal.targetDimension(from: portal.dimension) ?? "", format: session.presentation.dimensionNameStyle) is close enough. Going through would make the game build a new one near \(Coordinates.text(x: Double(destination.x), z: Double(destination.z))).",
                           systemImage: "exclamationmark.triangle.fill")
