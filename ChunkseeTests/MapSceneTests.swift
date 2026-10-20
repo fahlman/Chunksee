@@ -19,7 +19,7 @@ import Testing
         let viewport = MapViewport(center: saved.mapPosition, scale: 32)
 
         #expect(content.scene(viewport: viewport, size: size).items.map(\.id) ==
-                ["player-first", "player-second", "saved-" + saved.id.uuidString])
+                ["search-sign", "player-first", "player-second", "saved-" + saved.id.uuidString])
         let savedHit = try #require(content.hit(at: center, viewport: viewport, size: size))
         #expect(savedHit.target == .row(.savedPlace(saved.id)))
         #expect(savedHit.position == .zero && savedHit.y == nil)
@@ -77,4 +77,36 @@ import Testing
         let highlighted = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(highlighted.style.lineWidth == (kind == .player ? 2.5 : 1.5))
     }
+
+    @Test func searchPinsShareSelectedGeometryAndSavedCoordinatesWithoutOffscreenTargets() throws {
+        let position = CGPoint(x: -8.7, y: -16.2)
+        var first = SearchHit(id: "first", source: .sign, dimension: "minecraft:overworld",
+                              position: position, y: 48, title: "Sign", detail: "At the mine", count: 1)
+        var second = first
+        second.id = "second"; second.y = 62
+        let viewport = MapViewport(center: position, scale: 32)
+        var content = MapContent(); content.hits = [first, second]; content.selectedHitID = first.id
+        let items = content.scene(viewport: viewport, size: size).items
+        let selected = try #require(items.first)
+        #expect(selected.style.geometry.frame(at: center) == MarkerGeometry.search(selected: true).frame(at: center))
+        #expect(selected.frame.contains(center) && selected.point == center && selected.anchor == position)
+        #expect(selected.position == position && selected.y == 48)
+        #expect(selected.style.caption == nil)
+        let locations = content.accessibleLocations(viewport: viewport, size: size)
+        #expect(locations.map(\.name) == ["Sign, At the mine", "Sign, At the mine"])
+        #expect(locations[0].frame == selected.frame && locations[0].position == position && locations[0].y == 48)
+        #expect(content.hit(at: center, viewport: viewport, size: size)?.y == 62)
+        content.hits.reverse()
+        #expect(content.target(at: center, viewport: viewport, size: size) == selected.target)
+        // A larger selected badge remains reachable where its smaller neighbor is not.
+        let outer = CGPoint(x: center.x + MarkerGeometry.search(selected: true).hitRadius, y: center.y)
+        #expect(content.target(at: outer, viewport: viewport, size: size) == .searchHit(first.id))
+        first.position = nil
+        second.position = viewport.blockPoint(at: CGPoint(x: -21, y: 100), in: size)
+        content.hits = [first, second]
+        #expect(content.scene(viewport: viewport, size: size).items.isEmpty)
+        #expect(content.accessibleLocations(viewport: viewport, size: size).isEmpty)
+        #expect(content.target(at: CGPoint(x: -21, y: 100), viewport: viewport, size: size) == nil)
+    }
+
 }
