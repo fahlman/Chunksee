@@ -115,12 +115,6 @@ struct MapContent {
                               size: CGSize(width: area.bounds.width * viewport.scale, height: area.bounds.height * viewport.scale)),
                 target: .row(.biome(area.id)))
         }
-        for hit in hits {
-            if let position = hit.position {
-                add("search-" + hit.id, hit.title + ", " + hit.detail, position, y: hit.y.map(Double.init),
-                    frame: frame(.search(selected: hit.id == selectedHitID), at: position), target: .searchHit(hit.id))
-            }
-        }
         locations.append(contentsOf: scene(viewport: viewport, size: size).accessibleLocations)
         return locations
     }
@@ -144,10 +138,6 @@ struct MapContent {
             return best
         }
         if let hit = scene(viewport: viewport, size: size).hit(at: point) { return hit }
-        if let hit = nearest(hits.lazy.filter { $0.position != nil },
-                             within: { MarkerGeometry.search(selected: $0.id == selectedHitID).hitRadius }, position: { $0.position! }) {
-            return MapHit(target: .searchHit(hit.id), position: hit.position!, y: hit.y.map(Double.init))
-        }
         let reach = max(MarkerGeometry.place(isPortal: true).hitRadius, MarkerGeometry.creature(selected: true).hitRadius)
         let bounds = CGRect(x: point.x - reach, y: point.y - reach, width: reach * 2, height: reach * 2)
         let places = nearbyPlaces(viewport: viewport, size: size, bounds: bounds)

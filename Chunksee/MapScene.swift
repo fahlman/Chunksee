@@ -1,14 +1,15 @@
 import SwiftUI
 
-/// Viewport-local player and saved-place markers shared by drawing, picking and accessibility.
+/// Viewport-local search, player and saved-place markers shared by drawing, picking and accessibility.
 struct MapScene {
     enum Layer: Int {
-        case player, savedPlace
+        case search, player, savedPlace
     }
 
     struct Item {
         let id: String
         let name: String
+        var detail: String? = nil
         let layer: Layer
         let target: MapTarget
         /// Saved coordinates remain separate from the block-centered drawing anchor.
@@ -22,7 +23,7 @@ struct MapScene {
         var frame: CGRect { style.geometry.frame(at: point) }
 
         var accessibleLocation: AccessibleMapLocation {
-            AccessibleMapLocation(id: id, name: name, position: position, y: y,
+            AccessibleMapLocation(id: id, name: detail.map { name + ", " + $0 } ?? name, position: position, y: y,
                                   target: target, anchor: anchor, frame: frame)
         }
 
@@ -40,6 +41,16 @@ struct MapScene {
         let bounds = CGRect(origin: .zero, size: size)
         accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
         var items: [Item] = []
+        for hit in content.hits {
+            guard let position = hit.position else { continue }
+            let point = viewport.viewPoint(for: position, in: size)
+            guard accessibilityBounds.contains(point) else { continue }
+            let selected = hit.id == content.selectedHitID
+            items.append(Item(id: "search-" + hit.id, name: hit.title, detail: hit.detail, layer: .search,
+                target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
+                anchor: position, point: point, style: .search(selected: selected),
+                labelPriority: selected ? .selected : .other))
+        }
         // Player captions can enter the view before their badge does. Keep that wider drawing
         // margin without exposing additional offscreen accessibility children.
         let playerBounds = bounds.insetBy(dx: -60, dy: -30)
