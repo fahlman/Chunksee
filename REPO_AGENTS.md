@@ -257,8 +257,10 @@ remember its selection immediately. Native tab/window focus does not change a se
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.
 SwiftUI ScenePhase has no Quit event. The existing NSApplicationDelegate hook exposes the early
 termination query so focus changes while AppKit closes tabs cannot overwrite the last front tab.
-It returns the normal immediate reply for this app's read-only documents; native termination and
-window restoration remain AppKit's. No tab/window focus bridge is used.
+Before returning the normal immediate reply, the app's existing termination hook asks AppModel
+to save every live dimension's current viewport/depth through WorldResources. This flushes the
+one-second viewport debounce without waiting for document deinitialization or changing the
+front dimension. No world files are written; native termination and restoration remain AppKit's. No tab/window focus bridge is used.
 
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
