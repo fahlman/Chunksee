@@ -148,6 +148,11 @@ final class WorldResources {
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
 
+    func saveViews() {
+        guard !isClosed else { return }
+        for session in sessions.values { session.value?.saveView() }
+    }
+
     /// An initial document read keeps this world's access until it attaches a view or is dropped.
     func opening() throws -> WorldOpening {
         guard !isClosed else { throw CancellationError() }

@@ -57,6 +57,11 @@ final class AppModel {
         return resources
     }
 
+    /// Normal Quit flushes the live views before their debounced SwiftUI tasks are cancelled.
+    func saveViews() {
+        for world in openWorlds.values { world.value?.saveViews() }
+    }
+
     /// URLs are resolved by the reader off the main actor, before looking up shared resources.
     func initialDimension(at documentURL: URL, in worldURL: URL) async throws -> DimensionSnapshot? {
         let opening = try await openingWorld(worldURL, documentURL: documentURL)

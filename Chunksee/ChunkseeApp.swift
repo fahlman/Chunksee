@@ -4,8 +4,14 @@ import SwiftUI
 @main
 struct ChunkseeApp: App {
     @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
-    @State private var model = AppModel(defaults: .standard, cacheRoot: TileCache.root)
+    @State private var model: AppModel
     @FocusedValue(\.worldSession) private var focusedSession
+
+    init() {
+        let model = AppModel(defaults: .standard, cacheRoot: TileCache.root)
+        _model = State(initialValue: model)
+        documentMenus.prepareForTermination = { [weak model] in model?.saveViews() }
+    }
 
     var body: some Scene {
         DocumentGroup { (document: WorldDocument) in
