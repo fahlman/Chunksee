@@ -95,12 +95,11 @@ struct MapView: View {
             return .handled
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-            let step = size.width / 4
             switch press.key {
-            case .leftArrow: map.viewport.pan(by: CGSize(width: step, height: 0))
-            case .rightArrow: map.viewport.pan(by: CGSize(width: -step, height: 0))
-            case .upArrow: map.viewport.pan(by: CGSize(width: 0, height: step))
-            default: map.viewport.pan(by: CGSize(width: 0, height: -step))
+            case .leftArrow: map.viewport.pan(.west, in: size)
+            case .rightArrow: map.viewport.pan(.east, in: size)
+            case .upArrow: map.viewport.pan(.north, in: size)
+            default: map.viewport.pan(.south, in: size)
             }
             return .handled
         }
@@ -144,10 +143,10 @@ struct MapView: View {
         }
         .accessibilityAction(named: Text("Zoom In")) { map.zoom(by: 2) }
         .accessibilityAction(named: Text("Zoom Out")) { map.zoom(by: 0.5) }
-        .accessibilityAction(named: Text("Move North")) { map.viewport.pan(by: CGSize(width: 0, height: size.height / 4)) }
-        .accessibilityAction(named: Text("Move South")) { map.viewport.pan(by: CGSize(width: 0, height: -size.height / 4)) }
-        .accessibilityAction(named: Text("Move West")) { map.viewport.pan(by: CGSize(width: size.width / 4, height: 0)) }
-        .accessibilityAction(named: Text("Move East")) { map.viewport.pan(by: CGSize(width: -size.width / 4, height: 0)) }
+        .accessibilityAction(named: Text("Move North")) { map.viewport.pan(.north, in: size) }
+        .accessibilityAction(named: Text("Move South")) { map.viewport.pan(.south, in: size) }
+        .accessibilityAction(named: Text("Move West")) { map.viewport.pan(.west, in: size) }
+        .accessibilityAction(named: Text("Move East")) { map.viewport.pan(.east, in: size) }
         .overlay(alignment: .bottom) { statusBar }
         .toolbar { MapToolbar(session: session, map: map, showsHeightPopover: $showsHeightPopover) }
         .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
