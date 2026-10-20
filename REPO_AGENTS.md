@@ -433,6 +433,9 @@ the native equipment section and health row. Health uses up to two
 fractional digits in hearts, with a gauge when current and maximum are known and text for the
 available values otherwise. Equipment keeps kind, custom name and count; slot order is shared,
 empty stacks are omitted, and material tint applies to symbols while text uses semantic colors.
+CountedText is the shared Foundation FormatStyle for fractional heart/block units, used directly by
+SwiftUI Text and by string consumers. Its locale modifier follows the native formatting contract;
+rounding and grammatical agreement remain owned by that one style.
 Rows and tooltips share the item/durability formatter. Format parsing and applicability stay in Kit.
 The RegionFacts cache rereads earlier entries with Kit 0.29's versioned pet health, equipped modifiers,
 shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
