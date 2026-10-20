@@ -465,6 +465,9 @@ keep rounding partial seconds up. Time Spent legend labels use those same native
 trader estimate keeps its within-a-minute threshold and completed-minute approximation, using
 the same formatter restricted to minutes. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
+TradeText.EnchantmentStyle owns the enchantment name/level phrase for native Text and the string
+adapter used by trades and tooltips. Its verified single-level exceptions remain distinct from
+effect rules; both use the same LevelText numerals.
 Empty or unavailable optional sections/values stay absent.
 
 WorldResources owns one observable PlayerRoster for all dimension searches and inspectors. Each

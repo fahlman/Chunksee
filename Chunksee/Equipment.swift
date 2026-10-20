@@ -24,7 +24,7 @@ struct EquipmentSection: View {
                                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             }
                             ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
-                                Text(TradeText.enchantmentName(id, level: row.item.enchantments[id] ?? 1))
+                                Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }

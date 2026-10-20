@@ -179,15 +179,33 @@ nonisolated enum TradeText {
     }
 
     static func enchantmentName(_ id: String, level: Int) -> String {
-        if level == 1, singleLevelEnchantments.contains(id) { return ReadableName.from(id) }
-        return ReadableName.from(id) + " " + LevelText.numeral(level)
+        EnchantmentStyle(level: level).format(id)
     }
 
-    // Vanilla 26.3 data/minecraft/enchantment/*.json. The game hides the suffix only when
-    // both the saved and maximum levels are 1; unknown/modded enchantments keep their level.
-    private static let singleLevelEnchantments: Set<String> = [
-        "minecraft:aqua_affinity", "minecraft:binding_curse", "minecraft:channeling",
-        "minecraft:flame", "minecraft:infinity", "minecraft:mending", "minecraft:multishot",
-        "minecraft:silk_touch", "minecraft:vanishing_curse",
-    ]
+    nonisolated struct EnchantmentStyle: FormatStyle, Sendable {
+        private let level: Int
+        private var locale = Locale.autoupdatingCurrent
+
+        init(level: Int) { self.level = level }
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
+        }
+
+        func format(_ id: String) -> String {
+            let name = ReadableName.from(id)
+            if level == 1, Self.singleLevelEnchantments.contains(id) { return name }
+            return String(localized: "\(name) \(LevelText.numeral(level))", locale: locale)
+        }
+
+        // Vanilla 26.3 data/minecraft/enchantment/*.json. The game hides the suffix only when
+        // both the saved and maximum levels are 1; unknown/modded enchantments keep their level.
+        private static let singleLevelEnchantments: Set<String> = [
+            "minecraft:aqua_affinity", "minecraft:binding_curse", "minecraft:channeling",
+            "minecraft:flame", "minecraft:infinity", "minecraft:mending", "minecraft:multishot",
+            "minecraft:silk_touch", "minecraft:vanishing_curse",
+        ]
+    }
 }
