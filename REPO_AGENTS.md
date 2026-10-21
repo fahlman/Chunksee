@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.40.1`, resolved to `0.40.1` (`b827a76f3d0965faec2ade2b8a20f23cd5e26a18`).
+  minor" from `0.40.2`, resolved to `0.40.2` (`941fb2c8b3a217c209bdd77d7d7989378d9410a0`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -119,8 +119,8 @@ app; map pixels and hover names use the same scan.
 WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurfaceContext derives
 normal-view choices from those saved type/generation facts: known build height reaches the shared
 heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's
-upper plane for roof hiding, and its middle plane for biome sampling. It does not infer a roof from
-an ID or logical height. Resolved non-ceiling or empty generation context retains Surface; explicit cutaways always
+upper plane for roof hiding, and its middle plane for biome sampling. Resolved roof choices follow
+those saved bounds rather than logical height. Resolved non-ceiling or empty generation context retains Surface; explicit cutaways always
 use their chosen Y. Map rendering, hover and Copy Coordinates receive the same renderer settings.
 Tile-renderer version 10 discards older pixels; Surface cache keys include build height and ceiling
 start, while cutaway keys ignore that unused context. When saved type/generation metadata cannot
