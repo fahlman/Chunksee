@@ -70,6 +70,44 @@ import Testing
         await session.waitUntilClosed()
     }
 
+    @Test func inspectorCoordinatesRejectInvalidTargetsAndKeepMissingHeightOptional() async throws {
+        let (url, session) = try await openWorld()
+        defer { session.close(); try? FileManager.default.removeItem(at: url) }
+        let map = try #require(session.map)
+        let dimension = session.selectedDimensionID
+        let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: 0.125)
+        map.viewport = original
+        map.setDepth(MapDepth(y: 48, isSurface: false))
+        session.selection.choose(.worldInfo)
+        let depth = map.depth
+        let target = Coordinates(CGPoint(x: -8.7, y: -16.1))
+        #expect(target.y == nil && session.routing.canFocus(target, in: dimension))
+        #expect(!session.routing.canFocus(target, in: nil))
+        #expect(!session.routing.canFocus(target, in: "missing:dimension"))
+        session.routing.focus(on: target, in: "missing:dimension")
+        for invalid in [Double.nan, .infinity, -.infinity, .greatestFiniteMagnitude] {
+            for coordinates in [Coordinates(CGPoint(x: invalid, y: 0)), Coordinates(CGPoint(x: 0, y: invalid)),
+                                Coordinates(.zero, y: invalid)] {
+                #expect(!session.routing.canFocus(coordinates, in: dimension))
+                session.routing.focus(on: coordinates, in: dimension)
+            }
+        }
+        #expect(map.viewport == original && !session.navigation.canGoBack)
+        session.routing.focus(on: target, in: dimension)
+        #expect(map.viewport == MapViewport(center: target.point, scale: original.scale))
+        #expect(map.depth == depth && session.selection.sidebarSelection == .worldInfo)
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        session.routing.focus(on: Coordinates(target.point, y: 64), in: dimension, blockPosition: true)
+        #expect(map.viewport.center == CGPoint(x: -8.5, y: -16.5) && map.viewport.scale == original.scale)
+        let lastView = map.viewport
+        session.close()
+        await session.waitUntilClosed()
+        #expect(!session.routing.canFocus(target, in: dimension))
+        session.routing.focus(on: target, in: dimension)
+        #expect(map.viewport == lastView)
+    }
+
     @Test func aReplacedDocumentSessionKeepsNavigationAndAnotherWorldHasNone() async throws {
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }

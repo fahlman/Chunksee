@@ -171,6 +171,12 @@ location validation and player-focus availability belong to DimensionRouting, wh
 through the native opener. Local marker centering calls MapNavigation directly with X/Z and does
 not invent a saved Y. DimensionRouting refers
 weakly to its source document for identity and closed state, without a second lifetime flag.
+LocationRow shares the native inspector button and location menu for creature/portal Position,
+map Center, World Spawn and player locations. It calls DimensionRouting's common coordinate
+validation and focus path, including real X/Z positions without a saved Y. Unknown destinations,
+invalid coordinates and closed documents cannot jump. Player block positions retain block-center
+navigation; World Spawn matches Go to Spawn's saved point. Clicking a location keeps the current
+inspector and map depth, while the destination's zoom follows the shared keep-zoom rule.
 WorldResources keeps the latest waiting app action per destination, shared across source documents;
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
 but errors are presented only while that source remains open. Native commands and

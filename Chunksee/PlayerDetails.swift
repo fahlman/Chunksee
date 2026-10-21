@@ -203,15 +203,9 @@ struct PlayerDetailView: View {
 
     private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
         let location = saved.position
-        return Button { session.routing.focus(on: location, blockPosition: saved.isBlockPosition) } label: {
-            LabeledContent(saved.title) {
-                CoordinateText(Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
-                               dimension: session.presentation.dimensionName(location.dimension))
-            }
-        }
-        .disabled(!session.dimensions.contains { $0.id == location.dimension })
-        .locationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
-                      dimension: location.dimension, y: location.y)
+        return LocationRow(title: Text(saved.title), session: session,
+                           coordinates: Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
+                           dimension: location.dimension, showsDimension: true, blockPosition: saved.isBlockPosition)
     }
 
 }
