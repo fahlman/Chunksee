@@ -37,7 +37,7 @@ extension PlaceMarker: MapLayerMarker {
 }
 extension CreatureMarker: MapLayerMarker {
     var yCoordinate: Double? { creature.y }
-    var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
+    nonisolated var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
 }
 
 /// Sidebar groups for one layer (structures, places, creatures or biomes). Groups are listed
