@@ -69,6 +69,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 ## Modules
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
+ItemAppearance uses one filled tree for plant items across every item surface; BiomeGroup keeps
+its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not
+need globally unique strings when their meaning is clear in context.
+
 TradeText owns each complete villager offer for both the inspector and search results, including
 the received item, both possible costs, enchantments and the saved sold-out status. Matching still
 uses the separate searchable item names and identifiers, without presentation wording.
