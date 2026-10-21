@@ -7,10 +7,8 @@ struct EquipmentSection: View {
 
     var body: some View {
         let rows = EquipmentPresentation.rows(items)
-        Section("Equipment") {
-            if rows.isEmpty {
-                Text("None").foregroundStyle(.secondary)
-            } else {
+        if !rows.isEmpty {
+            Section("Equipment") {
                 ForEach(rows) { row in
                     LabeledContent(EquipmentPresentation.slot(row.slot)) {
                         VStack(alignment: .trailing) {
