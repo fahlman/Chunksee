@@ -153,7 +153,7 @@ import Testing
         let viewport = MapViewport(center: CGPoint(x: 0, y: 0), scale: 8)
         session.map?.viewport = viewport
         var disclosure = SidebarDisclosure()
-        disclosure.collapsedLayers = [.structures, .places, .creatures, .biomes]
+        disclosure.collapsedSections = [.structures, .places, .creatures, .biomes]
         disclosure.showsSavedPlaces = false
         let cases: [(CGPoint, SidebarItem)] = [
             (structure.position, .structure(structure.id)), (spawner.position, .place(spawner.id)),
@@ -178,15 +178,15 @@ import Testing
         #expect(MapContent(session: session).target(at: viewport.viewPoint(for: biome.position, in: CGSize(width: 800, height: 600)),
                                          viewport: viewport, size: CGSize(width: 800, height: 600)) == nil)
         disclosure.selectOnMap(location.target, y: location.y, in: session)
-        #expect(disclosure.collapsedLayers.isEmpty)
+        #expect(disclosure.collapsedSections.isEmpty)
         #expect(disclosure.showsSavedPlaces)
         #expect(disclosure.structures == [structure.group] && disclosure.places == [.portal, .spawner])
         #expect(disclosure.creatures == [creature.group] && disclosure.biomes == [biome.group])
         // Repeating the same map choice reopens its ancestors after a manual collapse.
-        disclosure.collapsedLayers.insert(.places)
+        disclosure.collapsedSections.insert(.places)
         disclosure.places.remove(.spawner)
         disclosure.selectOnMap(.row(.place(spawner.id)), y: nil, in: session)
-        #expect(!disclosure.collapsedLayers.contains(.places) && disclosure.places.contains(.spawner))
+        #expect(!disclosure.collapsedSections.contains(.places) && disclosure.places.contains(.spawner))
         session.selection.choose(.worldInfo)
         session.selection.mapClicked(.row(.place(portal.id)), y: nil)
         #expect(session.selection.inspector == .selection && session.selection.mapSelection == portal.portal.map(MapSelection.portal))
@@ -211,13 +211,20 @@ import Testing
         let hit = try #require(session.search.results.first)
         let viewport = session.map?.viewport
         var disclosure = SidebarDisclosure()
+        disclosure.collapsedSections = [.searchResults, .savedSearches, .world]
         disclosure.selectOnMap(.searchHit(hit.id), y: nil, in: session)
+        #expect(disclosure.collapsedSections == [.savedSearches, .world])
         #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
         #expect(session.selection.selectedHitID == hit.id && session.map?.viewport == viewport)
         session.search.saveSearch()
+        disclosure.collapsedSections.insert(.searchResults)
+        disclosure.selectOnMap(.searchHit(hit.id), y: nil, in: session)
+        #expect(disclosure.collapsedSections == [.savedSearches, .world] && disclosure.savedSearches.isEmpty)
         session.search.text = ""
         await session.search.waitForSearch()
+        disclosure.collapsedSections.insert(.searchResults)
         disclosure.selectOnMap(.searchHit(hit.id), y: nil, in: session)
+        #expect(disclosure.collapsedSections == [.searchResults, .world])
         let row = SidebarItem.hit(query: "place:spawner", id: hit.id)
         #expect(session.selection.sidebarSelection == row)
         #expect(disclosure.savedSearches == Set(session.savedSearches.all.map(\.id)))
@@ -458,8 +465,12 @@ import Testing
         }
         // A player has details too, so they replace the map just as a pet does.
         session.selection.show(map)
+        disclosure.collapsedSections = [.players, .world, .inGameMaps]
         disclosure.selectOnMap(.row(.player(playerID)), y: nil, in: session)
+        #expect(disclosure.collapsedSections == [.world, .inGameMaps])
         #expect(MapContent(session: session).inGameMap == nil && session.selection.inspector == .player(playerID))
+        disclosure.reveal(.inGameMap(map.id), in: session)
+        #expect(disclosure.collapsedSections == [.world])
         session.close(); await session.waitUntilClosed()
     }
 
@@ -469,8 +480,12 @@ import Testing
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
+        var disclosure = SidebarDisclosure()
         for row in [SidebarItem.worldInfo, .storage] {
+            disclosure.collapsedSections = [.world, .players]
             session.selection.choose(row)
+            disclosure.reveal(row, in: session)
+            #expect(disclosure.collapsedSections == [.players])
             let inspector = session.selection.inspector
             session.selection.mapClicked(nil, y: nil)
             #expect(session.selection.sidebarSelection == row && session.selection.inspector == inspector)

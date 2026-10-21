@@ -1,20 +1,19 @@
 import ChunkseeKit
 import Foundation
 
-enum SidebarLayer: Hashable {
-    case structures, places, creatures, biomes
+enum SidebarSection: Hashable {
+    case searchResults, world, savedSearches, structures, places, creatures, biomes, inGameMaps, players
 }
 
 /// Disclosure state belongs to this dimension's view. Revealing a marker opens just its ancestors.
 struct SidebarDisclosure {
-    var collapsedLayers: Set<SidebarLayer> = []
+    var collapsedSections: Set<SidebarSection> = []
     var structures: Set<StructureGroup> = []
     var places: Set<PlaceGroup> = []
     var creatures: Set<CreatureGroup> = []
     var biomes: Set<BiomeGroup> = []
     var savedSearches: Set<UUID> = []
     var showsSavedPlaces = true
-    var showsInGameMaps = false
 
     /// The view and tests share this complete map-origin selection/reveal action.
     @discardableResult mutating func selectOnMap(_ target: MapTarget?, y: Double?, in session: WorldSession) -> Bool {
@@ -26,27 +25,32 @@ struct SidebarDisclosure {
     mutating func reveal(_ item: SidebarItem, in session: WorldSession) {
         switch session.selection.resolve(item) {
         case .structure(let marker)?:
-            collapsedLayers.remove(.structures)
+            collapsedSections.remove(.structures)
             structures.insert(marker.group)
         case .place(let marker)?:
-            collapsedLayers.remove(.places)
+            collapsedSections.remove(.places)
             places.insert(marker.group)
         case .creature(let marker)?:
-            collapsedLayers.remove(.creatures)
+            collapsedSections.remove(.creatures)
             creatures.insert(marker.group)
         case .biome(let marker)?:
-            collapsedLayers.remove(.biomes)
+            collapsedSections.remove(.biomes)
             biomes.insert(marker.group)
         case .hit?:
             guard case .hit(let query, _) = item else { return }
-            if let saved = session.savedSearches.all.first(where: { $0.query == query }) {
+            if session.search.isActive && query == session.search.text {
+                collapsedSections.remove(.searchResults)
+            } else if let saved = session.savedSearches.all.first(where: { $0.query == query }) {
+                collapsedSections.remove(.savedSearches)
                 savedSearches.insert(saved.id)
             }
-        case .inGameMap?: showsInGameMaps = true
+        case .inGameMap?: collapsedSections.remove(.inGameMaps)
         case .savedPlace?:
-            collapsedLayers.remove(.places)
+            collapsedSections.remove(.places)
             showsSavedPlaces = true
-        case .worldInfo?, .storage?, .player?, nil: break
+        case .player?: collapsedSections.remove(.players)
+        case .worldInfo?, .storage?: collapsedSections.remove(.world)
+        case nil: break
         }
     }
 }

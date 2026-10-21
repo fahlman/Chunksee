@@ -21,9 +21,9 @@ struct WorldView: View {
             ScrollViewReader { proxy in
                 List(selection: sidebarSelection) {
                     if search.isActive {
-                        SearchResultsSection(session: session)
+                        SearchResultsSection(session: session, isExpanded: sectionExpanded(.searchResults))
                     }
-                    Section("World") {
+                    Section("World", isExpanded: sectionExpanded(.world)) {
                         Label("World Info", systemImage: WorldInfoView.symbol)
                             .tag(SidebarItem.worldInfo)
                             .help("Show the world’s settings, time, weather and game rules")
@@ -45,24 +45,25 @@ struct WorldView: View {
                         .help("Show block, chunk and region lines; block lines appear from \(ZoomPercentage.text(MapGrid.minimumBlockSpacing)) zoom")
                     }
                     if !session.savedSearches.all.isEmpty {
-                        SavedSearchesSection(session: session, expanded: $sidebarDisclosure.savedSearches)
+                        SavedSearchesSection(session: session, isExpanded: sectionExpanded(.savedSearches),
+                                             expanded: $sidebarDisclosure.savedSearches)
                     }
                     let index = session.presentation.selectedIndex
                     if !index.structures.isEmpty {
-                        Section("Structures", isExpanded: layerExpanded(.structures)) {
+                        Section("Structures", isExpanded: sectionExpanded(.structures)) {
                             LayerGroups(session: session, markers: index.structures, origin: session.presentation.spawnPoint,
                                         shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
                                         expandedGroups: $sidebarDisclosure.structures)
                         }
                     }
-                    Section("Places", isExpanded: layerExpanded(.places)) {
+                    Section("Places", isExpanded: sectionExpanded(.places)) {
                         SavedPlacesGroup(session: session, isExpanded: $sidebarDisclosure.showsSavedPlaces)
                         LayerGroups(session: session, markers: index.places, origin: session.presentation.spawnPoint,
                                     shown: $visibility.places, item: { SidebarItem.place($0.id) },
                                     expandedGroups: $sidebarDisclosure.places)
                     }
                     if !index.creatures.isEmpty {
-                        Section("Creatures", isExpanded: layerExpanded(.creatures)) {
+                        Section("Creatures", isExpanded: sectionExpanded(.creatures)) {
                             LayerGroups(session: session, markers: index.creatures, origin: session.presentation.spawnPoint,
                                         shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
                                         expandedGroups: $sidebarDisclosure.creatures)
@@ -70,21 +71,21 @@ struct WorldView: View {
                     }
                     // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
                     if !index.biomeAreas.isEmpty || !session.presentation.possibleBiomes.isEmpty {
-                        Section("Biomes", isExpanded: layerExpanded(.biomes)) {
+                        Section("Biomes", isExpanded: sectionExpanded(.biomes)) {
                             LayerGroups(session: session, markers: index.biomeAreas, origin: session.presentation.spawnPoint,
                                         shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes,
                                         item: { SidebarItem.biome($0.id) }, expandedGroups: $sidebarDisclosure.biomes)
                         }
                     }
                     if !session.presentation.inGameMaps.isEmpty {
-                        Section("In-Game Maps", isExpanded: $sidebarDisclosure.showsInGameMaps) {
+                        Section("In-Game Maps", isExpanded: sectionExpanded(.inGameMaps)) {
                             ForEach(session.presentation.inGameMaps, id: \.id) { map in
                                 InGameMapRow(session: session, map: map)
                             }
                         }
                     }
                     if !session.presentation.listedPlayers.isEmpty {
-                        Section("Players") {
+                        Section("Players", isExpanded: sectionExpanded(.players)) {
                             ForEach(session.presentation.listedPlayers, id: \.uuid) { player in
                                 PlayerRow(session: session, player: player)
                             }
@@ -225,10 +226,10 @@ struct WorldView: View {
         sidebarRevealID = UUID()
     }
 
-    private func layerExpanded(_ layer: SidebarLayer) -> Binding<Bool> {
-        Binding { !sidebarDisclosure.collapsedLayers.contains(layer) } set: {
-            if $0 { sidebarDisclosure.collapsedLayers.remove(layer) }
-            else { sidebarDisclosure.collapsedLayers.insert(layer) }
+    private func sectionExpanded(_ section: SidebarSection) -> Binding<Bool> {
+        Binding { !sidebarDisclosure.collapsedSections.contains(section) } set: {
+            if $0 { sidebarDisclosure.collapsedSections.remove(section) }
+            else { sidebarDisclosure.collapsedSections.insert(section) }
         }
     }
 
@@ -324,10 +325,11 @@ private struct WorldInspector: View {
 /// Places matching the search, most items first. Choosing one shows it on the map.
 private struct SearchResultsSection: View {
     let session: WorldSession
+    @Binding var isExpanded: Bool
 
     var body: some View {
         let search = session.search
-        Section {
+        Section(isExpanded: $isExpanded) {
             HitList(session: session, query: search.text)
         } header: {
             HStack {
@@ -347,11 +349,12 @@ private struct SearchResultsSection: View {
 /// while its eye is open.
 private struct SavedSearchesSection: View {
     let session: WorldSession
+    @Binding var isExpanded: Bool
     @Binding var expanded: Set<UUID>
     @Environment(\.locale) private var locale
 
     var body: some View {
-        Section("Saved Searches") {
+        Section("Saved Searches", isExpanded: $isExpanded) {
             ForEach(session.savedSearches.all) { saved in
                 let hits = session.search.listedHits(for: saved.query, where: session.presentation.lists)
                 let visibility = Binding {
