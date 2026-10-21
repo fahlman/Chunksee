@@ -25,20 +25,18 @@ struct InGameMapRow: View {
     let map: MapItem
 
     var body: some View {
-        HStack {
+        LocationLabel(title: Text("Map #\(map.id)")) {
             if let image = session.selection.image(for: map) {
                 Image(decorative: image, scale: 1)
                     .interpolation(.none)
                     .resizable()
                     .frame(width: 28, height: 28)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
+            } else {
+                Image(systemName: ItemAppearance.mapSymbol)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Map #\(map.id)")
-                CoordinateText(Text("\(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ))) · 1:\(map.blocksPerPixel)"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        } caption: {
+            CoordinateText(Text("1:\(map.blocksPerPixel) · \(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ)))"))
         }
         .tag(SidebarItem.inGameMap(map.id))
         .id(SidebarItem.inGameMap(map.id))

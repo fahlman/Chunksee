@@ -10,13 +10,11 @@ struct SavedPlacesGroup: View {
         @Bindable var visibility = session.visibility
         DisclosureGroup(isExpanded: $isExpanded) {
             ForEach(session.annotations.listedPlaces) { place in
-                VStack(alignment: .leading, spacing: 2) {
-                    Label(place.name, systemImage: MarkerStyle.savedPlaceSymbol)
+                LocationLabel(title: Text(place.name)) {
+                    Image(systemName: MarkerStyle.savedPlaceSymbol)
+                } caption: {
                     CoordinateText(Coordinates(place.position))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                .lineLimit(1)
                 .tag(SidebarItem.savedPlace(place.id))
                 .id(SidebarItem.savedPlace(place.id))
                 .selectionDisabled(!session.annotations.canVisit(place))

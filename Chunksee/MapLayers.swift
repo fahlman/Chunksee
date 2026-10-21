@@ -69,11 +69,10 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                     // The collection owns the same identity used by selection and scrolling.
                     // An inner .id adds a dynamic row-list transformation for every marker.
                     ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.marker.name)
+                        LocationLabel(title: Text(row.marker.name)) {
+                            Image(systemName: row.marker.group.symbol)
+                        } caption: {
                             CoordinateText(Coordinates(row.marker.position, y: row.marker.yCoordinate))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                         .tag(row.id)
                         .help("Center the map on this location")
