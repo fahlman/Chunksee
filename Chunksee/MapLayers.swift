@@ -75,7 +75,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                             CoordinateText(Coordinates(row.marker.position, y: row.marker.yCoordinate))
                         }
                         .tag(row.id)
-                        .help("Center the map on this location")
+                        .help(LocationAvailability.available.help)
                         .locationMenu(session: session, position: row.marker.position,
                                       dimension: session.selectedDimensionID, y: row.marker.yCoordinate)
                     }
