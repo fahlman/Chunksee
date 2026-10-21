@@ -783,6 +783,13 @@ their links, and a pet that lands returns to Linked Pets on the shared index ref
 These are derived app publications, with no new file reader or
 disk cache; ordinary player and region refreshes replace them.
 
+ItemIcon and ItemLabel share item symbol, material color and known-enchantment styling across
+equipment, trades, inventory slots and Storage. ItemAppearance remains the owner of names,
+symbols, colors and detail text. Inventory keeps its slot grid/count badges and Storage its
+sortable table (Ryan, 2026-10-20, #298). A trade's icon represents the received item; its complete
+wording still comes from TradeText.offer. Storage aggregates by kind, so it does not invent a
+stack's custom name or enchantment. Native labels and slot accessibility retain the item details.
+
 Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
 markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,
 appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only

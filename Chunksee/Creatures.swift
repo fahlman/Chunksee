@@ -145,7 +145,8 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
         if let trades = creature.villager?.trades, !trades.isEmpty {
             Section("Trades") {
                 ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
-                    Text(TradeText.offer(trade))
+                    ItemLabel(id: trade.sell.id, title: Text(TradeText.offer(trade)),
+                              isEnchanted: ItemAppearance.isEnchanted(trade.sell))
                         .strikethrough(trade.isSoldOut)
                         .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
                         .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
