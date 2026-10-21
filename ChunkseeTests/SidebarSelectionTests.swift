@@ -483,7 +483,9 @@ import Testing
         var disclosure = SidebarDisclosure()
         for row in [SidebarItem.worldInfo, .storage] {
             disclosure.collapsedSections = [.world, .players]
-            session.selection.choose(row)
+            let previousReveal = session.selection.sidebarRevealRequest
+            session.selection.inspector = row == .worldInfo ? .world : .storage
+            #expect(session.selection.sidebarRevealRequest != nil && session.selection.sidebarRevealRequest != previousReveal)
             disclosure.reveal(row, in: session)
             #expect(disclosure.collapsedSections == [.players])
             let inspector = session.selection.inspector

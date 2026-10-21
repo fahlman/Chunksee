@@ -14,7 +14,7 @@ final class SelectionModel {
     /// A map can remain under a selected marker that has no details of its own.
     private var overlayID: Int?
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
-    /// Linked-pet jumps reveal an already-selected row after its group is collapsed again.
+    /// Inspector commands and linked-pet jumps can reveal an already-selected row again.
     private(set) var sidebarRevealRequest: UUID?
     var inGameMapOpacity = 0.85
 
@@ -46,6 +46,7 @@ final class SelectionModel {
                 if selectedItem == .worldInfo || selectedItem == .storage { selectedItem = nil }
                 if inspector != previous { playerRecords.cancel() }
             }
+            if newValue != nil { revealSelectedRow() }
         }
     }
 
@@ -226,6 +227,11 @@ final class SelectionModel {
               let current = source.search.index.dimensions[pet.dimension]?.creatures.first(where: { $0.id == pet.id && $0.creature.owner == playerID }) else { return }
         if source.routing.route(to: current.dimension, perform: { $0.selection.showLinkedPet(current, ownedBy: playerID) }) { return }
         choose(.creature(current.id))
+        revealSelectedRow()
+    }
+
+    private func revealSelectedRow() {
+        guard let source, !source.isClosed, sidebarSelection != nil else { return }
         sidebarRevealRequest = UUID()
     }
 
