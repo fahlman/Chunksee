@@ -272,28 +272,31 @@ nonisolated enum WorldSearch {
     }
 
     private static func creatureHits(_ entries: [SearchIndex.Placed<CreatureMarker>], words: [String]) -> [SearchHit] {
-        entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map(creatureHit)
+        layerHits(entries, words: words, y: { Coordinates.block($0.creature.y) }, caption: creatureCaption) { .creature($0.group) }
     }
 
     /// The row leads with the same name as the sidebar; its caption identifies the kind without repeating the name.
-    private static func creatureHit(_ entry: SearchIndex.Placed<CreatureMarker>) -> SearchHit {
-        let marker = entry.value
+    private static func creatureCaption(_ marker: CreatureMarker) -> String {
         let kind = ReadableName.from(marker.creature.id)
-        return SearchHit(id: "\(entry.dimension)@\(marker.id)", source: .layer(.creature(marker.group), markerID: marker.id),
-                         dimension: entry.dimension, position: marker.position, y: Coordinates.block(marker.creature.y),
-                         title: marker.name == kind ? marker.group.name : kind, detail: marker.name, count: 1)
+        return marker.name == kind ? marker.group.name : kind
     }
 
     /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
     private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], words: [String],
                                                                      count: (Marker) -> Int = { _ in 1 },
                                                                      y: (Marker) -> Int? = { _ in nil },
+                                                                     caption: (Marker) -> String = { $0.group.name },
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
         entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map { entry in
-            SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer(entry.value), markerID: entry.value.id), dimension: entry.dimension,
-                      position: entry.value.position, y: y(entry.value), title: entry.value.group.name, detail: entry.value.name,
-                      count: count(entry.value))
+            layerHit(entry, count: count(entry.value), y: y(entry.value), caption: caption(entry.value), layer: layer(entry.value))
         }
+    }
+
+    /// Filtered layers and plain named-creature search share marker identity and coordinate construction.
+    private static func layerHit<Marker: MapLayerMarker & Sendable>(_ entry: SearchIndex.Placed<Marker>, count: Int = 1,
+                                                                  y: Int?, caption: String, layer: SearchHit.Layer) -> SearchHit {
+        SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer, markerID: entry.value.id), dimension: entry.dimension,
+                  position: entry.value.position, y: y, title: caption, detail: entry.value.name, count: count)
     }
 
     /// Whether `text` contains every word, ignoring case.
@@ -380,7 +383,8 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
-            hits.append(creatureHit(entry))
+            hits.append(layerHit(entry, y: Coordinates.block(creature.y), caption: creatureCaption(entry.value),
+                                 layer: .creature(entry.value.group)))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }

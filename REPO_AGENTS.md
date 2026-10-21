@@ -820,8 +820,9 @@ inspector sections. The pet-only “Equipment: None” row is removed; Kit's equ
 stays unchanged. Inventory grids retain empty slots because those represent storage positions.
 
 Creature.displayName owns custom-name, villager-job and kind fallback naming for located
-markers, shoulder pets and ordinary/filtered creature search rows. Those searches share one
-hit constructor; the caption supplies the kind, or the group when the name already is the kind.
+markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and
+plain named-creature search share one hit constructor; filtered searches retain their one
+matching helper. The creature caption supplies the kind, or the group when the name already is the kind.
 CreatureDetailSections owns their shared applicable health, owner,
 appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
 their headings and location presentation; a carried pet never displays its old mounting position.
