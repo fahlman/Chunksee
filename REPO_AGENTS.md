@@ -72,6 +72,12 @@ All of the app's code is presentation; world-format rules live in ChunkseeKit.
 TradeText owns each complete villager offer for both the inspector and search results, including
 the received item, both possible costs, enchantments and the saved sold-out status. Matching still
 uses the separate searchable item names and identifiers, without presentation wording.
+StructureGroup and PlaceGroup own the symbols shared by their sidebar rows and map markers.
+Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
+than the Slime Chunks grid, and Other Places use a location pin rather than the item weapon scope.
+Find Player Names uses a settings gear because it opens Settings. World Info, Storage and Time
+Spent use filled variants to match the group style; shapes without a filled variant keep their
+native symbol. Ryan's requested Zoom magnifier and recognizable container symbols remain.
 ChunkseeIndex.StoredItemTotal owns storage quantities and outer-container counts, including nested
 items. StoredItem projects its results into app display names and count/name order; it does not
 repeat the aggregation. The app and isolated test host link both published products.

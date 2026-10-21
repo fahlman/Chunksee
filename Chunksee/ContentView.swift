@@ -31,7 +31,7 @@ struct WorldView: View {
                             .tag(SidebarItem.storage)
                             .help("Show totals of the items stored in this dimension’s containers")
                         MapVisibilityRow(isShown: $heatMap.isShown) {
-                            Label("Time Spent", systemImage: "flame")
+                            Label("Time Spent", systemImage: "flame.fill")
                         }
                         .help("Color the map by how long players spent near each chunk")
                         MapVisibilityRow(isShown: $slimeChunks.isShown) {
@@ -91,7 +91,7 @@ struct WorldView: View {
                             // A row rather than a section footer: sidebar lists don't show footers.
                             if session.presentation.hasUnnamedPlayers {
                                 SettingsLink {
-                                    Label("Find Player Names…", systemImage: "magnifyingglass")
+                                    Label("Find Player Names…", systemImage: "gearshape.fill")
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(.secondary)
