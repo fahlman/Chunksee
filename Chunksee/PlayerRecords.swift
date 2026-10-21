@@ -119,7 +119,7 @@ final class PlayerRecordsModel {
     }
 }
 
-nonisolated struct StatisticRow: Identifiable, Sendable {
+nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     struct ID: Hashable, Sendable {
         let category: String
         let statistic: String
