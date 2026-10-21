@@ -14,9 +14,6 @@ struct PetDetailRows: View {
         if let color = creature.collarColor {
             LabeledContent("Collar Color", value: PetDetailText.name(color))
         }
-        if let equipment = creature.equipment, EquipmentPresentation.rows(equipment).isEmpty {
-            LabeledContent("Equipment", value: String(localized: "None"))
-        }
     }
 }
 

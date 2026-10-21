@@ -815,6 +815,9 @@ symbols, colors and detail text. Inventory keeps its slot grid/count badges and 
 sortable table (Ryan, 2026-10-20, #298). A trade's icon represents the received item; its complete
 wording still comes from TradeText.offer. Storage aggregates by kind, so it does not invent a
 stack's custom name or enchantment. Native labels and slot accessibility retain the item details.
+EquipmentSection omits empty equipment for both players and pets, matching the other optional
+inspector sections. The pet-only “Equipment: None” row is removed; Kit's equipment applicability
+stays unchanged. Inventory grids retain empty slots because those represent storage positions.
 
 Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
 markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,
