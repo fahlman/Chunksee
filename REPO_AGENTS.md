@@ -506,6 +506,12 @@ instead of receiving pushed assignments in every tab. SearchSources still compar
 identity, so query edits never traverse saved player NBT. Shared saved queries continue to reuse
 only matching publications, and closed searches do not restart when the roster changes.
 
+StatisticRow supplies shared names and native values to the player inspector and All Statistics.
+Raw category/statistic IDs keep row identity independent of equal readable names; raw saved numbers
+remain the numeric sort values. Kit supplies scaled units, while the app uses native elapsed time,
+metric distance and the shared heart wording. Unknown units retain their raw numbers. The inspector
+keeps its primary counts and 100-meter travel cutoff; the complete table retains every saved row.
+
 PlayerRecordsModel keeps the selected player's request identity and rejects replaced results.
 Its reads register in a BackgroundWork scope: cancellation and draining affect only that inspector,
 including older canceled reads, while world close still cancels and drains every scope. Closing

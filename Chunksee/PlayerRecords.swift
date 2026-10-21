@@ -26,17 +26,26 @@ nonisolated struct PlayerRecords: Sendable {
     }
 
     /// The largest counts in a category, e.g. the most-mined blocks.
-    func top(_ category: String, count: Int = 5) -> [(name: String, value: Int)] {
+    func top(_ category: String, count: Int = 5) -> [StatisticRow] {
         (statistics?.values[category] ?? [:]).sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-            .prefix(count).map { (ReadableName.from($0.key), $0.value) }
+            .prefix(count).map { row(id: $0.key, value: $0.value, in: category) }
     }
 
-    /// Distances by way of travel in kilometers, longest first, leaving out ones under 100 m,
-    /// which would show as 0 km.
-    var distances: [(name: String, kilometers: Double)] {
+    /// The inspector keeps its longest-first travel summary and 100-meter cutoff.
+    var distances: [StatisticRow] {
         (statistics?.distances ?? [:]).filter { $0.value >= 10_000 }
-            .map { (Self.travelName($0.key), Double($0.value) / 100_000) }
-            .sorted { $0.kilometers > $1.kilometers }
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .map { row(id: $0.key, value: $0.value, in: "minecraft:custom") }
+    }
+
+    var summaryStatistics: [StatisticRow] {
+        guard let statistics else { return [] }
+        let timeID = statistics.value("minecraft:play_time") != nil ? "minecraft:play_time" : "minecraft:play_one_minute"
+        let primary = [timeID, "minecraft:mob_kills", "minecraft:deaths"].compactMap { id -> StatisticRow? in
+            guard let value = statistics.value(id), id != timeID || value >= 0 else { return nil }
+            return row(id: id, value: value, in: "minecraft:custom")
+        }
+        return primary + distances
     }
 
     /// `minecraft:walk_one_cm` → "Walk", `minecraft:aviate_one_cm` → "Elytra".
@@ -55,10 +64,12 @@ nonisolated struct PlayerRecords: Sendable {
     /// Every statistic as a row, for the sortable table.
     var rows: [StatisticRow] {
         (statistics?.values ?? [:]).flatMap { category, values in
-            // The game shows `minecraft:custom` as "General".
-            let name = category == "minecraft:custom" ? String(localized: "General") : ReadableName.from(category)
-            return values.map { StatisticRow(category: name, name: ReadableName.from($0.key), value: $0.value) }
-        }
+            values.map { row(id: $0.key, value: $0.value, in: category) }
+        }.sorted { ($0.categoryID, $0.statisticID) < ($1.categoryID, $1.statisticID) }
+    }
+
+    private func row(id: String, value: Int, in category: String) -> StatisticRow {
+        StatisticRow(categoryID: category, statisticID: id, value: value, unit: statistics?.unit(of: id, in: category))
     }
 }
 
@@ -109,10 +120,69 @@ final class PlayerRecordsModel {
 }
 
 nonisolated struct StatisticRow: Identifiable, Sendable {
-    var id: String { category + "/" + name }
-    var category: String
-    var name: String
+    struct ID: Hashable, Sendable {
+        let category: String
+        let statistic: String
+    }
+
+    var id: ID { ID(category: categoryID, statistic: statisticID) }
+    var categoryID: String
+    var statisticID: String
     var value: Int
+    var unit: PlayerStatistics.Unit?
+
+    var category: String {
+        categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
+    }
+
+    var name: String {
+        if unit == .centimeters { return PlayerRecords.travelName(statisticID) }
+        if categoryID == "minecraft:custom" {
+            switch statisticID {
+            case "minecraft:play_time", "minecraft:play_one_minute": return String(localized: "Time Played")
+            case "minecraft:mob_kills": return String(localized: "Mobs Killed")
+            case "minecraft:deaths": return String(localized: "Deaths")
+            default: break
+            }
+        }
+        return ReadableName.from(statisticID)
+    }
+
+    /// Both surfaces format the same saved value; the reader owns its unit, not its label.
+    struct ValueStyle: FormatStyle, Sendable {
+        private var locale = Locale.autoupdatingCurrent
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
+        }
+
+        func format(_ row: StatisticRow) -> String {
+            switch row.unit {
+            case .ticks:
+                if let elapsed = GameDuration.elapsed(row.value) {
+                    return elapsed.formatted(GameDuration.units().locale(locale))
+                }
+            case .centimeters:
+                let centimeters = Double(row.value)
+                let length: Measurement<UnitLength>
+                switch abs(centimeters) {
+                case 100_000...: length = Measurement(value: centimeters / 100_000, unit: .kilometers)
+                case 100...: length = Measurement(value: centimeters / 100, unit: .meters)
+                default: length = Measurement(value: centimeters, unit: .centimeters)
+                }
+                return length.formatted(.measurement(width: .abbreviated, usage: .asProvided,
+                                                      numberFormatStyle: .number.precision(.fractionLength(0...2))).locale(locale))
+            case .tenthsOfDamagePoint:
+                // Ten saved units per damage point, two damage points per displayed heart.
+                return CountedText.hearts.locale(locale).format(Double(row.value) / 20)
+            case nil:
+                break
+            }
+            return row.value.formatted(.number.locale(locale))
+        }
+    }
 }
 
 /// Statistics and advancements sections of the player inspector.
@@ -122,15 +192,10 @@ struct PlayerRecordsSections: View {
 
     var body: some View {
         if let records {
-            if let stats = records.statistics {
+            if records.statistics != nil {
                 Section("Statistics") {
-                    if let ticks = stats.playTime, let elapsed = GameDuration.elapsed(ticks) {
-                        LabeledContent("Time Played") { Text(elapsed, format: GameDuration.units()) }
-                    }
-                    if let kills = stats.value("minecraft:mob_kills") { LabeledContent("Mobs Killed", value: kills.formatted()) }
-                    if let deaths = stats.value("minecraft:deaths") { LabeledContent("Deaths", value: deaths.formatted()) }
-                    ForEach(records.distances, id: \.name) { travel in
-                        LabeledContent(travel.name, value: String(localized: "\(travel.kilometers, format: .number.precision(.fractionLength(0...1))) km"))
+                    ForEach(records.summaryStatistics) { row in
+                        LabeledContent(row.name) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                     }
                     Button("All Statistics…") { showsAllStatistics = true }
                 }
@@ -158,10 +223,12 @@ struct PlayerRecordsSections: View {
     }
 
     @ViewBuilder
-    private func ranking(_ title: LocalizedStringKey, _ entries: [(name: String, value: Int)]) -> some View {
+    private func ranking(_ title: LocalizedStringKey, _ entries: [StatisticRow]) -> some View {
         if !entries.isEmpty {
             Section(title) {
-                ForEach(entries, id: \.name) { LabeledContent($0.name, value: $0.value.formatted()) }
+                ForEach(entries) { row in
+                    LabeledContent(row.name) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                }
             }
         }
     }
@@ -174,14 +241,20 @@ struct StatisticsTable: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Table(rows.sorted(using: sortOrder), sortOrder: $sortOrder) {
-            TableColumn("Category", value: \.category)
-            TableColumn("Statistic", value: \.name)
-            TableColumn("Count", value: \.value) { Text($0.value, format: .number).monospacedDigit() }
+        VStack(alignment: .leading, spacing: 16) {
+            Text("All Statistics").font(.headline).accessibilityAddTraits(.isHeader)
+            Table(rows.sorted(using: sortOrder), sortOrder: $sortOrder) {
+                TableColumn("Category", value: \.category)
+                TableColumn("Statistic", value: \.name)
+                TableColumn("Value", value: \.value) { Text($0, format: StatisticRow.ValueStyle()).monospacedDigit() }
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
         }
+        .padding(20)
         .frame(minWidth: 520, minHeight: 420)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-        }
+        .onExitCommand { dismiss() }
     }
 }
