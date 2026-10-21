@@ -212,6 +212,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             highestSection = entries.lastIndex { !$0.isEmpty }
         }
 
+        @inline(__always)
         private mutating func resolve(section s: Int, palette: Int?) -> Entry {
             guard let p = palette, entries[s].indices.contains(p) else { return .clear }
             if entries[s][p] == .unresolved {
@@ -228,83 +229,90 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// Draw each column during Kit's shared traversal, without computing its surface and
         /// unpacking the same sections a second time. Uniform spans also avoid per-block work.
         mutating func topColumns(from start: Chunk.ColumnStart = .surface(), underCeiling: Bool = false) -> [Column?] {
-            enum State { case ceiling, searching, water, done }
-            var result = [Column?](repeating: nil, count: 256)
-            var state = [State](repeating: underCeiling ? .ceiling : .searching, count: 256)
-            var ceilingStart = [Int?](repeating: nil, count: 256)
-            var waterBottom = [Int](repeating: 0, count: 256)
+            enum Phase { case ceiling, searching, water, done }
+            struct ColumnState {
+                var phase: Phase
+                var column: Column?
+                var ceilingStart: Int?
+                var waterBottom = 0
+            }
+            var states = [ColumnState](repeating: ColumnState(phase: underCeiling ? .ceiling : .searching), count: 256)
             let chunk = self.chunk
-            chunk.forEachColumnRun(from: start) { run in
-                let i = run.column
-                if state[i] == .water {
-                    let expected = waterBottom[i].subtractingReportingOverflow(1)
-                    if expected.overflow || run.y.upperBound != expected.partialValue {
-                        state[i] = .done
-                        return false // Missing sections cannot add to contiguous water depth.
-                    }
-                }
-                let entry = resolve(section: run.sectionIndex, palette: run.paletteIndex)
-                // Only a resolved solid/water entry can create a Column; an invalid reference is clear.
-                let palette = run.paletteIndex ?? 0
-                switch state[i] {
-                case .done:
-                    return false
-                case .ceiling:
-                    if ceilingStart[i] == nil {
-                        // Kit clipped the top section's run. If higher sections were skipped, the
-                        // requested Y is already below the chunk's top and remains the roof start.
-                        if run.sectionIndex == highestSection { ceilingStart[i] = run.y.upperBound }
-                        else if case .height(let y) = start { ceilingStart[i] = y }
-                    }
-                    switch entry {
-                    case .clear:
-                        state[i] = .searching
-                        result[i] = nil
-                    case .solid(let color), .water(let color):
-                        // Preserve the dark fallback below the five-block roof band when a
-                        // column never reaches open space. A span may cross that band's edge.
-                        if result[i] == nil, let ceiling = ceilingStart[i] {
-                            let belowBand = ceiling.subtractingReportingOverflow(5)
-                            let y = min(run.y.upperBound, belowBand.partialValue)
-                            if !belowBand.overflow, y >= run.y.lowerBound {
-                                result[i] = Column(y: y, color: color.shaded(0.6), waterDepth: 0,
-                                                   section: run.sectionIndex, palette: palette)
-                            }
+            // The synchronous, nonescaping visitor stays inside this chunk's buffer lifetime.
+            // Buffer writes avoid checking captured arrays for copy-on-write on every block.
+            states.withUnsafeMutableBufferPointer { states in
+                chunk.forEachColumnRun(from: start) { run in
+                    let i = run.column
+                    if states[i].phase == .water {
+                        let expected = states[i].waterBottom.subtractingReportingOverflow(1)
+                        if expected.overflow || run.y.upperBound != expected.partialValue {
+                            states[i].phase = .done
+                            return false // Missing sections cannot add to contiguous water depth.
                         }
-                    case .unresolved:
-                        break
                     }
-                    return true
-                case .searching:
-                    switch entry {
-                    case .solid(let color):
-                        result[i] = Column(y: run.y.upperBound, color: color, waterDepth: 0,
-                                           section: run.sectionIndex, palette: palette)
-                        state[i] = .done
+                    let entry = resolve(section: run.sectionIndex, palette: run.paletteIndex)
+                    // Only a resolved solid/water entry can create a Column; an invalid reference is clear.
+                    let palette = run.paletteIndex ?? 0
+                    switch states[i].phase {
+                    case .done:
                         return false
-                    case .water(let color):
-                        let depth = min(run.y.count, RegionTileRenderer.maximumWaterDepth)
-                        result[i] = Column(y: run.y.upperBound, color: color, waterDepth: depth,
-                                           section: run.sectionIndex, palette: palette)
-                        waterBottom[i] = run.y.lowerBound
-                        state[i] = depth == RegionTileRenderer.maximumWaterDepth ? .done : .water
-                        return state[i] == .water
-                    default:
+                    case .ceiling:
+                        if states[i].ceilingStart == nil {
+                            // Kit clipped the top section's run. If higher sections were skipped, the
+                            // requested Y is already below the chunk's top and remains the roof start.
+                            if run.sectionIndex == highestSection { states[i].ceilingStart = run.y.upperBound }
+                            else if case .height(let y) = start { states[i].ceilingStart = y }
+                        }
+                        switch entry {
+                        case .clear:
+                            states[i].phase = .searching
+                            states[i].column = nil
+                        case .solid(let color), .water(let color):
+                            // Preserve the dark fallback below the five-block roof band when a
+                            // column never reaches open space. A span may cross that band's edge.
+                            if states[i].column == nil, let ceiling = states[i].ceilingStart {
+                                let belowBand = ceiling.subtractingReportingOverflow(5)
+                                let y = min(run.y.upperBound, belowBand.partialValue)
+                                if !belowBand.overflow, y >= run.y.lowerBound {
+                                    states[i].column = Column(y: y, color: color.shaded(0.6), waterDepth: 0,
+                                                              section: run.sectionIndex, palette: palette)
+                                }
+                            }
+                        case .unresolved:
+                            break
+                        }
                         return true
+                    case .searching:
+                        switch entry {
+                        case .solid(let color):
+                            states[i].column = Column(y: run.y.upperBound, color: color, waterDepth: 0,
+                                                      section: run.sectionIndex, palette: palette)
+                            states[i].phase = .done
+                            return false
+                        case .water(let color):
+                            let depth = min(run.y.count, RegionTileRenderer.maximumWaterDepth)
+                            states[i].column = Column(y: run.y.upperBound, color: color, waterDepth: depth,
+                                                      section: run.sectionIndex, palette: palette)
+                            states[i].waterBottom = run.y.lowerBound
+                            states[i].phase = depth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                            return states[i].phase == .water
+                        default:
+                            return true
+                        }
+                    case .water:
+                        guard case .water = entry, var column = states[i].column else {
+                            states[i].phase = .done
+                            return false
+                        }
+                        column.waterDepth += min(run.y.count, RegionTileRenderer.maximumWaterDepth - column.waterDepth)
+                        states[i].column = column
+                        states[i].waterBottom = run.y.lowerBound
+                        states[i].phase = column.waterDepth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                        return states[i].phase == .water
                     }
-                case .water:
-                    guard case .water = entry, var column = result[i] else {
-                        state[i] = .done
-                        return false
-                    }
-                    column.waterDepth += min(run.y.count, RegionTileRenderer.maximumWaterDepth - column.waterDepth)
-                    result[i] = column
-                    waterBottom[i] = run.y.lowerBound
-                    state[i] = column.waterDepth == RegionTileRenderer.maximumWaterDepth ? .done : .water
-                    return state[i] == .water
                 }
             }
-            return result
+            return states.map { $0.column }
         }
     }
 
