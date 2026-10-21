@@ -1,6 +1,21 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ (first %lld of %lld)" : {
+      "comment" : "A search heading when only the first results are listed. The first placeholder is the heading or user's saved query; the numbers are the shown count and total count."
+    },
+    "Search Result" : {
+      "comment" : "Inspector section containing the selected search match's details."
+    },
+    "Found In" : {
+      "comment" : "Identifies whether the selected search match is in this player's inventory or Ender Chest."
+    },
+    "Spawns" : {
+      "comment" : "Inspector label for the mob produced by a selected monster spawner."
+    },
+    "Claimed by a Villager" : {
+      "comment" : "Whether a selected bed or workstation has been claimed by a villager."
+    },
     "All Statistics" : {
       "comment" : "Heading of the sheet listing every saved statistic for the selected player.",
       "extractionState" : "manual",

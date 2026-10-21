@@ -216,6 +216,7 @@ struct PortalDetailView: View {
             } header: {
                 InspectorHeading(title: Text("Nether Portal"), symbol: PlaceGroup.portal.symbol)
             }
+            SelectedSearchSection(session: session)
             Section {
                 switch trip {
                 case .twoWay(let target, _)?, .oneWay(let target, _, _)?:

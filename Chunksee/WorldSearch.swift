@@ -180,7 +180,7 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     var y: Int?
     /// "Chest", "“Valuables” Barrel", "fahlman’s ender chest", "Sign", "Pale Garden".
     var title: String
-    /// "64 Diamond, 3 Diamond Sword", a sign's lines, or a biome area's size.
+    /// Ancillary details: matching items, a sign's lines, a kind or a biome area's size.
     var detail: String
     /// Total matching items, for sorting; 1 for a sign, the chunk count for a biome area.
     var count: Int
@@ -249,8 +249,7 @@ nonisolated enum WorldSearch {
             return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
                              dimension: dimension, position: CGPoint(x: origin.x + 8, y: origin.z + 8), y: deposit.minY,
                              title: deposit.block.name,
-                             // One line: the row's second line already gives the chunk's X and Z. Hundreds of
-                             // wrapping rows appearing at once crashed the sidebar's layout (fahlman/Chunksee#81).
+                             // The inspector shows quantity and height; the sidebar keeps only the block's name.
                              detail: String(localized: "\(deposit.count) blocks · Y \(deposit.minY) to \(deposit.maxY)"),
                              count: deposit.count)
         }
@@ -263,11 +262,10 @@ nonisolated enum WorldSearch {
             guard let villager = entry.value.creature.villager else { return nil }
             let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
             guard !matching.isEmpty else { return nil }
-            let title = VillagerText.description(villager) ?? entry.value.name
             let detail = matching.map(TradeText.offer).joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
                              dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
-                             title: title, detail: detail, count: matching.count)
+                             title: entry.value.name, detail: detail, count: matching.count)
         }
     }
 
@@ -296,7 +294,7 @@ nonisolated enum WorldSearch {
     private static func layerHit<Marker: MapLayerMarker & Sendable>(_ entry: SearchIndex.Placed<Marker>, count: Int = 1,
                                                                   y: Int?, caption: String, layer: SearchHit.Layer) -> SearchHit {
         SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(layer, markerID: entry.value.id), dimension: entry.dimension,
-                  position: entry.value.position, y: y, title: caption, detail: entry.value.name, count: count)
+                  position: entry.value.position, y: y, title: entry.value.name, detail: caption, count: count)
     }
 
     /// Whether `text` contains every word, ignoring case.

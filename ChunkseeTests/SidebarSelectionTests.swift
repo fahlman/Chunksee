@@ -591,7 +591,7 @@ import Testing
         session.close(); await session.waitUntilClosed()
     }
 
-    @Test func sidebarChoicesReplaceOldDetailsAndPinHighlightTogether() async throws {
+    @Test func everySidebarChoiceReplacesOldDetailsAndPinHighlightTogether() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
@@ -614,12 +614,12 @@ import Testing
                 session.selection.choose(detail)
                 #expect(session.selection.sidebarSelection == detail && session.selection.inspector != nil && session.selection.selectedHitID == nil)
                 session.selection.choose(plain)
-                #expect(session.selection.sidebarSelection == plain && session.selection.inspector == nil && session.selection.mapSelection == nil)
+                #expect(session.selection.sidebarSelection == plain && session.selection.inspector == .selection && session.selection.mapSelection == nil)
                 #expect(MapContent(session: session).selectedPlayerID == nil && MapContent(session: session).selection == nil)
                 #expect(session.selection.selectedHitID == (plain == .hit(query: session.search.text, id: hit.id) ? hit.id : nil))
             }
         }
-        // A retained overlay is independent of the row and survives every nondetail choice.
+        // The overlay remains under other locations, whose own inspector replaces the map details.
         let map = try #require(session.presentation.inGameMaps.first)
         for row in plainRows {
             session.selection.show(map)
@@ -642,7 +642,8 @@ import Testing
         #expect(!session.annotations.canVisit(missing) && session.annotations.listedPlaces.contains { $0.id == missing.id })
         #expect(session.routing.availability(of: Coordinates(missing.position), in: missing.dimension) == .missingDimension)
         session.selection.choose(.savedPlace(missing.id))
-        #expect(session.map?.viewport == viewport && session.selection.sidebarSelection == .player(playerID))
+        #expect(session.map?.viewport == viewport && session.selection.sidebarSelection == .savedPlace(missing.id))
+        #expect(session.selection.inspector == .selection)
         session.search.text = " diamond "
         #expect(session.search.canSaveSearch)
         session.search.saveSearch()
@@ -651,6 +652,72 @@ import Testing
         #expect(!session.search.canSaveSearch)
         session.close()
         await session.waitUntilClosed()
+    }
+
+    @Test func locationInspectorsUseCurrentDataAndDoNotRequireNavigation() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let missingMap = InGameMapTests().mapNBT(dimension: .string("missing:dimension"))
+        try Data(Compression.deflate(missingMap.serialized(), gzip: true))
+            .write(to: url.appendingPathComponent("data/minecraft/maps/4.dat"))
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let viewport = session.map?.viewport
+        let place = try #require(session.savedPlaces.add(name: "Before", dimension: "missing:dimension", at: CGPoint(x: -9, y: 12)))
+        session.selection.choose(.savedPlace(place.id))
+        session.savedPlaces.rename(place.id, to: "After")
+        guard case .savedPlace(let current)? = session.selection.inspectorItem else {
+            Issue.record("A saved place without a usable dimension still has details"); return
+        }
+        #expect(current.name == "After" && current.position == place.position)
+        #expect(session.map?.viewport == viewport)
+        session.savedPlaces.remove(place.id)
+        #expect(session.selection.inspectorItem == nil && session.selection.inspector == nil)
+
+        session.selection.choose(.inGameMap(4))
+        guard case .inGameMap(let map)? = session.selection.inspectorItem else {
+            Issue.record("A map without a usable dimension still has details"); return
+        }
+        #expect(map.id == 4 && map.dimension == "missing:dimension")
+        #expect(session.map?.viewport == viewport && MapContent(session: session).inGameMap == nil)
+
+        let spawner = try #require(session.presentation.selectedIndex.places.first { $0.group == .spawner })
+        session.selection.choose(.place(spawner.id))
+        guard case .place(let selected)? = session.selection.inspectorItem else {
+            Issue.record("A spawner opens its own details"); return
+        }
+        #expect(selected.mob == "minecraft:zombie" && selected.y == 12)
+        session.annotations.beginMeasurement(at: spawner.position, in: "minecraft:overworld")
+        #expect(session.annotations.ruler.isEnabled && session.selection.inspector == nil)
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func searchKeepsItsMatchDetailsWhileShowingTheLiveItemOverAnOverlay() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        session.search.text = "place:spawner"
+        await session.search.waitForSearch()
+        let hit = try #require(session.search.results.first)
+        let map = try #require(session.presentation.inGameMaps.first)
+        session.selection.show(map)
+        session.selection.mapClicked(.searchHit(hit.id), y: nil)
+        guard case .place(let spawner)? = session.selection.inspectorItem else {
+            Issue.record("The search result's inspector takes precedence over the retained overlay"); return
+        }
+        #expect(spawner.mob == "minecraft:zombie" && spawner.y == 12)
+        #expect(session.selection.selectedSearchHit == hit)
+        #expect(hit.title == spawner.name && hit.detail == PlaceGroup.spawner.name)
+        #expect(MapContent(session: session).inGameMap?.map.id == map.id)
+        session.selection.choose(.place(spawner.id))
+        #expect(session.selection.selectedSearchHit == nil)
+        #expect(session.selection.inspector == .selection)
+        session.close(); await session.waitUntilClosed()
     }
 
     @Test func searchPinsAlwaysHaveAListedRowWithinTheirOwnDimensionsLimit() async throws {

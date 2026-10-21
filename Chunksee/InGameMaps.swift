@@ -19,7 +19,7 @@ nonisolated enum InGameMapImage {
     }
 }
 
-/// A map in the sidebar: thumbnail, number, place and scale.
+/// A map in the sidebar: thumbnail and number. Location and scale belong to its inspector.
 struct InGameMapRow: View {
     let session: WorldSession
     let map: MapItem
@@ -36,12 +36,9 @@ struct InGameMapRow: View {
             } else {
                 Image(systemName: ItemAppearance.mapSymbol)
             }
-        } caption: {
-            CoordinateText(Text("1:\(map.blocksPerPixel) · \(Coordinates.text(x: Double(map.centerX), z: Double(map.centerZ)))"))
         }
         .tag(SidebarItem.inGameMap(map.id))
         .id(SidebarItem.inGameMap(map.id))
-        .selectionDisabled(!availability.canNavigate)
         .help(availability.help)
         .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
                       dimension: map.dimension, y: nil)
@@ -63,7 +60,7 @@ struct InGameMapDetailView: View {
                 }
                 LocationRow(title: Text("Center"), session: session,
                             destination: MapDestination(coordinates: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)),
-                                                        dimension: map.dimension))
+                                                        dimension: map.dimension), showsDimension: true)
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
@@ -71,12 +68,14 @@ struct InGameMapDetailView: View {
             } header: {
                 InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol)
             }
-            Section {
-                LabeledContent("Opacity") {
-                    Slider(value: $selection.inGameMapOpacity, in: 0...1)
+            if session.presentation.canShow(map) {
+                Section {
+                    LabeledContent("Opacity") {
+                        Slider(value: $selection.inGameMapOpacity, in: 0...1)
+                    }
+                } footer: {
+                    Text("Lower the opacity to compare the map with today’s terrain.")
                 }
-            } footer: {
-                Text("Lower the opacity to compare the map with today’s terrain.")
             }
         }
         .formStyle(.grouped)

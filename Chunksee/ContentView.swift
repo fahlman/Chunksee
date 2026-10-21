@@ -255,8 +255,6 @@ private struct PlayerRow: View {
             LocationLabel(title: Text(session.presentation.name(of: player)),
                           isDimmed: !availability.canNavigate || isOutdated) {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
-            } caption: {
-                CoordinateText(Text(detail))
             }
         } commands: {
             if let location = PlayerPresentation.position(of: player) {
@@ -277,12 +275,6 @@ private struct PlayerRow: View {
         else { session.visibility.hiddenPlayers.insert(player.uuid) }
     }
 
-    private var detail: String {
-        guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
-        return Coordinates.text(CGPoint(x: position.x, y: position.z), y: position.y,
-                                dimension: session.presentation.dimensionName(position.dimension))
-    }
-
     private func help(availability: LocationAvailability, isOutdated: Bool) -> String {
         guard availability.canNavigate else { return availability.help }
         if isOutdated {
@@ -292,46 +284,22 @@ private struct PlayerRow: View {
     }
 }
 
-/// What the inspector beside the map shows.
-private struct WorldInspector: View {
-    let session: WorldSession
-
-    var body: some View {
-        switch session.selection.inspector {
-        case .world?:
-            WorldInfoView(session: session)
-        case .storage?:
-            StorageView(session: session)
-        case .player(let id)?:
-            if let player = session.players.first(where: { $0.uuid == id }) {
-                PlayerDetailView(session: session, player: player)
-                    .id(player.uuid)
-            }
-        case .selection?:
-            switch session.selection.mapSelection {
-            case .portal(let portal)?: PortalDetailView(session: session, portal: portal)
-            case .creature(let creature)?: CreatureDetailView(session: session, marker: creature).id(creature.id)
-            case .inGameMap(let item)?: InGameMapDetailView(session: session, map: item).id(item.id)
-            case nil: EmptyView()
-            }
-        case nil:
-            EmptyView()
-        }
-    }
-}
-
 /// Places matching the search, most items first. Choosing one shows it on the map.
 private struct SearchResultsSection: View {
     let session: WorldSession
     @Binding var isExpanded: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
         let search = session.search
+        let hits = search.listedHits(for: search.text, where: session.presentation.lists)
         Section(isExpanded: $isExpanded) {
             HitList(session: session, query: search.text)
         } header: {
             HStack {
-                Text("Search Results")
+                Text(CountedText.label(String(localized: "Search Results", locale: locale),
+                                      count: search.isIndexing || search.isSearching ? nil : hits.total,
+                                      shown: hits.rows.count, locale: locale))
                 Spacer()
                 Button("Save Search", systemImage: "plus.circle") { session.search.saveSearch() }
                     .labelStyle(.iconOnly)
@@ -366,7 +334,8 @@ private struct SavedSearchesSection: View {
                     HitList(session: session, query: saved.query)
                 } label: {
                     MapVisibilityRow(isShown: visibility) {
-                        Label(CountedText.label(saved.query, count: session.search.isIndexing ? nil : hits.total, locale: locale), systemImage: "magnifyingglass")
+                        Label(CountedText.label(saved.query, count: session.search.isIndexing || session.search.isSearching ? nil : hits.total,
+                                                shown: hits.rows.count, locale: locale), systemImage: "magnifyingglass")
                     } commands: {
                         Button("Search for This") { session.search.text = saved.query }
                         Button("Remove", role: .destructive) { session.savedSearches.remove(saved.id) }
@@ -397,10 +366,8 @@ private struct HitList: View {
             ForEach(hits.rows) { hit in
                 let availability = session.routing.availability(of: hit.position.map { Coordinates($0, y: hit.y.map(Double.init)) },
                                                                 in: hit.dimension)
-                LocationLabel(title: Text(hit.detail), isDimmed: !availability.canNavigate) {
+                LocationLabel(title: Text(hit.title), isDimmed: !availability.canNavigate) {
                     Image(systemName: MarkerStyle.search.symbol.name)
-                } caption: {
-                    CoordinateText(Text(location(hit)))
                 }
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
@@ -408,15 +375,7 @@ private struct HitList: View {
                 .locationMenu(session: session, position: hit.position, dimension: hit.dimension,
                               y: hit.y.map(Double.init))
             }
-            if hits.total > hits.rows.count {
-                Text("Showing the first \(hits.rows.count) of \(hits.total)").font(.caption).foregroundStyle(.secondary)
-            }
         }
-    }
-
-    private func location(_ hit: SearchHit) -> String {
-        guard let position = hit.position else { return hit.title }
-        return "\(hit.title) · \(Coordinates.text(position, y: hit.y.map(Double.init)))"
     }
 
     private func help(for hit: SearchHit, availability: LocationAvailability) -> String {

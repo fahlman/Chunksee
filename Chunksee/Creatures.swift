@@ -104,6 +104,7 @@ struct CreatureDetailView: View {
                     LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }
             }
+            SelectedSearchSection(session: session)
         }
         .formStyle(.grouped)
     }

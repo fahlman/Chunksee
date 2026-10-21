@@ -54,7 +54,7 @@ final class MapAnnotations {
 
     func setRulerEnabled(_ enabled: Bool) {
         ruler.isEnabled = enabled
-        if enabled, let selection = source?.selection, selection.mapSelection != nil { selection.inspector = nil }
+        if enabled, let selection = source?.selection, selection.inspector == .selection { selection.inspector = nil }
     }
 
     func canMeasure(in dimension: String) -> Bool {
