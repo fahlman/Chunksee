@@ -341,10 +341,20 @@ import Testing
         #expect(search("place:bed").map(\.detail) == ["Bed"])
         #expect(search("pet:").map(\.detail).sorted() == ["Cat", "Summer"])
         #expect(search("pet:wolf").map(\.detail) == ["Summer"])
+        #expect(search("pet:cat").first?.title == "Pets")
         #expect(search("creature:").count == 3)
         #expect(search("villager:").map(\.detail) == ["Farmer"])
-        // A plain search still finds named creatures by name.
-        #expect(search("summer").map(\.detail) == ["“Summer”"])
+        #expect(search("villager:").first?.title == "Villager")
+        // Plain and filtered searches present the same creature without changing its selection identity or location.
+        let named = try #require(search("summer").first)
+        #expect(named.detail == wolf.name && named.title == "Wolf")
+        for query in ["pet:summer", "creature:summer", "pet:minecraft:wolf"] {
+            let hit = try #require(search(query).first)
+            #expect(hit.detail == named.detail && hit.title == named.title)
+            #expect(hit.id == named.id && hit.source == named.source)
+            #expect(hit.dimension == named.dimension && hit.position == named.position && hit.y == named.y)
+        }
+        #expect(search("cat").isEmpty) // A plain search still excludes unnamed creatures.
     }
 
     @Test func tradeSearchFindsVillagersByWhatTheySellOrBuy() throws {

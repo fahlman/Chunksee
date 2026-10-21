@@ -819,7 +819,9 @@ EquipmentSection omits empty equipment for both players and pets, matching the o
 inspector sections. The pet-only “Equipment: None” row is removed; Kit's equipment applicability
 stays unchanged. Inventory grids retain empty slots because those represent storage positions.
 
-Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
-markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,
+Creature.displayName owns custom-name, villager-job and kind fallback naming for located
+markers, shoulder pets and ordinary/filtered creature search rows. Those searches share one
+hit constructor; the caption supplies the kind, or the group when the name already is the kind.
+CreatureDetailSections owns their shared applicable health, owner,
 appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
 their headings and location presentation; a carried pet never displays its old mounting position.

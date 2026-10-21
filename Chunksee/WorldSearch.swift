@@ -214,11 +214,9 @@ nonisolated enum WorldSearch {
         switch filter {
         case .structure: hits = layerHits(index.structures, words: words, y: \.y) { .structure($0.group) }
         case .place: hits = layerHits(index.places, words: words, y: { $0.y }) { .place($0.group) }
-        case .creature: hits = layerHits(index.creatures, words: words, y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
-        case .pet: hits = layerHits(index.creatures.filter { $0.value.group == .pet }, words: words,
-                                   y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
-        case .villager: hits = layerHits(index.creatures.filter { $0.value.group == .villager }, words: words,
-                                        y: { Coordinates.block($0.creature.y) }) { .creature($0.group) }
+        case .creature: hits = creatureHits(index.creatures, words: words)
+        case .pet: hits = creatureHits(index.creatures.filter { $0.value.group == .pet }, words: words)
+        case .villager: hits = creatureHits(index.creatures.filter { $0.value.group == .villager }, words: words)
         case .trade: hits = tradeHits(index.creatures, words: words)
         case .block: hits = blockHits(index, words: words)
         case .biome:
@@ -271,6 +269,19 @@ nonisolated enum WorldSearch {
                              dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: title, detail: detail, count: matching.count)
         }
+    }
+
+    private static func creatureHits(_ entries: [SearchIndex.Placed<CreatureMarker>], words: [String]) -> [SearchHit] {
+        entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map(creatureHit)
+    }
+
+    /// The row leads with the same name as the sidebar; its caption identifies the kind without repeating the name.
+    private static func creatureHit(_ entry: SearchIndex.Placed<CreatureMarker>) -> SearchHit {
+        let marker = entry.value
+        let kind = ReadableName.from(marker.creature.id)
+        return SearchHit(id: "\(entry.dimension)@\(marker.id)", source: .layer(.creature(marker.group), markerID: marker.id),
+                         dimension: entry.dimension, position: marker.position, y: Coordinates.block(marker.creature.y),
+                         title: marker.name == kind ? marker.group.name : kind, detail: marker.name, count: 1)
     }
 
     /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
@@ -369,9 +380,7 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
             guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
-            hits.append(SearchHit(id: "\(entry.dimension)@\(entry.value.id)", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
-                                  dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(creature.y),
-                                  title: ReadableName.from(creature.id), detail: "“\(name)”", count: 1))
+            hits.append(creatureHit(entry))
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }
