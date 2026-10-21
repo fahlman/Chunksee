@@ -27,7 +27,7 @@ nonisolated enum ItemAppearance {
         }
         if any(["shulker_box", "chest", "barrel", "bundle"]) { return "shippingbox.fill" }
         if any(["_seeds", "_sapling", "wheat", "_leaves", "flower", "tulip", "poppy", "dandelion", "kelp", "vine", "sugar_cane"]) {
-            return "leaf.fill"
+            return "tree.fill"
         }
         if any(["bucket"]) { return "drop.fill" }
         if any(["torch", "lantern", "campfire", "blaze_rod", "fire_charge"]) { return "flame.fill" }
