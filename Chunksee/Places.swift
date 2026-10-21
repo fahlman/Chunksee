@@ -210,7 +210,7 @@ struct PortalDetailView: View {
         let trip = session.presentation.roundTrip(for: portal)
         Form {
             Section {
-                LocationRow(title: Text("Position"), session: session,
+                LocationRow(session: session,
                             coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
                             dimension: portal.dimension)
             } header: {

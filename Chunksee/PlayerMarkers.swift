@@ -101,7 +101,7 @@ nonisolated enum PlayerPresentation {
         var isBlockPosition: Bool { kind != .player }
         var title: String {
             switch kind {
-            case .player: String(localized: "Last Position")
+            case .player: String(localized: "Last Location")
             case .death: String(localized: "Last Death")
             case .respawn: String(localized: "Respawn Point")
             }

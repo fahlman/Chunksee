@@ -80,7 +80,7 @@ import Testing
     @Test func inspectorAndMarkersShareValidLocationsWithoutLosingMissingDimensionDetails() {
         let locations = PlayerPresentation.locations(of: players[0])
         #expect(locations.map(\.kind) == [.player, .death, .respawn])
-        #expect(locations.map(\.title) == ["Last Position", "Last Death", "Respawn Point"])
+        #expect(locations.map(\.title) == ["Last Location", "Last Death", "Respawn Point"])
         #expect(locations.map(\.isBlockPosition) == [false, true, true])
         #expect(PlayerPresentation.locations(of: players[2]).map(\.kind) == [.player])
         let invalid = PlayerInfo(uuid: UUID(), nbt: .compound([
