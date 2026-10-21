@@ -256,17 +256,17 @@ import Testing
         }
         let chunk = try Chunk(nbt: spec.nbt)
         var open = RegionTileRenderer.ColorSections(chunk)
-        let top = open.topColumns { _ in 15 }
+        let top = open.topColumns(from: .height(15))
         #expect(top[0]?.y == 15)  // without a ceiling, the roof is the top block
         var underRoof = RegionTileRenderer.ColorSections(chunk)
-        let floor = underRoof.topColumns(underCeiling: true) { _ in 15 }
+        let floor = underRoof.topColumns(from: .height(15), underCeiling: true)
         #expect(floor[0]?.y == 4)
         #expect(floor[0]?.color == BlockColors.color(for: "minecraft:netherrack"))
 
         // A column that is solid all the way down shows its first block under the roof, darkened.
         let solid = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:netherrack"]) { _, _, _ in 0 }
         var solidSections = RegionTileRenderer.ColorSections(try Chunk(nbt: solid.nbt))
-        let rock = solidSections.topColumns(underCeiling: true) { _ in 15 }
+        let rock = solidSections.topColumns(from: .height(15), underCeiling: true)
         #expect(rock[0]?.y == 10)  // below the five-block roof band
         #expect(rock[0]?.color == BlockColors.color(for: "minecraft:netherrack")?.shaded(0.6))
     }

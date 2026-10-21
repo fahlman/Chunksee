@@ -150,17 +150,13 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk)
-        // The heightmap gives the first free block above the surface; without one (most chunks
-        // upgraded from old versions have none), every column starts at the top of the chunk.
         let columns: [Column?]
         if let cutawayY {
-            columns = sections.topColumns { _ in cutawayY }
+            columns = sections.topColumns(from: .height(cutawayY))
         } else if let ceilingY {
-            columns = sections.topColumns(underCeiling: true) { _ in ceilingY }
+            columns = sections.topColumns(from: .height(ceilingY), underCeiling: true)
         } else {
-            let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
-            let topY = sections.topY
-            columns = sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
+            columns = sections.topColumns()
         }
         return (sections, columns)
     }
@@ -187,10 +183,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         var waterDepth: Int
     }
 
-    /// A chunk's sections with map colors resolved per palette entry, the first time a column
-    /// reaches that entry. Looking colors up by block ID for every block examined dominated
-    /// rendering (string matching per block), while resolving every palette entry up front wastes
-    /// work on underground blocks the map never shows. Resolving lazily is never more work than either.
+    /// Presentation resolved once per reached palette entry. Kit owns the saved-block traversal;
+    /// colors, contiguous-water shading and the view below a roof are app choices.
     struct ColorSections {
         enum Entry: Equatable {
             case unresolved
@@ -199,150 +193,126 @@ nonisolated struct RegionTileRenderer: Sendable {
             case water(MapColor)
         }
 
-        struct Section {
-            var y: Int
-            var states: PalettedContainer<BlockState>
-            var entries: [Entry]
-        }
-
-        private var sections: [Section]
-        let minY: Int
-        let topY: Int
+        private let chunk: Chunk
+        private var entries: [[Entry]]
+        private let highestSection: Int?
 
         func blockID(section: Int, palette: Int) -> String {
-            guard sections.indices.contains(section), sections[section].states.palette.indices.contains(palette) else { return "" }
-            return sections[section].states.palette[palette].id
+            guard chunk.sections.indices.contains(section),
+                  let states = chunk.sections[section].blockStates,
+                  states.palette.indices.contains(palette) else { return "" }
+            return states.palette[palette].id
         }
 
         init(_ chunk: Chunk) {
-            sections = chunk.sections.compactMap { section in
-                section.blockStates.map {
-                    Section(y: section.y, states: $0, entries: Array(repeating: .unresolved, count: $0.palette.count))
-                }
+            self.chunk = chunk
+            entries = chunk.sections.map { section in
+                Array(repeating: .unresolved, count: section.blockStates?.palette.count ?? 0)
             }
-            minY = chunk.minSectionY * 16
-            topY = ((sections.last?.y ?? 0) + 1) * 16 - 1
+            highestSection = entries.lastIndex { !$0.isEmpty }
         }
 
-        private mutating func resolve(section s: Int, palette p: Int) -> Entry {
-            guard p < sections[s].entries.count else { return .clear }
-            if sections[s].entries[p] == .unresolved {
-                let id = sections[s].states.palette[p].id
-                sections[s].entries[p] = switch BlockColors.color(for: id) {
+        @inline(__always)
+        private mutating func resolve(section s: Int, palette: Int?) -> Entry {
+            guard let p = palette, entries[s].indices.contains(p) else { return .clear }
+            if entries[s][p] == .unresolved {
+                let id = blockID(section: s, palette: p)
+                entries[s][p] = switch BlockColors.color(for: id) {
                 case nil: .clear
                 case let color? where BlockColors.isWater(id): .water(color)
                 case let color?: .solid(color)
                 }
             }
-            return sections[s].entries[p]
+            return entries[s][p]
         }
 
-        /// The top column for each of the 256 columns (index `z * 16 + x`), scanning down from
-        /// `startY(i)`. Sections are visited top-down and each one's palette indices are decoded in
-        /// one sequential pass, so all columns advance together instead of each column doing
-        /// hundreds of random lookups; the scan stops as soon as every column is resolved.
-        /// With `underCeiling`, each column first steps down through solid blocks until it reaches
-        /// open space, then searches as usual: the Nether's bedrock roof would otherwise hide everything.
-        mutating func topColumns(underCeiling: Bool = false, startY: (Int) -> Int) -> [Column?] {
-            enum State { case ceiling, searching, water, done }
-            var result = [Column?](repeating: nil, count: 256)
-            var state = [State](repeating: underCeiling ? .ceiling : .searching, count: 256)
-            let start = (0..<256).map { min(startY($0), topY) }
-            var waterY = [Int](repeating: 0, count: 256)
-            var waterColor = [MapColor](repeating: MapColor(0), count: 256)
-            var waterBlock = [(section: Int, palette: Int)](repeating: (0, 0), count: 256)
-            var depth = [Int](repeating: 0, count: 256)
-            var remaining = 256
-            // Under a ceiling, the first solid block below the roof's bedrock band (at most five
-            // blocks thick in the Nether), drawn darkened if a column never reaches open space
-            // (solid rock all the way down) instead of leaving a hole.
-            var ceilingFallback = [Column?](repeating: nil, count: 256)
-
-            func finishWater(_ i: Int) {
-                result[i] = Column(y: waterY[i], color: waterColor[i], waterDepth: depth[i],
-                                   section: waterBlock[i].section, palette: waterBlock[i].palette)
-                state[i] = .done
-                remaining -= 1
+        /// Draw each column during Kit's shared traversal, without computing its surface and
+        /// unpacking the same sections a second time. Uniform spans also avoid per-block work.
+        mutating func topColumns(from start: Chunk.ColumnStart = .surface(), underCeiling: Bool = false) -> [Column?] {
+            enum Phase { case ceiling, searching, water, done }
+            struct ColumnState {
+                var phase: Phase
+                var column: Column?
+                var ceilingStart: Int?
+                var waterBottom = 0
             }
-
-            var previousSectionY: Int?
-            for s in sections.indices.reversed() where remaining > 0 {
-                let sectionY = sections[s].y
-                let low = sectionY * 16
-                // Water depth stops at a gap in the stored sections.
-                if let previousSectionY, previousSectionY != sectionY + 1 {
-                    for i in 0..<256 where state[i] == .water { finishWater(i) }
-                }
-                previousSectionY = sectionY
-                guard remaining > 0, low >= minY - 15 else { break }
-                // Skip sections that every still-searching column starts below.
-                guard (0..<256).contains(where: {
-                    state[$0] == .water || ((state[$0] == .searching || state[$0] == .ceiling) && start[$0] >= low)
-                }) else {
-                    continue
-                }
-
-                let uniform = sections[s].states.isUniform
-                let indices = uniform ? [] : sections[s].states.allPaletteIndices()
-                if uniform, resolve(section: s, palette: 0) == .clear {
-                    for i in 0..<256 where state[i] == .water { finishWater(i) }
-                    // An open section below a ceiling: those columns now search for the floor.
-                    for i in 0..<256 where state[i] == .ceiling && start[i] >= low { state[i] = .searching }
-                    continue
-                }
-                for y in stride(from: 15, through: 0, by: -1) where remaining > 0 {
-                    let absoluteY = low + y
-                    guard absoluteY >= minY else { break }
-                    let planeStart = ChunkSection.blockIndex(x: 0, y: y, z: 0)
-                    for i in 0..<256 {
-                        switch state[i] {
-                        case .done:
-                            continue
-                        case .ceiling:
-                            guard absoluteY <= start[i] else { continue }
-                            let p = uniform ? 0 : indices[planeStart + i]
-                            switch resolve(section: s, palette: p) {
-                            case .clear:
-                                state[i] = .searching
-                            case .solid(let color), .water(let color):
-                                if ceilingFallback[i] == nil, absoluteY <= start[i] - 5 {
-                                    ceilingFallback[i] = Column(y: absoluteY, color: color.shaded(0.6), waterDepth: 0, section: s, palette: p)
-                                }
-                            case .unresolved:
-                                continue
-                            }
-                        case .searching:
-                            guard absoluteY <= start[i] else { continue }
-                            let p = uniform ? 0 : indices[planeStart + i]
-                            switch resolve(section: s, palette: p) {
-                            case .solid(let color):
-                                result[i] = Column(y: absoluteY, color: color, waterDepth: 0, section: s, palette: p)
-                                state[i] = .done
-                                remaining -= 1
-                            case .water(let color):
-                                state[i] = .water
-                                waterY[i] = absoluteY
-                                waterColor[i] = color
-                                waterBlock[i] = (s, p)
-                                depth[i] = 1
-                                if depth[i] >= RegionTileRenderer.maximumWaterDepth { finishWater(i) }
-                            default:
-                                continue
-                            }
-                        case .water:
-                            if case .water = resolve(section: s, palette: uniform ? 0 : indices[planeStart + i]) {
-                                depth[i] += 1
-                                if depth[i] >= RegionTileRenderer.maximumWaterDepth { finishWater(i) }
-                            } else {
-                                finishWater(i)
-                            }
+            var states = [ColumnState](repeating: ColumnState(phase: underCeiling ? .ceiling : .searching), count: 256)
+            let chunk = self.chunk
+            // The synchronous, nonescaping visitor stays inside this chunk's buffer lifetime.
+            // Buffer writes avoid checking captured arrays for copy-on-write on every block.
+            states.withUnsafeMutableBufferPointer { states in
+                chunk.forEachColumnRun(from: start) { run in
+                    let i = run.column
+                    if states[i].phase == .water {
+                        let expected = states[i].waterBottom.subtractingReportingOverflow(1)
+                        if expected.overflow || run.y.upperBound != expected.partialValue {
+                            states[i].phase = .done
+                            return false // Missing sections cannot add to contiguous water depth.
                         }
+                    }
+                    let entry = resolve(section: run.sectionIndex, palette: run.paletteIndex)
+                    // Only a resolved solid/water entry can create a Column; an invalid reference is clear.
+                    let palette = run.paletteIndex ?? 0
+                    switch states[i].phase {
+                    case .done:
+                        return false
+                    case .ceiling:
+                        if states[i].ceilingStart == nil {
+                            // Kit clipped the top section's run. If higher sections were skipped, the
+                            // requested Y is already below the chunk's top and remains the roof start.
+                            if run.sectionIndex == highestSection { states[i].ceilingStart = run.y.upperBound }
+                            else if case .height(let y) = start { states[i].ceilingStart = y }
+                        }
+                        switch entry {
+                        case .clear:
+                            states[i].phase = .searching
+                            states[i].column = nil
+                        case .solid(let color), .water(let color):
+                            // Preserve the dark fallback below the five-block roof band when a
+                            // column never reaches open space. A span may cross that band's edge.
+                            if states[i].column == nil, let ceiling = states[i].ceilingStart {
+                                let belowBand = ceiling.subtractingReportingOverflow(5)
+                                let y = min(run.y.upperBound, belowBand.partialValue)
+                                if !belowBand.overflow, y >= run.y.lowerBound {
+                                    states[i].column = Column(y: y, color: color.shaded(0.6), waterDepth: 0,
+                                                              section: run.sectionIndex, palette: palette)
+                                }
+                            }
+                        case .unresolved:
+                            break
+                        }
+                        return true
+                    case .searching:
+                        switch entry {
+                        case .solid(let color):
+                            states[i].column = Column(y: run.y.upperBound, color: color, waterDepth: 0,
+                                                      section: run.sectionIndex, palette: palette)
+                            states[i].phase = .done
+                            return false
+                        case .water(let color):
+                            let depth = min(run.y.count, RegionTileRenderer.maximumWaterDepth)
+                            states[i].column = Column(y: run.y.upperBound, color: color, waterDepth: depth,
+                                                      section: run.sectionIndex, palette: palette)
+                            states[i].waterBottom = run.y.lowerBound
+                            states[i].phase = depth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                            return states[i].phase == .water
+                        default:
+                            return true
+                        }
+                    case .water:
+                        guard case .water = entry, var column = states[i].column else {
+                            states[i].phase = .done
+                            return false
+                        }
+                        column.waterDepth += min(run.y.count, RegionTileRenderer.maximumWaterDepth - column.waterDepth)
+                        states[i].column = column
+                        states[i].waterBottom = run.y.lowerBound
+                        states[i].phase = column.waterDepth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                        return states[i].phase == .water
                     }
                 }
             }
-            for i in 0..<256 where state[i] == .water { finishWater(i) }
-            for i in 0..<256 where state[i] == .ceiling { result[i] = ceilingFallback[i] }
-            return result
+            return states.map { $0.column }
         }
     }
 
