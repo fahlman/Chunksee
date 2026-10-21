@@ -75,9 +75,10 @@ import Testing
             #expect(VillagerText.inspectorJob(try creature(job: job)) == nil)
         }
         for job in ["minecraft:none", "none", ":none"] {
-            #expect(VillagerText.inspectorJob(try creature(job: job)) == "None yet")
+            #expect(VillagerText.inspectorJob(try creature(job: job)) == "None")
         }
         #expect(VillagerText.inspectorJob(try creature(job: "minecraft:farmer")) == "Farmer, Novice")
+        #expect(VillagerText.inspectorJob(try creature(job: "minecraft:nitwit")) == "Nitwit, Novice")
         #expect(VillagerText.inspectorJob(try creature(job: "example:none")) == "None, Novice")
         #expect(VillagerText.inspectorJob(try creature(job: "minecraft:none", kind: "minecraft:wandering_trader")) == nil)
     }

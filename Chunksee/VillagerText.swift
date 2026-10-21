@@ -18,7 +18,7 @@ nonisolated enum VillagerText {
         guard let villager = creature.villager else { return nil }
         if let job = description(villager) { return job }
         guard creature.id == "minecraft:villager", villager.isUnemployed == true else { return nil }
-        return String(localized: "None yet")
+        return String(localized: "None")
     }
 
     static func levelName(_ level: Int?) -> String? {

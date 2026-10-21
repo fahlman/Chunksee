@@ -493,7 +493,7 @@ creature is resolved from the current shared index, so an open inspector follows
 VillagerText uses Kit's computed `Villager.isUnemployed` for job-label availability. The app
 owns readable labels, but does not interpret saved `minecraft:none` or malformed professions;
 nitwits and valid custom professions remain distinct.
-The inspector's “None yet” job value is limited to a villager whose saved profession is
+The inspector's “None” job value is limited to a villager whose saved profession is
 explicitly unemployed; unknown professions omit the row through that same label owner.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
 the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
