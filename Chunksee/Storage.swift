@@ -21,7 +21,7 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
     /// Totals for every item kind, most first.
     static func totals(in containers: [ItemContainer]) -> [StoredItem] {
         StoredItemTotal.totals(in: containers).map {
-            StoredItem(id: $0.id, name: ReadableName.from($0.id), count: $0.count, containers: $0.containers)
+            StoredItem(id: $0.id, name: ItemAppearance.label(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
         }
         .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
     }
@@ -48,7 +48,7 @@ struct StorageView: View {
                 Text(StorageText.summary(kinds: items.count, containers: session.presentation.selectedIndex.containers.count, locale: locale))
                     .font(.callout).foregroundStyle(.secondary)
                 Table(items.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
-                    TableColumn("Item", value: \.name)
+                    TableColumn("Item", value: \.name) { ItemLabel(id: $0.id, title: Text($0.name)) }
                     TableColumn("Count", value: \.count) { Text($0.count, format: .number).monospacedDigit() }
                         .width(min: 50, ideal: 70)
                     TableColumn("Containers", value: \.containers) { Text($0.containers, format: .number).monospacedDigit() }

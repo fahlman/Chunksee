@@ -246,9 +246,7 @@ private struct SlotView: View {
             .frame(width: 28, height: 28)
             .overlay {
                 if let item {
-                    Image(systemName: ItemAppearance.symbol(for: item.id))
-                        .foregroundStyle(ItemAppearance.tint(for: item.id))
-                        .shadow(color: ItemAppearance.isEnchanted(item) ? .purple : .clear, radius: 3)
+                    ItemIcon(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item))
                 }
             }
             .overlay(alignment: .bottomTrailing) {
