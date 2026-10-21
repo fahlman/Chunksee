@@ -22,9 +22,9 @@ import Testing
         // Prime Foundation's URL metadata before changing this same URL's file.
         _ = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let original = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(original.fileName == "r.-1.2.surface.3.1790000000500000.v8.lzfse")
+        #expect(original.fileName == "r.-1.2.surface.3.1790000000500000.v9.lzfse")
         #expect(TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName
-                == "r.-1.2.cutaway.y-16.3.1790000000500000.v8.lzfse")
+                == "r.-1.2.cutaway.y-16.3.1790000000500000.v9.lzfse")
         #expect(ScanCache.fingerprint([file, missing]) == "573ac917b6c1e815")
         #expect(ScanCache.fingerprint([missing, file]) != ScanCache.fingerprint([file, missing]))
 
