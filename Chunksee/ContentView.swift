@@ -248,14 +248,15 @@ private struct PlayerRow: View {
     let player: PlayerInfo
 
     var body: some View {
+        let availability = session.routing.availability(of: player)
+        let isOutdated = session.presentation.isOutdated(player)
         MapVisibilityRow(isShown: visibility) {
-            LocationLabel(title: Text(session.presentation.name(of: player))) {
+            LocationLabel(title: Text(session.presentation.name(of: player)),
+                          isDimmed: !availability.canNavigate || isOutdated) {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             } caption: {
                 CoordinateText(Text(detail))
             }
-            .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.dimmedOpacity)
-            .help(help)
         } commands: {
             if let location = PlayerPresentation.position(of: player) {
                 LocationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
@@ -264,6 +265,7 @@ private struct PlayerRow: View {
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
+        .help(help(availability: availability, isOutdated: isOutdated))
     }
 
     private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
@@ -274,22 +276,18 @@ private struct PlayerRow: View {
         else { session.visibility.hiddenPlayers.insert(player.uuid) }
     }
 
-    private var canFocus: Bool {
-        session.routing.canFocus(player)
-    }
-
     private var detail: String {
         guard let position = PlayerPresentation.position(of: player) else { return String(localized: "Location unknown") }
         return Coordinates.text(CGPoint(x: position.x, y: position.z), y: position.y,
                                 dimension: session.presentation.dimensionName(position.dimension))
     }
 
-    private var help: String {
-        if session.presentation.isOutdated(player) {
-            return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location.")
+    private func help(availability: LocationAvailability, isOutdated: Bool) -> String {
+        guard availability.canNavigate else { return availability.help }
+        if isOutdated {
+            return String(localized: "This player hasn’t joined since the world was upgraded, so this is an old location")
         }
-        return canFocus ? String(localized: "Show this player’s details and center the map on their last location")
-            : String(localized: "Show this player’s details")
+        return String(localized: "Show this player’s details and center the map on their last location")
     }
 }
 
@@ -394,13 +392,16 @@ private struct HitList: View {
             Text("No matches").foregroundStyle(.secondary)
         } else {
             ForEach(hits.rows) { hit in
-                LocationLabel(title: Text(hit.detail)) {
+                let availability = session.routing.availability(of: hit.position.map { Coordinates($0, y: hit.y.map(Double.init)) },
+                                                                in: hit.dimension)
+                LocationLabel(title: Text(hit.detail), isDimmed: !availability.canNavigate) {
                     Image(systemName: MarkerStyle.search.symbol.name)
                 } caption: {
                     CoordinateText(Text(location(hit)))
                 }
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
+                .help(help(for: hit, availability: availability))
                 .locationMenu(session: session, position: hit.position, dimension: hit.dimension,
                               y: hit.y.map(Double.init))
             }
@@ -413,5 +414,12 @@ private struct HitList: View {
     private func location(_ hit: SearchHit) -> String {
         guard let position = hit.position else { return hit.title }
         return "\(hit.title) · \(Coordinates.text(position, y: hit.y.map(Double.init)))"
+    }
+
+    private func help(for hit: SearchHit, availability: LocationAvailability) -> String {
+        if case .enderChest = hit.source {
+            return String(localized: "Show this player’s details; an Ender Chest has no single location")
+        }
+        return availability.help
     }
 }

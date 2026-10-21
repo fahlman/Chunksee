@@ -697,6 +697,13 @@ pets use the same projection, while MapImage owns the export entry point. WorldS
 composition, native document lifetime and view restoration/persistence, not presentation forwarding.
 Tests call WorldResources directly for live-refresh control.
 
+DimensionRouting owns location availability and the distinction between missing coordinates,
+an unavailable dimension and a closed world. Navigation, saved-place and in-game-map validation
+share that result. Location labels use the common dimming style and availability help; player
+and search rows keep their existing details selection when they cannot navigate. Ender Chest
+search explains that it has no single location. Inspector location buttons share the same reason
+without disabling their surrounding copy/save context commands.
+
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
 through File > Open and Open Recent. Opening folders from within the app and native window

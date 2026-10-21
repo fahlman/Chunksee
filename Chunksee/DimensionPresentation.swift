@@ -130,7 +130,7 @@ final class DimensionPresentation {
     }
 
     func canShow(_ map: MapItem) -> Bool {
-        source?.dimensions.contains { $0.id == map.dimension } ?? false
+        source?.routing.canFocus(Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), in: map.dimension) ?? false
     }
 
     func name(of player: PlayerInfo) -> String {

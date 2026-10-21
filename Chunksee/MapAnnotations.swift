@@ -31,7 +31,7 @@ final class MapAnnotations {
     }
 
     func canVisit(_ place: SavedPlace) -> Bool {
-        source?.dimensions.contains { $0.id == place.dimension } ?? false
+        source?.routing.canFocus(Coordinates(place.position), in: place.dimension) ?? false
     }
 
     func commit(_ draft: SavedPlaceDraft, name: String) -> Bool {

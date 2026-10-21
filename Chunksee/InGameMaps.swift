@@ -25,7 +25,8 @@ struct InGameMapRow: View {
     let map: MapItem
 
     var body: some View {
-        LocationLabel(title: Text("Map #\(map.id)")) {
+        let availability = session.routing.availability(of: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), in: map.dimension)
+        LocationLabel(title: Text("Map #\(map.id)"), isDimmed: !availability.canNavigate) {
             if let image = session.selection.image(for: map) {
                 Image(decorative: image, scale: 1)
                     .interpolation(.none)
@@ -40,9 +41,8 @@ struct InGameMapRow: View {
         }
         .tag(SidebarItem.inGameMap(map.id))
         .id(SidebarItem.inGameMap(map.id))
-        .selectionDisabled(!session.presentation.canShow(map))
-        .help(session.presentation.canShow(map) ? "Show this map where it belongs on the world map"
-                                   : "This map was drawn in a dimension this world no longer has")
+        .selectionDisabled(!availability.canNavigate)
+        .help(availability.help)
         .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),
                       dimension: map.dimension, y: nil)
     }
