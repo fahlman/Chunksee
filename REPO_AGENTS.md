@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.38.0`, resolved to `0.38.0` (`87973c53c88a970dee0893165c3b0d7c96956330`).
+  minor" from `0.39.0`, resolved to `0.39.0` (`a4cad15318f860cc9ad62afdf521428b5141d201`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -242,6 +242,11 @@ including nonfinite saved numbers. Binary-plist decoding was the dominant measur
 cost in the first migration; the storage codec does not change the facts or their ownership.
 Nether biome sampling explicitly uses Y64, with surface sampling elsewhere. Kit owns biome usage,
 section counts/heights, formats and inhabited time; RegionIndex only groups those facts for views.
+Kit 0.39.0 supplies actual-column surface sampling when a heightmap is absent, including
+valid default-namespace air names. Empty middle columns do not invent a biome area from a
+neighbor or unused palette entry. RegionFacts interpretation version 6 rejects earlier surface
+and empty-item facts through the existing cache validation; transform version 2 is unchanged.
+This adoption does not change renderer colors, roof handling, Nether sample Y or the held cave list.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
@@ -485,6 +490,11 @@ CountedText applies native grammar agreement to the maximum, like the hearts lab
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
+VillagerText uses Kit's computed `Villager.isUnemployed` for job-label availability. The app
+owns readable labels, but does not interpret saved `minecraft:none` or malformed professions;
+nitwits and valid custom professions remain distinct.
+The inspector's “None” job value is limited to a villager whose saved profession is
+explicitly unemployed; unknown professions omit the row through that same label owner.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
 the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
 use Kit's `inventorySlots(in:)` for hotbar,

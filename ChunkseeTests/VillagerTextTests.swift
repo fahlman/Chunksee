@@ -3,11 +3,12 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct VillagerTextTests {
-    func creature(level: Int32? = nil, job: String = "minecraft:farmer") throws -> Creature {
-        var data: [String: NBT] = ["profession": .string(job)]
+    func creature(level: Int32? = nil, job: String? = "minecraft:farmer", kind: String = "minecraft:villager") throws -> Creature {
+        var data: [String: NBT] = [:]
+        if let job { data["profession"] = .string(job) }
         if let level { data["level"] = .int(level) }
         return try #require(Creature(.compound([
-            "id": .string("minecraft:villager"), "Health": .float(20),
+            "id": .string(kind), "Health": .float(20),
             "Pos": .list([.double(2), .double(64), .double(3)]), "VillagerData": .compound(data),
             "Offers": .compound(["Recipes": .list([.compound([
                 "buy": .compound(["id": .string("minecraft:wheat"), "count": .int(20)]),
@@ -46,9 +47,17 @@ import Testing
     }
 
     @Test func noJobIsNotShownAsAnOccupation() throws {
-        let unemployed = try #require(creature(job: "minecraft:none").villager)
-        #expect(VillagerText.jobName(unemployed) == nil)
-        #expect(VillagerText.description(unemployed) == nil)
+        for id in ["minecraft:none", "none", ":none", "", "invalid value"] {
+            let saved = try creature(job: id)
+            let unemployed = try #require(saved.villager)
+            #expect(VillagerText.jobName(unemployed) == nil)
+            #expect(VillagerText.description(unemployed) == nil)
+            #expect(CreatureMarker(saved, dimension: "minecraft:overworld")?.name == "Villager")
+        }
+        for (id, name) in [("example:none", "None"), ("minecraft:nitwit", "Nitwit")] {
+            let saved = try creature(job: id)
+            #expect(CreatureMarker(saved, dimension: "minecraft:overworld")?.name == name)
+        }
         let trader = try #require(Creature(.compound([
             "id": .string("minecraft:wandering_trader"), "Health": .float(20),
             "Pos": .list([.double(2), .double(64), .double(3)]),
@@ -58,5 +67,19 @@ import Testing
             ])])]),
         ]))?.villager)
         #expect(VillagerText.description(trader) == nil)
+    }
+
+    @Test func theInspectorDistinguishesAnUnknownJobFromUnemployment() throws {
+        let unknownJobs: [String?] = [nil, "", "invalid value", "minecraft:"]
+        for job in unknownJobs {
+            #expect(VillagerText.inspectorJob(try creature(job: job)) == nil)
+        }
+        for job in ["minecraft:none", "none", ":none"] {
+            #expect(VillagerText.inspectorJob(try creature(job: job)) == "None")
+        }
+        #expect(VillagerText.inspectorJob(try creature(job: "minecraft:farmer")) == "Farmer, Novice")
+        #expect(VillagerText.inspectorJob(try creature(job: "minecraft:nitwit")) == "Nitwit, Novice")
+        #expect(VillagerText.inspectorJob(try creature(job: "example:none")) == "None, Novice")
+        #expect(VillagerText.inspectorJob(try creature(job: "minecraft:none", kind: "minecraft:wandering_trader")) == nil)
     }
 }
