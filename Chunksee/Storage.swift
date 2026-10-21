@@ -58,6 +58,7 @@ struct StorageView: View {
             }
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: selection) {
             guard let id = selection, let item = items.first(where: { $0.id == id }) else { return }
             session.search.text = item.name
