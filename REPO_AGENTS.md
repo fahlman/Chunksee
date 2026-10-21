@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.37.0`, resolved to `0.37.0` (`0774ad259bbfb69075817180a28135e58e33c172`).
+  minor" from `0.38.0`, resolved to `0.38.0` (`87973c53c88a970dee0893165c3b0d7c96956330`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -508,6 +508,14 @@ accepted read publishes one immutable PlayerSnapshot there; searches observe tha
 instead of receiving pushed assignments in every tab. SearchSources still compares snapshot
 identity, so query edits never traverse saved player NBT. Shared saved queries continue to reuse
 only matching publications, and closed searches do not restart when the roster changes.
+
+StatisticRow supplies shared names and native values to the player inspector and All Statistics.
+The table's raw category/statistic IDs keep row identity independent of equal readable names;
+raw saved numbers remain the numeric sort values. The summary's stable Time Played row uses Kit's
+playTime value, including its legacy fallback, rather than choosing a saved field itself.
+Kit supplies scaled units, while the app uses native elapsed time,
+metric distance and the shared heart wording. Unknown units retain their raw numbers. The inspector
+keeps its primary counts and 100-meter travel cutoff; the complete table retains every saved row.
 
 PlayerRecordsModel keeps the selected player's request identity and rejects replaced results.
 Its reads register in a BackgroundWork scope: cancellation and draining affect only that inspector,
