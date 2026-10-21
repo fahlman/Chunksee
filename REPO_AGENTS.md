@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.39.0`, resolved to `0.39.0` (`a4cad15318f860cc9ad62afdf521428b5141d201`).
+  minor" from `0.40.0`, resolved to `0.40.0` (`1c9c4352d76e755badeef0732e2c544a3b65651c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -109,11 +109,13 @@ made before this adoption. Structures retain their variant word order; the three
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
 
-RegionTileRenderer uses Chunk.surfaceHeights for normal surface starts, including actual-block
-fallback when WORLD_SURFACE is absent. Empty or unreadable columns remain unavailable;
-MOTION_BLOCKING no longer hides plants above solid ground. Tile-renderer version 9 discards
-older pixels. Color selection, transparent display blocks, water depth, cutaway and roof-view
-policy remain in the app; map pixels and hover names use the same scan.
+RegionTileRenderer uses Chunk.forEachColumnRun for normal surface, cutaway and roof scans.
+Kit owns WORLD_SURFACE/actual-block starts, checked heights and the section/column traversal;
+the app resolves each reached palette entry once for color and accumulates contiguous water
+depth during that same walk. Uniform sections arrive as spans, and columns stop independently.
+Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
+above solid ground. Tile-renderer version 9 discards older pixels. Transparent display blocks,
+water shading and roof-view policy remain in the app; map pixels and hover names use the same scan.
 
 | File | Owns |
 |---|---|
