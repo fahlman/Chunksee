@@ -98,7 +98,8 @@ struct CreatureDetailView: View {
                 InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol)
             } location: {
                 LocationRow(session: session,
-                            coordinates: Coordinates(marker.position, y: marker.creature.y), dimension: marker.dimension)
+                            destination: MapDestination(coordinates: Coordinates(marker.position, y: marker.creature.y),
+                                                        dimension: marker.dimension))
                 if let carrier = marker.carrier {
                     LabeledContent("Riding With", value: session.presentation.name(ofPlayerWith: carrier))
                 }

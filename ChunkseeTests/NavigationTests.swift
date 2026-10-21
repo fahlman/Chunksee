@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import Observation
 import Testing
 @testable import ChunkseeTestHost
@@ -42,6 +43,45 @@ import Testing
         await session.waitUntilClosed()
     }
 
+    @Test(arguments: [0.125, 8.0])
+    func goToSpawnCentersTheInitialSpawnBlockAndKeepsZoom(_ scale: CGFloat) async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
+            "LevelName": .string("Spawn Navigation"), "DataVersion": .int(5023),
+            "spawn": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-9, 64, 12])]),
+        ])]), to: url.appendingPathComponent("level.dat"))
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let map = try #require(session.map)
+        let spawnCenter = CGPoint(x: -8.5, y: 12.5)
+        let spawn = try #require(session.presentation.worldSpawn)
+        #expect(spawn.coordinates == Coordinates(CGPoint(x: -9, y: 12), y: 64))
+        #expect(spawn.dimension == "minecraft:overworld")
+        #expect(spawn.anchor == spawnCenter)
+        #expect(map.viewport.center == spawnCenter)
+        #expect(DimensionPresentation.spawnPoint(in: session.world, dimensionID: "minecraft:the_nether") == .zero)
+        let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: scale)
+        map.viewport = original
+        map.setDepth(MapDepth(y: 48, isSurface: false))
+        session.routing.goToSpawn()
+        #expect(map.viewport == MapViewport(center: spawnCenter, scale: scale))
+        #expect(map.depth == MapDepth(y: 48, isSurface: false))
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        // The World Spawn row passes this destination directly through the shared row action.
+        session.routing.focus(on: spawn)
+        #expect(map.viewport == MapViewport(center: spawnCenter, scale: scale))
+        #expect(map.depth == MapDepth(y: 48, isSurface: false))
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        session.close()
+        await session.waitUntilClosed()
+        session.routing.goToSpawn()
+        #expect(map.viewport == original)
+    }
+
     @Test func backForwardRememberPansAndZoomsAndANewJumpClearsForward() async throws {
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
@@ -68,6 +108,44 @@ import Testing
         #expect(map.viewport == original)
         session.close()
         await session.waitUntilClosed()
+    }
+
+    @Test func inspectorCoordinatesRejectInvalidTargetsAndKeepMissingHeightOptional() async throws {
+        let (url, session) = try await openWorld()
+        defer { session.close(); try? FileManager.default.removeItem(at: url) }
+        let map = try #require(session.map)
+        let dimension = try #require(session.selectedDimensionID)
+        let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: 0.125)
+        map.viewport = original
+        map.setDepth(MapDepth(y: 48, isSurface: false))
+        session.selection.choose(.worldInfo)
+        let depth = map.depth
+        let target = Coordinates(CGPoint(x: -8.7, y: -16.1))
+        #expect(target.y == nil && session.routing.canFocus(target, in: dimension))
+        #expect(!session.routing.canFocus(target, in: nil))
+        #expect(!session.routing.canFocus(target, in: "missing:dimension"))
+        session.routing.focus(on: target, in: "missing:dimension")
+        for invalid in [Double.nan, .infinity, -.infinity, .greatestFiniteMagnitude] {
+            for coordinates in [Coordinates(CGPoint(x: invalid, y: 0)), Coordinates(CGPoint(x: 0, y: invalid)),
+                                Coordinates(.zero, y: invalid)] {
+                #expect(!session.routing.canFocus(coordinates, in: dimension))
+                session.routing.focus(on: coordinates, in: dimension)
+            }
+        }
+        #expect(map.viewport == original && !session.navigation.canGoBack)
+        session.routing.focus(on: target, in: dimension)
+        #expect(map.viewport == MapViewport(center: target.point, scale: original.scale))
+        #expect(map.depth == depth && session.selection.sidebarSelection == .worldInfo)
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        session.routing.focus(on: Coordinates(target.point, y: 64), in: dimension, blockPosition: true)
+        #expect(map.viewport.center == CGPoint(x: -8.5, y: -16.5) && map.viewport.scale == original.scale)
+        let lastView = map.viewport
+        session.close()
+        await session.waitUntilClosed()
+        #expect(!session.routing.canFocus(target, in: dimension))
+        session.routing.focus(on: target, in: dimension)
+        #expect(map.viewport == lastView)
     }
 
     @Test func aReplacedDocumentSessionKeepsNavigationAndAnotherWorldHasNone() async throws {

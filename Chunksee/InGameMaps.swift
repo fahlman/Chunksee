@@ -64,7 +64,8 @@ struct InGameMapDetailView: View {
                     Text("\(map.sideInBlocks) × \(map.sideInBlocks) blocks")
                 }
                 LocationRow(title: Text("Center"), session: session,
-                            coordinates: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), dimension: map.dimension)
+                            destination: MapDestination(coordinates: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)),
+                                                        dimension: map.dimension))
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
