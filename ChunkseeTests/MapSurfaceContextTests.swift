@@ -130,7 +130,7 @@ import Testing
             }], dimensionSettings: definitions)
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), settings = WorldDetails.read(world).dimensionSettings
-        let dimension = try #require(try world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
+        let dimension = try #require(world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
         let file = dimension.regionURL(at: region)
         let contexts = [MapSurfaceContext.unknown] + definitions.keys.sorted().map { MapSurfaceContext(settings: settings[$0]) }
         let surfaceKeys = try contexts.map { try #require(TileCache.key(for: region, regionFile: file, context: $0)) }
@@ -164,7 +164,7 @@ import Testing
             ])]))
         let url = try TestWorld.make(chunks: [chunk], dimensionSettings: ["minecraft:overworld": .compound(["type": type])])
         defer { try? FileManager.default.removeItem(at: url) }
-        let world = try World(contentsOf: url), dimension = try #require(try world.dimension("overworld"))
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld"))
         let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
         #expect(context.buildHeight == 3072)
         let file = try #require(try dimension.region(x: 0, z: 0))

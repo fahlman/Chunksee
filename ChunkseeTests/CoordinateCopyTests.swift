@@ -17,7 +17,7 @@ import Testing
     private func map(_ url: URL, dimensionID: String = "overworld",
                      read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let world = try World(contentsOf: url)
-        let dimension = try #require(try world.dimension(dimensionID))
+        let dimension = try #require(world.dimension(dimensionID))
         let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
         if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
                                      cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
