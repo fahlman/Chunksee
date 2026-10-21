@@ -30,7 +30,7 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
 /// The inspector's storage summary for the selected dimension. Choosing an item searches for it,
 /// so its containers show in the sidebar and on the map.
 struct StorageView: View {
-    static let symbol = "shippingbox"
+    static let symbol = "archivebox.fill"
     let session: WorldSession
     @Environment(\.locale) private var locale
     @State private var sortOrder = [KeyPathComparator(\StoredItem.count, order: .reverse)]
