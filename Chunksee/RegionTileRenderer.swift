@@ -150,17 +150,14 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk)
-        // The heightmap gives the first free block above the surface; without one (most chunks
-        // upgraded from old versions have none), every column starts at the top of the chunk.
         let columns: [Column?]
         if let cutawayY {
             columns = sections.topColumns { _ in cutawayY }
         } else if let ceilingY {
             columns = sections.topColumns(underCeiling: true) { _ in ceilingY }
         } else {
-            let heightmap = chunk.heightmap("WORLD_SURFACE") ?? chunk.heightmap("MOTION_BLOCKING")
-            let topY = sections.topY
-            columns = sections.topColumns { i in heightmap.map { $0[i] - 1 } ?? topY }
+            let surface = chunk.surfaceHeights()
+            columns = sections.topColumns { surface[$0] }
         }
         return (sections, columns)
     }
@@ -243,16 +240,25 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// hundreds of random lookups; the scan stops as soon as every column is resolved.
         /// With `underCeiling`, each column first steps down through solid blocks until it reaches
         /// open space, then searches as usual: the Nether's bedrock roof would otherwise hide everything.
-        mutating func topColumns(underCeiling: Bool = false, startY: (Int) -> Int) -> [Column?] {
+        mutating func topColumns(underCeiling: Bool = false, startY: (Int) -> Int?) -> [Column?] {
             enum State { case ceiling, searching, water, done }
             var result = [Column?](repeating: nil, count: 256)
             var state = [State](repeating: underCeiling ? .ceiling : .searching, count: 256)
-            let start = (0..<256).map { min(startY($0), topY) }
+            var start = [Int](repeating: 0, count: 256)
+            var remaining = 256
+            for i in 0..<256 {
+                if let y = startY(i) {
+                    start[i] = min(y, topY)
+                } else {
+                    // An unavailable surface cannot establish a visible block below it.
+                    state[i] = .done
+                    remaining -= 1
+                }
+            }
             var waterY = [Int](repeating: 0, count: 256)
             var waterColor = [MapColor](repeating: MapColor(0), count: 256)
             var waterBlock = [(section: Int, palette: Int)](repeating: (0, 0), count: 256)
             var depth = [Int](repeating: 0, count: 256)
-            var remaining = 256
             // Under a ceiling, the first solid block below the roof's bedrock band (at most five
             // blocks thick in the Nether), drawn darkened if a column never reaches open space
             // (solid rock all the way down) instead of leaving a hole.

@@ -109,6 +109,12 @@ made before this adoption. Structures retain their variant word order; the three
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
 
+RegionTileRenderer uses Chunk.surfaceHeights for normal surface starts, including actual-block
+fallback when WORLD_SURFACE is absent. Empty or unreadable columns remain unavailable;
+MOTION_BLOCKING no longer hides plants above solid ground. Tile-renderer version 9 discards
+older pixels. Color selection, transparent display blocks, water depth, cutaway and roof-view
+policy remain in the app; map pixels and hover names use the same scan.
+
 | File | Owns |
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |

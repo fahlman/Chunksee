@@ -50,4 +50,31 @@ import Testing
         #expect(columns[0] == nil && blocks[0] == nil)
         #expect(blocks[1] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
     }
+
+    @Test func worldSurfaceRetainsEmptyColumnsWaterAndDisplayTransparency() throws {
+        var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:light", "minecraft:water"]) { x, y, _ in
+            if x == 0 { return 0 }
+            if y == 0 { return 1 }
+            if x == 1, y == 4 { return 2 }
+            if x == 2, y <= 4 { return 3 }
+            return 0
+        }
+        guard case .compound(var root) = spec.nbt else {
+            Issue.record("Expected a compound chunk fixture")
+            return
+        }
+        let heights = (0..<256).map { i in i % 16 == 0 ? 0 : i % 16 <= 2 ? 5 : 1 }
+        root["Heightmaps"] = .compound(["WORLD_SURFACE": .longArray(Fixtures.pack(heights, bits: 9))])
+        spec.nbt = .compound(root)
+        let url = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let file = try #require(try dimension.region(x: 0, z: 0))
+
+        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        #expect(blocks[0] == nil)
+        #expect(blocks[1] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
+        #expect(blocks[2] == .init(id: "minecraft:water", y: 4, waterDepth: 4))
+        #expect(blocks[3] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
+    }
 }
