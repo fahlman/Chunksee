@@ -510,8 +510,10 @@ identity, so query edits never traverse saved player NBT. Shared saved queries c
 only matching publications, and closed searches do not restart when the roster changes.
 
 StatisticRow supplies shared names and native values to the player inspector and All Statistics.
-Raw category/statistic IDs keep row identity independent of equal readable names; raw saved numbers
-remain the numeric sort values. Kit supplies scaled units, while the app uses native elapsed time,
+The table's raw category/statistic IDs keep row identity independent of equal readable names;
+raw saved numbers remain the numeric sort values. The summary's stable Time Played row uses Kit's
+playTime value, including its legacy fallback, rather than choosing a saved field itself.
+Kit supplies scaled units, while the app uses native elapsed time,
 metric distance and the shared heart wording. Unknown units retain their raw numbers. The inspector
 keeps its primary counts and 100-meter travel cutoff; the complete table retains every saved row.
 

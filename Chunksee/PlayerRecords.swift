@@ -40,10 +40,15 @@ nonisolated struct PlayerRecords: Sendable {
 
     var summaryStatistics: [StatisticRow] {
         guard let statistics else { return [] }
-        let timeID = statistics.value("minecraft:play_time") != nil ? "minecraft:play_time" : "minecraft:play_one_minute"
-        let primary = [timeID, "minecraft:mob_kills", "minecraft:deaths"].compactMap { id -> StatisticRow? in
-            guard let value = statistics.value(id), id != timeID || value >= 0 else { return nil }
-            return row(id: id, value: value, in: "minecraft:custom")
+        var primary: [StatisticRow] = []
+        if let time = statistics.playTime, time >= 0 {
+            // The summary has one stable time identity; Kit chooses its saved source value.
+            primary.append(row(id: "minecraft:play_time", value: time, in: "minecraft:custom"))
+        }
+        for id in ["minecraft:mob_kills", "minecraft:deaths"] {
+            if let value = statistics.value(id) {
+                primary.append(row(id: id, value: value, in: "minecraft:custom"))
+            }
         }
         return primary + distances
     }

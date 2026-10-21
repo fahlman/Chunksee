@@ -295,7 +295,22 @@ import Testing
         #expect(stones[0].id != stones[1].id)
         #expect(records.summaryStatistics.first?.name == "Time Played")
         #expect(records.summaryStatistics.first?.unit == .ticks)
+        let legacyTime = try #require(rows.first { $0.statisticID == "minecraft:play_one_minute" })
+        let summaryTime = try #require(records.summaryStatistics.first)
+        let style = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
+        #expect(summaryTime.value == legacyTime.value && style.format(summaryTime) == style.format(legacyTime))
+        #expect(legacyTime.statisticID == "minecraft:play_one_minute" && summaryTime.statisticID == "minecraft:play_time")
         #expect(rows.sorted(using: KeyPathComparator(\StatisticRow.value)).map(\.value) == [2, 10, 40, 100_000])
+        for values in [[:], ["minecraft:play_time": -1], ["minecraft:play_one_minute": -1],
+                       ["minecraft:play_time": 80, "minecraft:play_one_minute": 40]] {
+            let statistics = PlayerStatistics(values: ["minecraft:custom": values])
+            let summary = PlayerRecords(statistics: statistics).summaryStatistics
+            if let time = statistics.playTime, time >= 0 {
+                #expect(summary.map(\.value) == [time])
+            } else {
+                #expect(summary.isEmpty)
+            }
+        }
     }
 
     @Test func readsUUIDFilesAndFallsBackToNameKeyedStatistics() async throws {
