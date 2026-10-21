@@ -12,12 +12,9 @@ struct EquipmentSection: View {
                 ForEach(rows) { row in
                     LabeledContent(EquipmentPresentation.slot(row.slot)) {
                         VStack(alignment: .trailing) {
-                            Label {
-                                Text(row.item, format: ItemAppearance.LabelStyle()).foregroundStyle(.primary)
-                            } icon: {
-                                Image(systemName: ItemAppearance.symbol(for: row.item.id))
-                                    .foregroundStyle(ItemAppearance.tint(for: row.item.id))
-                            }
+                            ItemLabel(id: row.item.id, title: Text(row.item, format: ItemAppearance.LabelStyle()),
+                                      isEnchanted: ItemAppearance.isEnchanted(row.item))
+                            .foregroundStyle(.primary)
                             .help(ItemAppearance.details(of: row.item))
                             if let wear = row.item.durability {
                                 Text(ItemAppearance.durability(wear))

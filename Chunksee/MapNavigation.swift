@@ -18,19 +18,17 @@ final class MapNavigation {
         return MapViewport.fitting(map.availableRegions, in: shown.size) != nil
     }
 
-    /// Focus zooms to at least 2x, or to the supplied fit, unless the caller keeps the current zoom.
-    func focus(on point: CGPoint, blockPosition: Bool = false, keepingZoom: Bool = false,
-               fittingScale: CGFloat? = nil) {
+    /// Every location jump keeps this dimension's zoom; zoom controls and Fit World are explicit.
+    func focus(on point: CGPoint, blockPosition: Bool = false) {
         guard let coordinates = MapCoordinates(point: point) else { return }
         navigate { map in
             map.viewport.center = blockPosition ? coordinates.center : point
-            if !keepingZoom { map.viewport.scale = fittingScale ?? max(2, map.viewport.scale) }
         }
     }
 
     /// Coordinate entry and saved-place jumps keep zoom and center on the containing block.
     func goToCoordinates(_ point: CGPoint) {
-        focus(on: point, blockPosition: true, keepingZoom: true)
+        focus(on: point, blockPosition: true)
     }
 
     func fitWorld() {

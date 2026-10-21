@@ -92,7 +92,9 @@ to coordinates, the world spawn or another dimension and saves the current searc
 **Navigate ▸ Go to Coordinates…** (**⇧⌘G**) and enter X and Z to center the current dimension's
 map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
 **Locations** offers the saved last position, last death and respawn point when available. VoiceOver can also explore
-the individual visible map locations and center the map on them.
+the individual visible map locations and center the map on them. Every location jump keeps that
+dimension's current zoom, including player locations, portal links and in-game maps. Use the zoom
+control or **Fit World** when you want to change the scale.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
 previous location and zoom within the current dimension. A jump to another dimension happens in

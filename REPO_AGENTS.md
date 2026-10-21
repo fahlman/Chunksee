@@ -160,7 +160,10 @@ scene binding, while the sheet keeps its existing native controls and calls MapN
 Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
 existing per-session view identity resets this transient state on a native reread or move.
 `MapNavigation` applies local focus, coordinate jumps, Fit World and Back/Forward through the
-document's existing MapModel, which remains the only viewport/depth owner. It owns history but
+document's existing MapModel, which remains the only viewport/depth owner. All location jumps
+keep the destination dimension's current zoom, including spawn, player locations, portal links
+and in-game maps (Ryan, 2026-10-20, #293). Callers cannot override that rule. Explicit zoom controls,
+Fit World and Back/Forward still change or restore viewports. It owns history but
 has no tasks or separate closed flag; MapModel's existing lifetime guards late navigation.
 Native reread/move restoration copies history, viewport and depth into the new model, including
 from an already closed source, without sharing that source's map or history. Cross-dimension
@@ -788,6 +791,13 @@ Linked Pets, so each appears once in the inspector. Owned pets carried by someon
 their links, and a pet that lands returns to Linked Pets on the shared index refresh.
 These are derived app publications, with no new file reader or
 disk cache; ordinary player and region refreshes replace them.
+
+ItemIcon and ItemLabel share item symbol, material color and known-enchantment styling across
+equipment, trades, inventory slots and Storage. ItemAppearance remains the owner of names,
+symbols, colors and detail text. Inventory keeps its slot grid/count badges and Storage its
+sortable table (Ryan, 2026-10-20, #298). A trade's icon represents the received item; its complete
+wording still comes from TradeText.offer. Storage aggregates by kind, so it does not invent a
+stack's custom name or enchantment. Native labels and slot accessibility retain the item details.
 
 Creature.displayName owns custom-name, villager-job and kind fallback naming for both located
 markers and shoulder pets. CreatureDetailSections owns their shared applicable health, owner,

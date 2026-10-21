@@ -137,6 +137,38 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test(arguments: [false, true], ["location", "portal"])
+    func routedJumpsKeepTheDestinationsLiveOrRestoredZoom(alreadyOpen: Bool, action: String) async throws {
+        let (url, resources) = try await makeResources()
+        defer { resources.close(); try? FileManager.default.removeItem(at: url) }
+        let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let dimension = "minecraft:the_nether"
+        let sourceView = MapViewport(center: CGPoint(x: 100, y: 200), scale: 8)
+        let targetView = MapViewport(center: CGPoint(x: -100, y: -200), scale: 0.125)
+        source.map?.viewport = sourceView
+        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: .init())
+        let existing = alreadyOpen ? WorldSession(resources: resources, dimensionID: dimension) : nil
+        var opened = recordOpens(of: source)
+        let expected: CGPoint
+        if action == "portal" {
+            let portal = NetherPortal(dimension: dimension, blocks: [.init(x: 9, y: 64, z: -8)])
+            expected = CGPoint(x: portal.centerX, y: portal.centerZ)
+            source.selection.show(portal)
+        } else {
+            expected = CGPoint(x: 9.25, y: -7.75)
+            source.routing.focus(on: .init(dimension: dimension, x: 9.25, y: 64, z: -7.75))
+        }
+        let requested = await opened.next(isolation: #isolation)
+        #expect(requested == resources.documentURL(for: dimension))
+        let destination = existing ?? WorldSession(resources: resources, dimensionID: dimension)
+        #expect(source.map?.viewport == sourceView && !source.navigation.canGoBack)
+        #expect(destination.map?.viewport == MapViewport(center: expected, scale: targetView.scale))
+        destination.navigation.goBack()
+        #expect(destination.map?.viewport == targetView && !destination.navigation.canGoBack)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     @Test func eachDimensionListsOnlyWhatIsInIt() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
