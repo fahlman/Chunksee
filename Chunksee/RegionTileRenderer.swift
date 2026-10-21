@@ -234,9 +234,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             var ceilingStart = [Int?](repeating: nil, count: 256)
             var waterBottom = [Int](repeating: 0, count: 256)
             let chunk = self.chunk
-            // Keep the consumer with the shared loop instead of calling it for every block.
-            @inline(__always)
-            func visit(_ run: Chunk.ColumnRun) -> Bool {
+            chunk.forEachColumnRun(from: start) { run in
                 let i = run.column
                 if state[i] == .water {
                     let expected = waterBottom[i].subtractingReportingOverflow(1)
@@ -306,7 +304,6 @@ nonisolated struct RegionTileRenderer: Sendable {
                     return state[i] == .water
                 }
             }
-            chunk.forEachColumnRun(from: start, visit)
             return result
         }
     }
