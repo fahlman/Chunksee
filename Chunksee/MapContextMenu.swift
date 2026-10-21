@@ -98,7 +98,7 @@ extension View {
 
 /// Inspector coordinates share native activation, validation and location commands.
 struct LocationRow: View {
-    let title: Text
+    var title = Text("Location")
     let session: WorldSession
     let coordinates: Coordinates
     let dimension: String?

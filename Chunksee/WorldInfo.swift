@@ -72,7 +72,7 @@ nonisolated struct WorldDetails: Sendable {
 /// World settings and state in the inspector: version, time, weather, the dragon, borders,
 /// mods and game rules.
 struct WorldInfoView: View {
-    static let symbol = "info.circle"
+    static let symbol = "info.circle.fill"
     let session: WorldSession
     @State private var showsSeed = false
     @Environment(\.locale) private var locale

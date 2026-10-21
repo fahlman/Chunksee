@@ -32,8 +32,8 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .beeNest: "hexagon.fill"
         case .lightningRod: "bolt.fill"
         case .spawner: "cube.transparent"
-        case .unopenedLoot: "shippingbox.fill"
-        case .other: "scope"
+        case .unopenedLoot: "gift.fill"
+        case .other: "ellipsis.circle.fill"
         }
     }
 
@@ -210,7 +210,7 @@ struct PortalDetailView: View {
         let trip = session.presentation.roundTrip(for: portal)
         Form {
             Section {
-                LocationRow(title: Text("Position"), session: session,
+                LocationRow(session: session,
                             coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
                             dimension: portal.dimension)
             } header: {
