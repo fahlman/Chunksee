@@ -115,7 +115,7 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1))
+        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1), options: RegionReader.options())
         let deposits = BlockDeposit.grouped(try #require(facts.chunks.first).blockDeposits)
         #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
 

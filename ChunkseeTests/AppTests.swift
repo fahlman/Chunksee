@@ -106,7 +106,7 @@ import Testing
         let gate = AsyncReadGate<RegionFacts>()
         let session = try WorldSession(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                   readRegion: { _, _ in await gate.read("region") })
+                                   readRegion: { _, _, _ in await gate.read("region") })
         await gate.waitForRequest("region")
         var finishedClosing = false
         let closing = Task {
@@ -127,7 +127,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: cacheURL) }
         let dimension = try #require(try World(contentsOf: url).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _ in
+        let reader = RegionReader(dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _, _ in
             await gate.read("region")
         }
         let read = Task { await reader.contents(.init(x: 0, z: 0)) }

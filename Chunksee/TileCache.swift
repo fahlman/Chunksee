@@ -14,8 +14,9 @@ nonisolated struct TileCache: Sendable {
     /// 7: Kit 0.29 rejects ambiguous heightmaps, so surface rendering scans the blocks instead.
     /// 8: Kit's identifier parser recognizes omitted/empty default namespaces in block palettes.
     /// 9: Shared WORLD_SURFACE/actual-block starts replace the MOTION_BLOCKING fallback.
+    /// 10: saved dimension height/ceiling context replaces the Nether-ID view rule.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 9
+    static let rendererVersion = 10
 
     let directory: URL
 
@@ -24,9 +25,13 @@ nonisolated struct TileCache: Sendable {
         var fileSize: Int
         var modified: Int64
         var cutawayY: Int? = nil
+        var buildHeight: Int? = nil
+        var ceilingY: Int? = nil
 
         var fileName: String {
-            "\(prefix)\(cutawayY.map { "y\($0)." } ?? "")\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            let view = cutawayY.map { "y\($0)" }
+                ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
+            return "\(prefix)\(view).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
@@ -79,9 +84,12 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
-    static func key(for region: RegionPosition, regionFile: URL, cutawayY: Int? = nil) -> Key? {
+    static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
-        return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY)
+        // Explicit slices never use heightmaps or the normal view below a roof.
+        return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
+                   buildHeight: cutawayY == nil ? context.buildHeight : nil,
+                   ceilingY: cutawayY == nil ? context.ceilingY : nil)
     }
 
     func load(_ key: Key) -> [UInt8]? {

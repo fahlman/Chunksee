@@ -56,7 +56,7 @@ struct MapWorkTests {
         let work = BackgroundWork()
         let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
                            renderTile: { _, _ in await render.read("render") },
-                           readTopBlocks: { chunk, _, _, _ in await columns.read("\(chunk.x)") })
+                           readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         var copied = false
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
         map.loadTopBlocks(at: CGPoint(x: 1, y: 1))

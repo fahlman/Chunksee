@@ -64,9 +64,9 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
-                                       readRegion: { dimension, region in
+                                       readRegion: { dimension, region, options in
                                            await reads.record(dimension.id, region)
-                                           return try await RegionReader.scan(dimension, region: region)
+                                           return try await RegionReader.scan(dimension, region: region, options: options)
                                        })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
@@ -105,7 +105,7 @@ import Testing
         let url = try TestWorld.make(chunks: [terrain(0), legacy])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let data = try await RegionReader.scan(dimension, region: .init(x: 0, z: 0))
+        let data = try await RegionReader.scan(dimension, region: .init(x: 0, z: 0), options: RegionReader.options())
         #expect(data.inhabitedTimes[0] == 2400)
         #expect(data.inhabitedTimes[3 * 32 + 2] == 7200)
         #expect(data.inhabitedTimes[1] == 0)
@@ -117,7 +117,7 @@ import Testing
         let old = try TestWorld.legacyCache([Int](repeating: 0, count: 1024), name: "inhabitedTimes.0.0.unchanged.v14", directory: root)
         let reader = RegionReader(dimension: dimension, cache: cache)
         #expect(await reader.inhabitedTimes(region)[3 * 32 + 2] == 7200)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))
         #expect(saved?.inhabitedTimes[3 * 32 + 2] == 7200)
         #expect(!FileManager.default.fileExists(atPath: old.path))
         await reader.close()

@@ -7,18 +7,21 @@ import Testing
 @Suite(.isolatedStores, .serialized) struct CoordinateCopyTests {
     private let size = CGSize(width: 400, height: 300)
 
-    private func world(roof: Bool = false) throws -> URL {
+    private func world(roof: Bool = false, dimensionSettings: [String: NBT] = [:]) throws -> URL {
         try TestWorld.make(chunks: [TestWorld.chunk(x: -1, z: -1,
             palette: ["minecraft:air", "minecraft:stone", "minecraft:bedrock"]) { _, y, _ in
             roof && y >= 14 ? 2 : y <= 2 ? 1 : 0
-        }])
+        }], dimensionSettings: dimensionSettings)
     }
 
     private func map(_ url: URL, dimensionID: String = "overworld",
-                     read: (@Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
-        let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
-        if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
-        return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
+                     read: MapModel.TopBlockReader? = nil) throws -> MapModel {
+        let world = try World(contentsOf: url)
+        let dimension = try #require(world.dimension(dimensionID))
+        let context = MapSurfaceContext(dimensionID: dimension.id, settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                                     cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
+        return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)
     }
 
     private func board() -> NSPasteboard {
@@ -203,7 +206,10 @@ import Testing
     }
 
     @Test func theNetherUsesTheDisplayedFloorBelowItsRoof() async throws {
-        let url = try world(roof: true)
+        let url = try world(roof: true, dimensionSettings: [
+            "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"), noise: .string("minecraft:overworld")),
+            "minecraft:the_nether": TestWorld.noiseDimension(type: .string("minecraft:the_nether"), noise: .string("minecraft:nether")),
+        ])
         defer { try? FileManager.default.removeItem(at: url) }
         let nether = url.appendingPathComponent("DIM-1/region")
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
@@ -225,8 +231,8 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let first = try map(url) { _, _, _, _ in await gate.read("first") }
-        let second = try map(url) { _, _, _, _ in await gate.read("second") }
+        let first = try map(url) { _, _, _ in await gate.read("first") }
+        let second = try map(url) { _, _, _ in await gate.read("second") }
         defer { first.close(); second.close() }
         let board = board()
         defer { board.releaseGlobally() }
@@ -249,7 +255,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         for externalChange in [false, true] {
             let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-            let map = try map(url) { _, _, _, _ in await gate.read("read") }
+            let map = try map(url) { _, _, _ in await gate.read("read") }
             defer { map.close() }
             let board = board()
             defer { board.releaseGlobally() }
@@ -273,7 +279,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = try map(url) { chunk, _, _, _ in await gate.read("\(chunk.x)") }
+        let map = try map(url) { chunk, _, _ in await gate.read("\(chunk.x)") }
         let board = board()
         defer { board.releaseGlobally() }
         MapClipboard.copy(.zero, on: map, to: board)
@@ -294,7 +300,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = try map(url) { _, _, _, _ in await gate.read("hover") }
+        let map = try map(url) { _, _, _ in await gate.read("hover") }
         defer { map.close() }
         map.loadTopBlocks(at: CGPoint(x: -1, y: -1))
         await gate.waitForRequest("hover")
@@ -305,7 +311,7 @@ import Testing
         MapClipboard.copy(CGPoint(x: -1, y: -1), on: map, to: board)
         #expect(board.string(forType: .string) == "-1 -10 -1")
         #expect(await gate.requested == ["hover"])
-        let empty = try self.map(url) { _, _, _, _ in nil }
+        let empty = try self.map(url) { _, _, _ in nil }
         defer { empty.close() }
         MapClipboard.copy(CGPoint(x: 500, y: 500), on: empty, to: board)
         await empty.waitForCoordinateReads()
@@ -334,7 +340,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await reader.structures(region)
         #expect(rebuilt.map(\.y) == [-50])
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.structures.map(StructureMarker.init)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
         #expect(saved?.first?.y == -50)
         #expect(!FileManager.default.fileExists(atPath: previous.path))
         await reader.close()

@@ -55,9 +55,9 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), count = Reads()
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region in
+        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region, options in
             _ = await count.note()
-            return try await RegionReader.scan(dimension, region: region)
+            return try await RegionReader.scan(dimension, region: region, options: options)
         }
         await withTaskGroup(of: Int.self) { group in
             for _ in 0..<12 { group.addTask { await reader.facts(region)?.containers.count ?? -1 } }
@@ -82,9 +82,9 @@ import Testing
         #expect(await reader.facts(region) != nil)
         #expect(await count.count == expectedReads + 1)
         await reader.close()
-        let uncached = RegionReader(dimension: dimension, cache: .off) { dimension, region in
+        let uncached = RegionReader(dimension: dimension, cache: .off) { dimension, region, options in
             _ = await count.note()
-            return try await RegionReader.scan(dimension, region: region)
+            return try await RegionReader.scan(dimension, region: region, options: options)
         }
         _ = await uncached.facts(region); _ = await uncached.facts(region)
         #expect(await count.count == expectedReads + 3)
@@ -97,7 +97,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0)
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let options = RegionReader.options(in: dimension.id)
+        let options = RegionReader.options()
         let key = ScanCache.Key(dimension: dimension, region: region, options: options)
         let facts = try dimension.scan(region: region, options: options)
         cache.store(facts, key: key)
@@ -170,7 +170,7 @@ import Testing
             #expect(retained.containers == initial.containers && retained.regions.count == 1)
         }
         #expect(await HeatMap.images(reader, previous: heat).count == 1)
-        let badKey = ScanCache.Key(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id))
+        let badKey = ScanCache.Key(dimension: dimension, region: region, options: RegionReader.options())
         #expect(cache.load(badKey) == nil)
         // A successful empty region replaces old contributions; it is different from a failed read.
         try Data(repeating: 0, count: 8192).write(to: file)
@@ -189,8 +189,8 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), count = Reads(), gate = AsyncReadGate<Void>()
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region in
-            let facts = try await RegionReader.scan(dimension, region: region)
+        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region, options in
+            let facts = try await RegionReader.scan(dimension, region: region, options: options)
             if await count.note() == 1 { await gate.read("read") }
             return facts
         }

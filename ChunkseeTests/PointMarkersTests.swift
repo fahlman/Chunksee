@@ -185,7 +185,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in try await state.read(dimension.id) })
+                                       readRegion: { dimension, _, options in try await state.read(dimension.id, options: options) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -225,9 +225,9 @@ import Testing
     private actor MovingMarkers {
         private var step = 0
         func move(to step: Int) { self.step = step }
-        func read(_ dimension: String) throws -> RegionFacts {
+        func read(_ dimension: String, options: RegionScanOptions) throws -> RegionFacts {
             let nether = dimension == "minecraft:the_nether"
-            guard nether || step < 2 else { return try TestWorld.facts(dimensionID: dimension) }
+            guard nether || step < 2 else { return try TestWorld.facts(dimensionID: dimension, options: options) }
             let x: Int32 = nether || step == 1 ? 513 : 511
             let spawner = NBT.compound([
                 "id": .string("minecraft:mob_spawner"), "x": .int(x), "y": .int(64), "z": .int(0),
@@ -235,7 +235,7 @@ import Testing
             ])
             let pet = NBT.compound(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
                                    "Pos": .list([.double(Double(x) + 0.5), .double(64), .double(0.5)])])
-            return try TestWorld.facts(dimensionID: dimension, blockEntities: [spawner], entities: nether ? [] : [pet])
+            return try TestWorld.facts(dimensionID: dimension, blockEntities: [spawner], entities: nether ? [] : [pet], options: options)
         }
     }
 }

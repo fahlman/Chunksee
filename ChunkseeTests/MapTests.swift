@@ -559,7 +559,7 @@ import Testing
         try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", top]) { _, y, _ in y == 0 ? 1 : y == 1 ? 2 : 0 }])
     }
 
-    private func map(_ url: URL, read: (@Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> MapModel.TopBlockRead?)? = nil) throws -> MapModel {
+    private func map(_ url: URL, read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
         return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
@@ -599,7 +599,7 @@ import Testing
         func blocks(_ id: String) -> [RegionTileRenderer.TopBlock?] { Array(repeating: .init(id: id, y: 1, waterDepth: 0), count: 256) }
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let reads = ReadNumbers()
-        let map = try map(url) { _, _, _, _ in await gate.read("read\(await reads.next())") }
+        let map = try map(url) { _, _, _ in await gate.read("read\(await reads.next())") }
         defer { map.close() }
         map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
         await gate.waitForRequest("read0")
@@ -615,7 +615,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = try map(url) { chunk, _, _, _ in await gate.read("\(chunk.x)") }
+        let map = try map(url) { chunk, _, _ in await gate.read("\(chunk.x)") }
         map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))       // chunk 0
         await gate.waitForRequest("0")
         map.loadTopBlocks(at: CGPoint(x: 16.5, y: 0.5))      // chunk 1 replaces it, cancelling chunk 0's read

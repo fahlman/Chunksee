@@ -49,10 +49,10 @@ import Testing
         func blockedIndex() async throws -> (WorldResources, AsyncReadGate<RegionFacts>, Reads) {
             let gate = AsyncReadGate<RegionFacts>(), calls = Reads()
             let resource = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
-                savedSearches: model.savedSearches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region in
+                savedSearches: model.savedSearches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region, options in
                     let count = await calls.next(dimension.id)
                     if dimension.id == "minecraft:overworld", count == 0 { return await gate.read("overworld") }
-                    return try await RegionReader.scan(dimension, region: region)
+                    return try await RegionReader.scan(dimension, region: region, options: options)
                 })
             resources.append(resource)
             gates.append(gate)
