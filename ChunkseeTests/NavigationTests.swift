@@ -74,7 +74,7 @@ import Testing
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let map = try #require(session.map)
-        let dimension = session.selectedDimensionID
+        let dimension = try #require(session.selectedDimensionID)
         let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: 0.125)
         map.viewport = original
         map.setDepth(MapDepth(y: 48, isSurface: false))
