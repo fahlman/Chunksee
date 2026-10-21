@@ -56,11 +56,22 @@ import Testing
         defer { session.close() }
         let map = try #require(session.map)
         let spawnCenter = CGPoint(x: -8.5, y: 12.5)
+        let spawn = try #require(session.presentation.worldSpawn)
+        #expect(spawn.coordinates == Coordinates(CGPoint(x: -9, y: 12), y: 64))
+        #expect(spawn.dimension == "minecraft:overworld")
+        #expect(spawn.anchor == spawnCenter)
         #expect(map.viewport.center == spawnCenter)
+        #expect(DimensionPresentation.spawnPoint(in: session.world, dimensionID: "minecraft:the_nether") == .zero)
         let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: scale)
         map.viewport = original
         map.setDepth(MapDepth(y: 48, isSurface: false))
         session.routing.goToSpawn()
+        #expect(map.viewport == MapViewport(center: spawnCenter, scale: scale))
+        #expect(map.depth == MapDepth(y: 48, isSurface: false))
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        // The World Spawn row passes this destination directly through the shared row action.
+        session.routing.focus(on: spawn)
         #expect(map.viewport == MapViewport(center: spawnCenter, scale: scale))
         #expect(map.depth == MapDepth(y: 48, isSurface: false))
         session.navigation.goBack()

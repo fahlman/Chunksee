@@ -3,6 +3,17 @@ import Foundation
 import ChunkseeKit
 import Observation
 
+/// Saved coordinates retain their copy value while block destinations use the block's center.
+nonisolated struct MapDestination {
+    let coordinates: Coordinates
+    let dimension: String?
+    var isBlockPosition = false
+
+    var anchor: CGPoint {
+        isBlockPosition ? MapCoordinates.center(of: coordinates.point) : coordinates.point
+    }
+}
+
 /// App actions delivered through native dimension documents, without owning their windows.
 @Observable
 final class DimensionRouting {
@@ -33,17 +44,20 @@ final class DimensionRouting {
     }
 
     func goToSpawn() {
-        guard let source, let spawn = source.world.level.spawnPosition,
-              let dimension = source.world.level.spawnDimension else { return }
-        focus(on: Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y),
-              in: dimension, blockPosition: true)
+        guard let spawn = source?.presentation.worldSpawn else { return }
+        focus(on: spawn)
     }
 
     /// A map center has no saved height; it follows the same jump without inventing one.
     func focus(on coordinates: Coordinates, in dimension: String, blockPosition: Bool = false) {
-        guard let source, canFocus(coordinates, in: dimension) else { return }
-        if route(to: dimension, perform: { $0.routing.focus(on: coordinates, in: dimension, blockPosition: blockPosition) }) { return }
-        source.navigation.focus(on: coordinates.point, blockPosition: blockPosition)
+        focus(on: MapDestination(coordinates: coordinates, dimension: dimension, isBlockPosition: blockPosition))
+    }
+
+    func focus(on destination: MapDestination) {
+        guard let source, let dimension = destination.dimension,
+              canFocus(destination.coordinates, in: dimension) else { return }
+        if route(to: dimension, perform: { $0.routing.focus(on: destination) }) { return }
+        source.navigation.focus(on: destination.anchor)
     }
 
     func canFocus(_ coordinates: Coordinates, in dimension: String?) -> Bool {

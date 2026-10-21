@@ -179,7 +179,7 @@ location validation and player-focus availability belong to DimensionRouting, wh
 through the native opener. Local marker centering calls MapNavigation directly with X/Z and does
 not invent a saved Y. DimensionRouting refers
 weakly to its source document for identity and closed state, without a second lifetime flag.
-LocationRow shares the native inspector button and location menu for creature/portal Position,
+LocationRow shares the native inspector button and location menu for creature/portal Location,
 map Center, World Spawn and player locations. It calls DimensionRouting's common coordinate
 validation and focus path, including real X/Z positions without a saved Y. Unknown destinations,
 invalid coordinates and closed documents cannot jump. Player block positions retain block-center
@@ -189,8 +189,11 @@ WorldResources keeps the latest waiting app action per destination, shared acros
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
 but errors are presented only while that source remains open. Native commands and
 the toolbar call the navigation model directly for local actions.
-Go to Spawn and the World Spawn inspector row center the saved spawn block, matching initial
-map placement; every jump keeps the destination’s zoom.
+DimensionPresentation derives the world spawn once as a MapDestination: saved coordinates,
+dimension and block anchoring. Initial placement, sidebar distances, Go to Spawn and the World
+Spawn row all consume that destination. LocationRow passes it unchanged to routing; no control
+reconstructs the spawn or chooses its block rule. MapDestination keeps the saved copy/menu values
+separate from its map anchor; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
 current shared world data. It refers weakly to its document and adds no snapshot or closed flag.

@@ -125,7 +125,7 @@ struct WorldCommands: Commands {
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") { session?.routing.goToSpawn() }
             .keyboardShortcut("h", modifiers: [.command, .shift])
-            .disabled(session?.world.level.spawnPosition == nil)
+            .disabled(session?.presentation.worldSpawn == nil)
             Button("Save Place…") { session?.annotations.savePlace() }
                 .keyboardShortcut("d")
                 .disabled(session?.map == nil)

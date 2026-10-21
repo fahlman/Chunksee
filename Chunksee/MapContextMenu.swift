@@ -100,15 +100,14 @@ extension View {
 struct LocationRow: View {
     var title = Text("Location")
     let session: WorldSession
-    let coordinates: Coordinates
-    let dimension: String?
+    let destination: MapDestination
     var showsDimension = false
-    var blockPosition = false
 
     var body: some View {
+        let coordinates = destination.coordinates
+        let dimension = destination.dimension
         Button {
-            guard let dimension else { return }
-            session.routing.focus(on: coordinates, in: dimension, blockPosition: blockPosition)
+            session.routing.focus(on: destination)
         } label: {
             LabeledContent {
                 CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)

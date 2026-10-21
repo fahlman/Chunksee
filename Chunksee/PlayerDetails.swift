@@ -204,8 +204,9 @@ struct PlayerDetailView: View {
     private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
         let location = saved.position
         return LocationRow(title: Text(saved.title), session: session,
-                           coordinates: Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
-                           dimension: location.dimension, showsDimension: true, blockPosition: saved.isBlockPosition)
+                           destination: MapDestination(coordinates: Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
+                                                       dimension: location.dimension, isBlockPosition: saved.isBlockPosition),
+                           showsDimension: true)
     }
 
 }

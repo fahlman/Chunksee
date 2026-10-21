@@ -211,8 +211,8 @@ struct PortalDetailView: View {
         Form {
             Section {
                 LocationRow(session: session,
-                            coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
-                            dimension: portal.dimension)
+                            destination: MapDestination(coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
+                                                        dimension: portal.dimension))
             } header: {
                 InspectorHeading(title: Text("Nether Portal"), symbol: PlaceGroup.portal.symbol)
             }

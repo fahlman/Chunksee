@@ -86,10 +86,8 @@ struct WorldInfoView: View {
                 if let version = level.versionName { LabeledContent("Minecraft Version", value: version) }
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
-                if let spawn = level.spawnPosition {
-                    LocationRow(title: Text("World Spawn"), session: session,
-                                coordinates: Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y),
-                                dimension: level.spawnDimension, blockPosition: true)
+                if let spawn = session.presentation.worldSpawn {
+                    LocationRow(title: Text("World Spawn"), session: session, destination: spawn)
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {
