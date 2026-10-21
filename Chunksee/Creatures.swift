@@ -125,12 +125,8 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                 PetDetailRows(creature: creature)
             }
-            if let villager = creature.villager {
-                if let job = VillagerText.description(villager) {
-                    LabeledContent("Job", value: job)
-                } else if creature.id == "minecraft:villager" {
-                    LabeledContent("Job", value: String(localized: "None yet"))
-                }
+            if let job = VillagerText.inspectorJob(creature) {
+                LabeledContent("Job", value: job)
             }
         } header: {
             header
