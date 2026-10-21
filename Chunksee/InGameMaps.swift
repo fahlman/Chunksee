@@ -17,13 +17,6 @@ nonisolated enum InGameMapImage {
         // Map pixels are fully opaque or fully clear, so they're already premultiplied.
         return CGImage.rgba(pixels, width: MapItem.size, height: MapItem.size)
     }
-
-    /// A zoom that fits the whole map in a typical window, as a power of two so pixels stay crisp.
-    static func fittingScale(for map: MapItem) -> CGFloat {
-        let fit = 512 / CGFloat(map.sideInBlocks)
-        let power = pow(2, floor(log2(fit)))
-        return min(max(power, MapViewport.scaleRange.lowerBound), MapViewport.scaleRange.upperBound)
-    }
 }
 
 /// A map in the sidebar: thumbnail, number, place and scale.

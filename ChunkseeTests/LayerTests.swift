@@ -604,15 +604,14 @@ enum StructureTestWorld {
         ])])
     }
 
-    @Test func imageAndFittingScale() throws {
+    @Test func imageSize() throws {
         let map = try #require(MapItem(id: 1, nbt: mapNBT(dimension: .string("minecraft:overworld"), scale: 3)))
         let image = try #require(InGameMapImage.make(map))
         #expect(image.width == 128 && image.height == 128)
-        #expect(InGameMapImage.fittingScale(for: map) == 0.5)   // 1,024 blocks in about 512 points
-        #expect(InGameMapImage.fittingScale(for: try #require(MapItem(id: 2, nbt: mapNBT(dimension: .byte(0))))) == 4)
     }
 
-    @Test func fittingAnAlreadyCenteredMapIsASingleHistoryStep() async throws {
+    @Test(arguments: [0.125, 8.0])
+    func showingAMapPreservesZoomAndRecordsOnlyActualMovement(_ scale: CGFloat) async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let directory = world.appendingPathComponent("data/minecraft/maps")
@@ -624,14 +623,18 @@ enum StructureTestWorld {
         defer { session.close() }
         let item = try #require(session.presentation.inGameMaps.first)
         let map = try #require(session.map)
-        let original = MapViewport(center: CGPoint(x: item.centerX, y: item.centerZ), scale: 8)
+        let original = MapViewport(center: CGPoint(x: item.centerX, y: item.centerZ), scale: scale)
         map.viewport = original
         session.selection.show(item)
-        #expect(map.viewport == MapViewport(center: original.center, scale: 0.5))
-        session.navigation.goBack()
         #expect(map.viewport == original && !session.navigation.canGoBack)
+        let moved = MapViewport(center: CGPoint(x: -100, y: 200), scale: scale)
+        map.viewport = moved
+        session.selection.show(item)
+        #expect(map.viewport == original)
+        session.navigation.goBack()
+        #expect(map.viewport == moved && !session.navigation.canGoBack)
         session.navigation.goForward()
-        #expect(map.viewport == MapViewport(center: original.center, scale: 0.5))
+        #expect(map.viewport == original)
         #expect(!session.navigation.canGoForward)
         session.close()
         await session.waitUntilClosed()
@@ -660,7 +663,7 @@ enum StructureTestWorld {
         #expect(!session.presentation.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
         session.selection.show(try #require(session.presentation.inGameMaps.first { $0.id == 3 }))
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
-        #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == 2)
+        #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == before?.scale)
         #expect(session.selection.inspector == .selection)
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
         session.selection.mapClicked(nil, y: nil)

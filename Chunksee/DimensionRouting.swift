@@ -26,13 +26,12 @@ final class DimensionRouting {
         return true
     }
 
-    /// Shows a location in its dimension document, centers the map, and zooms in
-    /// to at least 2×, unless `keepingZoom`, as choosing from the sidebar does (Ryan, 2026-10-13).
-    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false, keepingZoom: Bool = false) {
+    /// Shows a location in its dimension document, keeping that document's current zoom.
+    func focus(on location: PlayerInfo.Location, blockPosition: Bool = false) {
         guard let source, !source.isClosed, source.dimensions.contains(where: { $0.id == location.dimension }),
               Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-        if route(to: location.dimension, perform: { $0.routing.focus(on: location, blockPosition: blockPosition, keepingZoom: keepingZoom) }) { return }
-        source.navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition, keepingZoom: keepingZoom)
+        if route(to: location.dimension, perform: { $0.routing.focus(on: location, blockPosition: blockPosition) }) { return }
+        source.navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition)
     }
 
     /// Whether choosing a player's row can center the map on their current position.

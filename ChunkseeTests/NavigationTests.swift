@@ -14,29 +14,30 @@ import Testing
         return (url, session)
     }
 
-    @Test func coordinateJumpsPreserveZoomAndLocationFocusStillZoomsIn() async throws {
+    @Test(arguments: [0.125, 8.0])
+    func coordinateAndLocationJumpsPreserveZoom(_ scale: CGFloat) async throws {
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let map = try #require(session.map)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
         #expect(!session.navigation.canFitWorld) // the dimension has no saved regions
-        map.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: 0.125)
+        map.viewport = MapViewport(center: CGPoint(x: 123, y: -456), scale: scale)
         session.navigation.goToCoordinates(CGPoint(x: -266, y: 71))
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: scale))
         for point in [CGPoint(x: CGFloat.nan, y: 0), CGPoint(x: 0, y: CGFloat.infinity),
                       CGPoint(x: CGFloat.greatestFiniteMagnitude, y: 0)] {
             session.navigation.goToCoordinates(point)
         }
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: scale))
         session.routing.focus(on: .init(dimension: "minecraft:overworld", x: 10, y: 64, z: 20))
-        #expect(map.viewport.scale == 2)
+        #expect(map.viewport == MapViewport(center: CGPoint(x: 10, y: 20), scale: scale))
         session.navigation.goBack()
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: scale))
         session.navigation.goBack()
-        #expect(map.viewport == MapViewport(center: CGPoint(x: 123, y: -456), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: 123, y: -456), scale: scale))
         #expect(!session.navigation.canGoBack)
         session.navigation.goToCoordinates(CGPoint(x: -8.7, y: 14.2))
-        #expect(map.viewport == MapViewport(center: CGPoint(x: -8.5, y: 14.5), scale: 0.125))
+        #expect(map.viewport == MapViewport(center: CGPoint(x: -8.5, y: 14.5), scale: scale))
         session.close()
         await session.waitUntilClosed()
     }

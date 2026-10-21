@@ -128,7 +128,7 @@ struct MapView: View {
                 ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in
                     Button {
                         if !session.annotations.ruler.isEnabled {
-                            session.navigation.focus(on: location.anchor ?? location.position, keepingZoom: true)
+                            session.navigation.focus(on: location.anchor ?? location.position)
                         }
                         activate(location.position, target: location.target, y: location.y)
                     } label: {
