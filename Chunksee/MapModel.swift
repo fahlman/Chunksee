@@ -21,6 +21,11 @@ final class MapModel {
 
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
+    private var currentRenderer: RegionTileRenderer {
+        var current = renderer
+        current.cutawayY = depth.cutawayY
+        return current
+    }
     private let work: BackgroundWork
     private let renderWork, cacheWork, hoverWork, coordinateWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
@@ -40,11 +45,12 @@ final class MapModel {
     init(work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
+         surfaceContext: MapSurfaceContext = .unknown,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
-         readTopBlocks: @escaping @Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
-            = { await MapModel.readTopBlocks(of: $0, in: $1, depth: $2, cached: $3) }) {
+         readTopBlocks: @escaping TopBlockReader
+            = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
         renderWork = work.makeScope()
         cacheWork = work.makeScope()
@@ -57,7 +63,8 @@ final class MapModel {
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: max(1, chunkConcurrency),
+        self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: surfaceContext,
+                                           chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)))
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
@@ -119,8 +126,7 @@ final class MapModel {
     private func startQueued() {
         while !isClosed, inFlight.count < regionConcurrency, !queue.isEmpty {
             let region = queue.removeFirst()
-            var renderer = renderer
-            renderer.cutawayY = depth.cutawayY
+            let renderer = currentRenderer
             nextJobID += 1
             let id = nextJobID, render = renderTile
             guard let task = renderWork.start(priority: nil, operation: { [weak self] in
@@ -280,7 +286,8 @@ final class MapModel {
     @ObservationIgnored private var regionGenerations: [RegionPosition: Int] = [:]
     /// The region file last read for the readout, reused while the pointer stays in its region.
     @ObservationIgnored private var hoverRegion: RegionFile?
-    @ObservationIgnored private let readTopBlocksFor: @Sendable (ChunkPosition, ChunkseeKit.Dimension, MapDepth, RegionFile?) async -> TopBlockRead?
+    typealias TopBlockReader = @Sendable (ChunkPosition, RegionTileRenderer, RegionFile?) async -> TopBlockRead?
+    @ObservationIgnored private let readTopBlocksFor: TopBlockReader
     private static let maxHoverChunks = 64
 
     /// Hover reads not yet finished, cancelled or not.
@@ -302,9 +309,9 @@ final class MapModel {
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
         let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
-        let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
+        let renderer = currentRenderer, cached = hoverRegion, read = readTopBlocksFor
         coordinateWork.start(priority: nil) { [weak self] in
-            let result = await read(chunk, dimension, depth, cached)
+            let result = await read(chunk, renderer, cached)
             guard let self else { return }
             guard !Task.isCancelled, !self.isClosed else { return }
             completion(result.flatMap { $0.blocks.indices.contains(index) ? $0.blocks[index] : nil })
@@ -331,9 +338,9 @@ final class MapModel {
     private func startHoverRead(of chunk: ChunkPosition) {
         activeHoverRead?.task.cancel()
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        let dimension = dimension, depth = depth, cached = hoverRegion, read = readTopBlocksFor
+        let renderer = currentRenderer, cached = hoverRegion, read = readTopBlocksFor
         guard let task = hoverWork.start(priority: nil, operation: { [weak self] in
-            let result = await read(chunk, dimension, depth, cached)
+            let result = await read(chunk, renderer, cached)
             guard let self else { return }
             if self.activeHoverRead?.id == id { self.activeHoverRead = nil }
             // A read cancelled for another chunk, or of a file the game has since saved, isn't kept.
@@ -352,14 +359,15 @@ final class MapModel {
     }
 
     @concurrent
-    nonisolated static func readTopBlocks(of chunk: ChunkPosition, in dimension: ChunkseeKit.Dimension, depth: MapDepth,
+    nonisolated static func readTopBlocks(of chunk: ChunkPosition, using renderer: RegionTileRenderer,
                                           cached: RegionFile?) async -> TopBlockRead? {
         guard !Task.isCancelled else { return nil }   // before any file I/O
         let region = chunk.region
         guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
-                ?? (try? dimension.region(x: region.x, z: region.z)) ?? nil,
+                ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
-              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ, ceilingY: RegionTileRenderer(dimension: dimension).ceilingY, cutawayY: depth.cutawayY)
+              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
+                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY)
         else { return nil }
         return (file, blocks)
     }

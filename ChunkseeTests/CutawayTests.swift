@@ -113,10 +113,10 @@ import Testing
     @Test func changingHeightCancelsPendingCopiesAndRereadsAStillPointer() async throws {
         try await withFixture { f in
             let dimension = try f.dimension(), gate = f.blocks
-            let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, dimension, depth, cached in
+            let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
                 guard !Task.isCancelled else { return nil }
-                if depth.isSurface { return await gate.read("surface") }
-                return await MapModel.readTopBlocks(of: chunk, in: dimension, depth: depth, cached: cached)
+                if renderer.cutawayY == nil { return await gate.read("surface") }
+                return await MapModel.readTopBlocks(of: chunk, using: renderer, cached: cached)
             })
             f.maps.append(map)
             let point = CGPoint(x: 8, y: 8)

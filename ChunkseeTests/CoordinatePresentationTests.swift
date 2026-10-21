@@ -80,7 +80,7 @@ import Testing
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
-        let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: RegionReader.options(in: dimension.id)))
+        let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: RegionReader.options()))
         #expect(saved?.containers == contents.containers)
     }
 

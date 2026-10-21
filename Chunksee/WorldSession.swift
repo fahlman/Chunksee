@@ -96,6 +96,7 @@ final class WorldSession {
         // otherwise at the origin.
         let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
+                           surfaceContext: MapSurfaceContext(settings: resources.details.dimensionSettings[dimension.id]),
                            renderTile: renderTile)
         if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.settings.depth(for: dimension.id))

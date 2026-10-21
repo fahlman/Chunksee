@@ -24,7 +24,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in try await reads.read(dimension.id) })
+                                       readRegion: { dimension, _, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         #expect(Set(await reads.requested) == Set(ids))
@@ -51,7 +51,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in try await reads.read(dimension.id) })
+                                       readRegion: { dimension, _, _ in try await reads.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let nether = try #require(resources.dimensions.first { $0.id == ids[1] })

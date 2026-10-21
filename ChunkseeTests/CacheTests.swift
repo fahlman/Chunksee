@@ -159,7 +159,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let creatures = await reader.creatures(region)
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.creatures
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.creatures
         #expect(saved?.first?.maxHealth == 10)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
@@ -185,7 +185,7 @@ import Testing
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
         #expect(await reader.structures(region).isEmpty)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options(in: dimension.id)))?.structures.map(StructureMarker.init)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }

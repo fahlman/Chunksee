@@ -15,7 +15,7 @@ final class DimensionPresentation {
 
     var heightRange: ClosedRange<Int>? {
         guard let source, let id = source.selectedDimensionID else { return nil }
-        return source.details.dimensionTypes[id]?.buildRange
+        return source.details.dimensionSettings[id]?.type?.buildRange
     }
 
     var displayName: String {

@@ -56,7 +56,7 @@ nonisolated enum TestWorld {
             let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Entities": .list(entities)]))
             try Data(regionFile([chunk])).write(to: dimension.regionURL(.entities, at: .init(x: 0, z: 0)))
         }
-        return try dimension.scan(region: .init(x: 0, z: 0), options: RegionReader.options(in: dimensionID))
+        return try dimension.scan(region: .init(x: 0, z: 0), options: RegionReader.options())
     }
 
     /// Write the old cache format explicitly, without keeping the retired production writer.

@@ -57,7 +57,7 @@ import Testing
             #expect(map.topBlock(at: example.point)?.id == example.id)
             #expect(map.topBlock(at: example.point)?.y == example.y)
             #expect(map.topBlocks.keys.contains(example.chunk))
-            let facts = try await RegionReader.scan(dimension, region: example.chunk.region)
+            let facts = try await RegionReader.scan(dimension, region: example.chunk.region, options: RegionReader.options())
             var content = MapContent()
             content.biomes = facts.surfaceBiomes
             #expect(content.biome(at: example.point) == "minecraft:plains")

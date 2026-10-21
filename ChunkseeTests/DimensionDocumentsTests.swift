@@ -465,7 +465,7 @@ import Testing
         let gate = AsyncReadGate<RegionFacts>()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { _, _ in await gate.read("region") })
+                                       readRegion: { _, _, _ in await gate.read("region") })
         await gate.waitForRequest("region")
         let waiter = Task { await resources.index.waitForIndex() }
         resources.index.rebuild(firstDimension: nil)   // queued behind the running pass

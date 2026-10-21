@@ -26,28 +26,32 @@ nonisolated struct ChunkFormats: Sendable, Equatable {
 /// Shares the library's one region scan between index and layer requests. The cache stores the
 /// library envelope; grouping, labels and map geometry are derived by the app afterwards.
 actor RegionReader {
-    typealias Read = @Sendable (ChunkseeKit.Dimension, RegionPosition) async throws -> RegionFacts
+    typealias Read = @Sendable (ChunkseeKit.Dimension, RegionPosition, RegionScanOptions) async throws -> RegionFacts
 
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
+    nonisolated let scanOptions: RegionScanOptions
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
 
-    init(dimension: ChunkseeKit.Dimension, cache: ScanCache, read: @escaping Read = RegionReader.scan) {
+    init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
+         options: RegionScanOptions = RegionReader.options(), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
+        self.scanOptions = options
         self.read = read
     }
 
-    nonisolated static func options(in dimension: String) -> RegionScanOptions {
+    nonisolated static func options(context: MapSurfaceContext = .unknown) -> RegionScanOptions {
         RegionScanOptions(blockIDs: Set(NotableBlock.byID.keys),
-                          biomeSampleY: dimension == "minecraft:the_nether" ? 64 : nil)
+                          biomeSampleY: context.biomeSampleY, height: context.buildHeight)
     }
 
     @concurrent
-    nonisolated static func scan(_ dimension: ChunkseeKit.Dimension, region: RegionPosition) async throws -> RegionFacts {
-        try dimension.scan(region: region, options: options(in: dimension.id))
+    nonisolated static func scan(_ dimension: ChunkseeKit.Dimension, region: RegionPosition,
+                                options: RegionScanOptions) async throws -> RegionFacts {
+        try dimension.scan(region: region, options: options)
     }
 
     nonisolated var availableRegions: Set<RegionPosition> {
@@ -77,7 +81,7 @@ actor RegionReader {
 
     func facts(_ region: RegionPosition) async -> RegionFacts? {
         guard !isClosed, !Task.isCancelled else { return nil }
-        let key = ScanCache.Key(dimension: dimension, region: region, options: Self.options(in: dimension.id))
+        let key = ScanCache.Key(dimension: dimension, region: region, options: scanOptions)
         let task: Task<RegionFacts, Error>
         let ownsRead: Bool
         if let existing = reading[key] { task = existing; ownsRead = false }
@@ -119,7 +123,7 @@ actor RegionReader {
             try Task.checkCancellation()
             return saved
         }
-        let facts = try await read(dimension, key.region)
+        let facts = try await read(dimension, key.region, key.options)
         try Task.checkCancellation()
         guard key.matches(facts) else { throw CocoaError(.fileReadCorruptFile) }
         // A save during the scan must not persist mixed results as an unchanged region.

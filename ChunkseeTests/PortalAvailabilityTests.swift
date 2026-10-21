@@ -48,9 +48,9 @@ import Testing
         func controlled() async throws -> (WorldSession, AsyncReadGate<RegionFacts>) {
             let gate = AsyncReadGate<RegionFacts>(), first = FirstRead()
             let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: names,
-                savedSearches: searches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region in
+                savedSearches: searches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region, options in
                     if dimension.id == "minecraft:the_nether", await first.take() { return await gate.read("nether") }
-                    return try await RegionReader.scan(dimension, region: region)
+                    return try await RegionReader.scan(dimension, region: region, options: options)
                 })
             self.resources.append(resources)
             gates.append(gate)

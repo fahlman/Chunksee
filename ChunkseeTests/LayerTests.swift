@@ -247,7 +247,7 @@ enum StructureTestWorld {
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
-        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: RegionReader.options(in: dimension.id)))?.creatures
+        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: RegionReader.options()))?.creatures
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))
@@ -547,7 +547,7 @@ enum StructureTestWorld {
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
         let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
         layer.isShown = true
         await gate.waitForRequest("region")
@@ -580,7 +580,7 @@ enum StructureTestWorld {
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: .off) { _, _ in await gate.read("region") }
+        let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
         let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
         layer.isShown = true
         await gate.waitForRequest("region")

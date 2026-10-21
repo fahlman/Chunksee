@@ -185,7 +185,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _ in try await state.read(dimension.id) })
+                                       readRegion: { dimension, _, _ in try await state.read(dimension.id) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")

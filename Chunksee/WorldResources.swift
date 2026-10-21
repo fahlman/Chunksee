@@ -99,6 +99,7 @@ final class WorldResources {
         let readers = snapshot.dimensions.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
+                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id])),
                          read: readRegion)
         }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
@@ -121,11 +122,13 @@ final class WorldResources {
         let added = snapshot.dimensions.filter { !known.contains($0.id) }
         guard !added.isEmpty else { return }
         let newIDs = Set(added.map(\.id))
-        for id in newIDs { details.dimensionTypes[id] = snapshot.details.dimensionTypes[id] }
+        for id in newIDs { details.dimensionSettings[id] = snapshot.details.dimensionSettings[id] }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
         index.include(added.map { dimension in
             RegionReader(dimension: dimension,
-                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot), read: readRegion)
+                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
+                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id])),
+                         read: readRegion)
         }, firstDimension: activeDimensionID)
     }
 
