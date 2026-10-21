@@ -98,7 +98,7 @@ extension View {
 
 /// Coordinates use their location commands instead of LabeledContent's automatic text-selection menu.
 struct LocationRow: View {
-    let title: Text
+    var title = Text("Location")
     let session: WorldSession
     let coordinates: Coordinates
     let dimension: String?

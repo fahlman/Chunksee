@@ -632,6 +632,9 @@ Choosing a saved-query result reveals that query through SavedSearches, like cho
 Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
 
+LocationRow owns the generic Location label (Last Location for a player’s saved location), following
+Ryan’s 2026-10-20 choice. World Spawn, Last Death, Respawn Point and a map’s Center keep their specific roles.
+
 LocationMenu supplies the same Copy Coordinates, Save Place and Measure Distance commands for
 map markers, generic layer/player/search/map rows, linked pets and inspector positions. Each caller
 supplies the saved position, dimension and optional height. LocationRow keeps native LabeledContent
