@@ -32,8 +32,8 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
         case .beeNest: "hexagon.fill"
         case .lightningRod: "bolt.fill"
         case .spawner: "cube.transparent"
-        case .unopenedLoot: "shippingbox.fill"
-        case .other: "scope"
+        case .unopenedLoot: "gift.fill"
+        case .other: "ellipsis.circle.fill"
         }
     }
 

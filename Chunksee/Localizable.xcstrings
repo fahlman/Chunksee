@@ -1,6 +1,30 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "All Statistics" : {
+      "comment" : "Heading of the sheet listing every saved statistic for the selected player.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Statistics"
+          }
+        }
+      }
+    },
+    "Value" : {
+      "comment" : "Statistics table column containing a count or a value with its unit.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Value"
+          }
+        }
+      }
+    },
     "%@ for %@" : {
       "comment" : "A villager's trade offer, shared by its inspector and search results. The first placeholder is the received item and quantity; the second is the requested cost, which can include two items."
     },

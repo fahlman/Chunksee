@@ -34,9 +34,9 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     var symbol: String {
         switch self {
         case .village: "house.fill"
-        case .stronghold: "eye.fill"
+        case .stronghold: "door.left.hand.closed"
         case .ancientCity: "building.2.fill"
-        case .trialChambers: "square.grid.3x3.fill"
+        case .trialChambers: "square.stack.3d.up.fill"
         case .monument: "water.waves"
         case .mansion: "house.lodge.fill"
         case .temple: "triangle.fill"
