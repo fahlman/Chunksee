@@ -51,7 +51,8 @@ nonisolated enum TestWorld {
     /// Real library facts for tests that control when a region read completes. The temporary
     /// world is removed before returning; the fixture never fabricates the private archive shape.
     static func facts(dimensionID: String = "minecraft:overworld", blockEntities: [NBT] = [],
-                      entities: [NBT] = [], inhabitedTime: Int = 0) throws -> RegionFacts {
+                      entities: [NBT] = [], inhabitedTime: Int = 0,
+                      options: RegionScanOptions = RegionReader.options()) throws -> RegionFacts {
         let root = try make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }
         let id = try #require(Identifier(dimensionID))
@@ -70,7 +71,7 @@ nonisolated enum TestWorld {
             let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Entities": .list(entities)]))
             try Data(regionFile([chunk])).write(to: dimension.regionURL(.entities, at: .init(x: 0, z: 0)))
         }
-        return try dimension.scan(region: .init(x: 0, z: 0), options: RegionReader.options())
+        return try dimension.scan(region: .init(x: 0, z: 0), options: options)
     }
 
     /// Write the old cache format explicitly, without keeping the retired production writer.
