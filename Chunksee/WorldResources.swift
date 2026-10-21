@@ -99,7 +99,7 @@ final class WorldResources {
         let readers = snapshot.dimensions.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id])),
+                         options: RegionReader.options(context: MapSurfaceContext(dimensionID: dimension.id, settings: snapshot.details.dimensionSettings[dimension.id])),
                          read: readRegion)
         }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
@@ -127,7 +127,7 @@ final class WorldResources {
         index.include(added.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id])),
+                         options: RegionReader.options(context: MapSurfaceContext(dimensionID: dimension.id, settings: details.dimensionSettings[dimension.id])),
                          read: readRegion)
         }, firstDimension: activeDimensionID)
     }

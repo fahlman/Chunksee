@@ -120,10 +120,14 @@ WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurf
 normal-view choices from those saved type/generation facts: known build height reaches the shared
 heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's
 upper plane for roof hiding, and its middle plane for biome sampling. It does not infer a roof from
-an ID or logical height. Unknown/empty ceiling context retains Surface; explicit cutaways always
+an ID or logical height. Resolved non-ceiling or empty generation context retains Surface; explicit cutaways always
 use their chosen Y. Map rendering, hover and Copy Coordinates receive the same renderer settings.
 Tile-renderer version 10 discards older pixels; Surface cache keys include build height and ceiling
-start, while cutaway keys ignore that unused context. RegionFacts cache keys already include scan
+start, while cutaway keys ignore that unused context. When saved type/generation metadata cannot
+be resolved, MapSurfaceContext alone preserves the existing Nether display (roof start Y127,
+biome sample Y64) for its saved dimension ID. This display fallback does not invent build bounds;
+resolved settings, including a non-ceiling type or an empty generation range, take priority.
+Other unresolved dimensions retain Surface. RegionFacts cache keys already include scan
 height and biome sample options. New dimension discovery adopts metadata only for new IDs;
 existing documents retain their snapshot until a document reread or move replaces their resources.
 
