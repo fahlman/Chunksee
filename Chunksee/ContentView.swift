@@ -257,7 +257,6 @@ private struct PlayerRow: View {
             } caption: {
                 CoordinateText(Text(detail))
             }
-            .help(help(availability: availability, isOutdated: isOutdated))
         } commands: {
             if let location = PlayerPresentation.position(of: player) {
                 LocationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
@@ -266,6 +265,7 @@ private struct PlayerRow: View {
         }
         .tag(SidebarItem.player(player.uuid))
         .id(SidebarItem.player(player.uuid))
+        .help(help(availability: availability, isOutdated: isOutdated))
     }
 
     private var isShown: Bool { !session.visibility.hiddenPlayers.contains(player.uuid) }
