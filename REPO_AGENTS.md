@@ -704,6 +704,12 @@ and search rows keep their existing details selection when they cannot navigate.
 search explains that it has no single location. Inspector location buttons share the same reason
 without disabling their surrounding copy/save context commands.
 
+SidebarDisclosure owns expansion for every top-level sidebar section. Native Section bindings
+all start open, keep each dimension view's choices, and let marker/action selection reopen only
+the selected row's ancestors. Active search pins reveal Search Results; saved-only pins reveal
+the Saved Searches section and that query's group. Nested group disclosure and content visibility
+remain separate from section expansion.
+
 Finder cannot distinguish an unmodified world folder from another `public.folder` by its
 contents. `LSHandlerRank = None` keeps Chunksee out of Open With while retaining native opening
 through File > Open and Open Recent. Opening folders from within the app and native window
