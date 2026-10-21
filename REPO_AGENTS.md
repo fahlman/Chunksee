@@ -74,7 +74,7 @@ the received item, both possible costs, enchantments and the saved sold-out stat
 uses the separate searchable item names and identifiers, without presentation wording.
 StructureGroup and PlaceGroup own the symbols shared by their sidebar rows and map markers.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
-than the Slime Chunks grid, and Other Places use a location pin rather than the item weapon scope.
+than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
 Find Player Names uses a settings gear because it opens Settings. World Info, Storage and Time
 Spent use filled variants to match the group style; shapes without a filled variant keep their
 native symbol. Ryan's requested Zoom magnifier and recognizable container symbols remain.
@@ -429,8 +429,8 @@ ordering, bounds culling and portal decorations belong to MapScene. Hidden capti
 font/layout is reused, and translucent caption fills are made only when shown. Outdated
 players and claimed places use one 0.6 dimming value, also used in the player sidebar. The player
 inspector and sidebar share the player's marker symbol. Beds and respawn markers share the filled
-bed symbol from PlaceGroup. Saved places retain the map pin; Other Places use a scope for a generic
-point, and Other Structures use a dashed square for a generic area. The portal inspector uses its
+bed symbol from PlaceGroup. Saved places retain the map pin; Other Places use the native more
+symbol, and Other Structures use a dashed square for a generic area. The portal inspector uses its
 group's symbol while retaining its singular title. Per-layer visibility remains with MapContent.
 Eligible marker captions share one collision layout in Canvas and export: selected items first,
 then players, then named pets, then other markers, with stable identity breaking ties. Lower-priority
