@@ -114,8 +114,18 @@ Kit owns WORLD_SURFACE/actual-block starts, checked heights and the section/colu
 the app resolves each reached palette entry once for color and accumulates contiguous water
 depth during that same walk. Uniform sections arrive as spans, and columns stop independently.
 Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
-above solid ground. Tile-renderer version 9 discards older pixels. Transparent display blocks,
-water shading and roof-view policy remain in the app; map pixels and hover names use the same scan.
+above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
+app; map pixels and hover names use the same scan.
+WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurfaceContext derives
+normal-view choices from those saved type/generation facts: known build height reaches the shared
+heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's
+upper plane for roof hiding, and its middle plane for biome sampling. It does not infer a roof from
+an ID or logical height. Unknown/empty ceiling context retains Surface; explicit cutaways always
+use their chosen Y. Map rendering, hover and Copy Coordinates receive the same renderer settings.
+Tile-renderer version 10 discards older pixels; Surface cache keys include build height and ceiling
+start, while cutaway keys ignore that unused context. RegionFacts cache keys already include scan
+height and biome sample options. New dimension discovery adopts metadata only for new IDs;
+existing documents retain their snapshot until a document reread or move replaces their resources.
 
 | File | Owns |
 |---|---|
@@ -248,13 +258,15 @@ ignored and removed after a successful replacement. Scans request the app's nota
 the complete envelope uses Foundation JSON under LZFSE compression (transform version 2),
 including nonfinite saved numbers. Binary-plist decoding was the dominant measured cache-read
 cost in the first migration; the storage codec does not change the facts or their ownership.
-Nether biome sampling explicitly uses Y64, with surface sampling elsewhere. Kit owns biome usage,
-section counts/heights, formats and inhabited time; RegionIndex only groups those facts for views.
+Biome sampling uses MapSurfaceContext's middle generation plane for known ceiling dimensions,
+with the shared surface sample elsewhere. Vanilla Nether metadata gives Y64; the saved mapping
+also supports remapped/custom dimension IDs. Kit owns biome usage, section counts/heights,
+formats and inhabited time; RegionIndex only groups those facts for views.
 Kit 0.39.0 supplies actual-column surface sampling when a heightmap is absent, including
 valid default-namespace air names. Empty middle columns do not invent a biome area from a
 neighbor or unused palette entry. RegionFacts interpretation version 6 rejects earlier surface
 and empty-item facts through the existing cache validation; transform version 2 is unchanged.
-This adoption does not change renderer colors, roof handling, Nether sample Y or the held cave list.
+The held cave list and renderer colors remain app presentation policy.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
@@ -277,9 +289,10 @@ changes Y once, without following later live movement; linked pets affect the de
 Slider dragging holds an unfinished height in the view and commits it only when released
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
-popover discards an unfinished drag. WorldDetails reads dimension types through Kit 0.33.0 in the
-existing off-main metadata pass. DimensionPresentation supplies the current dimension’s verified
-build range to the slider; logical height and ceiling metadata do not define the slider or renderer.
+popover discards an unfinished drag. WorldDetails reads dimension types and generation settings
+through Kit 0.40.0 in the existing off-main metadata pass. DimensionPresentation supplies the
+current dimension's verified build range to the slider; logical height does not define that range
+or the renderer's ceiling start. MapSurfaceContext owns the separate normal-view policy above.
 Numeric entry and its stepper accept any Int, without extending the slider’s limits. The slider
 thumb clamps to those limits until the user chooses a new value; its accessibility value describes
 that thumb. The number field handles SwiftUI's exit command directly so Escape dismisses the

@@ -18,7 +18,9 @@ import Testing
             url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
                 palette: ["minecraft:air", "minecraft:grass_block", "minecraft:stone", "minecraft:bedrock"]) { _, y, _ in
                 y == 15 ? 3 : y == 10 ? 2 : y <= 2 ? 1 : 0
-            }])
+            }], dimensionSettings: [
+                "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:the_nether"), noise: .string("minecraft:nether")),
+            ])
         }
 
         func dimension() throws -> ChunkseeKit.Dimension { try #require(try World(contentsOf: url).dimension("overworld")) }
@@ -53,8 +55,9 @@ import Testing
             let below = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0, cutawayY: -1))
             #expect(below.allSatisfy { $0 == nil })
             // Surface keeps its roof rule; cutaway must show the actual block at the requested Y.
-            let surface = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, ceilingY: 127))
-            let roofSlice = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, ceilingY: 127, cutawayY: 15))
+            let context = MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: f.url)).dimensionSettings["minecraft:overworld"])
+            let surface = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context))
+            let roofSlice = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context, cutawayY: 15))
             #expect(surface[0]?.y == 10 && roofSlice[0]?.y == 15)
         }
     }

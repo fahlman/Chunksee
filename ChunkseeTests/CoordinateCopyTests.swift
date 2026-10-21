@@ -7,18 +7,21 @@ import Testing
 @Suite(.isolatedStores, .serialized) struct CoordinateCopyTests {
     private let size = CGSize(width: 400, height: 300)
 
-    private func world(roof: Bool = false) throws -> URL {
+    private func world(roof: Bool = false, dimensionSettings: [String: NBT] = [:]) throws -> URL {
         try TestWorld.make(chunks: [TestWorld.chunk(x: -1, z: -1,
             palette: ["minecraft:air", "minecraft:stone", "minecraft:bedrock"]) { _, y, _ in
             roof && y >= 14 ? 2 : y <= 2 ? 1 : 0
-        }])
+        }], dimensionSettings: dimensionSettings)
     }
 
     private func map(_ url: URL, dimensionID: String = "overworld",
                      read: MapModel.TopBlockReader? = nil) throws -> MapModel {
-        let dimension = try #require(try World(contentsOf: url).dimension(dimensionID))
-        if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
-        return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
+        let world = try World(contentsOf: url)
+        let dimension = try #require(try world.dimension(dimensionID))
+        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                                     cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
+        return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)
     }
 
     private func board() -> NSPasteboard {
@@ -203,7 +206,10 @@ import Testing
     }
 
     @Test func theNetherUsesTheDisplayedFloorBelowItsRoof() async throws {
-        let url = try world(roof: true)
+        let url = try world(roof: true, dimensionSettings: [
+            "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"), noise: .string("minecraft:overworld")),
+            "minecraft:the_nether": TestWorld.noiseDimension(type: .string("minecraft:the_nether"), noise: .string("minecraft:nether")),
+        ])
         defer { try? FileManager.default.removeItem(at: url) }
         let nether = url.appendingPathComponent("DIM-1/region")
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)

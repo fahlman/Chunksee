@@ -21,17 +21,31 @@ nonisolated enum TestWorld {
             sections: [section], extra: ["yPos": .int(0)]))
     }
 
-    static func make(chunks: [ChunkSpec]) throws -> URL {
+    static func make(chunks: [ChunkSpec], dimensionSettings: [String: NBT] = [:]) throws -> URL {
         let root = try Fixtures.tempDirectory()
         let regionDir = root.appendingPathComponent("dimensions/minecraft/overworld/region")
         try FileManager.default.createDirectory(at: regionDir, withIntermediateDirectories: true)
-        let level = NBT.compound(["Data": .compound(["LevelName": .string("Test"), "DataVersion": .int(Int32(SaveVersion.java26_3))])])
+        var levelData: [String: NBT] = ["LevelName": .string("Test"), "DataVersion": .int(Int32(SaveVersion.java26_3))]
+        if !dimensionSettings.isEmpty {
+            levelData["DataPacks"] = .compound(["Enabled": .list([.string("vanilla")])])
+        }
+        let level = NBT.compound(["Data": .compound(levelData)])
         try Fixtures.writeGzippedNBT(level, to: root.appendingPathComponent("level.dat"))
+        if !dimensionSettings.isEmpty {
+            try Fixtures.writeGzippedNBT(.compound([
+                "DataVersion": .int(Int32(SaveVersion.java26_3)),
+                "data": .compound(["dimensions": .compound(dimensionSettings)]),
+            ]), to: root.appendingPathComponent("data/minecraft/world_gen_settings.dat"))
+        }
         let dimension = try #require(try World(contentsOf: root).dimension("minecraft:overworld"))
         for (region, regionChunks) in Dictionary(grouping: chunks, by: { ChunkPosition(x: $0.x, z: $0.z).region }) {
             try Fixtures.write(regionFile(regionChunks), to: dimension.regionURL(at: region))
         }
         return root
+    }
+
+    static func noiseDimension(type: NBT, noise: NBT) -> NBT {
+        .compound(["type": type, "generator": .compound(["type": .string("minecraft:noise"), "settings": noise])])
     }
 
     /// Real library facts for tests that control when a region read completes. The temporary
