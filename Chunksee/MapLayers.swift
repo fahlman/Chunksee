@@ -145,9 +145,11 @@ struct MapVisibilityRow<Content: View, Commands: View>: View {
 /// on combined accessibility rows too.
 struct VisibilityCommand: View {
     @Binding var isShown: Bool
+    var showsCurrentState = false
 
     var body: some View {
-        Button(isShown ? "Hide on Map" : "Show on Map", systemImage: isShown ? "eye" : "eye.slash") { isShown.toggle() }
+        let openEye = showsCurrentState ? isShown : !isShown
+        Button(isShown ? "Hide on Map" : "Show on Map", systemImage: openEye ? "eye" : "eye.slash") { isShown.toggle() }
     }
 }
 
@@ -156,7 +158,7 @@ struct VisibilityButton: View {
     @Binding var isShown: Bool
 
     var body: some View {
-        VisibilityCommand(isShown: $isShown)
+        VisibilityCommand(isShown: $isShown, showsCurrentState: true)
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
             .foregroundStyle(isShown ? .primary : .tertiary)
