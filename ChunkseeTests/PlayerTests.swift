@@ -251,9 +251,66 @@ import Testing
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
         ]))
         #expect(records.distances.map(\.name) == ["Boat", "Walk"])   // crouching, under 100 m, is left out
-        #expect(records.distances.first?.kilometers == 20_875.48)
+        #expect(records.distances.first?.value == 2_087_548_000)
         #expect(records.top("minecraft:mined", count: 2).map(\.name) == ["Dirt", "Stone"])
-        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk One Cm" })
+        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk" })
+    }
+
+    @Test func summaryAndTableShareReadableStatistics() throws {
+        let records = PlayerRecords(statistics: PlayerStatistics(dataVersion: SaveVersion.java26_3, values: [
+            "minecraft:custom": ["minecraft:play_time": 72_000, "minecraft:mob_kills": 3, "minecraft:deaths": 1,
+                                 "minecraft:walk_one_cm": 250_000, "minecraft:crouch_one_cm": 25,
+                                 "minecraft:damage_taken": 155, "mod:walk_one_cm": 999],
+        ]))
+        let english = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
+        #expect(records.summaryStatistics.map(\.name) == ["Time Played", "Mobs Killed", "Deaths", "Walk"])
+        for summary in records.summaryStatistics {
+            let table = try #require(records.rows.first { $0.id == summary.id })
+            #expect(summary.name == table.name && summary.value == table.value && summary.unit == table.unit)
+            #expect(english.format(summary) == english.format(table))
+        }
+        let play = try #require(records.summaryStatistics.first)
+        #expect(english.format(play).contains("1 hour") && !english.format(play).contains("72,000"))
+        let walk = try #require(records.distances.first)
+        #expect(english.format(walk).contains("2.5") && english.format(walk).contains("km"))
+        let french = StatisticRow.ValueStyle().locale(Locale(identifier: "fr_FR"))
+        #expect(french.format(walk).contains("2,5") && french.format(walk).contains("km"))
+        let crouch = try #require(records.rows.first { $0.statisticID == "minecraft:crouch_one_cm" })
+        #expect(english.format(crouch).contains("25") && english.format(crouch).contains("cm"))
+        let damage = try #require(records.rows.first { $0.statisticID == "minecraft:damage_taken" })
+        #expect(english.format(damage) == "7.75 hearts")
+        let unknown = try #require(records.rows.first { $0.statisticID == "mod:walk_one_cm" })
+        #expect(english.format(unknown) == "999" && unknown.value == 999)
+    }
+
+    @Test func statisticsKeepRawIdentityAndNumericSortValues() throws {
+        let records = PlayerRecords(statistics: PlayerStatistics(values: [
+            "minecraft:custom": ["minecraft:play_one_minute": 40, "minecraft:walk_one_cm": 100_000],
+            "minecraft:mined": ["mod_a:stone": 2, "mod_b:stone": 10],
+        ]))
+        let rows = records.rows
+        #expect(Set(rows.map(\.id)).count == 4)
+        let stones = records.top("minecraft:mined")
+        #expect(stones.map(\.name) == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
+        #expect(stones[0].id != stones[1].id)
+        #expect(records.summaryStatistics.first?.name == "Time Played")
+        #expect(records.summaryStatistics.first?.unit == .ticks)
+        let legacyTime = try #require(rows.first { $0.statisticID == "minecraft:play_one_minute" })
+        let summaryTime = try #require(records.summaryStatistics.first)
+        let style = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
+        #expect(summaryTime.value == legacyTime.value && style.format(summaryTime) == style.format(legacyTime))
+        #expect(legacyTime.statisticID == "minecraft:play_one_minute" && summaryTime.statisticID == "minecraft:play_time")
+        #expect(rows.sorted(using: KeyPathComparator(\StatisticRow.value)).map(\.value) == [2, 10, 40, 100_000])
+        for values in [[:], ["minecraft:play_time": -1], ["minecraft:play_one_minute": -1],
+                       ["minecraft:play_time": 80, "minecraft:play_one_minute": 40]] {
+            let statistics = PlayerStatistics(values: ["minecraft:custom": values])
+            let summary = PlayerRecords(statistics: statistics).summaryStatistics
+            if let time = statistics.playTime, time >= 0 {
+                #expect(summary.map(\.value) == [time])
+            } else {
+                #expect(summary.isEmpty)
+            }
+        }
     }
 
     @Test func readsUUIDFilesAndFallsBackToNameKeyedStatistics() async throws {
