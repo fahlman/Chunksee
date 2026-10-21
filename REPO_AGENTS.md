@@ -68,6 +68,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 
 ## Modules
 
+VisibilityCommand owns the shared Show/Hide label, binding and action. Compact eye buttons show
+the current state; context-menu symbols show the action (crossed eye for Hide, open eye for Show).
+
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
 ItemAppearance uses one filled tree for plant items across every item surface; BiomeGroup keeps
 its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not
