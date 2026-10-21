@@ -83,11 +83,22 @@ final class DimensionPresentation {
         return Self.spawnPoint(in: source.world, dimensionID: source.selectedDimensionID)
     }
 
+    var worldSpawn: MapDestination? {
+        guard let source else { return nil }
+        return Self.worldSpawn(in: source.world)
+    }
+
+    /// Initial placement, distance sorting and both spawn controls consume this same destination.
+    private static func worldSpawn(in world: World) -> MapDestination? {
+        guard let spawn = world.level.spawnPosition, let dimension = world.level.spawnDimension else { return nil }
+        return MapDestination(coordinates: Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y),
+                              dimension: dimension, isBlockPosition: true)
+    }
+
     /// The world's spawn in this dimension, otherwise the origin, shared with initial map placement.
     static func spawnPoint(in world: World, dimensionID: String?) -> CGPoint {
-        guard let spawn = world.level.spawnPosition,
-              world.level.spawnDimension == dimensionID else { return .zero }
-        return MapCoordinates.center(of: CGPoint(x: spawn.x, y: spawn.z))
+        guard let spawn = worldSpawn(in: world), spawn.dimension == dimensionID else { return .zero }
+        return spawn.anchor
     }
 
     var drawnPlayerMarkers: [MapMarker] {

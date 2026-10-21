@@ -22,7 +22,7 @@ import Testing
         return requests.makeAsyncIterator()
     }
 
-    @Test(arguments: ["menu", "location", "saved place"])
+    @Test(arguments: ["menu", "location", "map center", "saved place"])
     func aDimensionDoesNotChangeWithoutTheNativeOpener(_ action: String) async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
@@ -37,6 +37,7 @@ import Testing
         switch action {
         case "menu": source.routing.openDimension(place.dimension)
         case "location": source.routing.focus(on: .init(dimension: place.dimension, x: 9, y: 64, z: -7))
+        case "map center": source.routing.focus(on: Coordinates(place.position), in: place.dimension)
         default: source.annotations.visit(place)
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")
@@ -137,7 +138,7 @@ import Testing
         await resources.waitUntilClosed()
     }
 
-    @Test(arguments: [false, true], ["location", "portal"])
+    @Test(arguments: [false, true], ["location", "map center", "portal"])
     func routedJumpsKeepTheDestinationsLiveOrRestoredZoom(alreadyOpen: Bool, action: String) async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
@@ -146,7 +147,8 @@ import Testing
         let sourceView = MapViewport(center: CGPoint(x: 100, y: 200), scale: 8)
         let targetView = MapViewport(center: CGPoint(x: -100, y: -200), scale: 0.125)
         source.map?.viewport = sourceView
-        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: .init())
+        let targetDepth = MapDepth(y: 48, isSurface: false)
+        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: targetDepth)
         let existing = alreadyOpen ? WorldSession(resources: resources, dimensionID: dimension) : nil
         var opened = recordOpens(of: source)
         let expected: CGPoint
@@ -156,13 +158,18 @@ import Testing
             source.selection.show(portal)
         } else {
             expected = CGPoint(x: 9.25, y: -7.75)
-            source.routing.focus(on: .init(dimension: dimension, x: 9.25, y: 64, z: -7.75))
+            if action == "map center" {
+                source.routing.focus(on: Coordinates(expected), in: dimension)
+            } else {
+                source.routing.focus(on: .init(dimension: dimension, x: 9.25, y: 64, z: -7.75))
+            }
         }
         let requested = await opened.next(isolation: #isolation)
         #expect(requested == resources.documentURL(for: dimension))
         let destination = existing ?? WorldSession(resources: resources, dimensionID: dimension)
         #expect(source.map?.viewport == sourceView && !source.navigation.canGoBack)
         #expect(destination.map?.viewport == MapViewport(center: expected, scale: targetView.scale))
+        if action == "map center" { #expect(destination.map?.depth == targetDepth) }
         destination.navigation.goBack()
         #expect(destination.map?.viewport == targetView && !destination.navigation.canGoBack)
         resources.close()

@@ -63,8 +63,12 @@ nonisolated struct Coordinates: Equatable, Sendable {
     /// Unreadable saved positions have no block coordinate; conversion must never trap.
     static func block(_ value: Double) -> Int? { BlockPosition.coordinate(containing: value) }
 
+    var isMappable: Bool {
+        MapCoordinates(point: point) != nil && (y.map { Self.block($0) != nil } ?? true)
+    }
+
     static func canLocate(x: Double, y: Double, z: Double) -> Bool {
-        MapCoordinates(point: CGPoint(x: x, y: z)) != nil && block(y) != nil
+        Coordinates(CGPoint(x: x, y: z), y: y).isMappable
     }
 
     static func text(x: Double, z: Double) -> String {

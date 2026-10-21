@@ -3,6 +3,17 @@ import Foundation
 import ChunkseeKit
 import Observation
 
+/// Saved coordinates retain their copy value while block destinations use the block's center.
+nonisolated struct MapDestination {
+    let coordinates: Coordinates
+    let dimension: String?
+    var isBlockPosition = false
+
+    var anchor: CGPoint {
+        isBlockPosition ? MapCoordinates.center(of: coordinates.point) : coordinates.point
+    }
+}
+
 /// App actions delivered through native dimension documents, without owning their windows.
 @Observable
 final class DimensionRouting {
@@ -28,16 +39,36 @@ final class DimensionRouting {
 
     /// Shows a location in its dimension document, keeping that document's current zoom.
     func focus(on location: PlayerInfo.Location, blockPosition: Bool = false) {
-        guard let source, !source.isClosed, source.dimensions.contains(where: { $0.id == location.dimension }),
-              Coordinates.canLocate(x: location.x, y: location.y, z: location.z) else { return }
-        if route(to: location.dimension, perform: { $0.routing.focus(on: location, blockPosition: blockPosition) }) { return }
-        source.navigation.focus(on: CGPoint(x: location.x, y: location.z), blockPosition: blockPosition)
+        focus(on: Coordinates(CGPoint(x: location.x, y: location.z), y: location.y),
+              in: location.dimension, blockPosition: blockPosition)
+    }
+
+    func goToSpawn() {
+        guard let spawn = source?.presentation.worldSpawn else { return }
+        focus(on: spawn)
+    }
+
+    /// A map center has no saved height; it follows the same jump without inventing one.
+    func focus(on coordinates: Coordinates, in dimension: String, blockPosition: Bool = false) {
+        focus(on: MapDestination(coordinates: coordinates, dimension: dimension, isBlockPosition: blockPosition))
+    }
+
+    func focus(on destination: MapDestination) {
+        guard let source, let dimension = destination.dimension,
+              canFocus(destination.coordinates, in: dimension) else { return }
+        if route(to: dimension, perform: { $0.routing.focus(on: destination) }) { return }
+        source.navigation.focus(on: destination.anchor)
+    }
+
+    func canFocus(_ coordinates: Coordinates, in dimension: String?) -> Bool {
+        guard let source, !source.isClosed, let dimension else { return false }
+        return coordinates.isMappable && source.dimensions.contains { $0.id == dimension }
     }
 
     /// Whether choosing a player's row can center the map on their current position.
     func canFocus(_ player: PlayerInfo) -> Bool {
-        guard let source, let position = PlayerPresentation.position(of: player) else { return false }
-        return source.dimensions.contains { $0.id == position.dimension }
+        guard let position = PlayerPresentation.position(of: player) else { return false }
+        return canFocus(Coordinates(CGPoint(x: position.x, y: position.z), y: position.y), in: position.dimension)
     }
 
     private func open(_ dimension: String, then perform: ((WorldSession) -> Void)?) {

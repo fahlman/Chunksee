@@ -96,20 +96,27 @@ extension View {
     }
 }
 
-/// Coordinates use their location commands instead of LabeledContent's automatic text-selection menu.
+/// Inspector coordinates share native activation, validation and location commands.
 struct LocationRow: View {
     var title = Text("Location")
     let session: WorldSession
-    let coordinates: Coordinates
-    let dimension: String?
+    let destination: MapDestination
+    var showsDimension = false
 
     var body: some View {
-        LabeledContent {
-            CoordinateText(coordinates)
-                .textSelection(.disabled)
+        let coordinates = destination.coordinates
+        let dimension = destination.dimension
+        Button {
+            session.routing.focus(on: destination)
         } label: {
-            title
+            LabeledContent {
+                CoordinateText(coordinates, dimension: showsDimension ? dimension.map(session.presentation.dimensionName) : nil)
+                    .textSelection(.disabled)
+            } label: {
+                title
+            }
         }
+        .disabled(!session.routing.canFocus(coordinates, in: dimension))
         .locationMenu(session: session, position: coordinates.point, dimension: dimension, y: coordinates.y)
     }
 }
