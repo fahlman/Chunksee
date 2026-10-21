@@ -31,7 +31,7 @@ struct WorldView: View {
                             .tag(SidebarItem.storage)
                             .help("Show totals of the items stored in this dimension’s containers")
                         MapVisibilityRow(isShown: $heatMap.isShown) {
-                            Label("Time Spent", systemImage: "flame.fill")
+                            Label("Time Spent", systemImage: "clock.fill")
                         }
                         .help("Color the map by how long players spent near each chunk")
                         MapVisibilityRow(isShown: $slimeChunks.isShown) {

@@ -75,9 +75,11 @@ uses the separate searchable item names and identifiers, without presentation wo
 StructureGroup and PlaceGroup own the symbols shared by their sidebar rows and map markers.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
 than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
-Find Player Names uses a settings gear because it opens Settings. World Info, Storage and Time
-Spent use filled variants to match the group style; shapes without a filled variant keep their
-native symbol. Ryan's requested Zoom magnifier and recognizable container symbols remain.
+Find Player Names uses a settings gear because it opens Settings. Storage uses an archive box,
+Unopened Loot a gift and Buried Treasure a shipping box, following Ryan's 2026-10-20 decision
+to distinguish those categories. Time Spent uses a clock rather than the item flame. World Info
+and the World rows use filled variants; native shapes without one keep their own symbol.
+Ryan's requested Zoom magnifier remains.
 ChunkseeIndex.StoredItemTotal owns storage quantities and outer-container counts, including nested
 items. StoredItem projects its results into app display names and count/name order; it does not
 repeat the aggregation. The app and isolated test host link both published products.
