@@ -32,6 +32,13 @@ final class DimensionRouting {
               in: location.dimension, blockPosition: blockPosition)
     }
 
+    func goToSpawn() {
+        guard let source, let spawn = source.world.level.spawnPosition,
+              let dimension = source.world.level.spawnDimension else { return }
+        focus(on: Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y),
+              in: dimension, blockPosition: true)
+    }
+
     /// A map center has no saved height; it follows the same jump without inventing one.
     func focus(on coordinates: Coordinates, in dimension: String, blockPosition: Bool = false) {
         guard let source, canFocus(coordinates, in: dimension) else { return }

@@ -181,6 +181,8 @@ WorldResources keeps the latest waiting app action per destination, shared acros
 a failed earlier opening cannot discard a newer action. A native opening can outlive its source,
 but errors are presented only while that source remains open. Native commands and
 the toolbar call the navigation model directly for local actions.
+Go to Spawn and the World Spawn inspector row center the saved spawn block, matching initial
+map placement; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
 current shared world data. It refers weakly to its document and adds no snapshot or closed flag.

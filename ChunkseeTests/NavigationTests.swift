@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import Observation
 import Testing
 @testable import ChunkseeTestHost
@@ -40,6 +41,34 @@ import Testing
         #expect(map.viewport == MapViewport(center: CGPoint(x: -8.5, y: 14.5), scale: scale))
         session.close()
         await session.waitUntilClosed()
+    }
+
+    @Test(arguments: [0.125, 8.0])
+    func goToSpawnCentersTheInitialSpawnBlockAndKeepsZoom(_ scale: CGFloat) async throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
+            "LevelName": .string("Spawn Navigation"), "DataVersion": .int(5023),
+            "spawn": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-9, 64, 12])]),
+        ])]), to: url.appendingPathComponent("level.dat"))
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let map = try #require(session.map)
+        let spawnCenter = CGPoint(x: -8.5, y: 12.5)
+        #expect(map.viewport.center == spawnCenter)
+        let original = MapViewport(center: CGPoint(x: 100, y: 200), scale: scale)
+        map.viewport = original
+        map.setDepth(MapDepth(y: 48, isSurface: false))
+        session.routing.goToSpawn()
+        #expect(map.viewport == MapViewport(center: spawnCenter, scale: scale))
+        #expect(map.depth == MapDepth(y: 48, isSurface: false))
+        session.navigation.goBack()
+        #expect(map.viewport == original)
+        session.close()
+        await session.waitUntilClosed()
+        session.routing.goToSpawn()
+        #expect(map.viewport == original)
     }
 
     @Test func backForwardRememberPansAndZoomsAndANewJumpClearsForward() async throws {

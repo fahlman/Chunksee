@@ -89,7 +89,7 @@ struct WorldInfoView: View {
                 if let spawn = level.spawnPosition {
                     LocationRow(title: Text("World Spawn"), session: session,
                                 coordinates: Coordinates(CGPoint(x: spawn.x, y: spawn.z), y: spawn.y),
-                                dimension: level.spawnDimension)
+                                dimension: level.spawnDimension, blockPosition: true)
                 }
                 if let seed = details.seed {
                     LabeledContent("Seed") {

@@ -123,12 +123,7 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsCoordinateSheet == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
-            Button("Go to Spawn") {
-                guard let session, let spawn = session.world.level.spawnPosition,
-                      let dimension = session.world.level.spawnDimension else { return }
-                session.routing.focus(on: .init(dimension: dimension,
-                                       x: Double(spawn.x), y: Double(spawn.y), z: Double(spawn.z)))
-            }
+            Button("Go to Spawn") { session?.routing.goToSpawn() }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             .disabled(session?.world.level.spawnPosition == nil)
             Button("Save Place…") { session?.annotations.savePlace() }
