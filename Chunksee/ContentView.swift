@@ -249,13 +249,10 @@ private struct PlayerRow: View {
 
     var body: some View {
         MapVisibilityRow(isShown: visibility) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.presentation.name(of: player))
-                    CoordinateText(Text(detail)).font(.caption).foregroundStyle(.secondary)
-                }
-            } icon: {
+            LocationLabel(title: Text(session.presentation.name(of: player))) {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
+            } caption: {
+                CoordinateText(Text(detail))
             }
             .opacity(canFocus && !session.presentation.isOutdated(player) ? 1 : MarkerStyle.dimmedOpacity)
             .help(help)
@@ -397,11 +394,11 @@ private struct HitList: View {
             Text("No matches").foregroundStyle(.secondary)
         } else {
             ForEach(hits.rows) { hit in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(hit.detail).lineLimit(2)
-                    CoordinateText(Text(location(hit))).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                LocationLabel(title: Text(hit.detail)) {
+                    Image(systemName: MarkerStyle.search.symbol.name)
+                } caption: {
+                    CoordinateText(Text(location(hit)))
                 }
-                .padding(.vertical, 2)
                 .tag(SidebarItem.hit(query: query, id: hit.id))
                 .id(SidebarItem.hit(query: query, id: hit.id))
                 .locationMenu(session: session, position: hit.position, dimension: hit.dimension,

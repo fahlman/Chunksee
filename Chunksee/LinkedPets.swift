@@ -12,11 +12,11 @@ struct LinkedPetsSection: View {
             Section("Linked Pets") {
                 ForEach(pets) { pet in
                     Button { session.selection.showLinkedPet(pet, ownedBy: playerID) } label: {
-                        VStack(alignment: .leading) {
-                            Label(pet.name, systemImage: "pawprint.fill")
+                        LocationLabel(title: Text(pet.name)) {
+                            Image(systemName: pet.group.symbol)
+                        } caption: {
                             CoordinateText(Coordinates(pet.position, y: pet.creature.y),
                                            dimension: session.presentation.dimensionName(pet.dimension))
-                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .accessibilityIdentifier("linked-pet-\(pet.id)")

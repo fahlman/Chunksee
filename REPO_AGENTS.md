@@ -628,6 +628,11 @@ map, distinct from the visibility action.
 Layer-marker, player and search-result coordinate captions include their saved Y through the
 shared Coordinates formatter and CoordinateText. Missing heights stay absent; map centers,
 biome areas and saved-place annotations do not acquire an invented or terrain-derived Y.
+LocationLabel supplies one native Label layout for those marker/player/search rows, saved places,
+in-game maps and Linked Pets: icon, up to two lines of name, then a single secondary caption.
+Coordinates and optional kind/dimension/scale context stay with the existing presentation owners;
+context precedes coordinates. Maps retain their thumbnail, with the shared map symbol as a fallback.
+Selection, visibility, menus and navigation remain outside this stateless label.
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail

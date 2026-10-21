@@ -46,6 +46,24 @@ struct CoordinateText: View {
     var body: some View { text.monospacedDigit() }
 }
 
+/// Location rows keep their icon, name and coordinate/context caption aligned in every list.
+struct LocationLabel<Icon: View, Caption: View>: View {
+    let title: Text
+    @ViewBuilder var icon: Icon
+    @ViewBuilder var caption: Caption
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                title.lineLimit(2)
+                caption.font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        } icon: {
+            icon
+        }
+    }
+}
+
 /// A map position with an optional saved height; formatting never invents a missing Y.
 nonisolated struct Coordinates: Equatable, Sendable {
     let point: CGPoint
