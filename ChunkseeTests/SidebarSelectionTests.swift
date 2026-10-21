@@ -573,9 +573,11 @@ import Testing
         session.selection.choose(.player(playerID))
         #expect(session.selection.inspector == .player(playerID) && MapContent(session: session).selectedPlayerID == playerID)
         #expect(session.map?.viewport.center == CGPoint(x: position.x, y: position.z))
-        // A marker without details closes them, as it closes a pet's.
+        // Another item replaces the player with its own details and clears the player highlight.
         session.selection.mapClicked(.row(.structure(structure.id)), y: nil)
-        #expect(session.selection.inspector == nil && MapContent(session: session).selectedPlayerID == nil)
+        #expect(session.selection.inspector == .selection && MapContent(session: session).selectedPlayerID == nil)
+        guard case .structure(let selected)? = session.selection.inspectorItem else { Issue.record("Missing structure inspector"); return }
+        #expect(selected.id == structure.id)
         // Their marker shows them again without moving the map; an empty click closes them.
         let viewport = session.map?.viewport
         session.selection.mapClicked(.row(.player(playerID)), y: nil)

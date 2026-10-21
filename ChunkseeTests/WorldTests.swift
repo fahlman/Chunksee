@@ -197,7 +197,8 @@ import Testing
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == ["Orchard"])
+        #expect(session.search.results.map(\.title) == ["Sign"])
+        #expect(session.search.results.map(\.detail) == ["Orchard"])
         session.search.text = ""
         #expect(session.search.results.isEmpty)
         #expect(MapContent(session: session).hits.isEmpty)
@@ -208,7 +209,8 @@ import Testing
         await session.search.waitForSearch()
         session.search.saveSearch()
         session.search.text = ""
-        #expect(MapContent(session: session).hits.map(\.title) == ["Orchard"])
+        #expect(MapContent(session: session).hits.map(\.title) == ["Sign"])
+        #expect(MapContent(session: session).hits.map(\.detail) == ["Orchard"])
         let saved = try #require(session.savedSearches.all.first)
         #expect(SavedSearches(defaults: defaults).all == [saved])
         session.savedSearches.setShown(saved.id, false)
@@ -376,7 +378,8 @@ import Testing
         let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
-        #expect(mending.map(\.title) == ["Librarian, Master"])
+        #expect(mending.map(\.title) == ["Librarian"])
+        #expect(VillagerText.inspectorJob(librarian) == "Librarian, Master")
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
         #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))

@@ -27,18 +27,20 @@ import Testing
             #expect(villager.level == level.map(Int.init) ?? 1)
             #expect(VillagerText.description(villager) == expected)
             #expect(marker.name == "Farmer")
-            #expect(hits.map(\.title) == [expected])
+            #expect(hits.map(\.title) == ["Farmer"])
+            #expect(VillagerText.inspectorJob(saved) == expected)
         }
     }
 
-    @Test func everyKnownLevelIsConsistentAndShortMarkersStayShort() throws {
+    @Test func everyKnownLevelIsInTheInspectorAndItemNamesStayShort() throws {
         for (index, name) in ["Novice", "Apprentice", "Journeyman", "Expert", "Master"].enumerated() {
             let saved = try creature(level: Int32(index + 1))
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
             let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creaturePoints: PointMarkers([marker]))), players: []) { _ in .named("") }
             #expect(VillagerText.description(villager) == "Farmer, \(name)")
-            #expect(hits.map(\.title) == ["Farmer, \(name)"])
+            #expect(hits.map(\.title) == ["Farmer"])
+            #expect(VillagerText.inspectorJob(saved) == "Farmer, \(name)")
             #expect(marker.name == "Farmer")
         }
         var named = try creature(level: 2)
