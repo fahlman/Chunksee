@@ -122,13 +122,18 @@ import Testing
         let depth = map.depth
         let target = Coordinates(CGPoint(x: -8.7, y: -16.1))
         #expect(target.y == nil && session.routing.canFocus(target, in: dimension))
+        #expect(session.routing.availability(of: target, in: dimension) == .available)
+        #expect(session.routing.availability(of: nil, in: dimension) == .unknown)
         #expect(!session.routing.canFocus(target, in: nil))
         #expect(!session.routing.canFocus(target, in: "missing:dimension"))
+        #expect(session.routing.availability(of: target, in: nil) == .missingDimension)
+        #expect(session.routing.availability(of: target, in: "missing:dimension") == .missingDimension)
         session.routing.focus(on: target, in: "missing:dimension")
         for invalid in [Double.nan, .infinity, -.infinity, .greatestFiniteMagnitude] {
             for coordinates in [Coordinates(CGPoint(x: invalid, y: 0)), Coordinates(CGPoint(x: 0, y: invalid)),
                                 Coordinates(.zero, y: invalid)] {
                 #expect(!session.routing.canFocus(coordinates, in: dimension))
+                #expect(session.routing.availability(of: coordinates, in: dimension) == .unknown)
                 session.routing.focus(on: coordinates, in: dimension)
             }
         }
@@ -144,6 +149,7 @@ import Testing
         session.close()
         await session.waitUntilClosed()
         #expect(!session.routing.canFocus(target, in: dimension))
+        #expect(session.routing.availability(of: target, in: dimension) == .closed)
         session.routing.focus(on: target, in: dimension)
         #expect(map.viewport == lastView)
     }

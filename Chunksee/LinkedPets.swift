@@ -11,8 +11,9 @@ struct LinkedPetsSection: View {
         if !pets.isEmpty {
             Section("Linked Pets") {
                 ForEach(pets) { pet in
+                    let availability = session.routing.availability(of: Coordinates(pet.position, y: pet.creature.y), in: pet.dimension)
                     Button { session.selection.showLinkedPet(pet, ownedBy: playerID) } label: {
-                        LocationLabel(title: Text(pet.name)) {
+                        LocationLabel(title: Text(pet.name), isDimmed: !availability.canNavigate) {
                             Image(systemName: pet.group.symbol)
                         } caption: {
                             CoordinateText(Coordinates(pet.position, y: pet.creature.y),
@@ -20,7 +21,7 @@ struct LinkedPetsSection: View {
                         }
                     }
                     .accessibilityIdentifier("linked-pet-\(pet.id)")
-                    .help("Show this pet on the map")
+                    .help(availability.help)
                     .locationMenu(session: session, position: pet.position, dimension: pet.dimension,
                                   y: pet.creature.y)
                 }

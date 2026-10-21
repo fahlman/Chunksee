@@ -49,6 +49,7 @@ struct CoordinateText: View {
 /// Location rows keep their icon, name and coordinate/context caption aligned in every list.
 struct LocationLabel<Icon: View, Caption: View>: View {
     let title: Text
+    var isDimmed = false
     @ViewBuilder var icon: Icon
     @ViewBuilder var caption: Caption
 
@@ -61,6 +62,7 @@ struct LocationLabel<Icon: View, Caption: View>: View {
         } icon: {
             icon
         }
+        .opacity(isDimmed ? MarkerStyle.dimmedOpacity : 1)
     }
 }
 

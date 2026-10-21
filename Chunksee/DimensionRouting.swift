@@ -14,6 +14,22 @@ nonisolated struct MapDestination {
     }
 }
 
+/// Navigation controls explain the same reason that prevents their location from opening.
+nonisolated enum LocationAvailability: Equatable {
+    case available, unknown, missingDimension, closed
+
+    var canNavigate: Bool { self == .available }
+
+    var help: String {
+        switch self {
+        case .available: String(localized: "Center the map on this location")
+        case .unknown: String(localized: "This item has no usable saved location")
+        case .missingDimension: String(localized: "This location’s dimension is unavailable")
+        case .closed: String(localized: "This world is closed")
+        }
+    }
+}
+
 /// App actions delivered through native dimension documents, without owning their windows.
 @Observable
 final class DimensionRouting {
@@ -61,14 +77,25 @@ final class DimensionRouting {
     }
 
     func canFocus(_ coordinates: Coordinates, in dimension: String?) -> Bool {
-        guard let source, !source.isClosed, let dimension else { return false }
-        return coordinates.isMappable && source.dimensions.contains { $0.id == dimension }
+        availability(of: coordinates, in: dimension).canNavigate
+    }
+
+    func availability(of coordinates: Coordinates?, in dimension: String?) -> LocationAvailability {
+        guard let source, !source.isClosed else { return .closed }
+        guard let coordinates, coordinates.isMappable else { return .unknown }
+        guard let dimension, source.dimensions.contains(where: { $0.id == dimension }) else { return .missingDimension }
+        return .available
     }
 
     /// Whether choosing a player's row can center the map on their current position.
     func canFocus(_ player: PlayerInfo) -> Bool {
-        guard let position = PlayerPresentation.position(of: player) else { return false }
-        return canFocus(Coordinates(CGPoint(x: position.x, y: position.z), y: position.y), in: position.dimension)
+        availability(of: player).canNavigate
+    }
+
+    func availability(of player: PlayerInfo) -> LocationAvailability {
+        let location = PlayerPresentation.position(of: player)
+        return availability(of: location.map { Coordinates(CGPoint(x: $0.x, y: $0.z), y: $0.y) },
+                            in: location?.dimension)
     }
 
     private func open(_ dimension: String, then perform: ((WorldSession) -> Void)?) {

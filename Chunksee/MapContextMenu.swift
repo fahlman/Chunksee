@@ -106,6 +106,7 @@ struct LocationRow: View {
     var body: some View {
         let coordinates = destination.coordinates
         let dimension = destination.dimension
+        let availability = session.routing.availability(of: coordinates, in: dimension)
         Button {
             session.routing.focus(on: destination)
         } label: {
@@ -116,7 +117,8 @@ struct LocationRow: View {
                 title
             }
         }
-        .disabled(!session.routing.canFocus(coordinates, in: dimension))
+        .disabled(!availability.canNavigate)
+        .help(availability.help)
         .locationMenu(session: session, position: coordinates.point, dimension: dimension, y: coordinates.y)
     }
 }

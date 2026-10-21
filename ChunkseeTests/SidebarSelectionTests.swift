@@ -401,6 +401,9 @@ import Testing
             case .inventory(let player), .enderChest(let player): id = player
             default: Issue.record("Expected a player's inventory or ender chest"); continue
             }
+            let availability = session.routing.availability(of: hit.position.map { Coordinates($0, y: hit.y.map(Double.init)) },
+                                                            in: hit.dimension)
+            #expect(availability == (hit.position == nil ? .unknown : .available))
             session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
             session.selection.show(map)
             let viewport = session.map?.viewport
@@ -620,6 +623,7 @@ import Testing
         let missing = try #require(session.savedPlaces.add(name: "Missing", dimension: "missing:dimension", at: .zero))
         let viewport = session.map?.viewport
         #expect(!session.annotations.canVisit(missing) && session.annotations.listedPlaces.contains { $0.id == missing.id })
+        #expect(session.routing.availability(of: Coordinates(missing.position), in: missing.dimension) == .missingDimension)
         session.selection.choose(.savedPlace(missing.id))
         #expect(session.map?.viewport == viewport && session.selection.sidebarSelection == .player(playerID))
         session.search.text = " diamond "

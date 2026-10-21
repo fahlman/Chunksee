@@ -658,6 +658,8 @@ enum StructureTestWorld {
         // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.
         #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 6])
         let nether = try #require(session.presentation.inGameMaps.first { $0.id == 6 })
+        #expect(session.routing.availability(of: Coordinates(CGPoint(x: nether.centerX, y: nether.centerZ)),
+                                            in: nether.dimension) == .missingDimension)
         let before = session.map?.viewport
         session.selection.show(nether)
         #expect(!session.presentation.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
@@ -671,5 +673,8 @@ enum StructureTestWorld {
         // Closing the inspector takes it away.
         session.selection.inspector = nil
         #expect(session.selection.mapSelection == nil && MapContent(session: session).inGameMap == nil)
+        session.close()
+        await session.waitUntilClosed()
+        #expect(!session.presentation.canShow(nether))
     }
 }
