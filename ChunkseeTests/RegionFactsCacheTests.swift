@@ -1,9 +1,37 @@
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import Foundation
 import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct RegionFactsCacheTests {
+    @Test func biomeAreasUseActualSurfaceAndOmitEmptyColumnsWithoutHeightmaps() async throws {
+        var blocks = [Int](repeating: 0, count: 4096)
+        blocks[ChunkSection.blockIndex(x: 8, y: 1, z: 8)] = 1
+        let ground = Fixtures.section(y: 0, palette: [.string("air"), .string("stone")], indices: blocks,
+                                      biomes: ["minecraft:plains", "minecraft:desert"],
+                                      biomeIndices: (0..<64).map { $0 < 16 ? 1 : 0 })
+        let unusedStone = Fixtures.section(y: 1, palette: [.string("air"), .string("stone")],
+                                          indices: [Int](repeating: 0, count: 4096), biomes: ["minecraft:snowy_taiga"])
+        blocks[ChunkSection.blockIndex(x: 8, y: 1, z: 8)] = 0
+        blocks[0] = 1
+        let neighbor = Fixtures.section(y: 0, palette: [.string("air"), .string("stone")],
+                                        indices: blocks, biomes: ["minecraft:plains"])
+        let chunks = [[ground, unusedStone], [neighbor], [unusedStone]].enumerated().map { index, sections in
+            TestWorld.ChunkSpec(x: index, z: 0, nbt: Fixtures.chunk(x: index, z: 0,
+                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+        }
+        let url = try TestWorld.make(chunks: chunks)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("minecraft:overworld"))
+        let reader = RegionReader(dimension: dimension, cache: .off)
+        let scan = await BiomeScanner.scan(reader)
+        #expect(scan.biomes == [ChunkPosition(x: 0, z: 0): "minecraft:desert"])
+        #expect(scan.areas.count == 1 && scan.areas.first?.group.id == "minecraft:desert")
+        #expect(scan.areas.first?.chunkCount == 1)
+        await reader.close()
+    }
+
     private actor Reads {
         var count = 0
         func note() -> Int { count += 1; return count }

@@ -4,7 +4,7 @@ import Foundation
 /// Saved villager job/level labels, shared by the inspector, marker and trade search.
 nonisolated enum VillagerText {
     static func jobName(_ villager: Villager) -> String? {
-        guard let job = villager.profession, !job.isEmpty, job != "minecraft:none" else { return nil }
+        guard villager.isUnemployed == false, let job = villager.profession else { return nil }
         return ReadableName.from(job)
     }
 
