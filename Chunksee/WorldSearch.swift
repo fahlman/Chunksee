@@ -4,7 +4,7 @@ import ChunkseeKit
 import ChunkseeIndex
 
 /// One dimension's part of the world index: what search, the sidebar and the map show.
-nonisolated struct DimensionIndex: Sendable {
+nonisolated struct DimensionContent: Sendable {
     var containers: [ItemContainer] = []
     /// Totals of the items in `containers`, most first.
     var storage: [StoredItem] = []
@@ -34,7 +34,7 @@ nonisolated struct DimensionIndex: Sendable {
 
     /// Reads a dimension from its regions, through the reader's cached library facts.
     @concurrent
-    static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
+    static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
         let available = reader.availableRegions
         let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
             dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
@@ -52,10 +52,10 @@ nonisolated struct DimensionIndex: Sendable {
             for await (region, value) in group { if let value { values[region] = value } }
             return values
         }
-        guard !Task.isCancelled else { return previous ?? DimensionIndex() }
+        guard !Task.isCancelled else { return previous ?? DimensionContent() }
         let shared = previousIndex.updating(available: available, selected: selected,
                                            replacements: replacements.values.map(\.index))
-        var part = DimensionIndex()
+        var part = DimensionContent()
         part.shared = shared
         part.regions = previous?.regions.filter { shared.regions[$0.key] != nil } ?? [:]
         part.regions.merge(replacements) { $1 }
@@ -89,10 +89,10 @@ nonisolated struct SearchIndex: Sendable {
     }
 
     /// Each dimension's part, by dimension id.
-    var dimensions: [String: DimensionIndex] = [:]
+    var dimensions: [String: DimensionContent] = [:]
 
     /// One kind of thing from every dimension, each with its dimension.
-    func all<Value: Sendable>(_ part: KeyPath<DimensionIndex, [Value]>) -> [Placed<Value>] {
+    func all<Value: Sendable>(_ part: KeyPath<DimensionContent, [Value]>) -> [Placed<Value>] {
         dimensions.flatMap { id, index in index[keyPath: part].map { Placed(dimension: id, value: $0) } }
     }
 

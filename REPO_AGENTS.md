@@ -461,8 +461,8 @@ still cancel/invalidate their sources. The view request follows folder, online p
 known player UUID set, including players without reliable coordinates, so new players trigger lookup
 without reloading for every position change. Online remains off by default and permission-gated.
 
-ChunkseeIndex.RegionIndex holds compact typed contributions and DimensionIndex owns reconciliation,
-failed-read retention, selected deletion and complete aggregates. The app keeps one shared snapshot
+ChunkseeIndex.RegionIndex holds compact typed contributions and its DimensionIndex owns reconciliation,
+failed-read retention, selected deletion and complete aggregates. The app's DimensionContent keeps one shared snapshot
 plus cached native region projections. Unchanged projections are reused; successful reads replace
 them. Canceled passes return the previous view snapshot, and WorldIndexStore still refuses canceled
 or closed publications. The shared regionsToRead method supplies the exact read set, including a complete first pass
@@ -475,7 +475,7 @@ BlockPosition.mapCoordinates owns checked map bounds and optional height; native
 Coordinates.isMappable/canLocate and shared creature eligibility use it. Missing Y stays unknown.
 
 Unused per-layer scan paths and RegionFacts projection extensions are removed. Tests use
-TestWorld.index to drive the production DimensionIndex.read path, including cache invalidation and
+TestWorld.index to drive the production DimensionContent.read path, including cache invalidation and
 surface/cave membership. Historical cache shapes live only in their regression fixtures.
 
 Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining

@@ -31,7 +31,7 @@ import Testing
             }))
             #expect(areas.count == 1)
             #expect(areas.first?.name == "\(number) \(count == 1 ? "chunk" : "chunks")")
-            let index = SearchIndex.overworld(DimensionIndex(blocks: [
+            let index = SearchIndex.overworld(DimensionContent(blocks: [
                 ChunkDeposit(chunk: ChunkPosition(x: 0, z: 0),
                              deposit: BlockDeposit(block: .diamond, count: count, minY: -64, maxY: -49)),
             ]))

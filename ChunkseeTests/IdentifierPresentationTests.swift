@@ -77,7 +77,6 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let region = RegionPosition(x: 0, z: 0)
         let cache = ScanCache(directory: world.appendingPathComponent("scan-cache"))
         let fingerprint = ScanCache.fingerprint([dimension.regionURL(x: 0, z: 0), dimension.regionURL(.entities, x: 0, z: 0)])
         var stale = StructureMarker(try #require(StructureStart.starts(inChunk: spec.nbt).first))
@@ -86,7 +85,7 @@ import Testing
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try PropertyListEncoder().encode([stale])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
-        let markers = await RegionReader(dimension: dimension, cache: cache).structures(region)
+        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache)).structures
         #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Plains Village")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }

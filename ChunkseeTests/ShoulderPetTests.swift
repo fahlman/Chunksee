@@ -158,7 +158,7 @@ import Testing
             let snapshot = PlayerSnapshot([player])
             let carried = try #require(snapshot.shoulderPets.first)
             #expect(snapshot.shoulderPets.count == 1 && carried.name == "Gray" && carried.creature.owner == owner)
-            var part = DimensionIndex()
+            var part = DimensionContent()
             let regionCreature = try #require(Creature(parrot(bird)))
             part.creatures = [try #require(CreatureMarker(regionCreature, dimension: overworld))]
             let projected = SearchIndex(dimensions: [overworld: part]).including(snapshot.shoulderPets)

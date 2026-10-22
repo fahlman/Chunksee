@@ -20,7 +20,7 @@ import Testing
                 item("minecraft:emerald", name: "Keepsake"),
             ]),
         ])
-        let index = SearchIndex.overworld(DimensionIndex(containers: ItemContainer.containers(inChunk: .compound([
+        let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: .compound([
             "block_entities": .list([container]),
         ]))))
         let hit = try #require(WorldSearch.search("keepsake", in: index, players: []) { _ in .named("") }.first)
@@ -57,7 +57,7 @@ import Testing
             ])])]),
         ])))
         let marker = try #require(CreatureMarker(creature, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
+        let index = SearchIndex.overworld(DimensionContent(creaturePoints: PointMarkers([marker])))
         for word in ["token", "voucher", "excalibur", "sharpness", "diamond sword"] {
             let hit = try #require(WorldSearch.search("trade:\(word)", in: index, players: []) { _ in .named("") }.first)
             #expect(hit.detail == "1 Diamond Sword “Excalibur” (Sharpness V) for 24 Emerald “Token” + 1 Book “Voucher”")
