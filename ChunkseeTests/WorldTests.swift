@@ -40,6 +40,17 @@ import Testing
         #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in .named("") }.isEmpty)
     }
 
+    @Test func itemSummaryKeepsDifferentKindsWithTheSameLabelSeparate() throws {
+        let items = [ItemStack(id: "minecraft:diamond", count: 2, customName: "Shared"),
+                     ItemStack(id: "minecraft:stone", count: 3, customName: "Shared"),
+                     ItemStack(id: "minecraft:bundle", contents: [
+                        ItemStack(id: "minecraft:diamond", count: 4, customName: "Shared"),
+                     ])]
+        let result = try #require(WorldSearch.summary(of: items, query: SearchQuery("shared")))
+        #expect(result.text == "6 Shared, 3 Shared" && result.count == 9)
+        #expect(WorldSearch.summary(of: items, query: SearchQuery("unmatched")) == nil)
+    }
+
     @Test func anInventoryWithoutARecognizedDimensionRemainsSearchableWithoutAMapPin() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
@@ -100,7 +111,7 @@ import Testing
             .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
             .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:diamond", 10), item("minecraft:dirt", 64)])]),
         ])])
-        let totals = StoredItem.totals(in: ItemContainer.containers(inChunk: chunk))
+        let totals = StoredItem.presenting(StoredItemTotal.totals(in: ItemContainer.containers(inChunk: chunk)))
         #expect(totals.map(\.name) == ["Diamond", "Dirt", "Shulker Box"])
         #expect(totals.first == StoredItem(id: "minecraft:diamond", name: "Diamond", count: 77, containers: 2))
         #expect(totals.last?.count == 1 && totals.last?.containers == 1)

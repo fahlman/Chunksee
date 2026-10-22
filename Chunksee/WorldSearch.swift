@@ -57,8 +57,9 @@ nonisolated struct DimensionContent: Sendable {
                                            replacements: replacements.values.map(\.index))
         var part = DimensionContent()
         part.shared = shared
-        part.regions = previous?.regions.filter { shared.regions[$0.key] != nil } ?? [:]
-        part.regions.merge(replacements) { $1 }
+        for coordinate in shared.regions.keys {
+            part.regions[coordinate] = replacements[coordinate] ?? previous?.regions[coordinate]
+        }
         var creatures: [CreatureMarker] = []
         for coordinate in part.regions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
             let region = part.regions[coordinate]!
@@ -82,26 +83,15 @@ nonisolated struct DimensionContent: Sendable {
 }
 
 /// Everything in the world that search, the sidebar and the map show, by dimension.
-nonisolated struct SearchIndex: Sendable {
-    struct Placed<Value: Sendable>: Sendable {
-        var dimension: String
-        var value: Value
-    }
+typealias SearchIndex = ChunkseeIndex.WorldIndex<DimensionContent>
 
-    /// Each dimension's part, by dimension id.
-    var dimensions: [String: DimensionContent] = [:]
-
-    /// One kind of thing from every dimension, each with its dimension.
-    func all<Value: Sendable>(_ part: KeyPath<DimensionContent, [Value]>) -> [Placed<Value>] {
-        dimensions.flatMap { id, index in index[keyPath: part].map { Placed(dimension: id, value: $0) } }
-    }
-
-    var containers: [Placed<ItemContainer>] { all(\.containers) }
-    var signs: [Placed<Sign>] { all(\.signs) }
-    var structures: [Placed<StructureMarker>] { all(\.structures) }
-    var places: [Placed<PlaceMarker>] { all(\.places) }
-    var creatures: [Placed<CreatureMarker>] { all(\.creatures) }
-    var biomeAreas: [Placed<BiomeArea>] { all(\.biomeAreas) }
+extension SearchIndex {
+    nonisolated var containers: [Placed<ItemContainer>] { all(\.containers) }
+    nonisolated var signs: [Placed<Sign>] { all(\.signs) }
+    nonisolated var structures: [Placed<StructureMarker>] { all(\.structures) }
+    nonisolated var places: [Placed<PlaceMarker>] { all(\.places) }
+    nonisolated var creatures: [Placed<CreatureMarker>] { all(\.creatures) }
+    nonisolated var biomeAreas: [Placed<BiomeArea>] { all(\.biomeAreas) }
 }
 
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
@@ -287,7 +277,7 @@ nonisolated enum WorldSearch {
         return query.matches(text.joined(separator: "\n"))
     }
 
-    private struct ItemLabel: Hashable {
+    private struct ItemLabel: Hashable, Sendable {
         var id: String
         var text: String
 
@@ -299,15 +289,14 @@ nonisolated enum WorldSearch {
 
     /// Matching items summarized as "64 Diamond, 3 Diamond Sword", with nested contents included.
     static func summary(of items: [ItemStack], query: SearchQuery) -> (text: String, count: Int)? {
-        let hits = items.flatMap(\.allItems).filter { matches($0, query: query) }
-        guard !hits.isEmpty else { return nil }
-        let grouped = Dictionary(grouping: hits, by: ItemLabel.init).mapValues { $0.reduce(0) { $0 + $1.count } }
-        let text = grouped.sorted {
+        let totals = ItemTotals(in: items, matching: { matches($0, query: query) }, groupingBy: ItemLabel.init)
+        guard !totals.isEmpty else { return nil }
+        let text = totals.quantities.sorted {
             if $0.value != $1.value { return $0.value > $1.value }
             if $0.key.text != $1.key.text { return $0.key.text < $1.key.text }
             return $0.key.id < $1.key.id
         }.map { ItemAppearance.counted($0.key.text, count: $0.value, includingOne: true) }.joined(separator: ", ")
-        return (text, hits.reduce(0) { $0 + $1.count })
+        return (text, totals.count)
     }
 
     /// Places matching the query text, most items first. `name(of:)` names players.
