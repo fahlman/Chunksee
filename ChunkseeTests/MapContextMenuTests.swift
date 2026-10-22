@@ -99,7 +99,7 @@ import Testing
                                                          content: content, size: size, pasteboard: board))
             let pinMenu = menu(root)
             let sidebarMenu = menu(SavedPlaceMenu(session: session, place: place, pasteboard: board))
-            #expect(sidebarMenu.items.map(\.title) == ["Rename…", "Copy Coordinates", "Measure Distance from Here", "", "Remove"])
+            #expect(sidebarMenu.items.map(\.title) == ["Copy Coordinates", "Rename…", "Measure Distance from Here", "", "Remove"])
             #expect(pinMenu.items.map(\.title) == sidebarMenu.items.map(\.title))
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             try perform("Rename…", in: pinMenu)

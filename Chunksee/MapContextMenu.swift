@@ -18,9 +18,9 @@ struct SavedPlaceMenu: View {
 
     var body: some View {
         Group {
-            Button("Rename…") { session.annotations.edit(place) }
             CopyCoordinatesCommand(session: session, position: place.position, dimension: place.dimension,
                                    y: nil, pasteboard: pasteboard)
+            Button("Rename…") { session.annotations.edit(place) }
             MeasureDistanceCommand(session: session, position: place.position, dimension: place.dimension)
             Divider()
             Button("Remove", role: .destructive) { if !session.isClosed { session.savedPlaces.remove(place.id) } }
