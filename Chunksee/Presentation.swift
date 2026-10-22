@@ -62,6 +62,19 @@ struct LocationLabel<Icon: View>: View {
     }
 }
 
+/// Sidebar actions share a native icon/title row while keeping their Button or SettingsLink.
+struct SidebarActionRow<Content: View>: View {
+    let help: LocalizedStringKey
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .buttonStyle(.plain)
+            .labelStyle(.titleAndIcon)
+            .help(help)
+    }
+}
+
 /// A map position with an optional saved height; formatting never invents a missing Y.
 nonisolated struct Coordinates: Equatable, Sendable {
     let point: CGPoint

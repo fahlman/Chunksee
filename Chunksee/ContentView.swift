@@ -86,16 +86,15 @@ struct WorldView: View {
                     }
                     if !session.presentation.listedPlayers.isEmpty {
                         Section("Players", isExpanded: sectionExpanded(.players)) {
+                            if session.presentation.hasUnnamedPlayers {
+                                SidebarActionRow(help: "Choose how Chunksee finds player names in Settings") {
+                                    SettingsLink {
+                                        Label("Find Player Names…", systemImage: "gearshape.fill")
+                                    }
+                                }
+                            }
                             ForEach(session.presentation.listedPlayers, id: \.uuid) { player in
                                 PlayerRow(session: session, player: player)
-                            }
-                            // A row rather than a section footer: sidebar lists don't show footers.
-                            if session.presentation.hasUnnamedPlayers {
-                                SettingsLink {
-                                    Label("Find Player Names…", systemImage: "gearshape.fill")
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -294,19 +293,15 @@ private struct SearchResultsSection: View {
         let search = session.search
         let hits = search.listedHits(for: search.text, where: session.presentation.lists)
         Section(isExpanded: $isExpanded) {
+            SidebarActionRow(help: "Keep this search in the sidebar") {
+                Button("Save Search", systemImage: "plus.circle") { session.search.saveSearch() }
+                    .disabled(!session.search.canSaveSearch)
+            }
             HitList(session: session, query: search.text)
         } header: {
-            HStack {
-                Text(CountedText.label(String(localized: "Search Results", locale: locale),
-                                      count: search.isIndexing || search.isSearching ? nil : hits.total,
-                                      shown: hits.rows.count, locale: locale))
-                Spacer()
-                Button("Save Search", systemImage: "plus.circle") { session.search.saveSearch() }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .disabled(!session.search.canSaveSearch)
-                    .help("Keep this search in the sidebar")
-            }
+            Text(CountedText.label(String(localized: "Search Results", locale: locale),
+                                  count: search.isIndexing || search.isSearching ? nil : hits.total,
+                                  shown: hits.rows.count, locale: locale))
         }
     }
 }
