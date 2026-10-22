@@ -22,19 +22,22 @@ nonisolated struct RegionTileRenderer: Sendable {
     var savesInBackground = true
     /// Nil keeps the normal view from saved dimension context; a height starts each column there.
     var cutawayY: Int?
+    var style = MapStyle.normal
+    var heightScale: MapHeightScale?
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
     @concurrent
     func pixels(for region: RegionPosition) async throws -> [UInt8]? {
-        guard let file = try dimension.region(x: region.x, z: region.z) else { return nil }
+        guard style != .height || heightScale != nil,
+              let file = try dimension.region(x: region.x, z: region.z) else { return nil }
         let coordinates = file.chunkCoordinates
         var canvas = Canvas()
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
                 if let columns = Self.columns(in: file, localX: localX, localZ: localZ, context: surfaceContext, cutawayY: cutawayY) {
-                    canvas.set(columns, chunkX: localX, chunkZ: localZ)
+                    canvas.set(columns, chunkX: localX, chunkZ: localZ, style: style, heightScale: heightScale)
                 }
             }
         } else {
@@ -51,12 +54,12 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
                 for _ in 0..<chunkConcurrency { startNext() }
                 for try await result in group {
-                    if let (localX, localZ, columns) = result { canvas.set(columns, chunkX: localX, chunkZ: localZ) }
+                    if let (localX, localZ, columns) = result { canvas.set(columns, chunkX: localX, chunkZ: localZ, style: style, heightScale: heightScale) }
                     startNext()
                 }
             }
         }
-        canvas.applyRelief()
+        if style != .height { canvas.applyRelief() }
         return canvas.pixels
     }
 
@@ -91,7 +94,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY)
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale)
         var pixels: [UInt8]?
         var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
@@ -331,8 +334,11 @@ nonisolated struct RegionTileRenderer: Sendable {
         var isWater = [Bool](repeating: false, count: side * side)
 
         mutating func set(x: Int, z: Int, column: Column) {
+            set(x: x, z: z, column: column, color: baseColor(for: column))
+        }
+
+        private mutating func set(x: Int, z: Int, column: Column, color: MapColor) {
             let i = z * side + x
-            let color = baseColor(for: column)
             pixels[i * 4] = color.red
             pixels[i * 4 + 1] = color.green
             pixels[i * 4 + 2] = color.blue
@@ -344,6 +350,27 @@ nonisolated struct RegionTileRenderer: Sendable {
         mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int) {
             for (i, column) in columns.enumerated() {
                 if let column { set(x: chunkX * 16 + i % 16, z: chunkZ * 16 + i / 16, column: column) }
+            }
+        }
+
+        mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int, style: MapStyle, heightScale: MapHeightScale?) {
+            // Normal keeps its existing loop; alternate colours use the same decoded columns.
+            guard style != .normal else {
+                set(columns, chunkX: chunkX, chunkZ: chunkZ)
+                return
+            }
+            for (i, column) in columns.enumerated() {
+                guard let column else { continue }
+                let color: MapColor
+                if style == .height {
+                    guard let heightScale else { continue }
+                    color = MapStylePalette.heightColor(y: column.y, scale: heightScale)
+                } else if column.waterDepth > 0 {
+                    color = MapStylePalette.waterColor(depth: column.waterDepth)
+                } else {
+                    color = column.color
+                }
+                set(x: chunkX * 16 + i % 16, z: chunkZ * 16 + i / 16, column: column, color: color)
             }
         }
 

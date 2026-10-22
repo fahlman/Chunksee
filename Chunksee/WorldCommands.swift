@@ -76,6 +76,18 @@ struct WorldCommands: Commands {
             Button("Fit World") { session?.navigation.fitWorld() }
                 .keyboardShortcut("9")
                 .disabled(session?.navigation.canFitWorld != true)
+            Menu("Map Style") {
+                Picker("Map Style", selection: Binding {
+                    session?.map?.style ?? .normal
+                } set: { session?.map?.setStyle($0) }) {
+                    ForEach(MapStyle.allCases, id: \.self) { style in
+                        Text(style.title).tag(style)
+                            .disabled(style == .height && session?.map?.heightScale == nil)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+            .disabled(session?.map == nil)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)

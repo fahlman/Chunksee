@@ -122,18 +122,11 @@ struct HeatMapLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Time Spent").font(.headline)
-            LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 0.25).map { Color(hue: HeatMap.hue(atLevel: $0), saturation: 1, brightness: 1) },
-                           startPoint: .leading, endPoint: .trailing)
-                .frame(width: 200, height: 10)
-                .clipShape(Capsule())
-            // Labels sit where their times fall on the logarithmic scale.
-            ZStack {
-                label(ticks: HeatMap.minimumTicks, anchor: 0)
-                label(ticks: 72_000, anchor: 0.5)
-                label(ticks: HeatMap.maximumTicks, anchor: 1)
-            }
-            .font(.caption)
-            .frame(width: 200, height: 14)
+            MapLegendScale(colors: stride(from: 0.0, through: 1.0, by: 0.25).map {
+                Color(hue: HeatMap.hue(atLevel: $0), saturation: 1, brightness: 1)
+            }, labels: [label(ticks: HeatMap.minimumTicks, anchor: 0),
+                        label(ticks: 72_000, anchor: 0.5),
+                        label(ticks: HeatMap.maximumTicks, anchor: 1)])
             Text("Time the game recorded near each chunk")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -141,12 +134,8 @@ struct HeatMapLegend: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// A label at a time's place on the 200-point bar; `anchor` 0 puts its leading edge there.
-    private func label(ticks: Int, anchor: CGFloat) -> some View {
-        Text(GameDuration.fromTicks(ticks), format: GameDuration.units())
-            .fixedSize()
-            .alignmentGuide(HorizontalAlignment.center) { $0.width * anchor }
-            .frame(width: 200, alignment: .center)
-            .offset(x: (HeatMap.level(ofTicks: ticks) ?? 0) * 200 - 100)
+    private func label(ticks: Int, anchor: CGFloat) -> MapLegendScale.Label {
+        MapLegendScale.Label(text: Text(GameDuration.fromTicks(ticks), format: GameDuration.units()),
+                             position: HeatMap.level(ofTicks: ticks) ?? 0, anchor: anchor)
     }
 }

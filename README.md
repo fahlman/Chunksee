@@ -104,6 +104,11 @@ rename or move commands. When updating from the previous window system, reopen y
 with **File ▸ Open…**; macOS will remember them from then on.
 
 **View** includes zoom, World Info, Storage, Time Spent, World Border, sidebar and inspector commands.
+**View ▸ Map Style** offers Normal, Height and Water Depth. Each dimension remembers its choice.
+Height uses that dimension’s saved build limits and sea level; it is unavailable when the limits
+can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
+Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses
+its cached tiles.
 **World Border** in View and the sidebar shows or hides a saved border smaller than Minecraft's
 default limit. It starts shown, remembers each dimension's choice, and applies to exported images
 too. The controls are disabled when the dimension has no limited border.
@@ -135,7 +140,7 @@ as three numbers separated by single spaces, ready to paste into a Minecraft com
 `-9 64 1`). Markers use their saved height; terrain and saved places use the displayed block's height.
 With the map selected, **Edit ▸ Copy** (**⌘C**) copies an image of the map as shown; the toolbar's
 Share button sends one. The map and exported images share a legend for shown overlays:
-the Time Spent color scale, Slime Chunks color key and World Border line key.
+the active map style’s scale, Time Spent color scale, Slime Chunks color key and World Border line key.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**

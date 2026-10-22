@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.48.0`, resolved to `0.48.0` (`b0505811e689630bf7577963c88c842d051eadba`).
+  minor" from `0.49.0`, resolved to `0.49.0` (`bc8ac2498a91bf5177cb90b85945c49b1a59fe71`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -291,6 +291,22 @@ The held cave list and renderer colors remain app presentation policy.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
+
+MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
+restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
+pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
+TileCache version 11 separates each style's Surface/latest-cutaway entries; Height keys include
+MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
+styles' cached tiles. No scan-cache change is needed.
+MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
+Sea level is the midpoint; if it is outside the build bounds, those bounds use only their side of
+the palette and the legend states that fact. Without sea level the scale runs linearly between known
+build bounds; without bounds Height is unavailable. The existing column scan and Cutaway choice
+supply all three styles. Normal keeps its block colours and relief. Height replaces colours with
+a fixed Lab lightness ramp; Water Depth replaces water colours, keeping normal land/relief and
+labelling the existing 32-block cap as “32 or deeper.” Core Graphics prepares the sRGB ramps once.
+The on-screen/exported MapLegendOverlay hosts the styles and existing overlay keys; MapLegendScale
+shares bar/tick layout with Time Spent. No world files or normal app defaults are written by tests.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled

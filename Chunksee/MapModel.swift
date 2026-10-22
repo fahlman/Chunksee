@@ -9,6 +9,8 @@ final class MapModel {
     let dimension: ChunkseeKit.Dimension
     var viewport: MapViewport
     private(set) var depth = MapDepth()
+    private(set) var style = MapStyle.normal
+    let heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
     private(set) var tiles: [RegionPosition: CGImage] = [:]
@@ -24,6 +26,7 @@ final class MapModel {
     private var currentRenderer: RegionTileRenderer {
         var current = renderer
         current.cutawayY = depth.cutawayY
+        current.style = style
         return current
     }
     private let work: BackgroundWork
@@ -45,7 +48,7 @@ final class MapModel {
     init(work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
-         surfaceContext: MapSurfaceContext = .unknown,
+         surfaceContext: MapSurfaceContext = .unknown, heightScale: MapHeightScale? = nil,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
@@ -57,6 +60,7 @@ final class MapModel {
         hoverWork = work.makeScope()
         coordinateWork = work.makeScope()
         self.dimension = dimension
+        self.heightScale = heightScale
         self.readTopBlocksFor = readTopBlocks
         self.renderTile = renderTile
         self.writeCache = writeCache
@@ -65,7 +69,7 @@ final class MapModel {
         self.regionConcurrency = max(1, regionConcurrency)
         self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: surfaceContext,
                                            chunkConcurrency: max(1, chunkConcurrency),
-                                           cache: cacheDirectory.map(TileCache.init(directory:)))
+                                           cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
     }
@@ -400,11 +404,7 @@ final class MapModel {
         let previous = depth.cutawayY
         depth = value
         guard previous != value.cutawayY else { return }
-        cancel()
-        tiles = [:]
-        previews = [:]
-        failed = []
-        stale = []
+        clearRenderedTiles()
         hoverWork.cancel()
         coordinateWork.cancel()
         activeHoverRead = nil
@@ -413,6 +413,22 @@ final class MapModel {
         hoverRegion = nil
         if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
         if let hoveredChunk { startHoverRead(of: hoveredChunk) }
+    }
+
+    /// A style changes colours, never the selected block or a pending coordinate/hover read.
+    func setStyle(_ value: MapStyle) {
+        guard !isClosed, value != style, value != .height || heightScale != nil else { return }
+        style = value
+        clearRenderedTiles()
+        if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
+    }
+
+    private func clearRenderedTiles() {
+        cancel()
+        tiles = [:]
+        previews = [:]
+        failed = []
+        stale = []
     }
 
     func zoom(by factor: CGFloat) {
