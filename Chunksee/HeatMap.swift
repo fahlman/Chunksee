@@ -117,20 +117,6 @@ final class HeatMapLayer {
     }
 }
 
-/// One legend placement for the live map and its exported image.
-struct HeatMapLegendOverlay: ViewModifier {
-    let isShown: Bool
-
-    func body(content: Content) -> some View {
-        content.overlay(alignment: .bottomTrailing) {
-            if isShown {
-                HeatMapLegend()
-                    .padding(10)
-            }
-        }
-    }
-}
-
 /// The heat map's color scale.
 struct HeatMapLegend: View {
     var body: some View {
@@ -152,8 +138,6 @@ struct HeatMapLegend: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .combine)
     }
 

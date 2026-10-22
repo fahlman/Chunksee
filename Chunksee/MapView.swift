@@ -204,7 +204,7 @@ struct MapView: View {
             let half = border.size / 2
             let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
             let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
-            context.stroke(edge, with: .color(.red.opacity(0.85)), lineWidth: 2)
+            context.stroke(edge, with: .color(WorldBorderStyle.color), lineWidth: WorldBorderStyle.lineWidth)
         }
         var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
         var labels: [MarkerLabel] = []

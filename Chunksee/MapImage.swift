@@ -18,7 +18,7 @@ nonisolated struct MapImage: Sendable {
             MapView.drawMap(map, content: content, portalStatus: portalStatus, displayScale: scale, in: context, size: size)
         }
         .frame(width: size.width, height: size.height)
-        .modifier(HeatMapLegendOverlay(isShown: content.showsHeatMap))
+        .modifier(MapLegendOverlay(layers: content))
         .environment(\.colorScheme, colorScheme)
         .environment(\.locale, locale)
         let renderer = ImageRenderer(content: canvas)
