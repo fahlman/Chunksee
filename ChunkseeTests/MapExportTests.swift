@@ -1,3 +1,4 @@
+import AppKit
 import ChunkseeKit
 import CoreGraphics
 import Foundation
@@ -136,6 +137,73 @@ import Testing
             Issue.record("Canceled export published an image")
         } catch is CancellationError { }
         #expect(!FileManager.default.fileExists(atPath: cache.directory.path))
+    }
+
+    @Test(.timeLimit(.minutes(1))) func cancelAndDocumentCloseDrainTheOwnedExportBeforeAnotherCanStart() async throws {
+        for closeDocument in [false, true] {
+            let root = try TestWorld.make(chunks: [
+                TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+            ])
+            defer { try? FileManager.default.removeItem(at: root) }
+            let defaults = TestDefaults.make()
+            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
+            let session = WorldSession(resources: resources, renderTile: { renderer, _ in
+                #expect(renderer.cutawayY == 12)
+                return await gate.read("tile")
+            })
+            await session.search.waitForIndex()
+            session.map?.setDepth(MapDepth(y: 12, isSurface: false))
+            let export = session.imageExport
+            export.options.area = .dimension
+            #expect(export.canCreate)
+            export.create(colorScheme: .light, locale: .current)
+            await gate.waitForRequest("tile")
+            #expect(export.isRunning && export.renderedDepth?.y == 12)
+            session.map?.setDepth(MapDepth(y: 3, isSurface: false))
+            #expect(export.renderedDepth?.y == 12)
+            if closeDocument { session.close() } else { export.cancel() }
+            #expect(export.isRunning && export.isCancelling && !export.canCreate)
+            export.create(colorScheme: .dark, locale: .current) // A draining export still owns its allocation.
+            await gate.waitForCancellation("tile")
+            await gate.finish("tile", with: nil)
+            await export.waitUntilIdle()
+            #expect(!export.isRunning && export.result == nil && export.preview == nil && export.error == nil)
+            #expect(export.canCreate == !closeDocument)
+            session.close()
+            await session.waitUntilClosed()
+        }
+    }
+
+    @Test func aFinishedImageCopiesToAnExplicitBoardWithoutChangingTheDocumentsViewOrLayers() async throws {
+        let root = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 0 ? 1 : 0 }
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(root, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        await session.search.waitForIndex()
+        let viewport = try #require(session.map?.viewport), grid = session.visibility.showsGrid
+        let export = session.imageExport
+        export.options.area = .dimension
+        export.options.includesMarkers = false
+        export.options.includesGrid = !grid
+        export.create(colorScheme: .dark, locale: Locale(identifier: "en_US"))
+        await export.waitUntilIdle()
+        let image = try #require(export.result)
+        #expect(export.preview != nil && export.error == nil && !export.isRunning)
+        #expect(export.preparedPlan?.width == 512 && export.preparedPlan?.height == 512)
+        #expect(session.map?.viewport == viewport && session.visibility.showsGrid == grid)
+        let board = NSPasteboard(name: .init("ChunkseeTests-MapImage-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        image.copy(to: board)
+        #expect(board.data(forType: .png) == image.data)
+        #expect(try pixels(image).contains(255))
+        export.options.blocksPerPixel = 2
+        #expect(export.result == nil && export.preview == nil && export.preparedPlan == nil)
+        session.close()
+        await session.waitUntilClosed()
     }
 
     private func pixels(_ image: MapImage) throws -> [UInt8] {
