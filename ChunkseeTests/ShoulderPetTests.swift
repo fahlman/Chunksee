@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import AppKit
 import CoreGraphics
 import Foundation
