@@ -788,8 +788,9 @@ Use a consistent style for each UI role, following Apple's [Writing](https://dev
 and [Offering help](https://developer.apple.com/design/human-interface-guidelines/offering-help) guidance:
 
 - Named features, headings, commands and inspector field labels use title case. A control's
-  accessibility name matches its visible name; descriptive numeric fields use sentence case,
-  such as Zoom percentage and X coordinate.
+  accessibility name identifies the same feature or action; a changing state belongs in its
+  accessibility value. Descriptive numeric fields use sentence case, such as Zoom percentage
+  and X coordinate.
 - Activity/status text and explanatory checkbox labels use sentence case. Complete informative
   sentences end with punctuation; short status fragments do not. Ongoing activity ends with an
   ellipsis. Brief tooltips and accessibility hints use sentence case without ending punctuation.
