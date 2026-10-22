@@ -20,17 +20,17 @@ struct MapDepthControl: View {
         Button {
             showsPopover = true
         } label: {
-            Label {
+            // A toolbar Label uses its changing visible title as the accessible name.
+            // Keep the explicit Map Height name, as the Zoom control does.
+            HStack {
+                Image(systemName: "square.3.layers.3d")
                 if map.depth.isSurface {
                     Text("Surface")
                 } else {
                     Text("Y \(map.depth.y.formatted())").monospacedDigit()
                 }
-            } icon: {
-                Image(systemName: "square.3.layers.3d")
             }
         }
-        .labelStyle(.titleAndIcon)
         .accessibilityLabel("Map Height")
         .accessibilityValue(Text(map.depth.accessibilityDescription))
         .accessibilityIdentifier("cutaway-control")
