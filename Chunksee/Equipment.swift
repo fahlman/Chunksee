@@ -16,9 +16,8 @@ struct EquipmentSection: View {
                                       isEnchanted: ItemAppearance.isEnchanted(row.item))
                             .foregroundStyle(.primary)
                             .help(ItemAppearance.details(of: row.item))
-                            if let wear = row.item.durability {
-                                Text(ItemAppearance.durability(wear))
-                                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            if let reading = DurabilityPresentation(row.item.durability) {
+                                DurabilityRow(reading: reading)
                             }
                             ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
                                 Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))

@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Durability" : {
+      "comment" : "Equipment gauge label. Its value is the remaining durability out of the maximum."
+    },
+    "%@ of %@" : {
+      "comment" : "A durability gauge's remaining and maximum points, already formatted as localized numbers. The row separately labels this value Durability."
+    },
     "%@, %@" : {
       "comment" : "A pet's appearance: its coat or variant, followed by its markings."
     },

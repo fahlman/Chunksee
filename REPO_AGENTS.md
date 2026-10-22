@@ -518,12 +518,21 @@ ItemAppearance.mapSymbol supplies the same filled map glyph for inventory naviga
 the in-game-map inspector and map share preview. BiomeGroup owns the filled leaf used by its
 sidebar groups and the biome search kind; callers do not keep separate copies of those symbols.
 
-Health, Absorption, Hunger and Experience use SavedStatusRow for aligned digits and saved-value
-help. Creature health, including carried pets, appears under Status like player health; unavailable
+Health, Absorption, Hunger, Experience and equipment durability use SavedStatusRow for aligned
+digits and saved-value help. SavedStatusGauge owns their native gauge/value-label construction;
+each reading supplies its range, text and tint. Creature health, including carried pets, appears under Status like player health; unavailable
 health does not create an empty creature Status section. HealthPresentation owns that availability.
 HungerPresentation owns the game's food maximum and half-drumstick conversion; its gauge
 and CountedText label consume that same value and maximum, preserving the saved value in text.
 CountedText applies native grammar agreement to the maximum, like the hearts label.
+
+DurabilityPresentation consumes Kit's ItemDurability without reading item components. Equipment
+uses the shared native gauge, including undamaged items. Inventory slots show the game's black-backed
+bar only for damaged items, with 13 discrete width steps and its green-to-red hue; both formulas
+retain Minecraft's Float arithmetic. InventoryDurabilityBar scales those logical pixels for the
+existing 28-point slots. ItemAppearance owns both labeled tooltip text and the gauge's remaining-of-maximum
+value. The slot retains the complete accessible item description and hides the decorative bar
+from accessibility. Unbreakable and non-durable items have no reading, so neither surface adds a bar.
 
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected

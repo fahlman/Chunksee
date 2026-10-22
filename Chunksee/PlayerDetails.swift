@@ -100,8 +100,11 @@ nonisolated enum ItemAppearance {
         return lines.joined(separator: "\n")
     }
 
-    static func durability(_ wear: ItemDurability, locale: Locale = .current) -> String {
+    static func durability(_ wear: ItemDurability, includingLabel: Bool = true, locale: Locale = .current) -> String {
         let format = IntegerFormatStyle<Int>.number.locale(locale)
+        if !includingLabel {
+            return String(localized: "\(wear.remaining, format: format) of \(wear.maximum, format: format)", locale: locale)
+        }
         return String(localized: "Durability: \(wear.remaining, format: format) of \(wear.maximum, format: format)", locale: locale)
     }
 
@@ -150,7 +153,7 @@ struct PlayerDetailView: View {
                 if let food = player.foodLevel {
                     let reading = HungerPresentation(food: food)
                     SavedStatusRow("Hunger") {
-                        Gauge(value: reading.gaugeValue, in: 0...reading.maximum) { EmptyView() } currentValueLabel: {
+                        SavedStatusGauge(value: reading.gaugeValue, maximum: reading.maximum) {
                             Text(reading.value, format: CountedText.hunger(of: reading.maximum))
                         }
                         .tint(.orange)
@@ -158,7 +161,7 @@ struct PlayerDetailView: View {
                 }
                 if let level = player.experienceLevel {
                     SavedStatusRow("Experience") {
-                        Gauge(value: player.experienceProgress ?? 0, in: 0...1) { EmptyView() } currentValueLabel: {
+                        SavedStatusGauge(value: player.experienceProgress ?? 0, maximum: 1) {
                             Text("Level \(level)")
                         }
                         .tint(.green)
@@ -246,6 +249,12 @@ private struct SlotView: View {
             .overlay {
                 if let item {
                     ItemIcon(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let reading = DurabilityPresentation(item?.durability), reading.isDamaged {
+                    InventoryDurabilityBar(reading: reading)
+                        .padding(.bottom, 3)
                 }
             }
             .overlay(alignment: .bottomTrailing) {
