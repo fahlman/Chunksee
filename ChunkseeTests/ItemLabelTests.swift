@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ChunkseeIndex
 import Foundation
 import Testing
 @testable import ChunkseeTestHost
@@ -33,8 +34,8 @@ import Testing
 
     @Test func summariesKeepDistinctNamespacedKindsAndUseLocalizedCounts() throws {
         let apples = [ItemStack(id: "first:apple", count: 2), ItemStack(id: "second:apple", count: 3)]
-        #expect(WorldSearch.summary(of: apples, words: ["apple"])?.text == "3 Apple, 2 Apple")
-        #expect(WorldSearch.summary(of: apples, words: ["first:apple"])?.count == 2)
+        #expect(WorldSearch.summary(of: apples, query: SearchQuery("apple"))?.text == "3 Apple, 2 Apple")
+        #expect(WorldSearch.summary(of: apples, query: SearchQuery("first:apple"))?.count == 2)
         let plain = ItemStack(id: "minecraft:diamond", count: 1234)
         let style = ItemAppearance.LabelStyle()
         #expect(style.locale(Locale(identifier: "en_US")).format(plain) == "1,234 Diamond")
@@ -83,12 +84,12 @@ import Testing
         ])])
         let book = try #require(ItemStack(savedBook))
         #expect(ItemAppearance.name(of: book) == "Written Book “Travels” by Writer")
-        #expect(WorldSearch.summary(of: [book], words: ["desert", "village"])?.text == "1 Written Book “Travels” by Writer")
+        #expect(WorldSearch.summary(of: [book], query: SearchQuery("desert village"))?.text == "1 Written Book “Travels” by Writer")
         let trade = try #require(Trade(.compound(["buy": item("minecraft:emerald"), "sell": savedBook])))
         #expect(TradeText.searchText(of: trade).contains("Travels"))
         var renamed = book
         renamed.customName = "Keepsake"
         #expect(ItemAppearance.label(of: renamed) == "Written Book “Keepsake”")
-        #expect(WorldSearch.matches(renamed, words: ["travels"]))
+        #expect(WorldSearch.matches(renamed, query: SearchQuery("travels")))
     }
 }
