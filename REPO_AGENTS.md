@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.46.0`, resolved to `0.46.0` (`78440d864424bb9764692e5d0c7c58e77cbdb875`).
+  minor" from `0.47.0`, resolved to `0.47.0` (`6323f7a27c0946478fe86905ebf4475c6452aa0f`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -414,6 +414,14 @@ existing searchable names, item/book/sign/trade text, category membership and re
 Unknown prefixes stay literal, empty plain queries return no results, and bare filters list their
 categories. There is no second query parser or matcher in the app.
 
+Kit 0.47.0 supplies WorldIndex and ItemTotals. SearchIndex aliases
+ChunkseeIndex.WorldIndex<DimensionContent>; the app adds only convenience
+projections of its native dimension arrays. The shared module owns the dimension catalog and
+Placed/all enumeration, with no duplicate dictionary or snapshot owner. WorldSearch.summary uses
+ChunkseeIndex.ItemTotals for nested matching-item quantities. Native ID-plus-label grouping,
+searchable text, count/name ordering and formatted summaries stay in WorldSearch; the CLI can use
+the same aggregate with its own labels. Storage tests exercise the production presenting adapter.
+
 ChunkseeIndex.NotableBlock owns the nine notable-block groups, their 13 saved IDs and grouped
 deposit counts/section height bounds. Blocks.swift keeps only aliases, localized names/search
 labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader uses the shared
@@ -463,8 +471,9 @@ without reloading for every position change. Online remains off by default and p
 
 ChunkseeIndex.RegionIndex holds compact typed contributions and its DimensionIndex owns reconciliation,
 failed-read retention, selected deletion and complete aggregates. The app's DimensionContent keeps one shared snapshot
-plus cached native region projections. Unchanged projections are reused; successful reads replace
-them. Canceled passes return the previous view snapshot, and WorldIndexStore still refuses canceled
+plus cached native region projections. Native region membership comes directly from the shared
+index's accepted keys; successful projections replace previous ones and unchanged ones are reused.
+Canceled passes return the previous view snapshot, and WorldIndexStore still refuses canceled
 or closed publications. The shared regionsToRead method supplies the exact read set, including a complete first pass
 even when a subset notification starts it. Both reading and reconciliation use that same owner.
 Storage rows map shared totals to native names/order; biome and place presentation map shared
