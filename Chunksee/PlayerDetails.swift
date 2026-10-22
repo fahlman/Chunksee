@@ -248,7 +248,7 @@ private struct SlotView: View {
             .frame(width: 28, height: 28)
             .overlay {
                 if let item {
-                    ItemIcon(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item))
+                    ItemIcon(item: item)
                 }
             }
             .overlay(alignment: .bottom) {

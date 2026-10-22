@@ -35,7 +35,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     default.
 - **Data locations:**
   - The app reads only the world or saves folder the user picks with an Open panel, and the
-    Minecraft folder chosen in Settings, for player names. Worlds open only through File ▸ Open
+    Minecraft folder chosen in Settings, for player names and installed item pictures. Worlds open only through File ▸ Open
     and Open Recent: File ▸ Open World (fahlman/Chunksee#108) was removed on Ryan's decision of
     2026-10-16 (fahlman/Chunksee#155).
   - Each dimension folder is a native read-only folder document (Ryan, 2026-10-13); the world
@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.48.0`, resolved to `0.48.0` (`b0505811e689630bf7577963c88c842d051eadba`).
+  minor" from `0.50.0`, resolved to `0.50.0` (`4b95ac4216eef60a156cd590ab8366b1752aeeb0`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -169,14 +169,16 @@ existing documents retain their snapshot until a document reread or move replace
 | `Places.swift` | Native place groups and markers, plus portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
-| `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
+| `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
+| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; exact saved-version jar lookup, file identity and weak sharing across live documents |
+| `GameItemPictures.swift`, `ItemPictureRenderer.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
-| `SettingsView.swift` | Settings: the Minecraft folder and online name lookup |
+| `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
 | `HelpView.swift` | On-demand native Help window with opening/navigation instructions and the User Guide link |
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
@@ -1051,9 +1053,33 @@ their links, and a pet that lands returns to Linked Pets on the shared index ref
 These are derived app publications, with no new file reader or
 disk cache; ordinary player and region refreshes replace them.
 
-ItemIcon and ItemLabel share item symbol, material color and known-enchantment styling across
-equipment, trades, inventory slots and Storage. ItemAppearance remains the owner of names,
-symbols, colors and detail text. Inventory keeps its slot grid/count badges and Storage its
+MinecraftResources owns the existing `minecraftFolderBookmark` and read-only access lease for both
+names and pictures. It restores existing choices without a second preference. Reads retain the
+lease until completion; choosing/removing the folder cancels its asset scope and changes source
+generation so old results cannot publish. GameAssetLibraries resolves only the saved version name
+and data version, checking the jar's own metadata and a fresh file stamp before/after reading.
+The jar is capped at 128 MiB and the live registry is weak: documents using one file share its
+GameItemPictures actor, while closing the last user releases it. Returning to an active scene
+rechecks file identity. A jar is an immutable snapshot; no artwork is extracted or shipped.
+
+GameItemPictures resolves definitions/models and saved dye/potion colors through published Kit
+APIs. Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
+(16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Per-picture retained
+textures are limited to 16 MiB; ImageIO dimensions are checked before decoding (at most 1024 square
+pixels per side). ItemPictureRenderer projects resolved element geometry and GUI transforms into
+64-pixel thumbnails, uses face UVs and nearest samples, and retains ordered generated layers and
+composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
+thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
+Missing jars/resources, unsupported special models and non-square animation strips use the existing
+symbols. Static fallback variants omit trim/custom-model/live predicates; firework tint uses the
+definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
+
+ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
+styling across equipment, trades, inventory slots, Storage and matching search-item details.
+Real stacks supply saved tints; aggregates use their kind's default picture, without inventing one
+stack's color. ItemAppearance remains the owner of names, symbols, colors and detail text.
+WorldSearch retains typed aggregate items alongside its existing summary, so search details never
+parse display text to recover an identifier. Inventory keeps its slot grid/count badges and Storage its
 sortable table (Ryan, 2026-10-20, #298). A trade's icon represents the received item; its complete
 wording still comes from TradeText.offer. Storage aggregates by kind, so it does not invent a
 stack's custom name or enchantment. Native labels and slot accessibility retain the item details.

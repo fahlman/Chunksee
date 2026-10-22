@@ -1,0 +1,301 @@
+import ChunkseeKit
+import ChunkseeIndex
+import CoreGraphics
+import Foundation
+import ImageIO
+import SwiftUI
+import Testing
+import UniformTypeIdentifiers
+@testable import ChunkseeTestHost
+
+@Suite(.isolatedStores) struct ItemPicturesTests {
+    @Test func layeredSpritesKeepTheirOrientationAndNearestPixels() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let picture = try #require(try await library.picture(for: ItemStack(id: "test:flat")))
+        let pixels = try ItemPictureFixture.pixels(picture)
+        #expect(picture.width == 64 && picture.height == 64 && !picture.shouldInterpolate)
+        #expect(pixels.color(8, 8) == [255, 0, 0, 255])
+        #expect(pixels.color(56, 8) == [0, 255, 0, 255])
+        #expect(pixels.color(8, 56) == [0, 0, 255, 255])
+        #expect(pixels.color(56, 56) == [255, 255, 0, 255])
+        let expected: Set<[UInt8]> = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]]
+        #expect(Set(stride(from: 0, to: pixels.bytes.count, by: 4).map { Array(pixels.bytes[$0..<$0 + 4]) }) == expected)
+    }
+
+    @Test func savedDyeAndPotionColorsAffectOnlyTheirTintedLayers() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let leather = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0x0080FF)]))
+        let image = try #require(try await library.picture(for: leather))
+        let pixels = try ItemPictureFixture.pixels(image)
+        #expect(pixels.color(8, 8) == [255, 0, 0, 255]) // Untinted red overlay.
+        #expect(pixels.color(56, 56) == [0, 128, 255, 255])
+        let defaultImage = try #require(try await library.picture(for: ItemStack(id: "test:leather")))
+        #expect(try ItemPictureFixture.pixels(defaultImage).color(56, 56) == [128, 64, 32, 255])
+        let potion = ItemStack(id: "test:potion", components: .compound([
+            "minecraft:potion_contents": .compound(["custom_color": .int(0x23A4D1)])
+        ]))
+        let potionImage = try #require(try await library.picture(for: potion))
+        #expect(try ItemPictureFixture.pixels(potionImage).color(32, 32) == [35, 164, 209, 255])
+    }
+
+    @Test func nativeItemGraphicKeepsPixelEdgesInBothAppearances() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let image = try #require(try await fixture.library().picture(for: ItemStack(id: "test:flat")))
+        for appearance in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(content: ItemGraphic(id: "test:flat", isEnchanted: false, image: image)
+                .environment(\.colorScheme, appearance))
+            renderer.scale = 4
+            let rendered = try #require(renderer.cgImage)
+            #expect(rendered.width == 80 && rendered.height == 80)
+            let decoded = try #require(ItemTexture(png: ItemPictureFixture.png(rendered)))
+            let colors = Set(stride(from: 0, to: decoded.pixels.count, by: 4).map { Array(decoded.pixels[$0..<$0 + 4]) })
+            #expect(colors == Set([[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]]))
+        }
+    }
+
+    @Test func blockItemsShowThreeFacesAndQuarterTurnsKeepTheirUVs() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let cube = try #require(try await library.picture(for: ItemStack(id: "test:cube")))
+        let pixels = try ItemPictureFixture.pixels(cube)
+        var channels = [0, 0, 0], clear = 0
+        for index in stride(from: 0, to: pixels.bytes.count, by: 4) {
+            if pixels.bytes[index + 3] == 0 { clear += 1; continue }
+            for channel in 0..<3 where pixels.bytes[index + channel] > 0 { channels[channel] += 1 }
+            #expect(pixels.bytes[index..<index + 3].filter { $0 > 0 }.count == 1)
+        }
+        #expect(channels.allSatisfy { $0 > 150 })
+        #expect(clear > 300)
+        let turned = try #require(try await library.picture(for: ItemStack(id: "test:turned")))
+        let rotated = try ItemPictureFixture.pixels(turned)
+        #expect(rotated.color(8, 8) == [0, 0, 255, 255])
+        #expect(rotated.color(56, 8) == [255, 0, 0, 255])
+        #expect(rotated.color(8, 56) == [255, 255, 0, 255])
+        #expect(rotated.color(56, 56) == [0, 255, 0, 255])
+    }
+
+    @Test func repeatedKindsSharePicturesButSavedColorsStayDistinct() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let first = try #require(try await library.picture(for: ItemStack(id: "test:flat", count: 1)))
+        let more = try #require(try await library.picture(for: ItemStack(id: "test:flat", count: 64)))
+        #expect(first === more)
+        let red = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0xFF0000)]))
+        let blue = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0x0000FF)]))
+        let redImage = try #require(try await library.picture(for: red))
+        let blueImage = try #require(try await library.picture(for: blue))
+        #expect(redImage !== blueImage)
+        #expect(try ItemPictureFixture.pixels(redImage).color(56, 56) != ItemPictureFixture.pixels(blueImage).color(56, 56))
+        #expect(try await library.picture(for: ItemStack(id: "test:unknown")) == nil)
+        #expect(try await library.picture(for: ItemStack(id: "test:special")) == nil)
+    }
+
+    @Test func colorMapsUseTheReadersPixelAndOversizedImagesAreRejected() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let grass = try #require(try await library.picture(for: ItemStack(id: "test:grass")))
+        #expect(try ItemPictureFixture.pixels(grass).color(32, 32) == [0, 255, 0, 255])
+        let large = try ItemPictureFixture.png([UInt8](repeating: 255, count: 1025 * 4), width: 1025, height: 1)
+        #expect(ItemTexture(png: large) == nil)
+        #expect(ItemTexture(png: Data([1, 2, 3])) == nil)
+    }
+
+    @Test func emptyModelsStayEmptyAndUnusedTintsDoNotHideAnItem() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let empty = try #require(try await library.picture(for: ItemStack(id: "test:empty")))
+        #expect(try ItemPictureFixture.pixels(empty).bytes.allSatisfy { $0 == 0 })
+        let unused = ItemStack(id: "test:unused", components: .compound([
+            "minecraft:potion_contents": .compound(["potion": .string("example:unknown")])
+        ]))
+        #expect(try await library.picture(for: unused) != nil)
+    }
+
+    @Test func existingMinecraftBookmarkIsSharedWithPlayerNames() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let defaults = TestDefaults.make()
+        let bookmark = try fixture.root.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+                                                     includingResourceValuesForKeys: nil, relativeTo: nil)
+        defaults.set(bookmark, forKey: "minecraftFolderBookmark")
+        let names = PlayerNames(defaults: defaults, readCaches: { _ in [:] })
+        #expect(names.minecraftFolder?.standardizedFileURL == fixture.root.standardizedFileURL)
+        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
+        #expect(await names.minecraft.pictures(for: version) != nil)
+        names.forgetMinecraftFolder()
+        #expect(names.minecraft.folder == nil && names.minecraftFolder == nil)
+        #expect(defaults.data(forKey: "minecraftFolderBookmark") == nil)
+        await names.chooseMinecraftFolder(fixture.root)
+        #expect(await names.minecraft.pictures(for: version) != nil)
+        await names.minecraft.waitUntilIdle()
+    }
+
+    @Test func librariesRequireTheSavedVersionAndShareOnlyTheSameFile() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let resources = MinecraftResources(defaults: TestDefaults.make())
+        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
+        #expect(await resources.pictures(for: version) == nil)
+        resources.choose(fixture.root)
+        let first = try #require(await resources.pictures(for: version))
+        let second = try #require(await resources.pictures(for: version))
+        #expect(first === second)
+        let wrong = try #require(GameAssetVersion(name: "26.3", dataVersion: 1))
+        #expect(await resources.pictures(for: wrong) == nil)
+        let missing = try #require(GameAssetVersion(name: "1.21", dataVersion: 3953))
+        #expect(await resources.pictures(for: missing) == nil)
+        let generation = resources.generation
+        resources.forget()
+        #expect(resources.generation != generation && resources.folder == nil)
+        #expect(await resources.pictures(for: version) == nil)
+        resources.choose(fixture.root)
+        let reopened = try #require(await resources.pictures(for: version))
+        #expect(first !== reopened)
+        // Old views may still finish immutable work, but their source generation no longer matches.
+        #expect(try await first.picture(for: ItemStack(id: "test:flat")) != nil)
+        await resources.waitUntilIdle()
+    }
+
+    @Test func changingTheJarDoesNotReuseItsOldPictures() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let libraries = GameAssetLibraries()
+        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
+        let first = try #require(try await libraries.pictures(for: version, under: fixture.root))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: fixture.jar.path)
+        let replacement = try #require(try await libraries.pictures(for: version, under: fixture.root))
+        #expect(first !== replacement)
+        for name in ["", "..", "/tmp/test", "a/b", "a\\b", "a\0b"] {
+            #expect(GameAssetVersion(name: name, dataVersion: 5023) == nil)
+        }
+        #expect(GameAssetVersion(name: "26.3", dataVersion: Int.max) == nil)
+        #expect(GameAssetVersion(name: nil, dataVersion: 5023) == nil)
+    }
+
+    @Test func cancelledPicturesDoNotDrawOrPublish() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let task = Task { try await library.picture(for: ItemStack(id: "test:cube")) }
+        task.cancel()
+        do {
+            _ = try await task.value
+            Issue.record("Canceled image request returned a picture")
+        } catch is CancellationError { }
+    }
+
+    @Test func searchSummariesKeepTypedItemsWithTheSameCountsAndNames() throws {
+        let found = try #require(WorldSearch.summary(of: [ItemStack(id: "minecraft:stone", count: 2),
+                                                          ItemStack(id: "minecraft:stone", count: 3),
+                                                          ItemStack(id: "minecraft:redstone", count: 1)], query: SearchQuery("stone")))
+        #expect(found.count == 6)
+        #expect(found.items.map(\.id) == ["minecraft:stone", "minecraft:redstone"])
+        #expect(found.items.map(\.count) == [5, 1])
+        #expect(found.text == found.items.map(\.text).joined(separator: ", "))
+    }
+}
+
+/// Synthetic JSON and colored PNGs only. ditto supplies ZIP encoding; tests do not implement
+/// another archive writer or copy any installed-game artwork into the repository or bundle.
+struct ItemPictureFixture {
+    let root: URL
+    let jar: URL
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("ChunkseeTests-ItemPictures-" + UUID().uuidString)
+        let source = root.appendingPathComponent("source")
+        jar = root.appendingPathComponent("versions/26.3/26.3.jar")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: jar.deletingLastPathComponent(), withIntermediateDirectories: true)
+        func write(_ path: String, _ data: Data) throws {
+            let url = source.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
+        }
+        func json(_ path: String, _ object: Any) throws { try write(path, JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) }
+        try json("version.json", ["id": "26.3", "world_version": 5023])
+        for id in ["flat", "leather", "potion", "cube", "turned", "grass"] {
+            var model: [String: Any] = ["type": "minecraft:model", "model": "test:item/" + id]
+            if id == "leather" { model["tints"] = [["type": "minecraft:dye", "default": 0x804020]] }
+            if id == "potion" { model["tints"] = [["type": "minecraft:potion", "default": 0xFFFFFF]] }
+            if id == "grass" { model["tints"] = [["type": "minecraft:grass", "temperature": 1, "downfall": 1]] }
+            try json("assets/test/items/\(id).json", ["model": model])
+        }
+        try json("assets/test/items/special.json", ["model": ["type": "minecraft:special"]])
+        try json("assets/test/items/empty.json", ["model": ["type": "minecraft:empty"]])
+        try json("assets/test/items/unused.json", ["model": ["type": "minecraft:model", "model": "test:item/cube",
+            "tints": [["type": "minecraft:potion", "default": 0xFFFFFF]]]])
+        for (id, layers) in [("flat", ["layer0": "test:item/quadrants"]),
+                             ("leather", ["layer0": "test:item/white", "layer1": "test:item/overlay"]),
+                             ("potion", ["layer0": "test:item/white"]), ("grass", ["layer0": "test:item/white"])] {
+            try json("assets/test/models/item/\(id).json", ["parent": "minecraft:builtin/generated", "gui_light": "front", "textures": layers])
+        }
+        var faces: [String: Any] = [:]
+        for (face, color) in [("up", "red"), ("east", "blue"), ("north", "green"), ("down", "white"), ("west", "white"), ("south", "white")] {
+            faces[face] = ["texture": "#" + color]
+        }
+        let textures = ["red": "test:item/red", "green": "test:item/green", "blue": "test:item/blue", "white": "test:item/white"]
+        try json("assets/test/models/item/cube.json", ["textures": textures, "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": faces]],
+            "display": ["gui": ["rotation": [30, 225, 0], "scale": [0.625, 0.625, 0.625]]]])
+        try json("assets/test/models/item/turned.json", ["gui_light": "front", "textures": ["main": "test:item/quadrants"],
+            "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": ["south": ["texture": "#main", "rotation": 90]]]]])
+        let red: [UInt8] = [255, 0, 0, 255], green: [UInt8] = [0, 255, 0, 255], blue: [UInt8] = [0, 0, 255, 255]
+        let white: [UInt8] = [255, 255, 255, 255], clear: [UInt8] = [0, 0, 0, 0]
+        for (name, pixels) in [("red", red + red + red + red), ("green", green + green + green + green),
+                               ("blue", blue + blue + blue + blue), ("white", white + white + white + white),
+                               ("quadrants", red + green + blue + [255, 255, 0, 255]), ("overlay", red + clear + clear + clear)] {
+            try write("assets/test/textures/item/\(name).png", Self.png(pixels))
+        }
+        var colorMap = Array(repeating: red, count: 256 * 256).flatMap { $0 }
+        colorMap.replaceSubrange(0..<4, with: green)
+        try write("assets/minecraft/textures/colormap/grass.png", Self.png(colorMap, width: 256, height: 256))
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/ditto")
+        process.arguments = ["-c", "-k", "--norsrc", "--noextattr", source.path, jar.path]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    func remove() { try? FileManager.default.removeItem(at: root) }
+    func library() throws -> GameItemPictures { GameItemPictures(assets: try #require(try GameAssets(contentsOf: jar))) }
+
+    static func png(_ pixels: [UInt8], width: Int = 2, height: Int = 2) throws -> Data {
+        let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))
+        let image = try #require(CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+                                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        return try png(image)
+    }
+
+    static func png(_ image: CGImage) throws -> Data {
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    struct Pixels {
+        let width: Int
+        let bytes: [UInt8]
+        func color(_ x: Int, _ y: Int) -> [UInt8] {
+            let start = (y * width + x) * 4
+            return Array(bytes[start..<start + 4])
+        }
+    }
+    static func pixels(_ image: CGImage) throws -> Pixels {
+        let bytes = try #require(image.dataProvider?.data) as Data
+        return Pixels(width: image.width, bytes: Array(bytes))
+    }
+}
