@@ -61,7 +61,7 @@ nonisolated struct MapExportPlan: Equatable, Sendable {
         var errorDescription: String? {
             switch self {
             case .invalidArea: String(localized: "Choose an area of the map to export.")
-            case .tooLarge: String(localized: "Choose a smaller scale or area. Images can have up to 16 million pixels and 16,384 pixels on either side.")
+            case .tooLarge: String(localized: "Choose a smaller scale or area. Images can have up to \(MapExportPlan.maximumPixels.formatted()) pixels and \(MapExportPlan.maximumSide.formatted()) pixels on either side.")
             }
         }
     }

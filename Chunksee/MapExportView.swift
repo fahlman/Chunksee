@@ -24,8 +24,13 @@ struct MapExportView: View {
                 }
                 .accessibilityIdentifier("map-export-area")
                 if model.options.area == .measured {
-                    Text("Includes the rectangle between both measurement points.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if model.bounds(for: .measured) == nil {
+                        Text("Use Measure Distance to mark two points on the map, then reopen this sheet.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Includes the rectangle between both measurement points.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 HStack {
                     Picker("Scale", selection: $model.options.blocksPerPixel) {
@@ -99,6 +104,10 @@ struct MapExportView: View {
         case .success(let plan):
             Text("\(plan.width.formatted()) × \(plan.height.formatted()) pixels")
                 .monospacedDigit().accessibilityIdentifier("map-export-dimensions")
+            if !model.isRunning && !model.isReadingContent && !model.canCreate {
+                Text("This area does not contain saved terrain.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let image = model.result {
                 Text("PNG: \(Int64(image.data.count).formatted(.byteCount(style: .file)))")
                     .font(.caption).foregroundStyle(.secondary)
