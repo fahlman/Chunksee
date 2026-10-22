@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.44.0`, resolved to `0.44.0` (`08f4a317ec5a2cd09ecfe2ec6e3091df7db769cd`).
+  minor" from `0.45.0`, resolved to `0.45.0` (`a85485d6a9a34fdefd264cc665eecb540a069518`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -412,6 +412,12 @@ is an alias for the shared filter type with only app prompts and symbols. The ap
 existing searchable names, item/book/sign/trade text, category membership and result presentation.
 Unknown prefixes stay literal, empty plain queries return no results, and bare filters list their
 categories. There is no second query parser or matcher in the app.
+
+ChunkseeIndex.NotableBlock owns the nine notable-block groups, their 13 saved IDs and grouped
+deposit counts/section height bounds. Blocks.swift keeps only aliases, localized names/search
+labels and the app's chunk/deposit pair. RegionReader uses the shared catalog for scan options;
+RegionIndex uses shared grouping. The old app Codable conformances had no persistence consumers;
+ScanCache continues to store core RegionFacts, with no cache-format change.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is
