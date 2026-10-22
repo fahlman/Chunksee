@@ -101,7 +101,13 @@
       "comment" : "Fallback unopened-loot label; the placeholder is an unfamiliar saved loot-table identifier."
     },
     "Done" : {
-      "comment" : "Dismiss the map-height popover; height changes have already been applied."
+      "comment" : "Finish the current view or popover. Map adjustments retain valid entries."
+    },
+    "Mode" : {
+      "comment" : "The Map Height control chooses Surface or Cutaway; its separate Y coordinate controls choose the height."
+    },
+    "Y coordinate" : {
+      "comment" : "The map's vertical block coordinate, shared by its number field and height slider."
     },
     "Height range unavailable" : {
       "comment" : "Shown instead of the cutaway slider when the dimension's build limits cannot be read. Numeric entry remains available."

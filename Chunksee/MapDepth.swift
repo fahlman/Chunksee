@@ -64,8 +64,8 @@ private struct MapDepthPopover: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Picker("Map View", selection: Binding {
+        MapAdjustmentPopover(title: "Map Height") {
+            Picker("Mode", selection: Binding {
                 map.depth.isSurface
             } set: { isSurface in
                 draggedY = nil
@@ -77,13 +77,22 @@ private struct MapDepthPopover: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("cutaway-mode")
 
-            if let heightRange {
-                slider(in: heightRange)
-            } else {
-                Text("Height range unavailable")
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("cutaway-range-unavailable")
+            HStack {
+                MapAdjustmentStepButton(title: "Decrease Y", systemImage: "minus") { stepHeight(by: -1) }
+                    .disabled(displayedY == Int.min)
+                    .accessibilityIdentifier("cutaway-decrease")
+                if let heightRange {
+                    slider(in: heightRange)
+                } else {
+                    Text("Height range unavailable")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("cutaway-range-unavailable")
+                }
+                MapAdjustmentStepButton(title: "Increase Y", systemImage: "plus") { stepHeight(by: 1) }
+                    .disabled(displayedY == Int.max)
+                    .accessibilityIdentifier("cutaway-increase")
             }
+            .disabled(map.depth.isSurface)
             HStack {
                 Text("Y")
                 TextField("Y", value: height, format: .number.grouping(.never))
@@ -91,25 +100,16 @@ private struct MapDepthPopover: View {
                     .onExitCommand { dismiss() }
                     .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
-                    .accessibilityLabel("Cutaway Y coordinate")
+                    .accessibilityLabel("Y coordinate")
                     .accessibilityIdentifier("cutaway-y")
                     .help("Show the terrain at or below this height")
-                // A full Int range cannot form the distance required by Stepper's ranged binding.
-                Stepper("Cutaway Height",
-                        onIncrement: displayedY < Int.max ? { stepHeight(by: 1) } : nil,
-                        onDecrement: displayedY > Int.min ? { stepHeight(by: -1) } : nil)
-                    .labelsHidden()
-                    .accessibilityValue(Text("Y \(displayedY.formatted())"))
-                    .accessibilityIdentifier("cutaway-stepper")
             }
             .disabled(map.depth.isSurface)
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                MapAdjustmentDoneButton { dismiss() }
             }
         }
-        .padding()
         .onAppear { isHeightFocused = !map.depth.isSurface }
         .onChange(of: map.depth.isSurface) { _, isSurface in isHeightFocused = !isSurface }
         .onDisappear { draggedY = nil }
@@ -127,7 +127,7 @@ private struct MapDepthPopover: View {
             guard let y = Int(exactly: $0.rounded()) else { return }
             height.wrappedValue = y
         }, in: Double(range.lowerBound)...Double(range.upperBound)) {
-            Text("Cutaway Height")
+            Text("Y coordinate")
         } minimumValueLabel: {
             Text(range.lowerBound, format: .number.grouping(.never))
         } maximumValueLabel: {
@@ -142,7 +142,6 @@ private struct MapDepthPopover: View {
             }
         }
         .labelsHidden()
-        .disabled(map.depth.isSurface)
         .accessibilityIdentifier("cutaway-slider")
         .accessibilityValue(Text("Y \(sliderY(in: range).formatted())"))
         .accessibilityAdjustableAction { direction in

@@ -86,16 +86,17 @@ private struct MapZoomPopover: View {
         isPercentageFocused = false
     }
 
+    private func finish() {
+        commitPercentage()
+        dismiss()
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Zoom").font(.headline)
+        MapAdjustmentPopover(title: "Zoom") {
             HStack {
-                Button { zoom(by: 0.5) } label: {
-                    Image(systemName: "minus").frame(width: 16, height: 16)
-                }
-                .accessibilityLabel("Zoom Out")
-                .disabled(!map.viewport.canZoomOut)
-                .accessibilityIdentifier("zoom-out")
+                MapAdjustmentStepButton(title: "Zoom Out", systemImage: "minus") { zoom(by: 0.5) }
+                    .disabled(!map.viewport.canZoomOut)
+                    .accessibilityIdentifier("zoom-out")
                 // Equal travel doubles/halves zoom, keeping both ends of the range usable.
                 Slider(value: Binding {
                     log2(Double(sliderScale))
@@ -109,12 +110,9 @@ private struct MapZoomPopover: View {
                 .labelsHidden()
                 .accessibilityIdentifier("zoom-slider")
                 .accessibilityValue(Text(ZoomPercentage.text(sliderScale)))
-                Button { zoom(by: 2) } label: {
-                    Image(systemName: "plus").frame(width: 16, height: 16)
-                }
-                .accessibilityLabel("Zoom In")
-                .disabled(!map.viewport.canZoomIn)
-                .accessibilityIdentifier("zoom-in")
+                MapAdjustmentStepButton(title: "Zoom In", systemImage: "plus") { zoom(by: 2) }
+                    .disabled(!map.viewport.canZoomIn)
+                    .accessibilityIdentifier("zoom-in")
             }
 
             HStack {
@@ -124,10 +122,7 @@ private struct MapZoomPopover: View {
                     .monospacedDigit()
                     .focused($isPercentageFocused)
                     .onSubmit { commitPercentage() }
-                    .onExitCommand {
-                        percentage = ZoomPercentage.entry(map.viewport.scale, locale: locale)
-                        dismiss()
-                    }
+                    .onExitCommand(perform: finish)
                     .accessibilityLabel("Zoom percentage")
                     .accessibilityIdentifier("zoom-percentage")
                     .help("Enter a percentage from \(ZoomPercentage.text(MapViewport.minimumManualScale)) to \(ZoomPercentage.text(MapViewport.scaleRange.upperBound))")
@@ -156,12 +151,9 @@ private struct MapZoomPopover: View {
                 .disabled(!session.navigation.canFitWorld)
                 .accessibilityIdentifier("zoom-fit-world")
                 Spacer()
-                Button("Done") { commitPercentage(); dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                MapAdjustmentDoneButton(action: finish)
             }
         }
-        .padding()
-        .frame(width: 340)
         .onAppear { percentage = ZoomPercentage.entry(map.viewport.scale, locale: locale) }
         .onChange(of: map.viewport.scale) { _, scale in percentage = ZoomPercentage.entry(scale, locale: locale) }
         .onChange(of: isPercentageFocused) { _, focused in if !focused { commitPercentage() } }

@@ -145,7 +145,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Zoom-aware marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
 | `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, with one common size at each zoom and selection-independent targets |
-| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift` | Local navigation/history and native height/zoom popovers; MapModel owns viewport/depth |
+| `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift`, `MapAdjustmentPopover.swift` | Local navigation/history and native height/zoom popovers; shared adjustment layout/buttons, with MapModel owning viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
@@ -278,9 +278,11 @@ previous index and heat contributions; successful empty reads and deleted files 
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
-slider, bordered number field and stepper share that owner; height controls are disabled on Surface.
+slider, bordered number field and minus/plus buttons share that owner; height controls are disabled on Surface.
 The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
-Standard controls determine their sizing, with no fixed frames. WorldSettings stores depth per
+MapAdjustmentPopover owns both adjustment popovers' heading, spacing and 340-point width;
+their native step and Done buttons share presentation too. Map Height names the feature, Mode
+chooses Surface/Cutaway, and Y coordinate labels the numeric controls. WorldSettings stores depth per
 dimension alongside the viewport, including moves.
 Native View-menu commands open the same popover (Shift-Command-Y) and toggle Surface
 (Option-Command-Y), so default macOS keyboard navigation can reach the feature. A focused scene
@@ -298,7 +300,7 @@ popover discards an unfinished drag. WorldDetails reads dimension types and gene
 through Kit 0.40.0 in the existing off-main metadata pass. DimensionPresentation supplies the
 current dimension's verified build range to the slider; logical height does not define that range
 or the renderer's ceiling start. MapSurfaceContext owns the separate normal-view policy above.
-Numeric entry and its stepper accept any Int, without extending the slider’s limits. The slider
+Numeric entry and its one-block steps accept any Int, without extending the slider’s limits. The slider
 thumb clamps to those limits until the user chooses a new value; its accessibility value describes
 that thumb. The number field handles SwiftUI's exit command directly so Escape dismisses the
 popover even before an edit is submitted; the native Done button supplies dismissal elsewhere.
@@ -358,10 +360,11 @@ a previously valid saved view. Grid iteration checks its step arithmetic as well
 The toolbar percentage opens a native SwiftUI zoom popover with a logarithmic slider, localized
 number entry, existing presets, −/+ buttons, Actual Size and Fit World. The titlebar has only the
 percentage control; menu/keyboard zoom commands remain available. Manual controls use 6.25% through
-3,200%; Fit World can remain smaller. Opening or dismissing the popover leaves a fitted scale
-unchanged. Slider changes apply continuously; Return or leaving the number field commits a valid
-edit, while invalid/out-of-range text returns to the current percentage. Escape discards an
-unsubmitted edit. MapModel's existing viewport remains the only zoom owner, separately per tab;
+3,200%; Fit World can remain smaller. Opening or leaving an unedited popover keeps a fitted scale
+unchanged. Slider changes apply continuously; Return, leaving the number field, Done or Escape
+commits a valid edit, while invalid/out-of-range text returns to the current percentage. Done and
+the field's Escape handler call the same completion action. MapModel's existing viewport remains
+the only zoom owner, separately per tab;
 the popover keeps only an unfinished text edit and its presentation state.
 Region/chunk index keys, tiles and scan results use Kit's RegionPosition and ChunkPosition
 directly. Kit owns chunk-to-region/local coordinates and checked chunk/region origins; app scans,
