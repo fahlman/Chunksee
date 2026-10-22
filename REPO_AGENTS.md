@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.41.0`, resolved to `0.41.0` (`10db1e5d1e39ae273d2c42267ae2360e0b303f2b`).
+  minor" from `0.42.0`, resolved to `0.42.0` (`bad9f277f9bedc2a1650c4e2cea9fadede6b50f2`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -799,7 +799,11 @@ native history and restoration state.
 
 Cave membership filters the library's actually used biome IDs. Unused palette names never
 create cave areas/hover membership; all actually used areas and the full per-dimension vanilla
-biome catalog remain. The app owns the cave category list and neighboring-chunk area grouping.
+biome catalog remain. The app owns the cave category list and chooses surface/cave membership.
+ChunkseeIndex.BiomeArea owns edge-connected grouping, representative selection and exposed sides;
+BiomeScanner only projects those typed results into names, world-space fill/outline paths and
+marker positions. The app does not repeat neighbor walks or boundary membership checks. Every
+area remains visible, including single chunks; file reads and cache interpretation are unchanged.
 
 
 SidebarActionRow supplies native icon/title presentation, plain control styling and help for

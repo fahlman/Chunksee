@@ -7,6 +7,25 @@ import Testing
 @Suite(.isolatedStores) struct BiomeSceneTests {
     private let size = CGSize(width: 400, height: 200)
 
+    @Test func projectedAreasKeepNegativeChunksAndSeparateDiagonalNeighbors() throws {
+        let areas = BiomeScanner.areas(from: [
+            .init(x: -1, z: -1): "minecraft:forest", .init(x: 0, z: -1): "minecraft:forest",
+            .init(x: -1, z: 0): "minecraft:forest", .init(x: 1, z: 1): "minecraft:forest",
+            .init(x: 1, z: 0): "custom:forest",
+        ])
+        #expect(areas.count == 3)
+        let joined = try #require(areas.first { $0.chunkCount == 3 })
+        #expect(joined.id == "minecraft:forest@-1,-1" && joined.group.id == "minecraft:forest")
+        #expect(joined.position == CGPoint(x: -8, y: -8))
+        #expect(joined.bounds == CGRect(x: -16, y: -16, width: 32, height: 32))
+        #expect(joined.chunks.contains(joined.position))
+        #expect(joined.chunks.contains(CGPoint(x: 8, y: -8)))
+        #expect(joined.chunks.contains(CGPoint(x: -8, y: 8)))
+        #expect(!joined.chunks.contains(CGPoint(x: 8, y: 8)))
+        #expect(areas.contains { $0.group.id == "custom:forest" && $0.position == CGPoint(x: 24, y: 8) })
+        #expect(areas.contains { $0.id == "minecraft:forest@1,1" && $0.bounds == CGRect(x: 16, y: 16, width: 16, height: 16) })
+    }
+
     @Test func visibleAreaDoesNotRequireItsRepresentativePointToBeOnscreen() throws {
         let bounds = CGRect(x: -32, y: -16, width: 1_600, height: 32)
         let area = BiomeArea(id: "long", group: .init(id: "minecraft:plains"), chunkCount: 200,
@@ -58,6 +77,13 @@ import Testing
         #expect(try alpha(image, x: 200, y: 100) == 0) // Missing center chunk remains empty.
         #expect(try alpha(image, x: 136, y: 100) == 38) // Existing 15% fill, away from edges.
         #expect(try alpha(image, x: 168, y: 100) > 100) // Inner boundary is still outlined.
+        #expect(try alpha(image, x: 232, y: 100) > 100)
+        #expect(try alpha(image, x: 200, y: 68) > 100)
+        #expect(try alpha(image, x: 200, y: 132) > 100)
+        #expect(try alpha(image, x: 104, y: 100) > 100) // Outer boundary uses the same edge projection.
+        #expect(try alpha(image, x: 296, y: 100) > 100)
+        #expect(try alpha(image, x: 200, y: 4) > 100)
+        #expect(try alpha(image, x: 200, y: 196) > 100)
         #expect(try alpha(image, x: 10, y: 10) == 0)
 
         content.places = [PlaceMarker(Spawner(x: -8, y: 64, z: 8, mob: "minecraft:zombie"))]
