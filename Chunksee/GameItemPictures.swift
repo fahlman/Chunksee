@@ -5,6 +5,7 @@ import Foundation
 /// One live jar's immutable resources and bounded, shared thumbnail caches. All decode/drawing
 /// work is serial off-main; scrolling requests already drawn items without repeating that work.
 actor GameItemPictures {
+    nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
     private let assets: GameAssets
     private let models = NSCache<NSString, ModelEntry>()

@@ -8,12 +8,12 @@ struct ItemIcon: View {
     @State private var loaded: (request: Request, image: CGImage)?
 
     private struct Request: Equatable {
-        let library: ObjectIdentifier?
+        let library: UUID?
         let item: ItemStack
     }
 
     var body: some View {
-        let request = Request(library: pictures.map(ObjectIdentifier.init), item: item)
+        let request = Request(library: pictures?.identity, item: item)
         ItemGraphic(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item),
                     image: loaded?.request == request ? loaded?.image : nil)
             .task(id: request) {
