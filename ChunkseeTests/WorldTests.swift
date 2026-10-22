@@ -166,7 +166,7 @@ import Testing
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([
             .compound(["id": .string("minecraft:sign"), "x": .int(-2895), "y": .int(68), "z": .int(2245),
-                       "front_text": side(["East", "Northeast", "to", "Desert"]), "back_text": side(["Village", "", "", ""])]),
+                       "front_text": side([" East ", "Northeast", "to", " Desert "]), "back_text": side([" Village ", "  ", "", ""])]),
             .compound(["id": .string("minecraft:hanging_sign"), "x": .int(0), "y": .int(70), "z": .int(0), "front_text": side(["Exit", "", "", ""])]),
             .compound(["id": .string("minecraft:lectern"), "x": .int(5), "y": .int(64), "z": .int(5), "Book": item("minecraft:written_book", 1, components: [
                 "minecraft:written_book_content": .compound(["title": .compound(["raw": .string("Travels")]), "author": .string("fahlman"),
@@ -175,7 +175,7 @@ import Testing
         ])])
         let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: chunk),
                                 signs: Sign.signs(inChunk: chunk)))
-        // A phrase can run across a sign's lines and onto its back.
+        // Saved text matches across a sign's sides; only its displayed caption trims blank space.
         let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
         #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
         #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")

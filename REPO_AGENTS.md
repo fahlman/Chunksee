@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.47.0`, resolved to `0.47.0` (`6323f7a27c0946478fe86905ebf4475c6452aa0f`).
+  minor" from `0.48.0`, resolved to `0.48.0` (`b0505811e689630bf7577963c88c842d051eadba`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -410,7 +410,7 @@ does not supply that point. Held menus disable/guard commands when their documen
 ChunkseeIndex.SearchQuery owns category-prefix parsing, word splitting and case-insensitive
 substring matching. WorldSearch passes one parsed query through its result builders; LayerFilter
 is an alias for the shared filter type with only app prompts and symbols. The app supplies its
-existing searchable names, item/book/sign/trade text, category membership and result presentation.
+localized searchable names and trade text, with native category dispatch and result presentation.
 Unknown prefixes stay literal, empty plain queries return no results, and bare filters list their
 categories. There is no second query parser or matcher in the app.
 
@@ -421,6 +421,14 @@ Placed/all enumeration, with no duplicate dictionary or snapshot owner. WorldSea
 ChunkseeIndex.ItemTotals for nested matching-item quantities. Native ID-plus-label grouping,
 searchable text, count/name ordering and formatted summaries stay in WorldSearch; the CLI can use
 the same aggregate with its own labels. Storage tests exercise the production presenting adapter.
+
+Shared searchableInventory selects inventory plus saved equipment; book searchText and sign
+searchLines supply saved text fields. The app adds its localized labels and trims sign captions.
+Filter.includes owns creature/pet/villager/trade membership, combined with the existing text pass
+without a second filtered creature array. WorldIndex.richestDeposits owns cross-dimension block
+matching/ranking; the app chooses its display limit and converts the typed result to a native pin.
+SearchHit keeps app-only titles, details, native coordinates and selection links. No extra catalog,
+query state or background work is introduced.
 
 ChunkseeIndex.NotableBlock owns the nine notable-block groups, their 13 saved IDs and grouped
 deposit counts/section height bounds. Blocks.swift keeps only aliases, localized names/search
