@@ -139,6 +139,50 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: cache.directory.path))
     }
 
+    @Test func heightAndWaterDepthExportsMatchTheViewIncludingTheirLegends() async throws {
+        let root = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:water"]) { x, y, _ in
+                if x < 8 { return y <= 8 ? 1 : 0 }
+                return y == 0 ? 1 : (y <= 8 ? 2 : 0)
+            }
+        ], dimensionSettings: ["minecraft:overworld": TestWorld.noiseDimension(
+            type: .string("minecraft:overworld"), noise: .compound([
+                "noise": .compound(["min_y": .int(-64), "height": .int(384)]), "sea_level": .int(4)
+            ]))])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
+        let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                           regionConcurrency: 1, chunkConcurrency: 1, heightScale: scale)
+        defer { map.close() }
+        let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
+        map.viewport = plan.viewport
+        for style in [MapStyle.height, .waterDepth] {
+            map.setStyle(style)
+            for depth in [MapDepth(), MapDepth(y: 4, isSurface: false)] {
+                map.setDepth(depth)
+                map.requestTiles(visibleIn: plan.size, displayScale: 1)
+                await map.waitUntilIdle()
+                var content = MapContent()
+                content.mapStyle = style
+                content.heightScale = scale
+                for appearance in [ColorScheme.light, .dark] {
+                    let image = try await MapImage.export(plan: plan, regions: map.availableRegions,
+                        renderer: map.currentRenderer, content: content, portalStatus: { _ in nil },
+                        colorScheme: appearance, locale: Locale(identifier: "en_US"), progress: { _, _ in })
+                    let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
+                        size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                    #expect(try pixels(image) == pixels(view))
+                    // A matching terrain image alone would miss the shared style legend.
+                    let withoutLegend = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil },
+                        size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                    #expect(try pixels(image) != pixels(withoutLegend))
+                }
+            }
+        }
+        await map.waitForRenders()
+    }
+
     @Test(.timeLimit(.minutes(1))) func cancelAndDocumentCloseDrainTheOwnedExportBeforeAnotherCanStart() async throws {
         for closeDocument in [false, true] {
             let root = try TestWorld.make(chunks: [
@@ -151,10 +195,12 @@ import Testing
             let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
             let session = WorldSession(resources: resources, renderTile: { renderer, _ in
                 #expect(renderer.cutawayY == 12)
+                #expect(renderer.style == .waterDepth)
                 return await gate.read("tile")
             })
             await session.search.waitForIndex()
             session.map?.setDepth(MapDepth(y: 12, isSurface: false))
+            session.map?.setStyle(.waterDepth)
             let export = session.imageExport
             export.options.area = .dimension
             #expect(export.canCreate)
@@ -162,6 +208,7 @@ import Testing
             await gate.waitForRequest("tile")
             #expect(export.isRunning && export.renderedDepth?.y == 12)
             session.map?.setDepth(MapDepth(y: 3, isSurface: false))
+            session.map?.setStyle(.normal)
             #expect(export.renderedDepth?.y == 12)
             if closeDocument { session.close() } else { export.cancel() }
             #expect(export.isRunning && export.isCancelling && !export.canCreate)

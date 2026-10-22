@@ -15,8 +15,9 @@ nonisolated struct TileCache: Sendable {
     /// 8: Kit's identifier parser recognizes omitted/empty default namespaces in block palettes.
     /// 9: Shared WORLD_SURFACE/actual-block starts replace the MOTION_BLOCKING fallback.
     /// 10: saved dimension height/ceiling context replaces the Nether-ID view rule.
+    /// 11: independent Normal, Height and Water Depth styles, including the saved height scale.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 10
+    static let rendererVersion = 11
 
     let directory: URL
 
@@ -27,15 +28,18 @@ nonisolated struct TileCache: Sendable {
         var cutawayY: Int? = nil
         var buildHeight: Int? = nil
         var ceilingY: Int? = nil
+        var style = MapStyle.normal
+        var heightScale: MapHeightScale? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
                 ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
-            return "\(prefix)\(view).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
+            return "\(prefix)\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
-        var prefix: String { "\(regionPrefix)\(cutawayY == nil ? "surface" : "cutaway")." }
+        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway")." }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -84,12 +88,14 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
-    static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil) -> Key? {
+    static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
-                   ceilingY: cutawayY == nil ? context.ceilingY : nil)
+                   ceilingY: cutawayY == nil ? context.ceilingY : nil,
+                   style: style, heightScale: style == .height ? heightScale : nil)
     }
 
     func load(_ key: Key) -> [UInt8]? {
@@ -99,7 +105,7 @@ nonisolated struct TileCache: Sendable {
         return [UInt8](pixels)
     }
 
-    /// Keeps Surface and the latest cutaway per region, so dragging across many heights does not
+    /// Keeps Surface and the latest cutaway per region and style, so dragging across many heights does not
     /// retain every intermediate slice. Failures only cost a re-render.
     func store(_ pixels: [UInt8], for key: Key) {
         guard let compressed = try? (Data(pixels) as NSData).compressed(using: .lzfse) as Data else { return }

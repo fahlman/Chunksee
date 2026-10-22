@@ -62,7 +62,12 @@ final class WorldSettings {
         return MapDepth(y: y, isSurface: surface == 1)
     }
 
-    func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil) {
+    func style(for dimension: String) -> MapStyle {
+        let value = (stored["styles"] as? [String: String])?[dimension]
+        return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
+    }
+
+    func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil, style: MapStyle? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -72,6 +77,11 @@ final class WorldSettings {
             var depths = saved["depths"] as? [String: [String: Int]] ?? [:]
             depths[dimension] = ["y": depth.y, "surface": depth.isSurface ? 1 : 0]
             saved["depths"] = depths
+        }
+        if let style {
+            var styles = saved["styles"] as? [String: String] ?? [:]
+            styles[dimension] = style.rawValue
+            saved["styles"] = styles
         }
         saved["dimension"] = selected
         defaults.set(saved, forKey: key)

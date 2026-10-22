@@ -86,6 +86,19 @@ struct WorldCommands: Commands {
             Button("Fit World") { session?.navigation.fitWorld() }
                 .keyboardShortcut("9")
                 .disabled(session?.navigation.canFitWorld != true)
+            Menu("Map Style") {
+                ForEach(MapStyle.allCases, id: \.self) { style in
+                    // Native menu toggles honor per-item availability. An inline Picker's
+                    // Text options remain enabled even when their .disabled value is true.
+                    Toggle(isOn: Binding {
+                        session?.map?.style == style
+                    } set: { if $0 { session?.map?.setStyle(style) } }) {
+                        Text(style.title)
+                    }
+                    .disabled(style == .height && session?.map?.heightScale == nil)
+                }
+            }
+            .disabled(session?.map == nil)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)

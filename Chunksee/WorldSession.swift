@@ -100,9 +100,11 @@ final class WorldSession {
         let map = MapModel(work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            surfaceContext: MapSurfaceContext(dimensionID: dimension.id, settings: resources.details.dimensionSettings[dimension.id]),
+                           heightScale: MapHeightScale(settings: resources.details.dimensionSettings[dimension.id]),
                            renderTile: renderTile)
         if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.settings.depth(for: dimension.id))
+        map.setStyle(resources.settings.style(for: dimension.id))
         return map
     }
 
@@ -116,7 +118,7 @@ final class WorldSession {
     /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth)
+        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.style)
     }
 }
 

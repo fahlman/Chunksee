@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.48.0`, resolved to `0.48.0` (`b0505811e689630bf7577963c88c842d051eadba`).
+  minor" from `0.49.0`, resolved to `0.49.0` (`bc8ac2498a91bf5177cb90b85945c49b1a59fe71`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -292,6 +292,22 @@ The held cave list and renderer colors remain app presentation policy.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
+
+MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
+restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
+pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
+TileCache version 11 separates each style's Surface/latest-cutaway entries; Height keys include
+MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
+styles' cached tiles. No scan-cache change is needed.
+MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
+Sea level is the midpoint; if it is outside the build bounds, those bounds use only their side of
+the palette and the legend states that fact. Without sea level the scale runs linearly between known
+build bounds; without bounds Height is unavailable. The existing column scan and Cutaway choice
+supply all three styles. Normal keeps its block colours and relief. Height replaces colours with
+a fixed Lab lightness ramp; Water Depth replaces water colours, keeping normal land/relief and
+labelling the existing 32-block cap as “32 or deeper.” Core Graphics prepares the sRGB ramps once.
+The on-screen/exported MapLegendOverlay hosts the styles and existing overlay keys; MapLegendScale
+shares bar/tick layout with Time Spent. No world files or normal app defaults are written by tests.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
@@ -869,7 +885,8 @@ and an ellipsis. MapView groups map, slime-chunk and Time Spent activity in its 
 The existing async models own readiness and cancellation.
 
 MapLegendOverlay owns one bottom-trailing material container for the visible map and MapImage
-export. MapContent supplies the shown Time Spent scale, Slime Chunks key and World Border key;
+export. MapContent supplies the active map style and height scale, shown Time Spent scale,
+Slime Chunks key and World Border key;
 no separate legend visibility is stored. SlimeChunks.pixel supplies the mask and legend color,
 and WorldBorderStyle supplies the edge and key's line treatment. HeatMapLegend keeps its scale
 and duration labels. An enabled layer retains its key even when its current images are empty.
@@ -880,7 +897,7 @@ Create Map Image uses a native SwiftUI sheet from the toolbar Share menu and Vie
 MapExportPlan shares Fit World's saved-region extent and MapViewport's transform; visible and
 measurement areas preserve their origin and include both measured blocks. It refuses images over
 16,777,216 pixels or 16,384 pixels on either side before allocation, with smaller power-of-two
-scales and a Fit Image action. MapExportModel captures the map's renderer, depth and overlay values
+scales and a Fit Image action. MapExportModel captures the map's renderer, style, depth and overlay values
 when Create is pressed, without changing the live viewport, layers or selection. Reading and PNG
 encoding run off-main; one production region tile at a time is drawn through MapView's shared
 terrain path into a checked RGBA destination, then the shared overlays and legend are drawn once.
@@ -892,6 +909,8 @@ file or partial file is written and user-selected file access remains read-only.
 BackgroundWork scope cancels and drains reads, cache writes and encoding before world access ends;
 a canceled request cannot publish its result or start another destination allocation before it drains.
 Tests use a private named pasteboard at the explicit native clipboard boundary.
+Height/Water Depth exports and current-view images share their pixels and style legends in
+Light/Dark and Surface/Cutaway; a waiting export retains the style captured when Create was pressed.
 
 World Border uses the existing per-dimension LayerVisibility/WorldSettings owner, initially shown.
 DimensionPresentation.limitedWorldBorder derives availability from the saved border and live map;
