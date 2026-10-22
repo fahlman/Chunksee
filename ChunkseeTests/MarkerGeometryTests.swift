@@ -305,7 +305,7 @@ import Testing
                 content.selection = selected ? .creature(pet) : nil
                 content.selectedHitID = selected ? search.id : nil
                 content.selectedPlayerID = selected ? (variant == 1 ? content.players.first?.playerID : content.players.last?.playerID) : nil
-                let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+                let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
                 #expect(image.data.count > 1_000)
                 let digest = SHA256.hash(data: image.data).map { String(format: "%02x", $0) }.joined()
                 // This bounded baseline/candidate comparison is evidence, not a portable golden

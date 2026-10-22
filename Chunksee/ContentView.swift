@@ -4,6 +4,7 @@ import SwiftUI
 struct WorldView: View {
     @Bindable var session: WorldSession
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
@@ -136,26 +137,22 @@ struct WorldView: View {
                 }
                 .navigationSubtitle(session.presentation.displayName)
             } else if let map = session.map {
-                MapView(session: session, map: map, content: MapContent(session: session), portalStatus: { session.presentation.linkStatus(for: $0) },
+                let content = MapContent(session: session)
+                MapView(session: session, map: map, content: content, portalStatus: { session.presentation.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
-                    .copyable([SharedMapImage { [session] in MapImage.render(session: session) }])
+                    .copyable([SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) }])
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
                         try? await Task.sleep(for: .seconds(1))
                         if !Task.isCancelled { session.saveView() }
                     }
-                    .overlay(alignment: .bottomTrailing) {
-                        if heatMap.isShown {
-                            HeatMapLegend(isLoading: heatMap.isLoading)
-                                .padding(10)
-                        }
-                    }
+                    .modifier(HeatMapLegendOverlay(isShown: content.showsHeatMap))
                     .toolbar {
                         ToolbarItem {
-                            ShareLink(item: SharedMapImage { [session] in MapImage.render(session: session) },
+                            ShareLink(item: SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) },
                                       preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }

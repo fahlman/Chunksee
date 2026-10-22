@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Testing
+import SwiftUI
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct PointMarkersTests {
@@ -154,7 +155,7 @@ import Testing
     }
 
     private func exportPixels(_ map: MapModel, content: MapContent) throws -> [UInt8] {
-        let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2))
+        let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         try #require(decoded.width == Int(size.width * 2) && decoded.height == Int(size.height * 2))

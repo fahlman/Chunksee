@@ -125,7 +125,7 @@ Right-click or Control-click a marker or block and choose **Copy Coordinates** t
 as three numbers separated by single spaces, ready to paste into a Minecraft command (for example,
 `-9 64 1`). Markers use their saved height; terrain and saved places use the displayed block's height.
 With the map selected, **Edit ▸ Copy** (**⌘C**) copies an image of the map as shown; the toolbar's
-Share button sends one.
+Share button sends one. Both include the Time Spent color legend when that layer is shown.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**

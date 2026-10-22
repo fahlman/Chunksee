@@ -283,6 +283,9 @@ struct MapView: View {
             if session.slimeChunks.isLoading {
                 ProgressView("Drawing slime chunks…").controlSize(.small)
             }
+            if session.heatMap.isLoading {
+                ProgressView("Reading time spent…").controlSize(.small)
+            }
             if map.isLoading {
                 ProgressView("Drawing map…").controlSize(.small)
             } else if map.availableRegions.isEmpty {
@@ -294,7 +297,7 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.annotations.ruler.isEnabled && !session.slimeChunks.isLoading ? 0 : 1)
+        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.annotations.ruler.isEnabled && !session.slimeChunks.isLoading && !session.heatMap.isLoading ? 0 : 1)
     }
 
     /// Blocks are named from 100% zoom, where a block is at least a point across.

@@ -314,7 +314,7 @@ import Testing
         let size = CGSize(width: 200, height: 100)
         map.requestTiles(visibleIn: size, displayScale: 2)
         await map.waitUntilIdle()
-        let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 2))
+        let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         #expect(decoded.width == 400 && decoded.height == 200)
@@ -328,6 +328,45 @@ import Testing
         }
         #expect(alpha(x: 200, y: 100) == 255)
         #expect(alpha(x: 2, y: 2) == 0)
+    }
+
+    @Test func exportedHeatMapIncludesItsColorScaleInBothAppearances() async throws {
+        let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        let size = CGSize(width: 480, height: 320)
+        map.requestTiles(visibleIn: size, displayScale: 1)
+        await map.waitUntilIdle()
+        for appearance in [ColorScheme.light, .dark] {
+            for shown in [false, true] {
+                var content = MapContent()
+                content.showsHeatMap = shown
+                let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
+                    size: size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                Attachment.record(Array(image.data), named: "time-spent-\(appearance)-\(shown).png")
+                let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+                let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+                var pixels = [UInt8](repeating: 0, count: decoded.width * decoded.height * 4)
+                let rendered = pixels.withUnsafeMutableBytes { bytes in
+                    guard let context = CGContext(data: bytes.baseAddress, width: decoded.width, height: decoded.height,
+                        bitsPerComponent: 8, bytesPerRow: decoded.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+                    context.draw(decoded, in: CGRect(x: 0, y: 0, width: decoded.width, height: decoded.height))
+                    return true
+                }
+                #expect(rendered)
+                var red = false, blue = false
+                for offset in stride(from: 0, to: pixels.count, by: 4) {
+                    let r = Int(pixels[offset]), g = Int(pixels[offset + 1]), b = Int(pixels[offset + 2])
+                    red = red || (r > 150 && r > g * 2 && b < 100)
+                    blue = blue || (b > 150 && b > r * 2 && g < 150)
+                }
+                // Stone terrain is gray. Only the shared legend can supply either end of this scale,
+                // including when the enabled layer has no inhabited chunks to color.
+                #expect(red == shown && blue == shown)
+            }
+        }
     }
 
     @Test func fullResolutionOnlyWhenRegionsAreLargeOnScreen() throws {

@@ -93,7 +93,7 @@ import Testing
         var content = MapContent(); content.structures = [marker]
         func pixels(_ content: MapContent, scale: CGFloat, name: String) throws -> Data {
             map.viewport.scale = scale
-            let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 1))
+            let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
             let pixels = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
             Attachment.record(pixels, named: name, as: .png)
