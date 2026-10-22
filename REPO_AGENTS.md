@@ -772,6 +772,10 @@ Empty groups with creation actions remain available (Saved Places). Empty result
 are omitted (Saved Searches), while active searches retain their empty/progress content and the
 biome catalog retains known groups with zero saved areas. This does not add another state owner.
 
+Loading states use native labeled ProgressView controls with sentence-case activity phrases
+and an ellipsis. The compact Time Spent legend hides its redundant visual label with labelsHidden,
+keeping the activity named for accessibility. The existing async models own readiness and cancellation.
+
 ## Build and test
 
 Run from the repository root:

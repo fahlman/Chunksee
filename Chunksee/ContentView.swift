@@ -349,12 +349,9 @@ private struct HitList: View {
         let search = session.search
         let hits = session.search.listedHits(for: query, where: session.presentation.lists)
         if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
-            Label {
-                Text("Searching the world…")
-            } icon: {
-                ProgressView().controlSize(.small)
-            }
-            .foregroundStyle(.secondary)
+            ProgressView("Searching the world…")
+                .controlSize(.small)
+                .foregroundStyle(.secondary)
         } else if hits.rows.isEmpty {
             Text("No matches").foregroundStyle(.secondary)
         } else {

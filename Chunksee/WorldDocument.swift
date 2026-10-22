@@ -288,7 +288,7 @@ struct WorldDocumentView: View {
     var body: some View {
         Group {
             if let dimensions = document.worldDimensions {
-                ProgressView("Opening World…")
+                ProgressView("Opening world…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .task { await openInstead(dimensions) }
             } else if let session = document.session {
@@ -298,7 +298,7 @@ struct WorldDocumentView: View {
                     // Capture only the action: the session must not keep its own view or document alive.
                     .onAppear { session.routing.openDocument = { [openDocument] in try await openDocument(at: $0) } }
             } else {
-                ProgressView("Opening World…")
+                ProgressView("Opening world…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

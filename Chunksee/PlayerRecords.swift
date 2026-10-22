@@ -223,7 +223,9 @@ struct PlayerRecordsSections: View {
                 Section("Statistics") { Text("No statistics recorded").foregroundStyle(.secondary) }
             }
         } else {
-            Section("Statistics") { ProgressView().controlSize(.small) }
+            Section("Statistics") {
+                ProgressView("Reading player records…").controlSize(.small)
+            }
         }
     }
 

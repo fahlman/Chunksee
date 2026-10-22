@@ -125,7 +125,11 @@ struct HeatMapLegend: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("Time Spent").font(.headline)
-                if isLoading { ProgressView().controlSize(.small) }
+                if isLoading {
+                    ProgressView("Reading time spent…")
+                        .labelsHidden()
+                        .controlSize(.small)
+                }
             }
             LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 0.25).map { Color(hue: HeatMap.hue(atLevel: $0), saturation: 1, brightness: 1) },
                            startPoint: .leading, endPoint: .trailing)
