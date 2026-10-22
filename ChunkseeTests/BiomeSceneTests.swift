@@ -76,7 +76,7 @@ import Testing
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: viewport.center)
         defer { map.close() }
         map.viewport = viewport
-        let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 1))
+        let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
         let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
         return try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
     }

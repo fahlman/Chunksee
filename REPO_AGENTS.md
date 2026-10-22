@@ -792,8 +792,14 @@ are omitted (Saved Searches), while active searches retain their empty/progress 
 biome catalog retains known groups with zero saved areas. This does not add another state owner.
 
 Loading states use native labeled ProgressView controls with sentence-case activity phrases
-and an ellipsis. The compact Time Spent legend hides its redundant visual label with labelsHidden,
-keeping the activity named for accessibility. The existing async models own readiness and cancellation.
+and an ellipsis. MapView groups map, slime-chunk and Time Spent activity in its live status bar.
+The existing async models own readiness and cancellation.
+
+HeatMapLegendOverlay owns the color scale's bottom-trailing placement for both the visible map
+and MapImage export. MapContent projects HeatMapLayer's existing visibility alongside its images;
+an enabled layer retains its legend even when no chunks have enough recorded time to color.
+The exported scale uses the document view's explicit appearance and locale. Static map context
+is shared in the image; transient reading activity belongs to the live status bar.
 
 ## Interface wording
 

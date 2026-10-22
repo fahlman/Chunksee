@@ -5,6 +5,7 @@ import SwiftUI
 struct MapContent {
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
+    var showsHeatMap = false
     /// A map made in the game, drawn where it belongs at the given opacity.
     var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
     var biomeAreas: [BiomeArea] = []
@@ -113,6 +114,7 @@ extension MapContent {
         guard session.map != nil, let id = session.selectedDimensionID else { return }
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
+        showsHeatMap = session.heatMap.isShown
         slimeChunks = session.slimeChunks.visibleImages
         slimeSeed = session.slimeChunks.visibleSeed
         if case .inGameMap(let item)? = session.selection.mapSelection, let image = session.selection.image(for: item) {

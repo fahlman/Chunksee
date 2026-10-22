@@ -13,11 +13,14 @@ nonisolated struct MapImage: Sendable {
     /// Only regions already drawn on screen appear, so it matches what the user sees.
     @MainActor
     static func render(_ map: MapModel, content: MapContent, portalStatus: @escaping (NetherPortal) -> PortalLinkStatus?,
-                       size: CGSize, scale: CGFloat) -> MapImage? {
+                       size: CGSize, scale: CGFloat, colorScheme: ColorScheme, locale: Locale) -> MapImage? {
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             MapView.drawMap(map, content: content, portalStatus: portalStatus, displayScale: scale, in: context, size: size)
         }
         .frame(width: size.width, height: size.height)
+        .modifier(HeatMapLegendOverlay(isShown: content.showsHeatMap))
+        .environment(\.colorScheme, colorScheme)
+        .environment(\.locale, locale)
         let renderer = ImageRenderer(content: canvas)
         renderer.scale = scale
         guard let image = renderer.cgImage else { return nil }
@@ -44,10 +47,10 @@ nonisolated struct SharedMapImage: Transferable {
 extension MapImage {
     /// The document's map as currently shown, or `nil` before it is laid out.
     @MainActor
-    static func render(session: WorldSession) -> MapImage? {
+    static func render(session: WorldSession, colorScheme: ColorScheme, locale: Locale) -> MapImage? {
         guard let map = session.map, let shown = map.shownSize else { return nil }
         return render(map, content: MapContent(session: session),
                       portalStatus: { [weak session] in session?.presentation.linkStatus(for: $0) },
-                      size: shown.size, scale: shown.displayScale)
+                      size: shown.size, scale: shown.displayScale, colorScheme: colorScheme, locale: locale)
     }
 }

@@ -117,20 +117,25 @@ final class HeatMapLayer {
     }
 }
 
+/// One legend placement for the live map and its exported image.
+struct HeatMapLegendOverlay: ViewModifier {
+    let isShown: Bool
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottomTrailing) {
+            if isShown {
+                HeatMapLegend()
+                    .padding(10)
+            }
+        }
+    }
+}
+
 /// The heat map's color scale.
 struct HeatMapLegend: View {
-    var isLoading: Bool
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Time Spent").font(.headline)
-                if isLoading {
-                    ProgressView("Reading time spent…")
-                        .labelsHidden()
-                        .controlSize(.small)
-                }
-            }
+            Text("Time Spent").font(.headline)
             LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 0.25).map { Color(hue: HeatMap.hue(atLevel: $0), saturation: 1, brightness: 1) },
                            startPoint: .leading, endPoint: .trailing)
                 .frame(width: 200, height: 10)

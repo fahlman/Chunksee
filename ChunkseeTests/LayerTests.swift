@@ -487,12 +487,16 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         #expect(session.heatMap.visibleImages == nil && !session.heatMap.isLoading)
+        #expect(!MapContent(session: session).showsHeatMap)
         session.heatMap.isShown = true
         #expect(session.heatMap.isLoading)
+        #expect(MapContent(session: session).showsHeatMap)
         await session.heatMap.waitForReads()
         #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionPosition(x: 0, z: 0)])
+        #expect(MapContent(session: session).showsHeatMap)
         session.heatMap.isShown = false
         #expect(session.heatMap.visibleImages == nil)
+        #expect(!MapContent(session: session).showsHeatMap)
     }
 
     @Test func dimensionDocumentsKeepTheirOwnHeatImagesAndVisibility() async throws {
