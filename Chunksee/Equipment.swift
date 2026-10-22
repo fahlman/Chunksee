@@ -10,20 +10,22 @@ struct EquipmentSection: View {
         if !rows.isEmpty {
             Section("Equipment") {
                 ForEach(rows) { row in
-                    LabeledContent(EquipmentPresentation.slot(row.slot)) {
-                        VStack(alignment: .trailing) {
-                            ItemLabel(id: row.item.id, title: Text(row.item, format: ItemAppearance.LabelStyle()),
-                                      isEnchanted: ItemAppearance.isEnchanted(row.item))
-                            .foregroundStyle(.primary)
-                            .help(ItemAppearance.details(of: row.item))
-                            if let wear = row.item.durability {
-                                Text(ItemAppearance.durability(wear))
-                                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    VStack(alignment: .leading) {
+                        LabeledContent(EquipmentPresentation.slot(row.slot)) {
+                            VStack(alignment: .trailing) {
+                                ItemLabel(id: row.item.id, title: Text(row.item, format: ItemAppearance.LabelStyle()),
+                                          isEnchanted: ItemAppearance.isEnchanted(row.item))
+                                .foregroundStyle(.primary)
+                                .help(ItemAppearance.details(of: row.item))
+                                ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
+                                    Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
-                            ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
-                                Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
+                        }
+                        // A labeled row inside another row's value inherits its trailing layout.
+                        if let reading = DurabilityPresentation(row.item.durability) {
+                            DurabilityRow(reading: reading)
                         }
                     }
                 }

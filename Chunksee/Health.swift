@@ -17,6 +17,19 @@ struct SavedStatusRow<Content: View>: View {
     }
 }
 
+/// Saved status bars keep their native gauge and value label consistent across inspectors.
+struct SavedStatusGauge<Content: View>: View {
+    let value: Double
+    let maximum: Double
+    @ViewBuilder let currentValueLabel: Content
+
+    var body: some View {
+        Gauge(value: value, in: 0...maximum) { EmptyView() } currentValueLabel: {
+            currentValueLabel
+        }
+    }
+}
+
 /// Saved health uses the same row, gauge and hearts precision for players and every creature.
 struct HealthRow: View {
     let health: Double?
@@ -29,7 +42,7 @@ struct HealthRow: View {
             let label: LocalizedStringKey = reading.health == nil ? "Maximum Health" : "Health"
             SavedStatusRow(label) {
                 if let value = reading.gaugeValue, let maximum = reading.maximum {
-                    Gauge(value: value, in: 0...maximum) { EmptyView() } currentValueLabel: {
+                    SavedStatusGauge(value: value, maximum: maximum) {
                         Text(text)
                     }
                     .tint(.red)
