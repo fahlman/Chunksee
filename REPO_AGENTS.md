@@ -487,7 +487,9 @@ enlarge the body target. Selection uses the existing highlight rather than a lar
 hit candidates cover the shared reach. Point picking also respects the drawing margin, so its larger tolerance cannot
 select a badge culled from the scene. Player drawing, picking and VoiceOver visibility/centering share an anchor:
 exact for the live entity, block-centered for death and respawn. Labels and coordinate copying
-retain the saved coordinates. Structure and biome outlines keep their world bounds. Canvas
+retain the saved coordinates. Structure and biome outlines keep their world bounds. MapScene
+shares their area paint: 15% fill and a solid 1.5-point edge at 90% opacity. The original fill
+and outline paths, category colors, visibility thresholds and structure badges remain distinct. Canvas
 accessibility children use the same badge-body frames and actual map positions in a SwiftUI ZStack; biome children use their area bounds.
 Panning, zoom and block-centered anchors therefore move their native accessibility frames
 along with the drawing, while the existing actions and visibility rules stay the same.

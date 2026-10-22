@@ -107,4 +107,51 @@ import Testing
         #expect(withRoom != withoutRoom)
         #expect(withoutRoom != empty)
     }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func structureAndBiomeAreasShareContinuousEdgesAndFill(_ appearance: ColorScheme) throws {
+        let url = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(World(contentsOf: url).dimension("overworld"))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 32, y: 32))
+        defer { map.close() }
+        var marker = try structure()
+        marker.bounds = CGRect(x: 0, y: 0, width: 64, height: 64)
+        marker.portalRoom = nil
+        var structureContent = MapContent(); structureContent.structures = [marker]
+        let chunks = Dictionary(uniqueKeysWithValues: (0..<4).flatMap { z in
+            (0..<4).map { x in (ChunkPosition(x: x, z: z), "minecraft:plains") }
+        })
+        var biomeContent = MapContent(); biomeContent.biomeAreas = BiomeScanner.areas(from: chunks)
+        #expect(structureContent.scene(viewport: map.viewport, size: size).structures.first?.outline ==
+                biomeContent.scene(viewport: map.viewport, size: size).biomeAreas.first?.frame)
+
+        func alpha(_ content: MapContent, kind: String) throws -> [UInt8] {
+            let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
+                size: size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+            Attachment.record(Array(image.data), named: "area-\(kind)-\(appearance).png")
+            let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+            let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            var pixels = [UInt8](repeating: 0, count: decoded.width * decoded.height * 4)
+            let rendered = pixels.withUnsafeMutableBytes { bytes in
+                guard let context = CGContext(data: bytes.baseAddress, width: decoded.width, height: decoded.height,
+                    bitsPerComponent: 8, bytesPerRow: decoded.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+                context.draw(decoded, in: CGRect(x: 0, y: 0, width: decoded.width, height: decoded.height))
+                return true
+            }
+            #expect(rendered)
+            return stride(from: 3, to: pixels.count, by: 4).map { pixels[$0] }
+        }
+        let structurePixels = try alpha(structureContent, kind: "structure")
+        let biomePixels = try alpha(biomeContent, kind: "biome")
+        // Equal-sized areas have equal opacity, independently of their category color. This
+        // edge is away from the structure badge and catches gaps in the previous dashed line.
+        let edge = (171..<229).map { 68 * 400 + $0 }
+        #expect(edge.allSatisfy { structurePixels[$0] > 100 })
+        #expect(edge.allSatisfy { structurePixels[$0] == biomePixels[$0] })
+        let interior = 80 * 400 + 180
+        #expect(structurePixels[interior] > 0 && structurePixels[interior] < 100)
+        #expect(structurePixels[interior] == biomePixels[interior])
+    }
 }
