@@ -79,7 +79,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimensions = try World(contentsOf: url).dimensions()
         let readers = try ids.map { id in RegionReader(dimension: try #require(dimensions.first { $0.id == id }), cache: .off) }
-        let gate = AsyncReadGate<DimensionIndex>()
+        let gate = AsyncReadGate<DimensionContent>()
         let index = WorldIndexStore(readers: readers, work: BackgroundWork(), firstDimension: nil,
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
@@ -88,12 +88,12 @@ import Testing
         index.rebuild(firstDimension: nil, changes: [ids[1]: .all])
         for id in ids {
             await gate.waitForRequest(id)
-            await gate.finish(id, with: DimensionIndex())
+            await gate.finish(id, with: DimensionContent())
         }
         let queued = full ? ids : Array(ids.prefix(2))
         for id in queued {
             await gate.waitForRequest(id, count: 2)
-            await gate.finish(id, with: DimensionIndex())
+            await gate.finish(id, with: DimensionContent())
         }
         await index.waitForIndex()
         #expect(await gate.requested == ids + queued)
@@ -107,14 +107,14 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let gate = AsyncReadGate<DimensionIndex>()
+        let gate = AsyncReadGate<DimensionContent>()
         let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil,
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
         index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
         index.cancel()
         await gate.waitForCancellation(ids[0])
-        await gate.finish(ids[0], with: DimensionIndex())
+        await gate.finish(ids[0], with: DimensionContent())
         await index.waitForTasks()
         await index.waitForIndex()
         #expect(await gate.requested == [ids[0]])

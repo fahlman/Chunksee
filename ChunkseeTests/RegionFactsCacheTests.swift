@@ -25,10 +25,10 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("minecraft:overworld"))
         let reader = RegionReader(dimension: dimension, cache: .off)
-        let scan = await BiomeScanner.scan(reader)
+        let scan = await TestWorld.index(reader)
         #expect(scan.biomes == [ChunkPosition(x: 0, z: 0): "minecraft:desert"])
-        #expect(scan.areas.count == 1 && scan.areas.first?.group.id == "minecraft:desert")
-        #expect(scan.areas.first?.chunkCount == 1)
+        #expect(scan.biomeAreas.count == 1 && scan.biomeAreas.first?.group.id == "minecraft:desert")
+        #expect(scan.biomeAreas.first?.chunkCount == 1)
         await reader.close()
     }
 
@@ -160,13 +160,13 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
         let reader = RegionReader(dimension: dimension, cache: cache)
-        let initial = await DimensionIndex.read(reader, previous: nil, change: .all)
+        let initial = await DimensionContent.read(reader, previous: nil, change: .all)
         let heat = await HeatMap.images(reader, previous: [:])
         #expect(initial.containers.count == 1 && heat.count == 1)
         let file = dimension.regionURL(at: region)
         try Data([0, 1]).write(to: file)
         for change in [RegionChange.all, .regions([region])] {
-            let retained = await DimensionIndex.read(reader, previous: initial, change: change)
+            let retained = await DimensionContent.read(reader, previous: initial, change: change)
             #expect(retained.containers == initial.containers && retained.regions.count == 1)
         }
         #expect(await HeatMap.images(reader, previous: heat).count == 1)
@@ -174,11 +174,11 @@ import Testing
         #expect(cache.load(badKey) == nil)
         // A successful empty region replaces old contributions; it is different from a failed read.
         try Data(repeating: 0, count: 8192).write(to: file)
-        let empty = await DimensionIndex.read(reader, previous: initial, change: .all)
+        let empty = await DimensionContent.read(reader, previous: initial, change: .all)
         #expect(empty.containers.isEmpty && empty.regions.count == 1)
         #expect(await HeatMap.images(reader, previous: heat).isEmpty)
         try FileManager.default.removeItem(at: file)
-        #expect(await DimensionIndex.read(reader, previous: initial, change: .all).regions.isEmpty)
+        #expect(await DimensionContent.read(reader, previous: initial, change: .all).regions.isEmpty)
         #expect(await HeatMap.images(reader, previous: heat).isEmpty)
         await reader.close()
     }

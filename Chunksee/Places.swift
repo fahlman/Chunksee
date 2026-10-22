@@ -153,25 +153,12 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Reads every point of interest in a dimension, in parallel by region.
-nonisolated enum PlaceScanner {
-    @concurrent
-    static func scan(_ dimension: ChunkseeKit.Dimension, cache: ScanCache = .off) async -> [PlaceMarker] {
-        let reader = RegionReader(dimension: dimension, cache: cache)
-        var blocks: [PointOfInterest] = []
-        for region in reader.availableRegions {
-            guard !Task.isCancelled else { break }
-            blocks += await reader.facts(region)?.pointsOfInterest ?? []
-        }
-        await reader.close()
-        return Task.isCancelled ? [] : markers(from: blocks, in: dimension.id)
-    }
-
-    static func markers(from blocks: [PointOfInterest], in dimension: String) -> [PlaceMarker] {
+/// Native place projections of the shared dimension index's points and grouped portals.
+nonisolated enum PlacePresentation {
+    static func markers(from blocks: [PointOfInterest], portals: [NetherPortal]) -> [PlaceMarker] {
         // Portal blocks become one place per portal (ChunkseeKit owns the grouping rule).
         let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
-        let portals = NetherPortal.portals(from: blocks, in: dimension).map(PlaceMarker.init)
-        return (others + portals).sorted { $0.id < $1.id }
+        return (others + portals.map(PlaceMarker.init)).sorted { $0.id < $1.id }
     }
 }
 

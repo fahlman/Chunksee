@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import CoreGraphics
 import Foundation
@@ -59,7 +60,7 @@ import Testing
             #expect(map.topBlocks.keys.contains(example.chunk))
             let facts = try await RegionReader.scan(dimension, region: example.chunk.region, options: RegionReader.options())
             var content = MapContent()
-            content.biomes = facts.surfaceBiomes
+            content.biomes = ChunkseeIndex.RegionIndex(facts, caveBiomeIDs: BiomePresentation.caveBiomeIDs).biomes
             #expect(content.biome(at: example.point) == "minecraft:plains")
             map.close()
             await map.waitForRenders()
@@ -67,7 +68,7 @@ import Testing
     }
 
     @Test func biomeAreasOmitUnrepresentableChunkOrigins() {
-        let areas = BiomeScanner.areas(from: [ChunkPosition(x: .max, z: 0): "minecraft:plains",
+        let areas = BiomePresentation.areas(from: [ChunkPosition(x: .max, z: 0): "minecraft:plains",
                                             ChunkPosition(x: .min, z: 0): "minecraft:plains",
                                             ChunkPosition(x: -1, z: -1): "minecraft:plains"])
         #expect(areas.count == 1)

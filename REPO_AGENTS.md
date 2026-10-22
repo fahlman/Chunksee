@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.45.0`, resolved to `0.45.0` (`a85485d6a9a34fdefd264cc665eecb540a069518`).
+  minor" from `0.46.0`, resolved to `0.46.0` (`78440d864424bb9764692e5d0c7c58e77cbdb875`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -164,9 +164,9 @@ existing documents retain their snapshot until a document reread or move replace
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `BlockColors.swift` | Block ID → map color |
-| `Structures.swift` | Structure groups (names, icons, colors, default visibility) and the background structure scan |
-| `Places.swift` | Point-of-interest groups, the background scan, and portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
-| `WorldSearch.swift`, `RegionIndex.swift` | Retained per-region index contributions, deriving complete dimension aggregates and answering searches against the world index |
+| `Structures.swift` | Native structure groups, marker geometry, names, icons, colors and default visibility |
+| `Places.swift` | Native place groups and markers, plus portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
+| `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | The Minecraft folder chosen in Settings and its access; names from local caches and, while permission remains on, Mojang; source lifetimes and cancellation |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
@@ -281,7 +281,8 @@ cost in the first migration; the storage codec does not change the facts or thei
 Biome sampling uses MapSurfaceContext's middle generation plane for known ceiling dimensions,
 with the shared surface sample elsewhere. Vanilla Nether metadata gives Y64; the saved mapping
 also supports remapped/custom dimension IDs. Kit owns biome usage, section counts/heights,
-formats and inhabited time; RegionIndex only groups those facts for views.
+formats and inhabited time. ChunkseeIndex compacts and aggregates retained facts; app RegionIndex
+keeps cached native structure/creature projections for each successful region read.
 Kit 0.39.0 supplies actual-column surface sampling when a heightmap is absent, including
 valid default-namespace air names. Empty middle columns do not invent a biome area from a
 neighbor or unused palette entry. RegionFacts interpretation version 6 rejects earlier surface
@@ -415,8 +416,8 @@ categories. There is no second query parser or matcher in the app.
 
 ChunkseeIndex.NotableBlock owns the nine notable-block groups, their 13 saved IDs and grouped
 deposit counts/section height bounds. Blocks.swift keeps only aliases, localized names/search
-labels and the app's chunk/deposit pair. RegionReader uses the shared catalog for scan options;
-RegionIndex uses shared grouping. The old app Codable conformances had no persistence consumers;
+labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader uses the shared
+catalog for scan options; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
 ScanCache continues to store core RegionFacts, with no cache-format change.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
@@ -459,6 +460,23 @@ globally useful work; choosing/forgetting a folder or revoking online permission
 still cancel/invalidate their sources. The view request follows folder, online permission and the
 known player UUID set, including players without reliable coordinates, so new players trigger lookup
 without reloading for every position change. Online remains off by default and permission-gated.
+
+ChunkseeIndex.RegionIndex holds compact typed contributions and its DimensionIndex owns reconciliation,
+failed-read retention, selected deletion and complete aggregates. The app's DimensionContent keeps one shared snapshot
+plus cached native region projections. Unchanged projections are reused; successful reads replace
+them. Canceled passes return the previous view snapshot, and WorldIndexStore still refuses canceled
+or closed publications. The shared regionsToRead method supplies the exact read set, including a complete first pass
+even when a subset notification starts it. Both reading and reconciliation use that same owner.
+Storage rows map shared totals to native names/order; biome and place presentation map shared
+areas/portals to native paths and markers. The held cave-membership list remains in BiomePresentation.
+CreatureGroup aliases CreatureEntry.Group; eligibility and canonical IDs come from the shared entry,
+while names, colors, symbols and carried-pet fallback IDs stay native. Visibility raw values are unchanged.
+BlockPosition.mapCoordinates owns checked map bounds and optional height; native point navigation,
+Coordinates.isMappable/canLocate and shared creature eligibility use it. Missing Y stays unknown.
+
+Unused per-layer scan paths and RegionFacts projection extensions are removed. Tests use
+TestWorld.index to drive the production DimensionContent.read path, including cache invalidation and
+surface/cave membership. Historical cache shapes live only in their regression fixtures.
 
 Live index refreshes replace only the notified terrain/entity/POI region contributions, retaining
 the other regions and dimensions. Entity- and POI-only regions participate too. Storage, connected
@@ -816,7 +834,7 @@ Cave membership filters the library's actually used biome IDs. Unused palette na
 create cave areas/hover membership; all actually used areas and the full per-dimension vanilla
 biome catalog remain. The app owns the cave category list and chooses surface/cave membership.
 ChunkseeIndex.BiomeArea owns edge-connected grouping, representative selection and exposed sides;
-BiomeScanner only projects those typed results into names, world-space fill/outline paths and
+BiomePresentation only projects those typed results into names, world-space fill/outline paths and
 marker positions. The app does not repeat neighbor walks or boundary membership checks. Every
 area remains visible, including single chunks; file reads and cache interpretation are unchanged.
 

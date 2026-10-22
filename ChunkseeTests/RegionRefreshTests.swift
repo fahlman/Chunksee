@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import CoreGraphics
 import Foundation
@@ -6,6 +7,25 @@ import Testing
 
 @Suite(.isolatedStores) struct RegionRefreshTests {
     private let overworld = "minecraft:overworld"
+
+    @Test func aFirstPartialNotificationReadsTheWholeDimensionAndLaterEmptySelectionsReadNothing() async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let reads = Reads()
+        let reader = RegionReader(dimension: dimension, cache: .off, read: { dimension, region, options in
+            await reads.record(dimension.id, region)
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        })
+        let first = await DimensionContent.read(reader, previous: nil, change: .regions([.init(x: 0, z: 0)]))
+        #expect(Set(await reads.requested) == ["\(overworld)@0,0", "\(overworld)@1,0"])
+        #expect(first.storage.first?.count == 2 && first.regions.count == 2)
+        await reads.reset()
+        let unchanged = await DimensionContent.read(reader, previous: first, change: .regions([]))
+        #expect(await reads.requested.isEmpty)
+        #expect(unchanged.storage == first.storage && unchanged.containers == first.containers)
+        await reader.close()
+    }
 
     private func terrain(_ x: Int, count: Int32 = 1) throws -> TestWorld.ChunkSpec {
         var spec = TestWorld.chunk(x: x, z: 0, palette: ["minecraft:stone", "minecraft:diamond_ore"]) { bx, y, z in
@@ -81,7 +101,7 @@ import Testing
 
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
         let reader = RegionReader(dimension: dimension, cache: .off)
-        let complete = await DimensionIndex.read(reader, previous: nil, change: .all)
+        let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
         let incremental = try #require(resources.index.index.dimensions[dimension.id])
         #expect(incremental.containers == complete.containers)
@@ -332,7 +352,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let gate = AsyncReadGate<DimensionIndex>(), requests = Changes()
+        let gate = AsyncReadGate<DimensionContent>(), requests = Changes()
         let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil,
                                     readDimension: { _, _, change in
                                         let key = await requests.record(change)
@@ -343,10 +363,10 @@ import Testing
         index.rebuild(firstDimension: nil, changes: [overworld: .regions([a])])
         if broad { index.rebuild(firstDimension: nil, changes: [overworld: .all]) }
         index.rebuild(firstDimension: nil, changes: [overworld: .regions([b])])
-        await gate.finish("0", with: DimensionIndex())
+        await gate.finish("0", with: DimensionContent())
         await gate.waitForRequest("1")
         #expect(await requests.values == [.all, broad ? .all : .regions([a, b])])
-        await gate.finish("1", with: DimensionIndex())
+        await gate.finish("1", with: DimensionContent())
         await index.waitForIndex()
         index.cancel()
         await index.waitForTasks()

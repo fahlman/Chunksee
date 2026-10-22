@@ -93,7 +93,7 @@ nonisolated struct Coordinates: Equatable, Sendable {
     static func block(_ value: Double) -> Int? { BlockPosition.coordinate(containing: value) }
 
     var isMappable: Bool {
-        MapCoordinates(point: point) != nil && (y.map { Self.block($0) != nil } ?? true)
+        BlockPosition.mapCoordinates(x: point.x, y: y, z: point.y) != nil
     }
 
     static func canLocate(x: Double, y: Double, z: Double) -> Bool {

@@ -12,7 +12,7 @@ final class WorldIndexStore {
     private(set) var isIndexing = false
     /// The world's canonical reader catalog. Resources derive their dimension views from it.
     private(set) var readers: [RegionReader]
-    private let readDimension: @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex
+    private let readDimension: @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent
     @ObservationIgnored private var indexTask: Task<Void, Never>?
     @ObservationIgnored private var creatureProjection: (revision: Int, players: PlayerSnapshot, index: SearchIndex)?
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
@@ -36,7 +36,7 @@ final class WorldIndexStore {
     }
 
     init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?,
-         readDimension: @escaping @Sendable (RegionReader, DimensionIndex?, RegionChange) async -> DimensionIndex = DimensionIndex.read) {
+         readDimension: @escaping @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent = DimensionContent.read) {
         self.work = work.makeScope()
         savedQueries = SavedQueryResults(work: work)
         self.readers = readers

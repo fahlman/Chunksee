@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import CoreGraphics
 import Foundation
@@ -144,10 +145,10 @@ import SwiftUI
             #expect(largestDifference(rendered, moved) > 1)
 
             var renamed = reference
-            renamed.creatures = reference.creatures.map {
-                var marker = $0
-                marker.creature.customName = "Different name"
-                return marker
+            renamed.creatures = try reference.creatures.map { marker -> CreatureMarker in
+                var creature = marker.creature
+                creature.customName = "Different name"
+                return try #require(CreatureMarker(creature, dimension: marker.dimension))
             }
             renamed.selection = renamed.creatures.first { $0.id == creatures[3].id }.map(MapSelection.creature)
             #expect(largestDifference(rendered, try exportPixels(map, content: renamed)) > 1)

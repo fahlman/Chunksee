@@ -130,12 +130,12 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _, _ in
             await gate.read("region")
         }
-        let read = Task { await reader.contents(.init(x: 0, z: 0)) }
+        let read = Task { await reader.facts(.init(x: 0, z: 0)) }
         await gate.waitForRequest("region")
         let closing = Task { await reader.close() }
         await gate.waitForCancellation("region")
         // A queued read after shutdown never starts another pass.
-        #expect(await reader.contents(.init(x: 1, z: 0)).containers.isEmpty)
+        #expect(await reader.facts(.init(x: 1, z: 0)) == nil)
         #expect(await gate.requested == ["region"])
         await gate.finish("region", with: try TestWorld.facts())
         _ = await read.value

@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import Testing
 @testable import ChunkseeTestHost
@@ -27,7 +28,7 @@ import Testing
             let saved = try creature(level: level)
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creaturePoints: PointMarkers([marker]))), players: []) { _ in .named("") }
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(creaturePoints: PointMarkers([marker]))), players: []) { _ in .named("") }
             #expect(villager.level == level.map(Int.init) ?? 1)
             #expect(marker.name == "Farmer")
             #expect(hits.map(\.title) == ["Farmer"])
@@ -39,7 +40,7 @@ import Testing
         for (index, name) in ["Novice", "Apprentice", "Journeyman", "Expert", "Master"].enumerated() {
             let saved = try creature(level: Int32(index + 1))
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionIndex(creaturePoints: PointMarkers([marker]))), players: []) { _ in .named("") }
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(creaturePoints: PointMarkers([marker]))), players: []) { _ in .named("") }
             #expect(hits.map(\.title) == ["Farmer"])
             #expect(VillagerText.inspectorProfession(saved) == "Farmer, \(name)")
             #expect(marker.name == "Farmer")

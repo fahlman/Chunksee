@@ -26,12 +26,12 @@ import Testing
     @Test func catalogPluralizesBiomeAreasAndBlockDepositsOnTheirProductionPaths() throws {
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)
-            let areas = BiomeScanner.areas(from: Dictionary(uniqueKeysWithValues: (0..<count).map {
+            let areas = BiomePresentation.areas(from: Dictionary(uniqueKeysWithValues: (0..<count).map {
                 (ChunkPosition(x: $0, z: 0), "minecraft:plains")
             }))
             #expect(areas.count == 1)
             #expect(areas.first?.name == "\(number) \(count == 1 ? "chunk" : "chunks")")
-            let index = SearchIndex.overworld(DimensionIndex(blocks: [
+            let index = SearchIndex.overworld(DimensionContent(blocks: [
                 ChunkDeposit(chunk: ChunkPosition(x: 0, z: 0),
                              deposit: BlockDeposit(block: .diamond, count: count, minY: -64, maxY: -49)),
             ]))

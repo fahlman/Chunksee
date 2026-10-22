@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import AppKit
 import ChunkseeKit
 import SwiftUI
@@ -342,7 +343,7 @@ import Testing
         let previous = try TestWorld.legacyCache([old], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
                                                 directory: #require(cache.directory))
         let reader = RegionReader(dimension: dimension, cache: cache)
-        let rebuilt = await reader.structures(region)
+        let rebuilt = await TestWorld.index(reader).structures
         #expect(rebuilt.map(\.y) == [-50])
         let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
         #expect(saved?.first?.y == -50)

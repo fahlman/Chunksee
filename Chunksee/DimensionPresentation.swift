@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import CoreGraphics
 import Foundation
 import ChunkseeKit
@@ -30,9 +31,9 @@ final class DimensionPresentation {
         return source.world.level.name ?? source.url.lastPathComponent
     }
 
-    var selectedIndex: DimensionIndex {
-        guard let source, let id = source.selectedDimensionID else { return DimensionIndex() }
-        return source.search.index.dimensions[id] ?? DimensionIndex()
+    var selectedIndex: DimensionContent {
+        guard let source, let id = source.selectedDimensionID else { return DimensionContent() }
+        return source.search.index.dimensions[id] ?? DimensionContent()
     }
 
     /// An entirely legacy dimension has no drawable terrain; mixed dimensions show readable chunks.

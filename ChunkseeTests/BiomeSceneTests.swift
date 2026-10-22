@@ -8,7 +8,7 @@ import Testing
     private let size = CGSize(width: 400, height: 200)
 
     @Test func projectedAreasKeepNegativeChunksAndSeparateDiagonalNeighbors() throws {
-        let areas = BiomeScanner.areas(from: [
+        let areas = BiomePresentation.areas(from: [
             .init(x: -1, z: -1): "minecraft:forest", .init(x: 0, z: -1): "minecraft:forest",
             .init(x: -1, z: 0): "minecraft:forest", .init(x: 1, z: 1): "minecraft:forest",
             .init(x: 1, z: 0): "custom:forest",
@@ -51,7 +51,7 @@ import Testing
     }
 
     @Test func accessibilityMarginDoesNotDrawOffscreenAreasOrAddPointerTargets() throws {
-        let area = try #require(BiomeScanner.areas(from: [.init(x: 0, z: 0): "minecraft:plains"]).first)
+        let area = try #require(BiomePresentation.areas(from: [.init(x: 0, z: 0): "minecraft:plains"]).first)
         var content = MapContent(); content.biomeAreas = [area]
         let size = CGSize(width: 100, height: 100)
         let viewport = MapViewport(center: CGPoint(x: -54, y: 8), scale: 1)
@@ -70,7 +70,7 @@ import Testing
         for x in -1...1 { for z in -1...1 where x != 0 || z != 0 {
             chunks[.init(x: x, z: z)] = "minecraft:plains"
         } }
-        var content = MapContent(); content.biomeAreas = BiomeScanner.areas(from: chunks)
+        var content = MapContent(); content.biomeAreas = BiomePresentation.areas(from: chunks)
         let viewport = MapViewport(center: CGPoint(x: 8, y: 8), scale: 4)
         let image = try render(content, viewport: viewport, size: size)
         Attachment.record(image, named: "biome-with-hole", as: .png)

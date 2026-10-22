@@ -157,7 +157,7 @@ import Testing
         try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
 
         let reader = RegionReader(dimension: dimension, cache: cache)
-        let creatures = await reader.creatures(region)
+        let creatures = try #require(await reader.facts(region)).creatures
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
         let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.creatures
         #expect(saved?.first?.maxHealth == 10)
@@ -184,7 +184,9 @@ import Testing
         let data = try encoder.encode([oldMarker])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
-        #expect(await reader.structures(region).isEmpty)
+        let index = await TestWorld.index(reader)
+        let rebuilt = try #require(index.regions[region])
+        #expect(rebuilt.structures.isEmpty)
         let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
@@ -202,17 +204,17 @@ import Testing
         let date = Date(timeIntervalSince1970: 1_790_000_000)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         // One scan reads the region...
-        let first = await BiomeScanner.scan(RegionReader(dimension: dimension, cache: cache))
-        #expect(first.areas.map(\.chunkCount) == [4])
+        let first = await TestWorld.index(RegionReader(dimension: dimension, cache: cache))
+        #expect(first.biomeAreas.map(\.chunkCount) == [4])
         // ...then blank its file but keep its size and date: only the saved envelope can still answer.
         let size = (try FileManager.default.attributesOfItem(atPath: region.path)[.size] as? NSNumber)?.intValue ?? 0
         try Data(count: size).write(to: region)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         let reader = RegionReader(dimension: dimension, cache: cache)
-        #expect(await BiomeScanner.scan(reader).areas.map(\.chunkCount) == [4])
+        #expect(await TestWorld.index(reader).biomeAreas.map(\.chunkCount) == [4])
         #expect(await reader.inhabitedTimes(RegionPosition(x: 0, z: 0)).count == 1024)
-        #expect(await reader.biomes(RegionPosition(x: 0, z: 0)).count == 4)
-        #expect(await BiomeScanner.scan(RegionReader(dimension: dimension, cache: .off)).areas.isEmpty)
+        #expect(await TestWorld.index(reader).biomes.count == 4)
+        #expect(await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).biomeAreas.isEmpty)
     }
 }
 

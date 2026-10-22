@@ -2,30 +2,10 @@ import ChunkseeIndex
 import Foundation
 import ChunkseeKit
 
-/// What search reads from a region's block entities and entities: containers with their items, and
-/// signs with text. Creatures come from the creature layer.
-nonisolated struct SearchContents: Codable, Sendable {
-    var containers: [ItemContainer] = []
-    var signs: [Sign] = []
-    var spawners: [Spawner] = []
-}
-
-/// How many of a region's chunks ChunkseeKit could read, and how many it rejected as saved before
-/// Minecraft 1.18 (`ChunkError.unsupportedLegacyFormat`).
-nonisolated struct ChunkFormats: Sendable, Equatable {
-    var readable = 0
-    var legacy = 0
-
-    /// A dimension whose saved chunks are all in the old format draws nothing at all.
-    var isOnlyLegacy: Bool { legacy > 0 && readable == 0 }
-
-    static func + (a: ChunkFormats, b: ChunkFormats) -> ChunkFormats {
-        ChunkFormats(readable: a.readable + b.readable, legacy: a.legacy + b.legacy)
-    }
-}
+typealias ChunkFormats = ChunkseeIndex.DimensionIndex.Formats
 
 /// Shares the library's one region scan between index and layer requests. The cache stores the
-/// library envelope; grouping, labels and map geometry are derived by the app afterwards.
+/// library envelope; the shared index derives groups, and the app supplies labels and geometry.
 actor RegionReader {
     typealias Read = @Sendable (ChunkseeKit.Dimension, RegionPosition, RegionScanOptions) async throws -> RegionFacts
 
@@ -98,14 +78,6 @@ actor RegionReader {
         return value
     }
 
-    func contents(_ region: RegionPosition) async -> SearchContents {
-        guard let facts = await facts(region) else { return SearchContents() }
-        return facts.searchContents
-    }
-    func structures(_ region: RegionPosition) async -> [StructureMarker] { await facts(region)?.structures.map(StructureMarker.init) ?? [] }
-    func creatures(_ region: RegionPosition) async -> [Creature] { await facts(region)?.creatures ?? [] }
-    func biomes(_ region: RegionPosition) async -> [ChunkPosition: String] { await facts(region)?.surfaceBiomes ?? [:] }
-    func caveBiomes(_ region: RegionPosition) async -> [ChunkPosition: [String]] { await facts(region)?.caveBiomes ?? [:] }
     func inhabitedTimes(_ region: RegionPosition) async -> [Int] { await facts(region)?.inhabitedTimes ?? [] }
 
     /// Refuses queued requests and drains both cache reads and in-flight scans.
@@ -132,24 +104,5 @@ actor RegionReader {
             cache.store(facts, key: key)
         }
         return facts
-    }
-}
-
-extension RegionFacts {
-    nonisolated var searchContents: SearchContents {
-        SearchContents(containers: containers, signs: signs, spawners: spawners)
-    }
-
-    nonisolated var surfaceBiomes: [ChunkPosition: String] {
-        Dictionary(uniqueKeysWithValues: chunks.compactMap { chunk in
-            chunk.sampledBiome.map { (chunk.position, $0) }
-        })
-    }
-
-    nonisolated var caveBiomes: [ChunkPosition: [String]] {
-        Dictionary(uniqueKeysWithValues: chunks.compactMap { chunk in
-            let caves = chunk.biomes.filter { BiomeScanner.caveBiomeIDs.contains($0) }
-            return caves.isEmpty ? nil : (chunk.position, caves)
-        })
     }
 }

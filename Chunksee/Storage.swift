@@ -20,7 +20,11 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
 
     /// Totals for every item kind, most first.
     static func totals(in containers: [ItemContainer]) -> [StoredItem] {
-        StoredItemTotal.totals(in: containers).map {
+        presenting(StoredItemTotal.totals(in: containers))
+    }
+
+    static func presenting(_ totals: [StoredItemTotal]) -> [StoredItem] {
+        totals.map {
             StoredItem(id: $0.id, name: ItemAppearance.label(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
         }
         .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }

@@ -9,14 +9,14 @@ struct IndexWorkTests {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let work = BackgroundWork(), gate = AsyncReadGate<DimensionIndex>()
+        let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
         let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: work, firstDimension: nil,
                                     readDimension: { _, _, _ in await gate.read("index") })
         await gate.waitForRequest("index")
         index.rebuild(firstDimension: nil)
         work.close()
         await gate.waitForCancellation("index")
-        await gate.finish("index", with: DimensionIndex())
+        await gate.finish("index", with: DimensionContent())
         await work.waitUntilFinished()
         await index.waitForIndex()
         #expect(index.index.dimensions.isEmpty && !index.isIndexing && index.revision == 0)
@@ -31,7 +31,7 @@ struct IndexWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let reader = RegionReader(dimension: dimension, cache: .off)
-        let work = BackgroundWork(), gate = AsyncReadGate<DimensionIndex>()
+        let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
         let first = WorldIndexStore(readers: [reader], work: work, firstDimension: nil,
                                     readDimension: { _, _, _ in await gate.read("first") })
         let second = WorldIndexStore(readers: [reader], work: work, firstDimension: nil,
@@ -40,10 +40,10 @@ struct IndexWorkTests {
         await gate.waitForRequest("second")
         first.cancel()
         await gate.waitForCancellation("first")
-        await gate.finish("first", with: DimensionIndex())
+        await gate.finish("first", with: DimensionContent())
         await first.waitForTasks() // Must return while the other index is still held.
         #expect(first.index.dimensions.isEmpty && !work.isClosed)
-        await gate.finish("second", with: DimensionIndex())
+        await gate.finish("second", with: DimensionContent())
         await second.waitForIndex()
         #expect(second.index.dimensions[dimension.id] != nil && second.revision == 1)
         second.cancel()

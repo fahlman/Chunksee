@@ -27,7 +27,7 @@ import Testing
             .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
             .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:dirt", 64)])]),
         ])])
-        let index = SearchIndex.overworld(DimensionIndex(containers: ItemContainer.containers(inChunk: chunk)))
+        let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: chunk)))
         let player = PlayerInfo(uuid: UUID(), nbt: .compound([
             "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)]),
             "EnderItems": .list([item("minecraft:diamond", 5)]),
@@ -143,7 +143,7 @@ import Testing
         let deposits = (0..<(WorldSearch.blockResultLimit + 500)).map { i in
             ChunkDeposit(chunk: ChunkPosition(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
         }.sorted { $0.deposit.count > $1.deposit.count }
-        let index = SearchIndex.overworld(DimensionIndex(blocks: deposits))
+        let index = SearchIndex.overworld(DimensionContent(blocks: deposits))
         let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }
         #expect(hits.count == WorldSearch.blockResultLimit)
         #expect(hits.first?.count == WorldSearch.blockResultLimit + 500 && hits.last?.count == 501)
@@ -161,7 +161,7 @@ import Testing
                                                             "pages": .list([.compound(["raw": .string("We found a desert village today.")])])]),
             ])]),
         ])])
-        let index = SearchIndex.overworld(DimensionIndex(containers: ItemContainer.containers(inChunk: chunk),
+        let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: chunk),
                                 signs: Sign.signs(inChunk: chunk)))
         // A phrase can run across a sign's lines and onto its back.
         let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
@@ -327,7 +327,7 @@ import Testing
                                                          "VillagerData": .compound(["profession": .string("minecraft:farmer")])])))
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         let bed = PlaceMarker(PointOfInterest(type: "minecraft:home", x: 3, y: 64, z: 3, freeTickets: 1))
-        let index = SearchIndex.overworld(DimensionIndex(structures: [village],
+        let index = SearchIndex.overworld(DimensionContent(structures: [village],
                                 placePoints: PointMarkers([bed]),
                                 creaturePoints: PointMarkers([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
@@ -369,7 +369,7 @@ import Testing
             ])]),
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
-        let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
+        let index = SearchIndex.overworld(DimensionContent(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
@@ -391,7 +391,7 @@ import Testing
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkPosition(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
         for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:pale_garden" }                       // 4 chunks
         for z in 5..<9 { biomes[ChunkPosition(x: 3, z: z)] = "minecraft:plains" }
-        return SearchIndex.overworld(DimensionIndex(biomeAreas: BiomeScanner.areas(from: biomes)))
+        return SearchIndex.overworld(DimensionContent(biomeAreas: BiomePresentation.areas(from: biomes)))
     }
 
     @Test func biomePrefixSearchesBiomeAreasLargestFirst() {
@@ -430,7 +430,7 @@ import Testing
 
 extension SearchIndex {
     /// An index of the Overworld alone.
-    static func overworld(_ part: DimensionIndex) -> SearchIndex {
+    static func overworld(_ part: DimensionContent) -> SearchIndex {
         SearchIndex(dimensions: ["minecraft:overworld": part])
     }
 }

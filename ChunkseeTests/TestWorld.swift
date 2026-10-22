@@ -8,6 +8,11 @@ import Testing
 
 /// App scenarios built with the library's shared synthetic save builders.
 nonisolated enum TestWorld {
+    /// Exercise the app's production dimension read, not a separate per-layer scan path.
+    static func index(_ reader: RegionReader) async -> DimensionContent {
+        await DimensionContent.read(reader, previous: nil, change: .all)
+    }
+
     struct ChunkSpec {
         var x: Int, z: Int
         var nbt: NBT

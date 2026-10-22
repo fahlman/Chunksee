@@ -4,7 +4,7 @@ import ChunkseeKit
 import ChunkseeIndex
 
 /// One dimension's part of the world index: what search, the sidebar and the map show.
-nonisolated struct DimensionIndex: Sendable {
+nonisolated struct DimensionContent: Sendable {
     var containers: [ItemContainer] = []
     /// Totals of the items in `containers`, most first.
     var storage: [StoredItem] = []
@@ -28,24 +28,18 @@ nonisolated struct DimensionIndex: Sendable {
     var blocks: [ChunkDeposit] = []
     /// Readable and pre-1.18 chunks across the dimension.
     var formats = ChunkFormats()
-    /// Inputs are replaced per region; all cross-region aggregates derive from these.
+    /// Shared retained facts and native projections, replaced only for successfully read regions.
+    var shared: ChunkseeIndex.DimensionIndex?
     var regions: [RegionPosition: RegionIndex] = [:]
 
     /// Reads a dimension from its regions, through the reader's cached library facts.
     @concurrent
-    static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
-        var part = DimensionIndex()
+    static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
         let available = reader.availableRegions
-        let changed: Set<RegionPosition>
-        if let previous, case .regions(let selected) = change {
-            part.regions = previous.regions
-            for removed in selected.subtracting(available) { part.regions[removed] = nil }
-            changed = selected.intersection(available)
-        } else {
-            // A failed region read retains its previous contribution; a deleted region does not.
-            part.regions = previous?.regions.filter { available.contains($0.key) } ?? [:]
-            changed = available
-        }
+        let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
+            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
+        let selected = change.mapRegions
+        let changed = previousIndex.regionsToRead(available: available, selected: selected)
         let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex?).self) { group in
             for region in changed {
                 guard !Task.isCancelled else { break }
@@ -58,31 +52,31 @@ nonisolated struct DimensionIndex: Sendable {
             for await (region, value) in group { if let value { values[region] = value } }
             return values
         }
-        guard !Task.isCancelled else { return part }
+        guard !Task.isCancelled else { return previous ?? DimensionContent() }
+        let shared = previousIndex.updating(available: available, selected: selected,
+                                           replacements: replacements.values.map(\.index))
+        var part = DimensionContent()
+        part.shared = shared
+        part.regions = previous?.regions.filter { shared.regions[$0.key] != nil } ?? [:]
         part.regions.merge(replacements) { $1 }
-        var points: [PointOfInterest] = []
-        var spawners: [Spawner] = []
         var creatures: [CreatureMarker] = []
         for coordinate in part.regions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
             let region = part.regions[coordinate]!
-            part.containers += region.contents.containers
-            part.signs += region.contents.signs
-            spawners += region.contents.spawners
             part.structures += region.structures
             creatures += region.creatures
-            part.biomes.merge(region.biomes) { $1 }
-            part.caveBiomes.merge(region.caveBiomes) { $1 }
-            part.blocks += region.blocks.flatMap { chunk, deposits in deposits.map { ChunkDeposit(chunk: chunk, deposit: $0) } }
-            part.formats = part.formats + region.formats
-            points += region.pointsOfInterest
         }
-        part.storage = StoredItem.totals(in: part.containers)
+        part.containers = shared.containers
+        part.storage = StoredItem.presenting(shared.storage)
+        part.signs = shared.signs
+        part.biomes = shared.biomes
+        part.caveBiomes = shared.caveBiomes
+        part.blocks = shared.blocks
+        part.formats = shared.formats
         part.structures.sort { $0.id < $1.id }
         part.creatures = creatures.sorted { $0.id < $1.id }
-        part.places = PlaceScanner.markers(from: points, in: reader.dimension.id) + spawners.map(PlaceMarker.init)
-            + part.containers.compactMap { PlaceMarker(unopened: $0) }
-        part.biomeAreas = BiomeScanner.areas(surface: part.biomes, caves: part.caveBiomes)
-        part.blocks.sort { $0.deposit.count > $1.deposit.count }
+        part.places = PlacePresentation.markers(from: shared.pointsOfInterest, portals: shared.portals)
+            + shared.spawners.map(PlaceMarker.init) + shared.containers.compactMap { PlaceMarker(unopened: $0) }
+        part.biomeAreas = BiomePresentation.areas(from: shared.biomeAreas)
         return part
     }
 }
@@ -95,10 +89,10 @@ nonisolated struct SearchIndex: Sendable {
     }
 
     /// Each dimension's part, by dimension id.
-    var dimensions: [String: DimensionIndex] = [:]
+    var dimensions: [String: DimensionContent] = [:]
 
     /// One kind of thing from every dimension, each with its dimension.
-    func all<Value: Sendable>(_ part: KeyPath<DimensionIndex, [Value]>) -> [Placed<Value>] {
+    func all<Value: Sendable>(_ part: KeyPath<DimensionContent, [Value]>) -> [Placed<Value>] {
         dimensions.flatMap { id, index in index[keyPath: part].map { Placed(dimension: id, value: $0) } }
     }
 
