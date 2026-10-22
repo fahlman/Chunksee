@@ -44,6 +44,9 @@ import Testing
         #expect(draft.coordinates == "-9 -6" && draft.entrance == nil)
         draft.fillHeight(nil)
         #expect(draft.entrance == nil)
+        // A native text field can write its initial value back without an edit.
+        let initial = draft.coordinates
+        draft.coordinates = initial
         draft.fillHeight(-13)
         #expect(draft.coordinates == "-9 -13 -6")
         #expect(draft.entrance == .init(x: -9, y: -13, z: -6))

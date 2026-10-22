@@ -9,7 +9,9 @@ final class PortalPlanDraft: Identifiable {
     let dimension: String
     private let column: MapCoordinates
     private var wasEdited = false
-    var coordinates: String { didSet { wasEdited = true } }
+    var coordinates: String {
+        didSet { if coordinates != oldValue { wasEdited = true } }
+    }
 
     init(dimension: String, column: MapCoordinates, height: Int?) {
         self.dimension = dimension

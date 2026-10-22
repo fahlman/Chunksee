@@ -35,14 +35,16 @@ struct PortalPlanView: View {
                     Section("Matching Coordinates") {
                         CoordinateText(Coordinates(point(plan.destination), y: plan.destination.y),
                                        dimension: session.presentation.dimensionName(plan.targetDimension))
-                        CopyCoordinatesCommand(session: session, position: point(plan.destination),
-                                               dimension: plan.targetDimension, y: Double(plan.destination.y), pasteboard: .general)
-                        Button("Show Matching Location") {
-                            dismiss()
-                            session.routing.focus(on: MapDestination(coordinates: Coordinates(point(plan.destination), y: plan.destination.y),
-                                                                     dimension: plan.targetDimension, isBlockPosition: true))
+                        HStack {
+                            CopyCoordinatesCommand(session: session, position: point(plan.destination),
+                                                   dimension: plan.targetDimension, y: Double(plan.destination.y), pasteboard: .general)
+                            Button("Show Matching Location") {
+                                dismiss()
+                                session.routing.focus(on: MapDestination(coordinates: Coordinates(point(plan.destination), y: plan.destination.y),
+                                                                         dimension: plan.targetDimension, isBlockPosition: true))
+                            }
+                            .disabled(!session.routing.canFocus(Coordinates(point(plan.destination), y: plan.destination.y), in: plan.targetDimension))
                         }
-                        .disabled(!session.routing.canFocus(Coordinates(point(plan.destination), y: plan.destination.y), in: plan.targetDimension))
                     }
                     Section {
                         switch plan.link {
@@ -50,13 +52,15 @@ struct PortalPlanView: View {
                             Text("Would link to the saved portal at:")
                             CoordinateText(Coordinates(point(block), y: block.y),
                                            dimension: session.presentation.dimensionName(portal.dimension))
-                            CopyCoordinatesCommand(session: session, position: point(block),
-                                                   dimension: portal.dimension, y: Double(block.y), pasteboard: .general)
-                            Button("Show the Other Side") {
-                                dismiss()
-                                session.selection.show(portal)
+                            HStack {
+                                CopyCoordinatesCommand(session: session, position: point(block),
+                                                       dimension: portal.dimension, y: Double(block.y), pasteboard: .general)
+                                Button("Show the Other Side") {
+                                    dismiss()
+                                    session.selection.show(portal)
+                                }
+                                .disabled(!session.routing.canFocus(Coordinates(point(block), y: block.y), in: portal.dimension))
                             }
-                            .disabled(!session.routing.canFocus(Coordinates(point(block), y: block.y), in: portal.dimension))
                         case .wouldCreateNewPortal?:
                             Text("No saved portal is close enough. Minecraft would try to create one near the matching coordinates.")
                         case nil:
