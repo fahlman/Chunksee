@@ -103,6 +103,10 @@ struct WorldCommands: Commands {
                 session?.visibility.showsGrid ?? false
             } set: { session?.visibility.showsGrid = $0 })
             .disabled(session?.map == nil)
+            Toggle("World Border", isOn: Binding {
+                session?.presentation.limitedWorldBorder != nil && session?.visibility.showsWorldBorder == true
+            } set: { session?.visibility.showsWorldBorder = $0 })
+            .disabled(session?.presentation.limitedWorldBorder == nil)
             Toggle("Measure Distance", isOn: Binding {
                 session?.annotations.ruler.isEnabled ?? false
             } set: { session?.annotations.setRulerEnabled($0) })

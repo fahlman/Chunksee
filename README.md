@@ -97,7 +97,10 @@ as ordinary folders. **File** offers opening and closing commands; viewing a wor
 rename or move commands. When updating from the previous window system, reopen your worlds once
 with **File ▸ Open…**; macOS will remember them from then on.
 
-**View** includes zoom, World Info, Storage, Time Spent, sidebar and inspector commands.
+**View** includes zoom, World Info, Storage, Time Spent, World Border, sidebar and inspector commands.
+**World Border** in View and the sidebar shows or hides a saved border smaller than Minecraft's
+default limit. It starts shown, remembers each dimension's choice, and applies to exported images
+too. The controls are disabled when the dimension has no limited border.
 **Fit World** uses **⌘9**; **Actual Size** uses **⌘0**. **Edit ▸ Find** contains **Find…** (**⌘F**)
 and **Save Search** (**⇧⌘F**). **Navigate** jumps to coordinates, the world spawn or another dimension. Choose
 **Navigate ▸ Go to Coordinates…** (**⇧⌘G**) and enter X and Z to center the current dimension's

@@ -807,6 +807,12 @@ an enabled layer retains its legend even when no chunks have enough recorded tim
 The exported scale uses the document view's explicit appearance and locale. Static map context
 is shared in the image; transient reading activity belongs to the live status bar.
 
+World Border uses the existing per-dimension LayerVisibility/WorldSettings owner, initially shown.
+DimensionPresentation.limitedWorldBorder derives availability from the saved border and live map;
+the native View toggle and shared sidebar visibility row remain disabled when unavailable.
+MapContent applies the remembered flag once for live drawing and exported images. Hiding the
+border does not remove its World Info details or change any world data.
+
 ## Interface wording
 
 Use a consistent style for each UI role, following Apple's [Writing](https://developer.apple.com/design/human-interface-guidelines/writing)

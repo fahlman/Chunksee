@@ -123,7 +123,7 @@ extension MapContent {
         biomeAreas = index.biomeAreas.filter { session.visibility.biomes.contains($0.group) }
         biomes = index.biomes
         caveBiomes = index.caveBiomes
-        border = session.details.borders[id].flatMap { $0.isLimited ? $0 : nil }
+        border = session.visibility.showsWorldBorder ? session.presentation.limitedWorldBorder : nil
         showsGrid = session.visibility.showsGrid
         structures = index.structures.filter { session.visibility.structures.contains($0.group) }
         placePoints = index.placePoints
