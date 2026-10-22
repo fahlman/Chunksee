@@ -5,7 +5,7 @@ import ChunkseeKit
 typealias ChunkFormats = ChunkseeIndex.DimensionIndex.Formats
 
 /// Shares the library's one region scan between index and layer requests. The cache stores the
-/// library envelope; grouping, labels and map geometry are derived by the app afterwards.
+/// library envelope; the shared index derives groups, and the app supplies labels and geometry.
 actor RegionReader {
     typealias Read = @Sendable (ChunkseeKit.Dimension, RegionPosition, RegionScanOptions) async throws -> RegionFacts
 
