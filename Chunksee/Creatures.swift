@@ -79,10 +79,10 @@ nonisolated enum CreatureScanner {
 }
 
 extension Creature {
-    /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a job.
+    /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a profession.
     nonisolated var displayName: String {
         if let customName { return customName }
-        if let villager, let job = VillagerText.jobName(villager) { return job }
+        if let villager, let profession = VillagerText.professionName(villager) { return profession }
         return ReadableName.from(id)
     }
 }
@@ -126,8 +126,8 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                 PetDetailRows(creature: creature)
             }
-            if let job = VillagerText.inspectorJob(creature) {
-                LabeledContent("Job", value: job)
+            if let profession = VillagerText.inspectorProfession(creature) {
+                LabeledContent("Profession", value: profession)
             }
         } header: {
             header

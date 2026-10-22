@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.40.2`, resolved to `0.40.2` (`941fb2c8b3a217c209bdd77d7d7989378d9410a0`).
+  minor" from `0.41.0`, resolved to `0.41.0` (`10db1e5d1e39ae273d2c42267ae2360e0b303f2b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -174,7 +174,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
-| `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager job/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
+| `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager profession/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
 
@@ -516,11 +516,14 @@ CountedText applies native grammar agreement to the maximum, like the hearts lab
 The creature inspector shows saved current/maximum health in hearts and applicable pet order,
 appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-VillagerText uses Kit's computed `Villager.isUnemployed` for job-label availability. The app
+VillagerText uses Kit's computed `Villager.isUnemployed` for profession-name availability. The app
 owns readable labels, but does not interpret saved `minecraft:none` or malformed professions;
 nitwits and valid custom professions remain distinct.
-The inspector's “None” job value is limited to a villager whose saved profession is
+The inspector's “None” profession value is limited to a villager whose saved profession is
 explicitly unemployed; unknown professions omit the row through that same label owner.
+The row is labeled Profession. Its rank uses Kit's `supportsTrading`: known false omits it,
+unknown retains the prior behavior, and saved offers or a trading profession allow it. Only
+saved/default levels 1–5 have localized ranks. The app contains no profession capability list.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
 the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
 use Kit's `inventorySlots(in:)` for hotbar,
@@ -901,7 +904,7 @@ EquipmentSection omits empty equipment for both players and pets, matching the o
 inspector sections. The pet-only “Equipment: None” row is removed; Kit's equipment applicability
 stays unchanged. Inventory grids retain empty slots because those represent storage positions.
 
-Creature.displayName owns custom-name, villager-job and kind fallback naming for located
+Creature.displayName owns custom-name, villager-profession and kind fallback naming for located
 markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and
 plain named-creature search share one hit constructor; filtered searches retain their one
 matching helper. Search details supply the kind, or the group when the name already is the kind.
