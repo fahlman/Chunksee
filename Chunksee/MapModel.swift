@@ -388,6 +388,11 @@ final class MapModel {
         if !isClosed, let chunk = hoveredChunk, changed(chunk) { startHoverRead(of: chunk) }
     }
 
+    /// A selected location supplies a height without switching Surface/Cutaway mode.
+    func setHeight(_ y: Int) {
+        setDepth(MapDepth(y: y, isSurface: depth.isSurface))
+    }
+
     /// A depth change invalidates pixels and named columns together. Cancelled tasks remain
     /// tracked for close/drain, but their old job IDs and cancellation prevent publication.
     func setDepth(_ value: MapDepth) {

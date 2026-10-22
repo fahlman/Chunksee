@@ -15,6 +15,30 @@ import Testing
         return (url, session)
     }
 
+    @Test(arguments: [true, false])
+    func coordinateEntryUsesOptionalHeightWithoutChangingModeOrZoom(_ surface: Bool) async throws {
+        let (url, session) = try await openWorld()
+        defer { session.close(); try? FileManager.default.removeItem(at: url) }
+        let map = try #require(session.map)
+        map.viewport = MapViewport(center: .zero, scale: 0.125)
+        map.setDepth(MapDepth(y: 99, isSurface: surface))
+        let destination = try #require(MapCoordinates(text: "−266 48 71"))
+        session.navigation.goToCoordinates(destination.position, height: destination.y)
+        let first = MapViewport(center: CGPoint(x: -265.5, y: 71.5), scale: 0.125)
+        #expect(map.viewport == first)
+        #expect(map.depth == MapDepth(y: 48, isSurface: surface))
+        let withoutHeight = try #require(MapCoordinates(text: "80 -50"))
+        session.navigation.goToCoordinates(withoutHeight.position, height: withoutHeight.y)
+        #expect(map.viewport == MapViewport(center: CGPoint(x: 80.5, y: -49.5), scale: 0.125))
+        #expect(map.depth == MapDepth(y: 48, isSurface: surface))
+        session.navigation.goBack()
+        #expect(map.viewport == first)
+        session.close()
+        await session.waitUntilClosed()
+        session.navigation.goToCoordinates(.zero, height: 10)
+        #expect(map.viewport == first && map.depth == MapDepth(y: 48, isSurface: surface))
+    }
+
     @Test(arguments: [0.125, 8.0])
     func coordinateAndLocationJumpsPreserveZoom(_ scale: CGFloat) async throws {
         let (url, session) = try await openWorld()

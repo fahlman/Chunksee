@@ -215,7 +215,7 @@ final class SelectionModel {
     /// Selection changes height once; a later save or manual slider change does not track the item.
     private func followHeight(_ height: Int?) {
         guard let height, let map = source?.map else { return }
-        map.setDepth(MapDepth(y: height, isSurface: map.depth.isSurface))
+        map.setHeight(height)
     }
 
     private func focus(on position: CGPoint, height: Int?, in dimension: String) {

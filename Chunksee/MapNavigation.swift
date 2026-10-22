@@ -19,16 +19,20 @@ final class MapNavigation {
     }
 
     /// Every location jump keeps this dimension's zoom; zoom controls and Fit World are explicit.
-    func focus(on point: CGPoint, blockPosition: Bool = false) {
-        guard let coordinates = MapCoordinates(point: point) else { return }
+    func focus(on point: CGPoint) {
+        guard MapCoordinates(point: point) != nil else { return }
         navigate { map in
-            map.viewport.center = blockPosition ? coordinates.center : point
+            map.viewport.center = point
         }
     }
 
     /// Coordinate entry and saved-place jumps keep zoom and center on the containing block.
-    func goToCoordinates(_ point: CGPoint) {
-        focus(on: point, blockPosition: true)
+    func goToCoordinates(_ point: CGPoint, height: Int? = nil) {
+        guard let coordinates = MapCoordinates(point: point) else { return }
+        navigate { map in
+            map.viewport.center = coordinates.center
+            if let height { map.setHeight(height) }
+        }
     }
 
     func fitWorld() {

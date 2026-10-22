@@ -3,14 +3,17 @@ import SwiftUI
 /// Whole block coordinates entered by the user, including a pasted typographic minus sign.
 nonisolated struct MapCoordinates: Equatable, Sendable {
     let x: Int32
+    let y: Int?
     let z: Int32
 
-    init?(x: String, z: String) {
-        func number(_ text: String) -> Int32? {
-            Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "−", with: "-"))
-        }
-        guard let x = number(x), let z = number(z) else { return nil }
+    init?(text: String) {
+        let fields = text.replacingOccurrences(of: "−", with: "-").split(whereSeparator: \.isWhitespace)
+        guard fields.count == 2 || fields.count == 3,
+              let x = Int32(fields[0]), let z = Int32(fields[fields.count - 1]) else { return nil }
+        if fields.count == 3 {
+            guard let y = Int(fields[1]) else { return nil }
+            self.y = y
+        } else { self.y = nil }
         self.x = x
         self.z = z
     }
@@ -19,6 +22,7 @@ nonisolated struct MapCoordinates: Equatable, Sendable {
         guard let blockX = Coordinates.block(point.x), let blockZ = Coordinates.block(point.y),
               let x = Int32(exactly: blockX), let z = Int32(exactly: blockZ) else { return nil }
         self.x = x
+        self.y = nil
         self.z = z
     }
 
@@ -36,41 +40,34 @@ nonisolated struct MapCoordinates: Equatable, Sendable {
 struct GoToCoordinatesView: View {
     let session: WorldSession
     @Environment(\.dismiss) private var dismiss
-    @State private var x: String
-    @State private var z: String
-    @FocusState private var focusedField: Field?
-
-    private enum Field { case x, z }
+    @State private var coordinates: String
+    @FocusState private var isFocused: Bool
 
     init(session: WorldSession) {
         self.session = session
         let center = session.map?.viewport.center ?? .zero
-        _x = State(initialValue: Coordinates.block(center.x).map(String.init) ?? "")
-        _z = State(initialValue: Coordinates.block(center.y).map(String.init) ?? "")
+        if let point = MapCoordinates(point: center) {
+            let values: [Int?] = [Int(point.x), session.map?.depth.cutawayY, Int(point.z)]
+            _coordinates = State(initialValue: values.compactMap { $0.map(String.init) }.joined(separator: " "))
+        } else {
+            _coordinates = State(initialValue: "")
+        }
     }
 
-    private var destination: MapCoordinates? { MapCoordinates(x: x, z: z) }
+    private var destination: MapCoordinates? { MapCoordinates(text: coordinates) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Go to Coordinates").font(.headline)
-            Text("Enter whole block coordinates in \(session.selectedDimensionID.map(session.presentation.dimensionName) ?? "").")
+            Text("Enter X Z or X Y Z in \(session.selectedDimensionID.map(session.presentation.dimensionName) ?? "").")
                 .foregroundStyle(.secondary)
-            Grid(alignment: .leading) {
-                GridRow {
-                    Text("X")
-                    TextField("X coordinate", text: $x)
-                        .labelsHidden()
-                        .accessibilityLabel("X coordinate")
-                        .focused($focusedField, equals: .x)
-                }
-                GridRow {
-                    Text("Z")
-                    TextField("Z coordinate", text: $z)
-                        .labelsHidden()
-                        .accessibilityLabel("Z coordinate")
-                        .focused($focusedField, equals: .z)
-                }
+            LabeledContent("Coordinates") {
+                TextField("X Z or X Y Z", text: $coordinates)
+                    .labelsHidden()
+                    .accessibilityLabel("Coordinates")
+                    .accessibilityIdentifier("coordinate-entry")
+                    .focused($isFocused)
+                    .help("Enter whole block coordinates separated by spaces; Y is optional")
             }
             .textFieldStyle(.roundedBorder)
             HStack {
@@ -85,12 +82,12 @@ struct GoToCoordinatesView: View {
         .padding(20)
         .frame(width: 340)
         .onSubmit(go)
-        .onAppear { focusedField = .x }
+        .onAppear { isFocused = true }
     }
 
     private func go() {
         guard let destination else { return }
-        session.navigation.goToCoordinates(destination.position)
+        session.navigation.goToCoordinates(destination.position, height: destination.y)
         dismiss()
     }
 }
