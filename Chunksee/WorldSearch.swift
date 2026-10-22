@@ -329,8 +329,9 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let sign = entry.value
             // Matching uses saved spacing; only the displayed caption trims and omits blank lines.
-            guard query.matches(sign.searchLines.joined(separator: " ")) else { continue }
-            let lines = sign.searchLines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let savedLines = sign.searchLines
+            guard query.matches(savedLines.joined(separator: " ")) else { continue }
+            let lines = savedLines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             hits.append(SearchHit(id: "\(entry.dimension)@\(sign.kind)@\(sign.x),\(sign.y),\(sign.z)", source: .sign,
                                   dimension: entry.dimension, position: MapCoordinates.center(of: CGPoint(x: sign.x, y: sign.z)),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
