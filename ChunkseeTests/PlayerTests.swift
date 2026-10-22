@@ -91,7 +91,7 @@ import Testing
         #expect(valid.map(\.kind) == [.death])
         #expect(valid.first?.position.dimension == "example:missing")
         #expect(PlayerPresentation.position(of: invalid) == nil)
-        #expect(PlayerPresentation.absentPlayerName(friend, knownName: nil) == "a player not in this world (06d119da…)")
+        #expect(PlayerPresentation.absentPlayerName(friend, knownName: nil) == "Player 06d119da (not in this world)")
         #expect(PlayerPresentation.absentPlayerName(friend, knownName: "Friend") == "Friend")
     }
 

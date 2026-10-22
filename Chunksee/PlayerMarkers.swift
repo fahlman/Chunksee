@@ -76,7 +76,7 @@ nonisolated enum PlayerPresentation {
     static func label(of player: PlayerInfo, singleplayerUUID: UUID?, knownName: String? = nil) -> Name {
         if let knownName { return .named(knownName) }
         if player.uuid == singleplayerUUID { return .you }
-        return .named(String(localized: "Player \(shortID(player.uuid))"))
+        return .named(fallbackName(player.uuid))
     }
 
     /// Whether the player hasn't joined since the world was last upgraded.
@@ -119,10 +119,13 @@ nonisolated enum PlayerPresentation {
     }
 
     static func absentPlayerName(_ uuid: UUID, knownName: String?) -> String {
-        knownName ?? String(localized: "a player not in this world (\(shortID(uuid))…)")
+        knownName ?? String(localized: "\(fallbackName(uuid)) (not in this world)")
     }
 
-    private static func shortID(_ uuid: UUID) -> String { String(uuid.uuidString.lowercased().prefix(8)) }
+    private static func fallbackName(_ uuid: UUID) -> String {
+        let shortID = String(uuid.uuidString.lowercased().prefix(8))
+        return String(localized: "Player \(shortID)")
+    }
 
     /// Markers for one dimension: each mappable player's last position, last death and respawn point.
     static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,

@@ -317,7 +317,7 @@ enum StructureTestWorld {
         #expect(session.selection.inspector == .world && session.selection.mapSelection == nil)
         session.selection.inspector = .storage
         #expect(session.selection.sidebarSelection == .storage)
-        #expect(session.presentation.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!).hasPrefix("a player not in this world"))
+        #expect(session.presentation.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!) == "Player 00000001 (not in this world)")
         session.navigation.focus(on: CGPoint(x: 10, y: 20))
         #expect(session.map?.viewport.center == CGPoint(x: 10, y: 20))
         #expect(session.presentation.spawnPoint == .zero)   // the test world has no spawn

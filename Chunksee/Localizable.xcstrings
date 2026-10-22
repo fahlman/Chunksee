@@ -7,6 +7,12 @@
     "Location unknown" : {
       "comment" : "A saved item or player has no usable coordinates; also used for a shoulder pet whose carrier cannot be located. This is different from a known location in a missing dimension."
     },
+    "Player %@" : {
+      "comment" : "An unnamed player, identified by the first eight characters of the saved player ID. Shared by player rows and unknown pet owners."
+    },
+    "%@ (not in this world)" : {
+      "comment" : "An unnamed pet owner without a player record in this save. The placeholder is the same Player plus short ID label used for unnamed players."
+    },
     "Profession" : {
       "comment" : "A villager's saved profession, with its trading rank when applicable."
     },
