@@ -94,6 +94,9 @@ import Testing
             _ = try #require(menu.item(at: 0))
             menu.performActionForItem(at: 0)
             #expect(board.string(forType: .string) == expected)
+            let destination = try #require(MapCoordinates(text: try #require(board.string(forType: .string))))
+            #expect(destination.position == MapCoordinates(point: hit.position)?.position)
+            #expect(destination.y == hit.y.flatMap(Coordinates.block))
             #expect(map.unfinishedCoordinateReads == 0)
         }
     }

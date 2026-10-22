@@ -197,6 +197,12 @@ WorldView owns the transient Go to Coordinates sheet flag. Navigate's command us
 scene binding, while the sheet keeps its existing native controls and calls MapNavigation.
 Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
 existing per-session view identity resets this transient state on a native reread or move.
+Go to Coordinates uses one native field for X Z or the copied Minecraft X Y Z format. MapCoordinates
+checks whole-number input, whitespace and typographic minus signs; X/Z retain their Int32 bounds,
+and optional Y accepts the same Int range as Map Height. Editing and Cancel do not move the map.
+MapNavigation centers the block and keeps zoom. MapModel.setHeight shares item selection's height
+rule: retain Surface/Cutaway mode, remembering Y on Surface and applying it to a cutaway. Omitting
+Y keeps the current height. Existing Back/Forward history continues to store viewports.
 `MapNavigation` applies local focus, coordinate jumps, Fit World and Back/Forward through the
 document's existing MapModel, which remains the only viewport/depth owner. All location jumps
 keep the destination dimension's current zoom, including spawn, player locations, portal links

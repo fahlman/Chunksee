@@ -4,15 +4,26 @@ import Testing
 
 @Suite(.isolatedStores) struct CoordinateNavigationTests {
     @Test func signedCoordinatesAcceptPastedMinusAndWhitespace() {
-        #expect(MapCoordinates(x: "−266", z: "71")?.position == CGPoint(x: -266, y: 71))
-        #expect(MapCoordinates(x: "  -266\n", z: " +71 ")?.position == CGPoint(x: -266, y: 71))
-        #expect(MapCoordinates(x: "0", z: "-0")?.position == .zero)
+        #expect(MapCoordinates(text: "−266 71")?.position == CGPoint(x: -266, y: 71))
+        #expect(MapCoordinates(text: "  -266\n +71 ")?.position == CGPoint(x: -266, y: 71))
+        #expect(MapCoordinates(text: "0 -0")?.position == .zero)
+        #expect(MapCoordinates(text: "−266 71")?.y == nil)
+        let triple = MapCoordinates(text: "\t−266  −48\n +71 ")
+        #expect(triple?.position == CGPoint(x: -266, y: 71))
+        #expect(triple?.y == -48)
+        #expect(MapCoordinates(text: "\(Int32.min) \(Int.min) \(Int32.max)")?.y == Int.min)
+        #expect(MapCoordinates(text: "0 \(Int.max) 0")?.y == Int.max)
     }
 
     @Test(arguments: ["", "-", "X −266", "1.5", "NaN", "1e3", "2147483648", "999999999999999999999999999999"])
     func invalidCoordinatesCannotBecomeMapDestinations(_ text: String) {
-        #expect(MapCoordinates(x: text, z: "71") == nil)
-        #expect(MapCoordinates(x: "-266", z: text) == nil)
+        #expect(MapCoordinates(text: "\(text) 71") == nil)
+        #expect(MapCoordinates(text: "-266 \(text)") == nil)
+    }
+
+    @Test(arguments: ["1", "1 2 3 4", "1 2.5 3", "1 NaN 3", "1 999999999999999999999999 3", "1,2,3", "~1 64 2"])
+    func malformedCopiedCoordinatesAreRejected(_ text: String) {
+        #expect(MapCoordinates(text: text) == nil)
     }
 
     @Test func aClickedMapPointUsesTheContainingBlockIncludingNegativeCoordinates() {
