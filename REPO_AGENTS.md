@@ -108,6 +108,9 @@ IDs distinct. The RegionFacts cache and tile-renderer version 8 discard classifi
 made before this adoption. Structures retain their variant word order; the three vanilla dimension labels
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
+DimensionPresentation.mapTitle supplies the map's accessibility label and image-sharing preview
+with the same localized dimension-and-world title. Both callers pass their SwiftUI locale; custom
+dimension collisions still use NameStyle, and saved world names remain literal.
 
 RegionTileRenderer uses Chunk.forEachColumnRun for normal surface, cutaway and roof scans.
 Kit owns WORLD_SURFACE/actual-block starts, checked heights and the section/column traversal;

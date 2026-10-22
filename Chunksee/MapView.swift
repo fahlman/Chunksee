@@ -38,6 +38,7 @@ struct MapView: View {
     @State private var hoverPoint: CGPoint?
     @FocusState private var isFocused: Bool
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.locale) private var locale
 
     private var zoomPercentage: String {
         ZoomPercentage.text(map.viewport.scale)
@@ -119,7 +120,7 @@ struct MapView: View {
         }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Map of \(map.dimension.id, format: session.presentation.dimensionNameStyle)"))
+        .accessibilityLabel(session.presentation.mapTitle(in: map.dimension.id, locale: locale))
         .accessibilityIdentifier("world-map")
         .accessibilityValue(Text(accessibilityReadout))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
