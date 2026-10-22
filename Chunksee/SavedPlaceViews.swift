@@ -9,6 +9,10 @@ struct SavedPlacesGroup: View {
     var body: some View {
         @Bindable var visibility = session.visibility
         DisclosureGroup(isExpanded: $isExpanded) {
+            SidebarActionRow(help: "Save the location at the center of the map") {
+                Button("Save Place…", systemImage: "mappin.and.ellipse") { session.annotations.savePlace() }
+                    .disabled(session.map == nil)
+            }
             ForEach(session.annotations.listedPlaces) { place in
                 let availability = session.routing.availability(of: Coordinates(place.position), in: place.dimension)
                 LocationLabel(title: Text(place.name), isDimmed: !availability.canNavigate) {
@@ -21,10 +25,6 @@ struct SavedPlacesGroup: View {
                     SavedPlaceMenu(session: session, place: place)
                 }
             }
-            Button("Save Place…", systemImage: "mappin.and.ellipse") { session.annotations.savePlace() }
-                .buttonStyle(.plain)
-                .disabled(session.map == nil)
-                .help("Save the location at the center of the map")
         } label: {
             MapVisibilityRow(isShown: $visibility.showsSavedPlaces) {
                 Label(CountedText.label(String(localized: "Saved Places", locale: locale),

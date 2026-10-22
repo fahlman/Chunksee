@@ -63,7 +63,7 @@ with a link to this guide. Help opens only when requested.
    search, equipment and trades. Trade searches also match custom names on either cost or the
    item for sale. Written books retain their title and author.
    Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
-   ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
+   ("biome:pale garden"). Choose **Save Search** at the start of Search Results to keep it in Saved Searches,
    where its eye button keeps its pins on the map.
    Results show the place's name; select one to see its matching contents, count and location in
    the inspector. The section heading shows how many results are listed when there are more than 200.
@@ -71,7 +71,7 @@ with a link to this guide. Help opens only when requested.
    point (bed). Each dimension's sidebar lists the players last seen there; choose one to jump to them and see their
    inventory, health, gear and pets in the inspector, or click their marker for the same details.
    Use the eye button beside a player in the sidebar to show or hide that player's markers.
-   To show names, choose your Minecraft folder in **Settings**, so Chunksee
+   **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 

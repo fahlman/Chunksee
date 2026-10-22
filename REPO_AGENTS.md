@@ -765,6 +765,13 @@ create cave areas/hover membership; all actually used areas and the full per-dim
 biome catalog remain. The app owns the cave category list and neighboring-chunk area grouping.
 
 
+SidebarActionRow supplies native icon/title presentation, plain control styling and help for
+Save Search, Save Place and Find Player Names. Actions precede their group's items so they stay
+reachable in long lists; the underlying Button or SettingsLink and existing model own behavior.
+Empty groups with creation actions remain available (Saved Places). Empty result-only sections
+are omitted (Saved Searches), while active searches retain their empty/progress content and the
+biome catalog retains known groups with zero saved areas. This does not add another state owner.
+
 ## Build and test
 
 Run from the repository root:
