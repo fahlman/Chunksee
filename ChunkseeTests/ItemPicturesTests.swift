@@ -80,6 +80,35 @@ import UniformTypeIdentifiers
         #expect(rotated.color(56, 56) == [0, 255, 0, 255])
     }
 
+    @Test func elementEulerRotationsApplyXThenYThenZ() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let image = try #require(try await fixture.library().picture(for: ItemStack(id: "test:euler")))
+        let pixels = try ItemPictureFixture.pixels(image)
+        // X=90 then Y=90 turns the west face toward the camera: (x,y,z) -> (y,-z,-x).
+        // Reversing the turns leaves that face edge-on instead of showing these four corners.
+        #expect(pixels.color(24, 24) == [0, 0, 255, 255])
+        #expect(pixels.color(40, 24) == [255, 0, 0, 255])
+        #expect(pixels.color(24, 40) == [255, 255, 0, 255])
+        #expect(pixels.color(40, 40) == [0, 255, 0, 255])
+        #expect(pixels.color(8, 8) == [0, 0, 0, 0])
+    }
+
+    @Test func elementRescaleExpandsTheRotatedFaceBeforeProjection() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let plain = try #require(try await library.picture(for: ItemStack(id: "test:diagonal")))
+        let scaled = try #require(try await library.picture(for: ItemStack(id: "test:rescaled")))
+        let a = try ItemPictureFixture.pixels(plain), b = try ItemPictureFixture.pixels(scaled)
+        for (x, y) in [(32, 4), (4, 32), (59, 32), (32, 59)] {
+            #expect(a.color(x, y) == [0, 0, 0, 0])
+            #expect(b.color(x, y) == [255, 255, 255, 255])
+        }
+        #expect(a.color(32, 32) == [255, 255, 255, 255])
+        #expect(b.color(32, 32) == [255, 255, 255, 255])
+    }
+
     @Test func repeatedKindsSharePicturesButSavedColorsStayDistinct() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
@@ -223,7 +252,7 @@ struct ItemPictureFixture {
         }
         func json(_ path: String, _ object: Any) throws { try write(path, JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) }
         try json("version.json", ["id": "26.3", "world_version": 5023])
-        for id in ["flat", "leather", "potion", "cube", "turned", "grass"] {
+        for id in ["flat", "leather", "potion", "cube", "turned", "grass", "euler", "diagonal", "rescaled"] {
             var model: [String: Any] = ["type": "minecraft:model", "model": "test:item/" + id]
             if id == "leather" { model["tints"] = [["type": "minecraft:dye", "default": 0x804020]] }
             if id == "potion" { model["tints"] = [["type": "minecraft:potion", "default": 0xFFFFFF]] }
@@ -248,6 +277,16 @@ struct ItemPictureFixture {
             "display": ["gui": ["rotation": [30, 225, 0], "scale": [0.625, 0.625, 0.625]]]])
         try json("assets/test/models/item/turned.json", ["gui_light": "front", "textures": ["main": "test:item/quadrants"],
             "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": ["south": ["texture": "#main", "rotation": 90]]]]])
+        try json("assets/test/models/item/euler.json", ["gui_light": "front", "textures": ["main": "test:item/quadrants"],
+            "elements": [["from": [4, 4, 4], "to": [12, 12, 12],
+                          "rotation": ["origin": [8, 8, 8], "x": 90, "y": 90],
+                          "faces": ["west": ["texture": "#main", "uv": [0, 0, 16, 16]]]]]])
+        for (id, rescale) in [("diagonal", false), ("rescaled", true)] {
+            try json("assets/test/models/item/\(id).json", ["gui_light": "front", "textures": ["main": "test:item/white"],
+                "elements": [["from": [4, 4, 8], "to": [12, 12, 8],
+                              "rotation": ["origin": [8, 8, 8], "axis": "z", "angle": 45, "rescale": rescale],
+                              "faces": ["south": ["texture": "#main"]]]]])
+        }
         let red: [UInt8] = [255, 0, 0, 255], green: [UInt8] = [0, 255, 0, 255], blue: [UInt8] = [0, 0, 255, 255]
         let white: [UInt8] = [255, 255, 255, 255], clear: [UInt8] = [0, 0, 0, 0]
         for (name, pixels) in [("red", red + red + red + red), ("green", green + green + green + green),

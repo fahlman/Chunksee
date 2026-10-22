@@ -95,8 +95,8 @@ nonisolated enum ItemPictureRenderer {
             switch model.geometry {
             case .layers(let layers):
                 for layer in layers {
-                    // Generated layers face the GUI camera. Later layers are slightly closer,
-                    // as in the game's generated model, preserving transparent overlays.
+                    // A tiny depth offset lets later generated layers win depth tests,
+                    // preserving the game's draw-order behavior for coplanar overlays.
                     let z = Float(8.5) + Float(layer.tintIndex) * 0.001
                     guard append([SIMD3(0, 16, z), SIMD3(0, 0, z), SIMD3(16, 0, z), SIMD3(16, 16, z)],
                                  material: layer.material, uv: SIMD4(0, 0, 16, 16), rotation: 0,
@@ -173,7 +173,10 @@ nonisolated enum ItemPictureRenderer {
             case .axis(let axis, let angle):
                 let direction: SIMD3<Float> = axis == .x ? SIMD3(1, 0, 0) : axis == .y ? SIMD3(0, 1, 0) : SIMD3(0, 0, 1)
                 rotation = simd_quatf(angle: angle * .pi / 180, axis: direction)
-            case .eulerXYZ(let angles): rotation = quaternion(angles)
+            case .eulerXYZ(let angles):
+                // CuboidRotation applies X, then Y, then Z; GUI transforms use the reverse order.
+                let r = angles * .pi / 180
+                rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1)) * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0)) * simd_quatf(angle: r.x, axis: SIMD3(1, 0, 0))
             }
             var offset = point - element.origin
             if element.rescale {
@@ -187,10 +190,10 @@ nonisolated enum ItemPictureRenderer {
             }
             point = rotation.act(offset) + element.origin
         }
-        return quaternion(transform.rotation).act((point / 16 - 0.5) * transform.scale) + transform.translation
+        return guiRotation(transform.rotation).act((point / 16 - 0.5) * transform.scale) + transform.translation
     }
 
-    private static func quaternion(_ degrees: SIMD3<Float>) -> simd_quatf {
+    private static func guiRotation(_ degrees: SIMD3<Float>) -> simd_quatf {
         let r = degrees * .pi / 180
         return simd_quatf(angle: r.x, axis: SIMD3(1, 0, 0)) * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0)) * simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
     }
