@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 
 struct WorldView: View {
