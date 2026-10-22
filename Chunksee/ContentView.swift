@@ -3,6 +3,7 @@ import SwiftUI
 
 struct WorldView: View {
     @Bindable var session: WorldSession
+    @Environment(\.locale) private var locale
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
@@ -155,7 +156,7 @@ struct WorldView: View {
                     .toolbar {
                         ToolbarItem {
                             ShareLink(item: SharedMapImage { [session] in MapImage.render(session: session) },
-                                      preview: SharePreview("Map of \(session.presentation.displayName)", image: Image(systemName: ItemAppearance.mapSymbol))) {
+                                      preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
                             .help("Share an image of the map as shown")

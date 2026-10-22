@@ -45,6 +45,12 @@ final class DimensionPresentation {
         dimensionNameStyle.format(id)
     }
 
+    /// Shared images and accessibility identify both the dimension and the world it belongs to.
+    func mapTitle(in dimensionID: String, locale: Locale) -> String {
+        let dimension = dimensionNameStyle.locale(locale).format(dimensionID)
+        return String(localized: "Map of \(dimension) in \(displayName)", locale: locale)
+    }
+
     var dimensionNameStyle: NameStyle {
         NameStyle(dimensionIDs: source?.dimensions.map(\.id) ?? [])
     }
