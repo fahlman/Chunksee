@@ -41,13 +41,14 @@ import Testing
     }
 
     @Test func itemSummaryKeepsDifferentKindsWithTheSameLabelSeparate() throws {
-        let items = [ItemStack(id: "minecraft:diamond", count: 2, customName: "Shared"),
-                     ItemStack(id: "minecraft:stone", count: 3, customName: "Shared"),
+        let items = [ItemStack(id: "first:diamond", count: 2, customName: "Shared"),
+                     ItemStack(id: "second:diamond", count: 3, customName: "Shared"),
                      ItemStack(id: "minecraft:bundle", contents: [
-                        ItemStack(id: "minecraft:diamond", count: 4, customName: "Shared"),
+                        ItemStack(id: "first:diamond", count: 4, customName: "Shared"),
                      ])]
         let result = try #require(WorldSearch.summary(of: items, query: SearchQuery("shared")))
-        #expect(result.text == "6 Shared, 3 Shared" && result.count == 9)
+        #expect(result.text == "6 Diamond “Shared”, 3 Diamond “Shared”")
+        #expect(result.count == 9)
         #expect(WorldSearch.summary(of: items, query: SearchQuery("unmatched")) == nil)
     }
 
