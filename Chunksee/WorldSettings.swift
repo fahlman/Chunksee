@@ -8,6 +8,7 @@ final class WorldSettings {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
+        case showsWorldBorder
 
         fileprivate static let legacy: [Layer] = [.structures, .places, .creatures, .biomes, .hiddenPlayers, .showsGrid]
     }

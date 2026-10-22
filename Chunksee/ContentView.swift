@@ -45,6 +45,11 @@ struct WorldView: View {
                             Label("Grid", systemImage: "grid")
                         }
                         .help("Show block, chunk and region lines; block lines appear from \(ZoomPercentage.text(MapGrid.minimumBlockSpacing)) zoom")
+                        MapVisibilityRow(isShown: session.presentation.limitedWorldBorder == nil ? .constant(false) : $visibility.showsWorldBorder) {
+                            Label("World Border", systemImage: "square.dashed")
+                        }
+                        .disabled(session.presentation.limitedWorldBorder == nil)
+                        .help("Show the saved world border when it is smaller than the default limit")
                     }
                     if !session.savedSearches.all.isEmpty {
                         SavedSearchesSection(session: session, isExpanded: sectionExpanded(.savedSearches),

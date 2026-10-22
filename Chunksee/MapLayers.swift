@@ -174,6 +174,7 @@ final class LayerVisibility {
     /// Chunk and region lines; off at first.
     var showsGrid: Bool { didSet { saveValue(showsGrid, Keys.showsGrid) } }
     var showsSavedPlaces: Bool { didSet { saveValue(showsSavedPlaces, Keys.showsSavedPlaces) } }
+    var showsWorldBorder: Bool { didSet { saveValue(showsWorldBorder, Keys.showsWorldBorder) } }
 
     private let settings: WorldSettings
     private let dimension: String?
@@ -195,12 +196,14 @@ final class LayerVisibility {
         hiddenPlayers = Set((values[Keys.hiddenPlayers] as? [String] ?? []).compactMap(UUID.init(uuidString:)))
         showsGrid = values[Keys.showsGrid] as? Bool ?? false
         showsSavedPlaces = values[Keys.showsSavedPlaces] as? Bool ?? true
+        showsWorldBorder = values[Keys.showsWorldBorder] as? Bool ?? true
         if previous == nil {
             write([
                 Keys.structures: structures.map(\.rawValue).sorted(), Keys.places: places.map(\.rawValue).sorted(),
                 Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
                 Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
                 Keys.timeSpent: false, Keys.showsSavedPlaces: showsSavedPlaces,
+                Keys.showsWorldBorder: showsWorldBorder,
             ])
         }
     }

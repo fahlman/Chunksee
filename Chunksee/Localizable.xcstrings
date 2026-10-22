@@ -124,6 +124,12 @@
     "Loot: %@" : {
       "comment" : "Fallback unopened-loot label; the placeholder is an unfamiliar saved loot-table identifier."
     },
+    "World Border" : {
+      "comment" : "Map overlay visibility control in the View menu and sidebar."
+    },
+    "Show the saved world border when it is smaller than the default limit" : {
+      "comment" : "Help for the World Border map visibility control."
+    },
     "Done" : {
       "comment" : "Finish the current view or popover. Map adjustments retain valid entries."
     },

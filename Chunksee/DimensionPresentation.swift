@@ -18,6 +18,13 @@ final class DimensionPresentation {
         return source.details.dimensionSettings[id]?.type?.buildRange
     }
 
+    /// Map controls and drawing share availability; the default border has no practical limit.
+    var limitedWorldBorder: WorldBorder? {
+        guard let source, !source.isClosed, source.map != nil, let id = source.selectedDimensionID,
+              let border = source.details.borders[id], border.isLimited else { return nil }
+        return border
+    }
+
     var displayName: String {
         guard let source else { return "" }
         return source.world.level.name ?? source.url.lastPathComponent
