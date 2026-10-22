@@ -15,7 +15,7 @@ struct PortalPlanView: View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Plan Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)
             Form {
-                Section("Proposed Entrance") {
+                Section {
                     LabeledContent("Dimension", value: session.presentation.dimensionName(draft.dimension))
                     LabeledContent("Coordinates") {
                         TextField("X Y Z", text: $draft.coordinates)
@@ -30,6 +30,10 @@ struct PortalPlanView: View {
                         Text("Enter X Y Z to see the matching location and portal link.")
                             .foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("Proposed Entrance")
+                } footer: {
+                    Text("For terrain locations, the starting Y is the mapped surface. Use the portal entrance block’s height.")
                 }
                 if let plan {
                     Section("Matching Coordinates") {
@@ -80,13 +84,13 @@ struct PortalPlanView: View {
             .formStyle(.grouped)
             HStack {
                 Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 440)
         .onAppear { isFocused = true }
-        .onExitCommand { dismiss() }
     }
 
     private func point(_ block: NetherPortal.Block) -> CGPoint { CGPoint(x: block.x, y: block.z) }
