@@ -25,8 +25,5 @@ extension NotableBlock {
     nonisolated var searchText: String { ([name] + ids).joined(separator: " ") }
 }
 
-/// A chunk's deposit of one notable block, as the world index lists them.
-nonisolated struct ChunkDeposit: Equatable, Sendable {
-    var chunk: ChunkPosition
-    var deposit: BlockDeposit
-}
+/// A chunk's deposit as retained and sorted by the shared dimension index.
+typealias ChunkDeposit = ChunkseeIndex.DimensionIndex.ChunkDeposit

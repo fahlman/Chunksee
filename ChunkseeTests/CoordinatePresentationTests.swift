@@ -72,10 +72,15 @@ import Testing
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        let data = try encoder.encode(SearchContents(containers: [oldContainer]))
+        struct LegacyContents: Encodable {
+            let containers: [ItemContainer]
+            let signs: [Sign] = []
+            let spawners: [Spawner] = []
+        }
+        let data = try encoder.encode(LegacyContents(containers: [oldContainer]))
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
-        let contents = await reader.contents(RegionPosition(x: -1, z: -1))
+        let contents = try #require(await reader.facts(RegionPosition(x: -1, z: -1)))
         await reader.close()
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)

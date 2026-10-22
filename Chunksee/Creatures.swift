@@ -1,14 +1,14 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 
-/// Kinds of creatures the map can show. Farm animals and monsters number in the tens of thousands,
-/// so only creatures someone cared about are shown: named ones, pets and villagers.
-nonisolated enum CreatureGroup: String, CaseIterable, Codable, Sendable {
-    case named, pet, villager
+/// Shared category identity with native names, symbols, colors and visibility defaults.
+typealias CreatureGroup = CreatureEntry.Group
 
-    var name: String {
+extension CreatureGroup {
+    nonisolated var name: String {
         switch self {
         case .named: String(localized: "Named Creatures")
         case .pet: String(localized: "Pets")
@@ -16,7 +16,7 @@ nonisolated enum CreatureGroup: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    var symbol: String {
+    nonisolated var symbol: String {
         switch self {
         case .named: "tag.fill"
         case .pet: "pawprint.fill"
@@ -25,7 +25,7 @@ nonisolated enum CreatureGroup: String, CaseIterable, Codable, Sendable {
     }
 
     /// Marker color as sRGB hex.
-    var color: UInt32 {
+    nonisolated var color: UInt32 {
         switch self {
         case .named: 0x2E7D32
         case .pet: 0xAD1457
@@ -33,22 +33,16 @@ nonisolated enum CreatureGroup: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    var isShownByDefault: Bool { self != .villager }
-
-    /// Villagers first (their trades are the reason to look), then pets, then other named creatures.
-    static func group(for creature: Creature) -> CreatureGroup? {
-        if creature.villager != nil { return .villager }
-        if creature.owner != nil { return .pet }
-        if creature.customName != nil { return .named }
-        return nil
-    }
+    nonisolated var isShownByDefault: Bool { self != .villager }
 }
 
 /// A creature on the map.
 nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
+    private let entry: CreatureEntry
+    /// Defaults to the shared identity; carried pets may supply their carrier/shoulder fallback.
     var id: String
-    var creature: Creature
-    var group: CreatureGroup
+    var creature: Creature { entry.creature }
+    var group: CreatureGroup { entry.group }
     var dimension: String
     /// Present only for a player-carried pet; this is independent of its saved owner.
     var carrier: UUID?
@@ -58,23 +52,14 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     var name: String { creature.displayName }
 
     init?(_ creature: Creature, dimension: String) {
-        guard let group = CreatureGroup.group(for: creature),
-              Coordinates.canLocate(x: creature.x, y: creature.y, z: creature.z) else { return nil }
-        self.creature = creature
-        self.group = group
-        self.dimension = dimension
-        id = creature.uuid.map { "creature:\($0.uuidString.lowercased())" }
-            ?? "\(creature.id)@\(creature.x),\(creature.y),\(creature.z)"
+        guard let entry = CreatureEntry(creature) else { return nil }
+        self.init(entry, dimension: dimension)
     }
-}
 
-/// Reads every shown creature in a dimension, in parallel by region.
-nonisolated enum CreatureScanner {
-    @concurrent
-    static func scan(_ reader: RegionReader) async -> [CreatureMarker] {
-        let dimension = reader.dimension.id
-        return await reader.everyRegion { await $0.creatures($1) }.flatMap(\.value)
-            .compactMap { CreatureMarker($0, dimension: dimension) }.sorted { $0.id < $1.id }
+    init(_ entry: CreatureEntry, dimension: String) {
+        self.entry = entry
+        id = entry.id
+        self.dimension = dimension
     }
 }
 

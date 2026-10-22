@@ -25,10 +25,10 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("minecraft:overworld"))
         let reader = RegionReader(dimension: dimension, cache: .off)
-        let scan = await BiomeScanner.scan(reader)
+        let scan = await TestWorld.index(reader)
         #expect(scan.biomes == [ChunkPosition(x: 0, z: 0): "minecraft:desert"])
-        #expect(scan.areas.count == 1 && scan.areas.first?.group.id == "minecraft:desert")
-        #expect(scan.areas.first?.chunkCount == 1)
+        #expect(scan.biomeAreas.count == 1 && scan.biomeAreas.first?.group.id == "minecraft:desert")
+        #expect(scan.biomeAreas.first?.chunkCount == 1)
         await reader.close()
     }
 

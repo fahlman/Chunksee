@@ -6,8 +6,16 @@ import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
+// Tests name the native presentation snapshot; shared facts are explicitly module-qualified.
+typealias DimensionIndex = ChunkseeTestHost.DimensionIndex
+
 /// App scenarios built with the library's shared synthetic save builders.
 nonisolated enum TestWorld {
+    /// Exercise the app's production dimension read, not a separate per-layer scan path.
+    static func index(_ reader: RegionReader) async -> DimensionIndex {
+        await DimensionIndex.read(reader, previous: nil, change: .all)
+    }
+
     struct ChunkSpec {
         var x: Int, z: Int
         var nbt: NBT

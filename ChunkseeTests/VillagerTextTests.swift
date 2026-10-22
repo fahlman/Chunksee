@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import Testing
 @testable import ChunkseeTestHost

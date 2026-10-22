@@ -122,7 +122,7 @@ import Testing
         let chunks = Dictionary(uniqueKeysWithValues: (0..<4).flatMap { z in
             (0..<4).map { x in (ChunkPosition(x: x, z: z), "minecraft:plains") }
         })
-        var biomeContent = MapContent(); biomeContent.biomeAreas = BiomeScanner.areas(from: chunks)
+        var biomeContent = MapContent(); biomeContent.biomeAreas = BiomePresentation.areas(from: chunks)
         #expect(structureContent.scene(viewport: map.viewport, size: size).structures.first?.outline ==
                 biomeContent.scene(viewport: map.viewport, size: size).biomeAreas.first?.frame)
 

@@ -141,7 +141,7 @@ import Testing
             z: place.position.y, owner: UUID()), dimension: portal.dimension))
         var content = MapContent()
         content.places = [place]; content.creatures = [pet]; content.selection = .portal(portal)
-        content.biomeAreas = BiomeScanner.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
+        content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
         let hit = SearchHit(id: "pin", source: .sign, dimension: portal.dimension,
             position: place.position, y: 70, title: "Sign", detail: "Overlapping", count: 1)
         content.hits = [hit]

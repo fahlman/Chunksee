@@ -152,12 +152,3 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
         }
     }
 }
-
-/// Reads every structure in a dimension. Only structure entries are decoded (block data is
-/// skipped), and regions are read in parallel.
-nonisolated enum StructureScanner {
-    @concurrent
-    static func scan(_ reader: RegionReader) async -> [StructureMarker] {
-        await reader.everyRegion { await $0.structures($1) }.flatMap(\.value).sorted { $0.id < $1.id }
-    }
-}

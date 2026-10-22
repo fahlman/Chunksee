@@ -391,7 +391,7 @@ import Testing
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkPosition(x: x, z: z)] = "minecraft:pale_garden" } }   // 6 chunks
         for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:pale_garden" }                       // 4 chunks
         for z in 5..<9 { biomes[ChunkPosition(x: 3, z: z)] = "minecraft:plains" }
-        return SearchIndex.overworld(DimensionIndex(biomeAreas: BiomeScanner.areas(from: biomes)))
+        return SearchIndex.overworld(DimensionIndex(biomeAreas: BiomePresentation.areas(from: biomes)))
     }
 
     @Test func biomePrefixSearchesBiomeAreasLargestFirst() {

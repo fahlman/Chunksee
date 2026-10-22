@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import CoreGraphics
 import Foundation
 import ChunkseeKit
@@ -58,7 +59,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let found = await StructureScanner.scan(RegionReader(dimension: dimension, cache: .off))
+        let found = await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).structures
         #expect(found.map(\.structureID).sorted() == ["minecraft:stronghold", "minecraft:village_plains"])
         #expect(found.first { $0.group == .stronghold }?.bounds == CGRect(x: 640, y: -16, width: 10, height: 10))
     }
@@ -187,7 +188,7 @@ enum StructureTestWorld {
         try FileManager.default.createDirectory(at: poiDir, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: poiDir.appendingPathComponent("r.0.0.mca"))
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let places = await PlaceScanner.scan(dimension)
+        let places = await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).places
         #expect(places.filter { $0.group == .portal }.count == 1)  // two blocks, one portal
         #expect(places.filter { $0.group == .bed }.count == 1)
     }
@@ -362,7 +363,7 @@ enum StructureTestWorld {
         for x in 0..<3 { for z in 0..<2 { biomes[ChunkPosition(x: x, z: z)] = "minecraft:plains" } }   // 6 chunks
         biomes[ChunkPosition(x: 3, z: 0)] = "minecraft:river"                                            // 1-chunk river
         for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
-        let areas = BiomeScanner.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
+        let areas = BiomePresentation.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
         #expect(areas.map(\.chunkCount) == [6, 4, 1])
         #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name == "Plains")
         #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
@@ -374,10 +375,20 @@ enum StructureTestWorld {
         #expect(Set(BiomeColors.table.values).count == BiomeColors.table.count)   // every biome's outline differs
     }
 
-    @Test func aCaveBiomeAtTheSurfaceIsOneArea() {
-        let chunk = ChunkPosition(x: 0, z: 0)
-        let areas = BiomeScanner.areas(surface: [chunk: "minecraft:sulfur_caves"], caves: [chunk: ["minecraft:sulfur_caves"]])
-        #expect(areas.map(\.id) == ["minecraft:sulfur_caves@0,0"])
+    @Test func aCaveBiomeAtTheSurfaceIsOneArea() async throws {
+        var chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        var root = try #require(chunk.nbt.compound)
+        var section = try #require(root["sections"]?.list?.first?.compound)
+        section["biomes"] = .compound(["palette": .list([.string("minecraft:sulfur_caves")])])
+        root["sections"] = .list([.compound(section)])
+        chunk.nbt = .compound(root)
+        let world = try TestWorld.make(chunks: [chunk])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let reader = RegionReader(dimension: dimension, cache: .off)
+        let index = await TestWorld.index(reader)
+        await reader.close()
+        #expect(index.biomeAreas.map(\.id) == ["minecraft:sulfur_caves@0,0"])
     }
 
     @Test func sessionFindsBiomeAreas() async throws {

@@ -49,10 +49,10 @@ import Testing
     @Test func unusedPaletteEntriesDoNotCreateCaveAreas() async throws {
         for version in [5023, 5119] {
             try await withFixture(version: version) { f in
-                let scan = await BiomeScanner.scan(try f.reader())
+                let scan = await TestWorld.index(try f.reader())
                 #expect(scan.biomes[ChunkPosition(x: 0, z: 0)] == "minecraft:plains")
                 #expect(scan.caveBiomes.isEmpty)
-                #expect(scan.areas.filter { BiomeScanner.caveBiomeIDs.contains($0.group.id) }.isEmpty)
+                #expect(scan.biomeAreas.filter { BiomePresentation.caveBiomeIDs.contains($0.group.id) }.isEmpty)
             }
         }
     }
@@ -61,10 +61,10 @@ import Testing
         for version in [5023, 5119] {
             for used in [1, 2] {
                 try await withFixture(version: version, used: used) { f in
-                    let scan = await BiomeScanner.scan(try f.reader())
+                    let scan = await TestWorld.index(try f.reader())
                     let expected = used == 1 ? "minecraft:lush_caves" : "minecraft:deep_dark"
                     #expect(scan.caveBiomes[ChunkPosition(x: 0, z: 0)] == [expected])
-                    let areas = scan.areas.filter { BiomeScanner.caveBiomeIDs.contains($0.group.id) }
+                    let areas = scan.biomeAreas.filter { BiomePresentation.caveBiomeIDs.contains($0.group.id) }
                     #expect(areas.count == 1 && areas.first?.group.id == expected && areas.first?.chunkCount == 1)
                     let catalog = try f.dimension().vanillaBiomes
                     #expect(catalog.contains("minecraft:lush_caves") && catalog.contains("minecraft:deep_dark"))
@@ -88,7 +88,7 @@ import Testing
                 return try await RegionReader.scan(dimension, region: region, options: options)
             })
             f.readers.append(reader)
-            #expect(await reader.caveBiomes(region).isEmpty)
+            #expect(await TestWorld.index(reader).caveBiomes.isEmpty)
             #expect(await count.value == 1)
             #expect(!FileManager.default.fileExists(atPath: historical.path))
         }

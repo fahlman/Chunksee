@@ -20,29 +20,18 @@ nonisolated enum RegionChange: Sendable, Equatable {
     }
 }
 
-/// Retained index inputs for one coordinate, including terrain, entities and raw POI blocks.
-/// Only displayed creatures are retained; chunk NBT and inhabited-time arrays are not.
+/// Cached native projections for a shared region contribution. Replaced only when that region
+/// was read successfully; unchanged regions do not rebuild structure geometry or creature wrappers.
 nonisolated struct RegionIndex: Sendable {
-    var contents: SearchContents
-    var structures: [StructureMarker]
-    var creatures: [CreatureMarker]
-    var biomes: [ChunkPosition: String]
-    var caveBiomes: [ChunkPosition: [String]]
-    var blocks: [ChunkPosition: [BlockDeposit]]
-    var formats: ChunkFormats
-    var pointsOfInterest: [PointOfInterest]
+    let index: ChunkseeIndex.RegionIndex
+    let structures: [StructureMarker]
+    let creatures: [CreatureMarker]
 
     @concurrent
     static func read(_ reader: RegionReader, region: RegionPosition) async -> RegionIndex? {
         guard let facts = await reader.facts(region) else { return nil }
-        let blocks = Dictionary(uniqueKeysWithValues: facts.chunks.compactMap { chunk in
-            let deposits = BlockDeposit.grouped(chunk.blockDeposits)
-            return deposits.isEmpty ? nil : (chunk.position, deposits)
-        })
-        return RegionIndex(contents: facts.searchContents, structures: facts.structures.map(StructureMarker.init),
-                           creatures: facts.creatures.compactMap { CreatureMarker($0, dimension: facts.dimension) },
-                           biomes: facts.surfaceBiomes, caveBiomes: facts.caveBiomes, blocks: blocks,
-                           formats: ChunkFormats(readable: facts.formats.readable, legacy: facts.formats.legacy),
-                           pointsOfInterest: facts.pointsOfInterest)
+        let index = ChunkseeIndex.RegionIndex(facts, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
+        return RegionIndex(index: index, structures: index.structures.map(StructureMarker.init),
+                           creatures: index.creatures.map { CreatureMarker($0, dimension: index.dimension) })
     }
 }

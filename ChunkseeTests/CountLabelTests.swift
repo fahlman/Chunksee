@@ -26,7 +26,7 @@ import Testing
     @Test func catalogPluralizesBiomeAreasAndBlockDepositsOnTheirProductionPaths() throws {
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)
-            let areas = BiomeScanner.areas(from: Dictionary(uniqueKeysWithValues: (0..<count).map {
+            let areas = BiomePresentation.areas(from: Dictionary(uniqueKeysWithValues: (0..<count).map {
                 (ChunkPosition(x: $0, z: 0), "minecraft:plains")
             }))
             #expect(areas.count == 1)
