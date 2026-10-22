@@ -109,6 +109,11 @@ rename or move commands. When updating from the previous window system, reopen y
 with **File ▸ Open…**; macOS will remember them from then on.
 
 **View** includes zoom, World Info, Storage, Time Spent, World Border, sidebar and inspector commands.
+**View ▸ Map Style** offers Normal, Height and Water Depth. Each dimension remembers its choice.
+Height uses that dimension’s saved build limits and sea level; it is unavailable when the limits
+can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
+Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses
+its cached tiles.
 **World Border** in View and the sidebar shows or hides a saved border smaller than Minecraft's
 default limit. It starts shown, remembers each dimension's choice, and applies to exported images
 too. The controls are disabled when the dimension has no limited border.
@@ -144,9 +149,9 @@ to make a PNG of the visible area, the whole dimension, or the rectangle between
 points. Choose a scale, whether to include markers and the grid, then **Create Image**. The sheet
 shows its pixel dimensions and estimated file size before starting, and offers **Copy Image**
 and **Share Image** when it finishes. **Fit Image** chooses the most detailed scale within the
-size limit; rendering uses the current Surface or cutaway height and can be canceled.
+size limit; rendering uses the current map style and Surface or cutaway height and can be canceled.
 The map and exported images share a legend for shown overlays:
-the Time Spent color scale, Slime Chunks color key and World Border line key.
+the active map style’s scale, Time Spent color scale, Slime Chunks color key and World Border line key.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**

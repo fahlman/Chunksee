@@ -4,6 +4,8 @@ import SwiftUI
 
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
+    var mapStyle = MapStyle.normal
+    var heightScale: MapHeightScale?
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -113,6 +115,8 @@ extension MapContent {
     init(session: WorldSession) {
         self.init()
         guard session.map != nil, let id = session.selectedDimensionID else { return }
+        mapStyle = session.map?.style ?? .normal
+        heightScale = session.map?.heightScale
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown
