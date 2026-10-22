@@ -398,7 +398,8 @@ sidebar rows. MapLayerMarker supplies the saved Y to both the row menu and map s
 use the map's terrain read. Group visibility and saved-place Rename/Remove menus remain separate.
 Pointer and accessibility activation share the measuring-versus-selecting action; a measurement never
 moves the viewport or changes selection. Outside measuring mode, accessibility retains its centering action.
-A saved-place pin and sidebar row share one SwiftUI menu for Rename, Copy, Measure and Remove.
+A saved-place pin and sidebar row share one SwiftUI menu for Copy, Rename, Measure and Remove.
+Location menus put Copy Coordinates first and destructive commands last.
 Saved places and other map locations use one measurement command. MapAnnotations.canMeasure owns
 its availability and the action's guard: an open document with that dimension's map.
 NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
