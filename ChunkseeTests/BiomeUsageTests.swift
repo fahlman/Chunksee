@@ -75,7 +75,7 @@ import Testing
 
     @Test func versionElevenCaveMembershipIsRereadInsteadOfRestored() async throws {
         try await withFixture(version: 5023) { f in
-            let dimension = try f.dimension(), region = RegionPosition(x: 0, z: 0)
+            let dimension = try f.dimension()
             let cache = ScanCache(directory: f.url.appendingPathComponent("test-cache"))
             let sources = [dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")]
             let fingerprint = ScanCache.fingerprint(sources)
