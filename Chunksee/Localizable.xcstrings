@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@, %@" : {
+      "comment" : "A pet's appearance: its coat or variant, followed by its markings."
+    },
+    "Location unknown" : {
+      "comment" : "A saved item or player has no usable coordinates; also used for a shoulder pet whose carrier cannot be located. This is different from a known location in a missing dimension."
+    },
     "Profession" : {
       "comment" : "A villager's saved profession, with its trading rank when applicable."
     },

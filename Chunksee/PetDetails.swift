@@ -27,7 +27,8 @@ nonisolated enum PetDetailText {
         default: variant = name(appearance.variant)
         }
         guard let markings = appearance.markings else { return variant }
-        return "\(variant), \(name(markings))"
+        return String(localized: "\(variant), \(name(markings))",
+                      comment: "A pet's appearance: its coat or variant, followed by its markings.")
     }
 
     static func name(_ id: String) -> String {

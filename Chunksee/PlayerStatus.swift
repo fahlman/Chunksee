@@ -52,7 +52,7 @@ nonisolated enum PlayerEffectText {
             // on the ordinary fallback, rather than assigning them a vanilla effect's meaning.
             switch effect.id {
             case "minecraft:unluck": base = String(localized: "Bad Luck", locale: locale)
-            case "minecraft:dolphins_grace": base = String(localized: "Dolphin's Grace", locale: locale)
+            case "minecraft:dolphins_grace": base = String(localized: "Dolphin’s Grace", locale: locale)
             case "minecraft:hero_of_the_village": base = String(localized: "Hero of the Village", locale: locale)
             case "minecraft:breath_of_the_nautilus": base = String(localized: "Breath of the Nautilus", locale: locale)
             default: base = ReadableName.from(effect.id)
