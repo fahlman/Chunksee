@@ -5,6 +5,9 @@ import Foundation
 
 /// One pixel per chunk; the map scales this mask without smoothing, just like Time Spent.
 nonisolated enum SlimeChunks {
+    /// Translucent green, premultiplied by alpha; shared with the legend sample.
+    static let pixel = (red: UInt8(20), green: UInt8(70), blue: UInt8(26), alpha: UInt8(100))
+
     static func image(region: RegionPosition, seed: Int64) -> CGImage? {
         guard let origin = region.chunkOrigin, let startX = Int32(exactly: origin.x),
               let startZ = Int32(exactly: origin.z),
@@ -13,8 +16,8 @@ nonisolated enum SlimeChunks {
         for localZ in 0..<32 {
             for localX in 0..<32 where World.isSlimeChunk(x: startX + Int32(localX), z: startZ + Int32(localZ), seed: seed) {
                 let index = (localZ * 32 + localX) * 4
-                // Translucent green, premultiplied by alpha; visible over light and dark terrain.
-                pixels[index] = 20; pixels[index + 1] = 70; pixels[index + 2] = 26; pixels[index + 3] = 100
+                pixels[index] = pixel.red; pixels[index + 1] = pixel.green
+                pixels[index + 2] = pixel.blue; pixels[index + 3] = pixel.alpha
             }
         }
         return CGImage.rgba(pixels, width: 32, height: 32)

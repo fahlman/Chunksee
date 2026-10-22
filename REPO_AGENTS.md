@@ -810,11 +810,13 @@ Loading states use native labeled ProgressView controls with sentence-case activ
 and an ellipsis. MapView groups map, slime-chunk and Time Spent activity in its live status bar.
 The existing async models own readiness and cancellation.
 
-HeatMapLegendOverlay owns the color scale's bottom-trailing placement for both the visible map
-and MapImage export. MapContent projects HeatMapLayer's existing visibility alongside its images;
-an enabled layer retains its legend even when no chunks have enough recorded time to color.
-The exported scale uses the document view's explicit appearance and locale. Static map context
-is shared in the image; transient reading activity belongs to the live status bar.
+MapLegendOverlay owns one bottom-trailing material container for the visible map and MapImage
+export. MapContent supplies the shown Time Spent scale, Slime Chunks key and World Border key;
+no separate legend visibility is stored. SlimeChunks.pixel supplies the mask and legend color,
+and WorldBorderStyle supplies the edge and key's line treatment. HeatMapLegend keeps its scale
+and duration labels. An enabled layer retains its key even when its current images are empty.
+Exports use the document view's explicit appearance and locale. Transient reading activity and
+the pointer-dependent chunk readout stay in the live status bar.
 
 World Border uses the existing per-dimension LayerVisibility/WorldSettings owner, initially shown.
 DimensionPresentation.limitedWorldBorder derives availability from the saved border and live map;

@@ -154,7 +154,7 @@ struct WorldView: View {
                         try? await Task.sleep(for: .seconds(1))
                         if !Task.isCancelled { session.saveView() }
                     }
-                    .modifier(HeatMapLegendOverlay(isShown: content.showsHeatMap))
+                    .modifier(MapLegendOverlay(layers: content))
                     .toolbar {
                         ToolbarItem {
                             ShareLink(item: SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) },
