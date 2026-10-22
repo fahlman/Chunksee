@@ -465,11 +465,14 @@ ChunkseeIndex.RegionIndex holds compact typed contributions and DimensionIndex o
 failed-read retention, selected deletion and complete aggregates. The app keeps one shared snapshot
 plus cached native region projections. Unchanged projections are reused; successful reads replace
 them. Canceled passes return the previous view snapshot, and WorldIndexStore still refuses canceled
-or closed publications. The first pass is complete even when a subset notification starts it.
+or closed publications. The shared regionsToRead method supplies the exact read set, including a complete first pass
+even when a subset notification starts it. Both reading and reconciliation use that same owner.
 Storage rows map shared totals to native names/order; biome and place presentation map shared
 areas/portals to native paths and markers. The held cave-membership list remains in BiomePresentation.
 CreatureGroup aliases CreatureEntry.Group; eligibility and canonical IDs come from the shared entry,
 while names, colors, symbols and carried-pet fallback IDs stay native. Visibility raw values are unchanged.
+BlockPosition.mapCoordinates owns checked map bounds and optional height; native point navigation,
+Coordinates.isMappable/canLocate and shared creature eligibility use it. Missing Y stays unknown.
 
 Unused per-layer scan paths and RegionFacts projection extensions are removed. Tests use
 TestWorld.index to drive the production DimensionIndex.read path, including cache invalidation and

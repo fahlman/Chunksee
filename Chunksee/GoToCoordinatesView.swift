@@ -1,3 +1,4 @@
+import ChunkseeKit
 import SwiftUI
 
 /// Whole block coordinates entered by the user, including a pasted typographic minus sign.
@@ -19,11 +20,10 @@ nonisolated struct MapCoordinates: Equatable, Sendable {
     }
 
     init?(point: CGPoint) {
-        guard let blockX = Coordinates.block(point.x), let blockZ = Coordinates.block(point.y),
-              let x = Int32(exactly: blockX), let z = Int32(exactly: blockZ) else { return nil }
-        self.x = x
-        self.y = nil
-        self.z = z
+        guard let value = BlockPosition.mapCoordinates(x: point.x, y: nil, z: point.y) else { return nil }
+        x = value.x
+        y = value.y
+        z = value.z
     }
 
     var position: CGPoint { CGPoint(x: Int(x), y: Int(z)) }

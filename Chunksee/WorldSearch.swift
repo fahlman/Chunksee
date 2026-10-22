@@ -36,9 +36,10 @@ nonisolated struct DimensionIndex: Sendable {
     @concurrent
     static func read(_ reader: RegionReader, previous: DimensionIndex?, change: RegionChange) async -> DimensionIndex {
         let available = reader.availableRegions
-        // With no previous snapshot, the first read always covers the complete dimension.
-        let selected = previous == nil ? nil : change.mapRegions
-        let changed = selected.map { $0.intersection(available) } ?? available
+        let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
+            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
+        let selected = change.mapRegions
+        let changed = previousIndex.regionsToRead(available: available, selected: selected)
         let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex?).self) { group in
             for region in changed {
                 guard !Task.isCancelled else { break }
@@ -52,9 +53,8 @@ nonisolated struct DimensionIndex: Sendable {
             return values
         }
         guard !Task.isCancelled else { return previous ?? DimensionIndex() }
-        let shared = (previous?.shared ?? ChunkseeIndex.DimensionIndex(
-            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs))
-            .updating(available: available, selected: selected, replacements: replacements.values.map(\.index))
+        let shared = previousIndex.updating(available: available, selected: selected,
+                                           replacements: replacements.values.map(\.index))
         var part = DimensionIndex()
         part.shared = shared
         part.regions = previous?.regions.filter { shared.regions[$0.key] != nil } ?? [:]

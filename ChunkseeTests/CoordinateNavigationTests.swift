@@ -1,8 +1,28 @@
 import CoreGraphics
+import ChunkseeKit
 import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct CoordinateNavigationTests {
+    @Test func nativeDestinationsAndCreatureMarkersUseTheSameSupportedLocations() {
+        let examples: [(Double, Double, Double, Bool)] = [
+            (-8.7, 63.9, -16.1, true),
+            (Double(Int32.min), Double(Int.min), Double(Int32.max) + 0.5, true),
+            (Double(Int32.min) - 0.5, 64, 0, false),
+            (0, 64, Double(Int32.max) + 1, false),
+            (0, .nan, 0, false), (0, Double(Int.max), 0, false),
+        ]
+        for (x, y, z, expected) in examples {
+            let location = Coordinates(CGPoint(x: x, y: z), y: y)
+            let creature = Creature(id: "minecraft:cat", x: x, y: y, z: z, customName: "Cat")
+            #expect(location.isMappable == expected)
+            #expect(Coordinates.canLocate(x: x, y: y, z: z) == expected)
+            #expect((CreatureMarker(creature, dimension: "minecraft:overworld") != nil) == expected)
+        }
+        let point = MapCoordinates(point: CGPoint(x: -0.1, y: 0.1))
+        #expect(point?.position == CGPoint(x: -1, y: 0) && point?.y == nil)
+    }
+
     @Test func signedCoordinatesAcceptPastedMinusAndWhitespace() {
         #expect(MapCoordinates(text: "−266 71")?.position == CGPoint(x: -266, y: 71))
         #expect(MapCoordinates(text: "  -266\n +71 ")?.position == CGPoint(x: -266, y: 71))

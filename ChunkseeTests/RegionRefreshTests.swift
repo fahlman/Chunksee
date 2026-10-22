@@ -8,6 +8,25 @@ import Testing
 @Suite(.isolatedStores) struct RegionRefreshTests {
     private let overworld = "minecraft:overworld"
 
+    @Test func aFirstPartialNotificationReadsTheWholeDimensionAndLaterEmptySelectionsReadNothing() async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let reads = Reads()
+        let reader = RegionReader(dimension: dimension, cache: .off, read: { dimension, region, options in
+            await reads.record(dimension.id, region)
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        })
+        let first = await DimensionIndex.read(reader, previous: nil, change: .regions([.init(x: 0, z: 0)]))
+        #expect(Set(await reads.requested) == ["\(overworld)@0,0", "\(overworld)@1,0"])
+        #expect(first.storage.first?.count == 2 && first.regions.count == 2)
+        await reads.reset()
+        let unchanged = await DimensionIndex.read(reader, previous: first, change: .regions([]))
+        #expect(await reads.requested.isEmpty)
+        #expect(unchanged.storage == first.storage && unchanged.containers == first.containers)
+        await reader.close()
+    }
+
     private func terrain(_ x: Int, count: Int32 = 1) throws -> TestWorld.ChunkSpec {
         var spec = TestWorld.chunk(x: x, z: 0, palette: ["minecraft:stone", "minecraft:diamond_ore"]) { bx, y, z in
             y == 3 && z == 0 && bx < Int(count) ? 1 : 0
