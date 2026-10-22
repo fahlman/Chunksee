@@ -9,7 +9,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Minecraft folder") {
+                LabeledContent("Minecraft Folder") {
                     VStack(alignment: .trailing, spacing: 6) {
                         Text(names.minecraftFolder?.path(percentEncoded: false) ?? String(localized: "Not chosen"))
                             .foregroundStyle(names.minecraftFolder == nil ? .secondary : .primary)

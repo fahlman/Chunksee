@@ -138,7 +138,7 @@ struct MapView: View {
                     .accessibilityLabel(location.name)
                     .accessibilityValue(Text(Coordinates(location.position, y: location.y), format: Coordinates.Style()))
                     .accessibilityHint(session.annotations.ruler.isEnabled
-                        ? Text("Set a measurement point") : Text("Center the map on this location"))
+                        ? Text("Set a measurement point.") : Text("Center the map on this location."))
                     .accessibilityAction(named: Text("Copy Coordinates")) {
                         MapClipboard.copy(location.position, y: location.y, on: map)
                     }
