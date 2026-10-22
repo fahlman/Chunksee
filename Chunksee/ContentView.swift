@@ -192,13 +192,16 @@ struct WorldView: View {
         .sheet(item: $annotations.draft) { draft in
             SavedPlaceEditor(session: session, draft: draft)
         }
+        .sheet(item: $annotations.portalDraft) { draft in
+            PortalPlanView(session: session, draft: draft)
+        }
         .inspector(isPresented: inspectorShown) {
             WorldInspector(session: session)
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, showsCoordinateSheet || session.annotations.draft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || session.annotations.draft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, showsCoordinateSheet || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
         .background { WorldKeyboardShortcuts(session: session) }
     }

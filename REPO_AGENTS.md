@@ -158,7 +158,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
-| `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
+| `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s temporary portal plan, saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -880,6 +880,16 @@ DimensionPresentation.limitedWorldBorder derives availability from the saved bor
 the native View toggle and shared sidebar visibility row remain disabled when unavailable.
 MapContent applies the remembered flag once for live drawing and exported images. Hiding the
 border does not remove its World Info details or change any world data.
+
+Navigate > Plan Portal Here and the shared map/sidebar/location context menus open the same
+per-document SwiftUI sheet. MapAnnotations owns its temporary draft independently of the selected
+item. A marker supplies its saved Y; otherwise MapModel's existing top-block reader supplies the
+displayed block's height. Missing height stays unknown. Late reads cannot replace a user's edits,
+a newer plan or a dismissed/closed document. Drafts are never restored or saved to the world.
+The sheet uses MapCoordinates for editable X Y Z, NetherPortal.destination/link for the outbound
+prediction, the live shared portal index, and the existing coordinate-copy and dimension-opening
+actions. Missing index data stays distinct from a known empty destination. Only Overworld/Nether
+travel is supported; planning neither invents a portal frame nor predicts the return leg.
 
 ## Interface wording
 

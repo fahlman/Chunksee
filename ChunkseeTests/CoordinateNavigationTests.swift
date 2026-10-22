@@ -33,6 +33,8 @@ import Testing
         #expect(triple?.y == -48)
         #expect(MapCoordinates(text: "\(Int32.min) \(Int.min) \(Int32.max)")?.y == Int.min)
         #expect(MapCoordinates(text: "0 \(Int.max) 0")?.y == Int.max)
+        #expect(triple?.entryText(height: triple?.y) == "-266 -48 71")
+        #expect(triple?.entryText(height: nil) == "-266 71")
     }
 
     @Test(arguments: ["", "-", "X −266", "1.5", "NaN", "1e3", "2147483648", "999999999999999999999999999999"])

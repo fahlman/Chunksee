@@ -30,6 +30,11 @@ nonisolated struct MapCoordinates: Equatable, Sendable {
 
     var center: CGPoint { Self.center(of: position) }
 
+    /// Coordinate editors use Minecraft's axis order, with an unknown height omitted.
+    func entryText(height: Int?) -> String {
+        [Int(x), height, Int(z)].compactMap { $0.map(String.init) }.joined(separator: " ")
+    }
+
     /// Whole-block locations use their centers; exact entity positions never pass through here.
     static func center(of point: CGPoint) -> CGPoint {
         CGPoint(x: point.x.rounded(.down) + 0.5, y: point.y.rounded(.down) + 0.5)
@@ -47,8 +52,7 @@ struct GoToCoordinatesView: View {
         self.session = session
         let center = session.map?.viewport.center ?? .zero
         if let point = MapCoordinates(point: center) {
-            let values: [Int?] = [Int(point.x), session.map?.depth.cutawayY, Int(point.z)]
-            _coordinates = State(initialValue: values.compactMap { $0.map(String.init) }.joined(separator: " "))
+            _coordinates = State(initialValue: point.entryText(height: session.map?.depth.cutawayY))
         } else {
             _coordinates = State(initialValue: "")
         }

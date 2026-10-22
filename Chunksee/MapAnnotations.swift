@@ -3,11 +3,12 @@ import Foundation
 import ChunkseeKit
 import Observation
 
-/// A dimension's saved-place drafts and ruler. SavedPlaces remains the world's shared store.
+/// A dimension's temporary plans, saved-place drafts and ruler. SavedPlaces remains the shared store.
 @Observable
 final class MapAnnotations {
     @ObservationIgnored private weak var source: WorldSession?
     var draft: SavedPlaceDraft?
+    var portalDraft: PortalPlanDraft?
     var ruler = MapRuler()
 
     init(source: WorldSession) {
@@ -28,6 +29,27 @@ final class MapAnnotations {
     func edit(_ place: SavedPlace) {
         guard let source, !source.isClosed else { return }
         draft = SavedPlaceDraft(existingID: place.id, name: place.name, dimension: place.dimension, position: place.position)
+    }
+
+    func canPlanPortal(at point: CGPoint? = nil, in dimension: String? = nil) -> Bool {
+        guard let source, !source.isClosed, let point = point ?? source.map?.viewport.center,
+              MapCoordinates(point: point) != nil, let dimension = dimension ?? source.selectedDimensionID else { return false }
+        return NetherPortal.targetDimension(from: dimension) != nil
+    }
+
+    func planPortal(at point: CGPoint? = nil, in dimension: String? = nil, y: Double? = nil) {
+        guard canPlanPortal(at: point, in: dimension), let source,
+              let point = point ?? source.map?.viewport.center, let column = MapCoordinates(point: point),
+              let dimension = dimension ?? source.selectedDimensionID else { return }
+        let height = y.flatMap(Coordinates.block)
+        let plan = PortalPlanDraft(dimension: dimension, column: column, height: height)
+        portalDraft = plan
+        if height == nil, let map = source.map, map.dimension.id == dimension {
+            map.readTopBlock(at: column.position) { [weak self, weak plan] block in
+                guard let self, let plan, self.source?.isClosed == false, self.portalDraft === plan else { return }
+                plan.fillHeight(block?.y)
+            }
+        }
     }
 
     func canVisit(_ place: SavedPlace) -> Bool {

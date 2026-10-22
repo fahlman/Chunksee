@@ -22,6 +22,7 @@ struct SavedPlaceMenu: View {
                                    y: nil, pasteboard: pasteboard)
             Button("Rename…") { session.annotations.edit(place) }
             MeasureDistanceCommand(session: session, position: place.position, dimension: place.dimension)
+            PlanPortalCommand(session: session, position: place.position, dimension: place.dimension)
             Divider()
             Button("Remove", role: .destructive) { if !session.isClosed { session.savedPlaces.remove(place.id) } }
         }
@@ -29,7 +30,7 @@ struct SavedPlaceMenu: View {
     }
 }
 
-private struct CopyCoordinatesCommand: View {
+struct CopyCoordinatesCommand: View {
     let session: WorldSession
     let position: CGPoint
     let dimension: String
@@ -81,6 +82,7 @@ struct LocationMenu: View {
                                    y: y, pasteboard: pasteboard)
             Button("Save Place…") { session.annotations.savePlace(at: position, in: dimension) }
             MeasureDistanceCommand(session: session, position: position, dimension: dimension)
+            PlanPortalCommand(session: session, position: position, dimension: dimension, y: y)
         }
         .disabled(session.isClosed)
     }
