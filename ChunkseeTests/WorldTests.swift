@@ -379,7 +379,7 @@ import Testing
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
-        #expect(VillagerText.inspectorJob(librarian) == "Librarian, Master")
+        #expect(VillagerText.inspectorProfession(librarian) == "Librarian, Master")
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
         #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))

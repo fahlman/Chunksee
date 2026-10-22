@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Profession" : {
+      "comment" : "A villager's saved profession, with its trading rank when applicable."
+    },
     "%@ (first %lld of %lld)" : {
       "comment" : "A search heading when only the first results are listed. The first placeholder is the heading or user's saved query; the numbers are the shown count and total count."
     },

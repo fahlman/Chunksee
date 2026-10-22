@@ -1,24 +1,26 @@
 import ChunkseeKit
 import Foundation
 
-/// Saved villager job/level labels, shared by the inspector, marker and trade search.
+/// Saved profession names and inspector ranks; game interpretation belongs to ChunkseeKit.
 nonisolated enum VillagerText {
-    static func jobName(_ villager: Villager) -> String? {
-        guard villager.isUnemployed == false, let job = villager.profession else { return nil }
-        return ReadableName.from(job)
+    static func professionName(_ villager: Villager) -> String? {
+        guard villager.isUnemployed == false, let profession = villager.profession else { return nil }
+        return ReadableName.from(profession)
     }
 
-    static func description(_ villager: Villager) -> String? {
-        guard let job = jobName(villager) else { return nil }
-        guard let level = levelName(villager.level) else { return job }
-        return String(localized: "\(job), \(level)")
-    }
-
-    static func inspectorJob(_ creature: Creature) -> String? {
+    static func inspectorProfession(_ creature: Creature) -> String? {
         guard let villager = creature.villager else { return nil }
-        if let job = description(villager) { return job }
-        guard creature.id == "minecraft:villager", villager.isUnemployed == true else { return nil }
-        return String(localized: "None")
+        let name: String
+        if let profession = professionName(villager) {
+            name = profession
+        } else if creature.id == "minecraft:villager", villager.isUnemployed == true {
+            name = String(localized: "None")
+        } else {
+            return nil
+        }
+        // An unverified custom profession keeps its existing rank; only known false omits it.
+        guard villager.supportsTrading != false, let level = levelName(villager.level) else { return name }
+        return String(localized: "\(name), \(level)")
     }
 
     static func levelName(_ level: Int?) -> String? {
