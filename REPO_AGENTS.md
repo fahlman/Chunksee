@@ -163,6 +163,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
+| `MapImage.swift`, `MapImageExport.swift`, `MapExportPlan.swift`, `MapExportModel.swift`, `MapExportView.swift` | Shared image rasterization/PNG encoding, checked area/scale planning, one dimension's cancellable image request, and native Copy/Share options |
 | `BlockColors.swift` | Block ID → map color |
 | `Structures.swift` | Native structure groups, marker geometry, names, icons, colors and default visibility |
 | `Places.swift` | Native place groups and markers, plus portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
@@ -890,6 +891,23 @@ and WorldBorderStyle supplies the edge and key's line treatment. HeatMapLegend k
 and duration labels. An enabled layer retains its key even when its current images are empty.
 Exports use the document view's explicit appearance and locale. Transient reading activity and
 the pointer-dependent chunk readout stay in the live status bar.
+
+Create Map Image uses a native SwiftUI sheet from the toolbar Share menu and View menu. Its
+MapExportPlan shares Fit World's saved-region extent and MapViewport's transform; visible and
+measurement areas preserve their origin and include both measured blocks. It refuses images over
+16,777,216 pixels or 16,384 pixels on either side before allocation, with smaller power-of-two
+scales and a Fit Image action. MapExportModel captures the map's renderer, depth and overlay values
+when Create is pressed, without changing the live viewport, layers or selection. Reading and PNG
+encoding run off-main; one production region tile at a time is drawn through MapView's shared
+terrain path into a checked RGBA destination, then the shared overlays and legend are drawn once.
+Current-view Copy/Share and area images use the same CGContext-backed ImageRenderer rasterizer
+and ImageIO encoder. This replaces ImageRenderer.cgImage for current-view images so antialiased
+edges match between the two image paths; the live map's Canvas drawing is unchanged.
+The completed PNG stays in bounded app memory and leaves through native Copy/Share. No export
+file or partial file is written and user-selected file access remains read-only. One document's
+BackgroundWork scope cancels and drains reads, cache writes and encoding before world access ends;
+a canceled request cannot publish its result or start another destination allocation before it drains.
+Tests use a private named pasteboard at the explicit native clipboard boundary.
 
 World Border uses the existing per-dimension LayerVisibility/WorldSettings owner, initially shown.
 DimensionPresentation.limitedWorldBorder derives availability from the saved border and live map;

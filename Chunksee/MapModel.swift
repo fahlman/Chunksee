@@ -23,7 +23,8 @@ final class MapModel {
 
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
-    private var currentRenderer: RegionTileRenderer {
+    /// A value snapshot also used by image exports, preserving this map's view and cache rules.
+    var currentRenderer: RegionTileRenderer {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
@@ -33,7 +34,7 @@ final class MapModel {
     private let renderWork, cacheWork, hoverWork, coordinateWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
-    @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
+    @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int

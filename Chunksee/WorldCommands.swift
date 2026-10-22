@@ -22,7 +22,16 @@ private struct CoordinateSheetKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+private struct MapImageSheetKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var mapImageSheet: Binding<Bool>? {
+        get { self[MapImageSheetKey.self] }
+        set { self[MapImageSheetKey.self] = newValue }
+    }
+
     var coordinateSheet: Binding<Bool>? {
         get { self[CoordinateSheetKey.self] }
         set { self[CoordinateSheetKey.self] = newValue }
@@ -50,6 +59,7 @@ struct WorldCommands: Commands {
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
     @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
+    @FocusedBinding(\.mapImageSheet) private var showsImageExport
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -92,6 +102,8 @@ struct WorldCommands: Commands {
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)
+            Button("Create Map Image…") { showsImageExport = true }
+                .disabled(session?.map == nil || showsImageExport == nil)
             Toggle("Surface", isOn: Binding {
                 session?.map?.depth.isSurface ?? true
             } set: { isSurface in

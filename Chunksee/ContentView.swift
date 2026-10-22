@@ -10,6 +10,7 @@ struct WorldView: View {
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
     @State private var showsCoordinateSheet = false
+    @State private var showsImageExport = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
 
@@ -159,11 +160,17 @@ struct WorldView: View {
                     .modifier(MapLegendOverlay(layers: content))
                     .toolbar {
                         ToolbarItem {
-                            ShareLink(item: SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) },
-                                      preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
+                            Menu {
+                                ShareLink(item: SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) },
+                                          preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
+                                    Text("Share Current View")
+                                }
+                                Button("Create Map Image…") { showsImageExport = true }
+                            } label: {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
-                            .help("Share an image of the map as shown")
+                            .help("Share the current view or create an image of a larger area")
+                            .accessibilityIdentifier("map-share-menu")
                         }
                     }
                     // The document's folder names the window, so the subtitle names the world.
@@ -190,6 +197,9 @@ struct WorldView: View {
         .sheet(isPresented: $showsCoordinateSheet) {
             GoToCoordinatesView(session: session)
         }
+        .sheet(isPresented: $showsImageExport) {
+            MapExportView(session: session)
+        }
         .sheet(item: $annotations.draft) { draft in
             SavedPlaceEditor(session: session, draft: draft)
         }
@@ -201,9 +211,10 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, showsCoordinateSheet || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
+        .focusedSceneValue(\.mapImageSheet, $showsImageExport)
         .background { WorldKeyboardShortcuts(session: session) }
     }
 

@@ -21,9 +21,39 @@ nonisolated struct MapImage: Sendable {
         .modifier(MapLegendOverlay(layers: content))
         .environment(\.colorScheme, colorScheme)
         .environment(\.locale, locale)
-        let renderer = ImageRenderer(content: canvas)
-        renderer.scale = scale
-        guard let image = renderer.cgImage else { return nil }
+        guard scale.isFinite, scale > 0,
+              let width = Int(exactly: (size.width * scale).rounded(.up)),
+              let height = Int(exactly: (size.height * scale).rounded(.up)),
+              let destination = imageContext(width: width, height: height),
+              drawImageLayer(canvas, size: size, scale: scale, into: destination),
+              let image = destination.makeImage() else { return nil }
+        return png(image)
+    }
+
+    /// Copy, Share and area export use the same rasterizer. ImageRenderer.cgImage and a
+    /// CGContext-backed render differ at antialiased edges, even with the same Canvas commands.
+    @MainActor
+    static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
+        let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height))
+        var drawn = false
+        renderer.render(rasterizationScale: scale) { _, draw in
+            destination.saveGState()
+            destination.scaleBy(x: scale, y: scale)
+            draw(destination)
+            destination.restoreGState()
+            drawn = true
+        }
+        return drawn
+    }
+
+    static func imageContext(width: Int, height: Int) -> CGContext? {
+        let (rowBytes, overflow) = width.multipliedReportingOverflow(by: 4)
+        guard width > 0, height > 0, !overflow, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: rowBytes,
+                         space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    }
+
+    static func png(_ image: CGImage) -> MapImage? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(destination, image, nil)
