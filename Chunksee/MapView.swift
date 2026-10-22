@@ -163,47 +163,58 @@ struct MapView: View {
     /// export both draw through this, so an exported image matches the screen.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
                         displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
-        // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
-        let interpolation: Image.Interpolation = map.viewport.scale >= 1 ? .none : .medium
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
-        for region in visible {
-            guard let image = map.image(for: region, fullResolution: fullResolution),
-                  let rect = map.viewport.viewRect(for: region, in: size) else { continue }
-            // Overlap neighbors by half a point so smoothed edges don't let the background show
-            // through as seams between tiles.
+        drawTerrain(viewport: map.viewport, regions: visible,
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, in: context, size: size)
+        drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
+                     in: context, size: size)
+    }
+
+    /// The screen and a bounded export draw every terrain tile through this path.
+    static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> CGImage?,
+                            in context: GraphicsContext, size: CGSize) {
+        // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
+        let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
+        for region in regions {
+            guard let image = image(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
+            // Overlap neighbors by half a point so smoothed edges don't expose seams.
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect.insetBy(dx: -0.5, dy: -0.5))
         }
+    }
+
+    static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent,
+                             portalStatus: (NetherPortal) -> PortalLinkStatus?, in context: GraphicsContext, size: CGSize) {
         let bounds = CGRect(origin: .zero, size: size)
         if !content.heatMap.isEmpty {
             for region in visible {
-                guard let image = content.heatMap[region], let rect = map.viewport.viewRect(for: region, in: size) else { continue }
+                guard let image = content.heatMap[region], let rect = viewport.viewRect(for: region, in: size) else { continue }
                 context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             }
         }
         if let (item, image, opacity) = content.inGameMap {
-            let topLeft = map.viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
-            let side = CGFloat(item.sideInBlocks) * map.viewport.scale
+            let topLeft = viewport.viewPoint(for: CGPoint(x: item.minX, y: item.minZ), in: size)
+            let side = CGFloat(item.sideInBlocks) * viewport.scale
             let rect = CGRect(origin: topLeft, size: CGSize(width: side, height: side))
             var layer = context
             layer.opacity = opacity
             layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             context.stroke(Path(rect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
         }
-        let scene = content.scene(viewport: map.viewport, size: size)
+        let scene = content.scene(viewport: viewport, size: size)
         scene.drawBiomeAreas(in: context)
         for region in visible {
-            if let image = content.slimeChunks[region], let rect = map.viewport.viewRect(for: region, in: size) {
+            if let image = content.slimeChunks[region], let rect = viewport.viewRect(for: region, in: size) {
                 context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
             }
         }
         if content.showsGrid {
-            Self.drawGrid(MapGrid(viewport: map.viewport, size: size), in: context, size: size)
+            Self.drawGrid(MapGrid(viewport: viewport, size: size), in: context, size: size)
         }
         if let border = content.border {
             let half = border.size / 2
-            let topLeft = map.viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
-            let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * map.viewport.scale, height: border.size * map.viewport.scale)))
+            let topLeft = viewport.viewPoint(for: CGPoint(x: border.centerX - half, y: border.centerZ - half), in: size)
+            let edge = Path(CGRect(origin: topLeft, size: CGSize(width: border.size * viewport.scale, height: border.size * viewport.scale)))
             context.stroke(edge, with: .color(WorldBorderStyle.color), lineWidth: WorldBorderStyle.lineWidth)
         }
         var symbols: [MarkerStyle.Symbol: GraphicsContext.ResolvedImage] = [:]
@@ -225,7 +236,7 @@ struct MapView: View {
             add(item.draw(in: context, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
-        content.ruler.draw(in: context, viewport: map.viewport, size: size)
+        content.ruler.draw(in: context, viewport: viewport, size: size)
     }
 
     /// Block lines stay subtle; chunk and region boundaries stand out. Label only the larger

@@ -134,7 +134,13 @@ Right-click or Control-click a marker or block and choose **Copy Coordinates** t
 as three numbers separated by single spaces, ready to paste into a Minecraft command (for example,
 `-9 64 1`). Markers use their saved height; terrain and saved places use the displayed block's height.
 With the map selected, **Edit ▸ Copy** (**⌘C**) copies an image of the map as shown; the toolbar's
-Share button sends one. The map and exported images share a legend for shown overlays:
+Share menu sends the current view. Choose **Create Map Image…** from that menu or **View**
+to make a PNG of the visible area, the whole dimension, or the rectangle between two measurement
+points. Choose a scale, whether to include markers and the grid, then **Create Image**. The sheet
+shows its pixel dimensions and estimated file size before starting, and offers **Copy Image**
+and **Share Image** when it finishes. **Fit Image** chooses the most detailed scale within the
+size limit; rendering uses the current Surface or cutaway height and can be canceled.
+The map and exported images share a legend for shown overlays:
 the Time Spent color scale, Slime Chunks color key and World Border line key.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.

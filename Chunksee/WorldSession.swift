@@ -26,6 +26,7 @@ final class WorldSession {
     @ObservationIgnored private(set) lazy var selection = SelectionModel(source: self)
     @ObservationIgnored private(set) lazy var annotations = MapAnnotations(source: self)
     @ObservationIgnored private(set) lazy var presentation = DimensionPresentation(source: self)
+    @ObservationIgnored private(set) lazy var imageExport = MapExportModel(source: self)
 
     let selectedDimensionID: String?
     let map: MapModel?
@@ -63,15 +64,17 @@ final class WorldSession {
         heatMap.cancel()
         slimeChunks.cancel()
         selection.close()
+        imageExport.close()
         map?.close()
         let search = search, heatMap = heatMap, slimeChunks = slimeChunks, selection = selection
-        let map = map
+        let map = map, imageExport = imageExport
         let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
             await slimeChunks.waitForImages()
             await selection.waitForReads()
             await map?.waitForRenders()
+            await imageExport.waitUntilIdle()
         }
         closingTask = task
         resources.detach(self)
