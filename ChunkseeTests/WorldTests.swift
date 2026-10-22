@@ -197,6 +197,7 @@ import Testing
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
+        #expect(session.search.results.map(\.title) == ["Sign"])
         #expect(session.search.results.map(\.detail) == ["Orchard"])
         session.search.text = ""
         #expect(session.search.results.isEmpty)
@@ -208,6 +209,7 @@ import Testing
         await session.search.waitForSearch()
         session.search.saveSearch()
         session.search.text = ""
+        #expect(MapContent(session: session).hits.map(\.title) == ["Sign"])
         #expect(MapContent(session: session).hits.map(\.detail) == ["Orchard"])
         let saved = try #require(session.savedSearches.all.first)
         #expect(SavedSearches(defaults: defaults).all == [saved])
@@ -335,19 +337,19 @@ import Testing
                                 placePoints: PointMarkers([bed]),
                                 creaturePoints: PointMarkers([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
-        #expect(search("structure:village").map(\.detail) == ["Plains Village"])
+        #expect(search("structure:village").map(\.title) == ["Plains Village"])
         #expect(search("structure:village_plains").count == 1)
         #expect(search("structure:village").first?.source == .layer(.structure(.village), markerID: village.id))
-        #expect(search("place:bed").map(\.detail) == ["Bed"])
-        #expect(search("pet:").map(\.detail).sorted() == ["Cat", "Summer"])
-        #expect(search("pet:wolf").map(\.detail) == ["Summer"])
-        #expect(search("pet:cat").first?.title == "Pets")
+        #expect(search("place:bed").map(\.title) == ["Bed"])
+        #expect(search("pet:").map(\.title).sorted() == ["Cat", "Summer"])
+        #expect(search("pet:wolf").map(\.title) == ["Summer"])
+        #expect(search("pet:cat").first?.detail == "Pets")
         #expect(search("creature:").count == 3)
-        #expect(search("villager:").map(\.detail) == ["Farmer"])
-        #expect(search("villager:").first?.title == "Villager")
+        #expect(search("villager:").map(\.title) == ["Farmer"])
+        #expect(search("villager:").first?.detail == "Villager")
         // Plain and filtered searches present the same creature without changing its selection identity or location.
         let named = try #require(search("summer").first)
-        #expect(named.detail == wolf.name && named.title == "Wolf")
+        #expect(named.title == wolf.name && named.detail == "Wolf")
         for query in ["pet:summer", "creature:summer", "pet:minecraft:wolf"] {
             let hit = try #require(search(query).first)
             #expect(hit.detail == named.detail && hit.title == named.title)
@@ -376,7 +378,8 @@ import Testing
         let index = SearchIndex.overworld(DimensionIndex(creaturePoints: PointMarkers([marker])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
         let mending = search("trade:mending")
-        #expect(mending.map(\.title) == ["Librarian, Master"])
+        #expect(mending.map(\.title) == ["Librarian"])
+        #expect(VillagerText.inspectorJob(librarian) == "Librarian, Master")
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
         #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))
@@ -402,12 +405,12 @@ import Testing
         #expect(hits.map(\.count) == [6, 4])
         #expect(hits.allSatisfy { hit in
             guard case .layer(.biome(let group), _) = hit.source else { return false }
-            return hit.detail == "Pale Garden" && group == BiomeGroup(id: "minecraft:pale_garden")
+            return hit.title == "Pale Garden" && group == BiomeGroup(id: "minecraft:pale_garden")
         })
-        #expect(hits.first?.title == "6 chunks")
+        #expect(hits.first?.detail == "6 chunks")
         // The id works too, the prefix ignores case, and other searches don't list biomes.
         #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in .named("") }.count == 2)
-        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in .named("") }.map(\.detail) == ["Plains"])
+        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in .named("") }.map(\.title) == ["Plains"])
         #expect(WorldSearch.search("pale garden", in: index(), players: []) { _ in .named("") }.isEmpty)
         // A filter on its own lists everything of its kind.
         #expect(WorldSearch.search("biome:", in: index(), players: []) { _ in .named("") }.count == 3)

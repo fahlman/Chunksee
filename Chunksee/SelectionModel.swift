@@ -11,7 +11,7 @@ final class SelectionModel {
     let playerRecords: PlayerRecordsModel
     private var selectedItem: SidebarItem?
     private var inspectorIsShown = false
-    /// A map can remain under a selected marker that has no details of its own.
+    /// A map can remain under a selected location while its inspector shows that location.
     private var overlayID: Int?
     @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
     /// Inspector commands and linked-pet jumps can reveal an already-selected row again.
@@ -26,11 +26,12 @@ final class SelectionModel {
     var inspector: Inspector? {
         get {
             guard inspectorIsShown else { return nil }
-            switch detailItem(selectedItem.flatMap(resolve)) {
+            switch inspectorItem {
             case .worldInfo?: return .world
             case .storage?: return .storage
             case .player(let player)?: return .player(player.uuid)
-            default: return mapSelection == nil ? nil : .selection
+            case nil: return nil
+            default: return .selection
             }
         }
         set {
@@ -59,6 +60,19 @@ final class SelectionModel {
     var selectedHitID: SearchHit.ID? {
         if case .hit(_, let id)? = sidebarSelection { return id }
         return nil
+    }
+
+    /// The inspector and overlay resolve independently from the same selected identity.
+    var inspectorItem: ResolvedSidebarItem? {
+        guard inspectorIsShown else { return nil }
+        if let resolved = selectedItem.flatMap(resolve) { return detailItem(resolved) ?? resolved }
+        if case .inGameMap(let map)? = mapSelection { return .inGameMap(map) }
+        return nil
+    }
+
+    var selectedSearchHit: SearchHit? {
+        guard inspectorIsShown, case .hit(let hit)? = selectedItem.flatMap(resolve) else { return nil }
+        return hit
     }
 
     var mapSelection: MapSelection? {
@@ -139,8 +153,7 @@ final class SelectionModel {
         switch resolved {
         case .worldInfo, .storage: break
         case .savedPlace(let place):
-            guard source.annotations.canVisit(place) else { return }
-            source.annotations.visit(place)
+            if source.annotations.canVisit(place) { source.annotations.visit(place) }
         case .structure(let marker):
             source.visibility.structures.insert(marker.group)
             source.navigation.focus(on: marker.position)
@@ -154,8 +167,7 @@ final class SelectionModel {
             source.visibility.biomes.insert(area.group)
             source.navigation.focus(on: area.position)
         case .inGameMap(let map):
-            guard source.presentation.canShow(map) else { return }
-            show(map)
+            if source.presentation.canShow(map) { show(map) }
         case .player(let player):
             source.visibility.hiddenPlayers.remove(player.uuid)
             if source.routing.canFocus(player), let location = player.position {

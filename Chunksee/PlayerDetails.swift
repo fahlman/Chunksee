@@ -123,6 +123,9 @@ struct PlayerDetailView: View {
         Form {
             Section {
                 LabeledContent("Game Mode", value: gameMode)
+                if PlayerPresentation.position(of: player) == nil {
+                    LabeledContent("Location", value: String(localized: "Location unknown"))
+                }
                 if let saved = player.lastSaved {
                     LabeledContent("Last Saved") { Text(saved, format: .dateTime.year().month().day().hour().minute()) }
                 }
@@ -130,6 +133,7 @@ struct PlayerDetailView: View {
                 InspectorHeading(title: Text(session.presentation.name(of: player)),
                                  symbol: MarkerStyle.playerAppearance(.player).symbol)
             }
+            SelectedSearchSection(session: session)
             let locations = PlayerPresentation.locations(of: player)
             if !locations.isEmpty {
                 Section("Locations") {

@@ -13,12 +13,9 @@ struct SavedPlacesGroup: View {
                 let availability = session.routing.availability(of: Coordinates(place.position), in: place.dimension)
                 LocationLabel(title: Text(place.name), isDimmed: !availability.canNavigate) {
                     Image(systemName: MarkerStyle.savedPlaceSymbol)
-                } caption: {
-                    CoordinateText(Coordinates(place.position))
                 }
                 .tag(SidebarItem.savedPlace(place.id))
                 .id(SidebarItem.savedPlace(place.id))
-                .selectionDisabled(!availability.canNavigate)
                 .help(availability.help)
                 .contextMenu {
                     SavedPlaceMenu(session: session, place: place)

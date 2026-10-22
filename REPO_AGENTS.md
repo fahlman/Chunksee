@@ -148,6 +148,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift` | Local navigation/history and native height/zoom popovers; MapModel owns viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
+| `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
 | `MapAnnotations.swift` | One dimension’s saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
@@ -663,23 +664,27 @@ command only toggles its binding.
 Saved-search headings add Search for This and Remove in a separate native menu section.
 Those group commands belong to the heading, rather than its result rows. Row navigation help says Center the
 map, distinct from the visibility action.
-Layer-marker, player and search-result coordinate captions include their saved Y through the
-shared Coordinates formatter and CoordinateText. Missing heights stay absent; map centers,
-biome areas and saved-place annotations do not acquire an invented or terrain-derived Y.
 LocationLabel supplies one native Label layout for those marker/player/search rows, saved places,
-in-game maps and Linked Pets: icon, up to two lines of name, then a single secondary caption.
-Coordinates and optional kind/dimension/scale context stay with the existing presentation owners;
-context precedes coordinates. Maps retain their thumbnail, with the shared map symbol as a fallback.
+in-game maps and Linked Pets: icon and up to two lines of name, with no caption slot. Coordinates
+and kind/dimension/scale/search context belong in the inspector (Ryan, 2026-10-21, #350).
+All new location panels share InspectorHeading, LocationRow and the native Form layout.
+They use existing saved facts for spawner mobs, claimed places, structure bounds and biome sizes;
+they add no readers. Missing heights stay absent; map centers, biome areas and saved places do not
+acquire an invented Y. Maps retain their thumbnail, with the shared map symbol as a fallback.
 Selection, visibility, menus and navigation remain outside this stateless label.
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
 snapshots. A selected search result retains its search-row identity while its typed source identifies
 the marker or player whose current details are shown. A player inventory or ender-chest result
-remains selectable without a mappable location. The native inspector visibility and an in-game map
-retained under nondetail markers are separate presentation state. Sidebar, pointer, VoiceOver and linked-pet input share that
-selection transition. Selecting an item without details closes previous pet/player/portal details
-(Ryan, 2026-10-17, fahlman/Chunksee#167). Empty/stale map input clears transient row/pin selection
+remains selectable without a mappable location. SearchHit.title is always the item/place name;
+detail carries ancillary matching contents, kind or counts. SelectedSearchSection retains that
+context when a search opens an existing player, pet or portal inspector. The native inspector
+visibility and an in-game map retained under other locations are separate presentation state.
+Every selected item has an inspector, superseding #167's non-detail-close rule under Ryan's #350
+decision. Selecting an unavailable map or saved place shows its details without navigating or
+overlaying it on the wrong dimension. Sidebar, pointer, VoiceOver and linked-pet input share that
+selection transition. Empty/stale map input clears transient row/pin selection
 while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
 VoiceOver marker actions select the corresponding native sidebar row. Only user
 input through the List selection binding calls `choose` and requests sidebar focus. A simultaneous
@@ -697,6 +702,9 @@ common dimension-listing predicate. Views and commands save queries through that
 Choosing a saved-query result reveals that query through SavedSearches, like choosing a hidden layer row.
 Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
+Search Results and saved-query headings share CountedText's count/limited-count wording; the
+old small result-limit footer is gone. Searching/No matches remain empty-list states. Starting
+the ruler dismisses all location inspectors through their shared selection category.
 
 LocationRow owns the generic Location label (Last Location for a player’s saved location), following
 Ryan’s 2026-10-20 choice. World Spawn, Last Death, Respawn Point and a map’s Center keep their specific roles.
@@ -889,7 +897,7 @@ stays unchanged. Inventory grids retain empty slots because those represent stor
 Creature.displayName owns custom-name, villager-job and kind fallback naming for located
 markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and
 plain named-creature search share one hit constructor; filtered searches retain their one
-matching helper. The creature caption supplies the kind, or the group when the name already is the kind.
+matching helper. Search details supply the kind, or the group when the name already is the kind.
 CreatureDetailSections owns their shared applicable health, owner,
 appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
 their headings and location presentation; a carried pet never displays its old mounting position.

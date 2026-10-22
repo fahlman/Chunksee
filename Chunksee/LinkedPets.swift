@@ -15,9 +15,6 @@ struct LinkedPetsSection: View {
                     Button { session.selection.showLinkedPet(pet, ownedBy: playerID) } label: {
                         LocationLabel(title: Text(pet.name), isDimmed: !availability.canNavigate) {
                             Image(systemName: pet.group.symbol)
-                        } caption: {
-                            CoordinateText(Coordinates(pet.position, y: pet.creature.y),
-                                           dimension: session.presentation.dimensionName(pet.dimension))
                         }
                     }
                     .accessibilityIdentifier("linked-pet-\(pet.id)")

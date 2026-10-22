@@ -26,7 +26,8 @@ struct HelpView: View {
                 GroupBox("Look Around") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Drag or scroll to move. Pinch to zoom, or click the toolbar’s zoom percentage to choose a level or Fit World.")
-                        Text("Select a pet or player to see details. Search for an item such as diamond to find where it is stored.")
+                        Text("Select any sidebar item or map marker to see its details and location in the inspector. Sidebar rows show only names and icons.")
+                        Text("Search for an item such as diamond to find where it is stored. Select a result to see the matching contents.")
                         Text("Choose a cutaway height to look below the surface. Surface returns to the normal map.")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

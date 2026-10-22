@@ -71,8 +71,6 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                     ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
                         LocationLabel(title: Text(row.marker.name)) {
                             Image(systemName: row.marker.group.symbol)
-                        } caption: {
-                            CoordinateText(Coordinates(row.marker.position, y: row.marker.yCoordinate))
                         }
                         .tag(row.id)
                         .help(LocationAvailability.available.help)

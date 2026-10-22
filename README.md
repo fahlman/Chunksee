@@ -65,6 +65,8 @@ with a link to this guide. Help opens only when requested.
    Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
    ("biome:pale garden"). Click ⊕ beside Search Results to keep a search in the sidebar's Saved Searches,
    where its eye button keeps its pins on the map.
+   Results show the place's name; select one to see its matching contents, count and location in
+   the inspector. The section heading shows how many results are listed when there are more than 200.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn
    point (bed). Each dimension's sidebar lists the players last seen there; choose one to jump to them and see their
    inventory, health, gear and pets in the inspector, or click their marker for the same details.
@@ -72,6 +74,12 @@ with a link to this guide. Help opens only when requested.
    To show names, choose your Minecraft folder in **Settings**, so Chunksee
    can read the names Minecraft remembers. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
+
+Sidebar rows show names and icons only. Select any item in the sidebar or on the map to open its
+details in the inspector: structures, places, biome areas, saved places and search results all have
+panels, alongside pets, players and in-game maps. Coordinates use the same location control: click
+to jump, or Control-click for Copy Coordinates, Save Place and Measure Distance. Unknown heights
+remain absent, and items in an unavailable dimension still show details without moving the map.
 
 Enchantment labels retain the saved level, including `Sharpness I`. The nine single-level
 vanilla 26.3 enchantments omit `I`, as in Minecraft; unknown or modded enchantments keep it.

@@ -13,6 +13,15 @@ import Testing
         #expect(CountedText.label("place:spawner", count: 11_000, locale: Locale(identifier: "de_DE")) == "place:spawner (11.000)")
     }
 
+    @Test func searchHeadingsIncludeTheLimitWithoutAnAncillaryRow() {
+        let english = Locale(identifier: "en_US")
+        #expect(CountedText.label("Search Results", count: 1234, shown: 200, locale: english) == "Search Results (first 200 of 1,234)")
+        #expect(CountedText.label("place:spawner", count: 1234, shown: 200, locale: Locale(identifier: "de_DE")) == "place:spawner (first 200 of 1.234)")
+        #expect(CountedText.label("Search Results", count: 3, shown: 3, locale: english) == "Search Results (3)")
+        #expect(CountedText.label("Search Results", count: 0, shown: 0, locale: english) == "Search Results (0)")
+        #expect(CountedText.label("Search Results", count: nil, shown: 0, locale: english) == "Search Results")
+    }
+
     @Test func catalogPluralizesBiomeAreasAndBlockDepositsOnTheirProductionPaths() throws {
         for count in [1, 2, 1234] {
             let number = count.formatted(.number)

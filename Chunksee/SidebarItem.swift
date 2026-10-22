@@ -6,12 +6,12 @@ enum Inspector: Equatable {
     case world
     case storage
     case player(UUID)
-    /// The portal, creature or in-game map selected on the map.
+    /// The selected location's details, including a retained in-game map when no row is selected.
     case selection
 }
 
-/// A sidebar row that can be selected. Choosing it shows its item: World Info and Storage in the
-/// inspector, everything else on the map.
+/// A sidebar row that can be selected. Every item opens its inspector; a usable location also
+/// centers the map when chosen in the sidebar.
 enum SidebarItem: Hashable {
     case worldInfo
     case storage
@@ -32,7 +32,7 @@ enum MapTarget: Equatable {
     case searchHit(SearchHit.ID)
 }
 
-/// The thing selected on the map, whose details the inspector shows; one at a time.
+/// Highlighted creature/portal or retained map overlay; the inspector resolves its item separately.
 enum MapSelection: Equatable {
     case portal(NetherPortal)
     case creature(CreatureMarker)

@@ -42,8 +42,11 @@ nonisolated struct CountedText: FormatStyle, Sendable {
         }
     }
 
-    static func label(_ name: String, count: Int?, locale: Locale = .current) -> String {
+    static func label(_ name: String, count: Int?, shown: Int? = nil, locale: Locale = .current) -> String {
         guard let count else { return name }
+        if let shown, shown < count {
+            return String(localized: "\(name) (first \(shown) of \(count))", locale: locale)
+        }
         return String(localized: "\(name) (\(count))", locale: locale)
     }
 
