@@ -4,6 +4,12 @@ import SwiftUI
 /// Markers and areas shared by drawing, picking and accessibility. Region buckets limit point
 /// candidates; areas can remain visible while their representative point is outside the viewport.
 struct MapScene {
+    /// Both kinds of mapped area use one treatment; only their paths and category color differ.
+    private static func drawArea(fill: Path, outline: Path, color: Color, in context: GraphicsContext) {
+        context.fill(fill, with: .color(color.opacity(0.15)))
+        context.stroke(outline, with: .color(color.opacity(0.9)), lineWidth: 1.5)
+    }
+
     // Picking priority is independent of array/drawing order: a portal wins over a creature
     // standing in it, even though creature bodies are drawn later.
     enum Layer: Int {
@@ -96,9 +102,7 @@ struct MapScene {
             let scale = item.scale
             if scale >= 0.25 {
                 let path = Path(outline)
-                context.fill(path, with: .color(item.style.fill.opacity(0.12)))
-                context.stroke(path, with: .color(item.style.fill.opacity(0.8)),
-                               style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                MapScene.drawArea(fill: path, outline: path, color: item.style.fill, in: context)
             }
             let label = item.draw(in: context, portalStatus: { _ in nil }, symbol: symbol)
             if scale >= 0.25, let point = portalRoom {
@@ -125,8 +129,8 @@ struct MapScene {
         func draw(in context: GraphicsContext, transform: CGAffineTransform) {
             // Transform the potentially large paths only for drawing, never for picking or AX.
             let color = Color(BiomeColors.color(for: area.group.id))
-            context.fill(area.chunks.applying(transform), with: .color(color.opacity(0.15)))
-            context.stroke(area.outline.applying(transform), with: .color(color.opacity(0.9)), lineWidth: 1.5)
+            MapScene.drawArea(fill: area.chunks.applying(transform), outline: area.outline.applying(transform),
+                              color: color, in: context)
         }
     }
 
