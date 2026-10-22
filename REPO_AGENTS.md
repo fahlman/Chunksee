@@ -72,7 +72,7 @@ VisibilityCommand owns the shared Show/Hide label, binding and action. Compact e
 the current state; context-menu symbols show the action (crossed eye for Hide, open eye for Show).
 
 WorldCommands routes native commands through the focused document. Edit > Find keeps Find and
-Save Search together; Shift-Command-S saves a valid, unsaved query through SearchModel. View's
+Save Search together; Shift-Command-F saves a nonempty, unsaved query through SearchModel. View's
 Command-9 Fit World uses MapNavigation's existing fit/availability calculation. World Info and
 Storage share one native toggle builder backed by SelectionModel.inspector, keeping their menu
 checkmarks, selected sidebar rows and inspector in sync without separate menu state.

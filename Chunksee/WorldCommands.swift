@@ -59,7 +59,7 @@ struct WorldCommands: Commands {
                     .keyboardShortcut("f")
                     .disabled(focusSearch == nil)
                 Button("Save Search") { session?.search.saveSearch() }
-                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
                     .disabled(session?.search.canSaveSearch != true)
             }
         }
