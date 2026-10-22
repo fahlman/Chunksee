@@ -64,7 +64,7 @@ struct ShoulderPetsSection: View {
                         Label(pet.name, systemImage: "pawprint.fill")
                     } location: {
                         if pet.location == nil {
-                            Text("Location unavailable").foregroundStyle(.secondary)
+                            Text("Location unknown").foregroundStyle(.secondary)
                         }
                     }
                 }

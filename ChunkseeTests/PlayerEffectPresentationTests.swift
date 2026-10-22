@@ -8,7 +8,7 @@ import Testing
 
     @Test func decodedEffectsUseTheirOwnNamesAndPreserveCommandLevels() throws {
         let entries: [(String, String)] = [
-            ("minecraft:unluck", "Bad Luck"), ("minecraft:dolphins_grace", "Dolphin's Grace"),
+            ("minecraft:unluck", "Bad Luck"), ("minecraft:dolphins_grace", "Dolphin’s Grace"),
             ("minecraft:hero_of_the_village", "Hero of the Village"),
             ("minecraft:breath_of_the_nautilus", "Breath of the Nautilus"),
             ("minecraft:strength", "Strength"), ("example:unluck", "Unluck"),
