@@ -571,6 +571,10 @@ adapter used by trades and tooltips. Its verified single-level exceptions remain
 effect rules; both use the same LevelText numerals.
 Empty or unavailable optional sections/values stay absent.
 
+An unnamed account uses PlayerPresentation's shared Player/short-ID label; an unknown pet owner
+without a player record adds localized absence context to that same label. Known names and the
+single-player You pronoun retain their existing precedence.
+
 WorldResources owns one observable PlayerRoster for all dimension searches and inspectors. Each
 accepted read publishes one immutable PlayerSnapshot there; searches observe that snapshot
 instead of receiving pushed assignments in every tab. SearchSources still compares snapshot
