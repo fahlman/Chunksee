@@ -2,6 +2,7 @@ import AppKit
 import ChunkseeKit
 import CoreGraphics
 import Testing
+import SwiftUI
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct CutawayTests {

@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Testing
+import SwiftUI
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct PointMarkersTests {
