@@ -280,12 +280,10 @@ struct MapView: View {
                 }
             }
             if session.slimeChunks.isLoading {
-                ProgressView().controlSize(.small)
-                Text("Drawing slime chunks…")
+                ProgressView("Drawing slime chunks…").controlSize(.small)
             }
             if map.isLoading {
-                ProgressView().controlSize(.small)
-                Text("Drawing map…")
+                ProgressView("Drawing map…").controlSize(.small)
             } else if map.availableRegions.isEmpty {
                 Text("No terrain has been saved in this dimension.")
             }
