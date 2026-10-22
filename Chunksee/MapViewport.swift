@@ -80,15 +80,21 @@ nonisolated struct MapViewport: Equatable, Sendable {
 
     /// Region headers locate all saved terrain without reading individual chunks.
     static func fitting(_ regions: Set<RegionPosition>, in size: CGSize, padding: CGFloat = 24) -> MapViewport? {
-        let origins = regions.compactMap(\.blockOrigin)
         guard size.width.isFinite, size.height.isFinite, size.width > padding * 2, size.height > padding * 2,
-              let minX = origins.map(\.x).min(), let maxX = origins.map(\.x).max(),
+              let bounds = bounds(of: regions) else { return nil }
+        return MapViewport(center: CGPoint(x: bounds.midX, y: bounds.midY),
+                           scale: min((size.width - padding * 2) / bounds.width, (size.height - padding * 2) / bounds.height))
+    }
+
+    /// Shared extent for Fit World and whole-dimension images; empty space between saved regions stays empty.
+    static func bounds(of regions: Set<RegionPosition>) -> CGRect? {
+        let origins = regions.compactMap(\.blockOrigin)
+        guard let minX = origins.map(\.x).min(), let maxX = origins.map(\.x).max(),
               let minZ = origins.map(\.z).min(), let maxZ = origins.map(\.z).max() else { return nil }
         let left = CGFloat(minX), top = CGFloat(minZ)
         let width = CGFloat(maxX) - left + Self.regionSideInBlocks
         let height = CGFloat(maxZ) - top + Self.regionSideInBlocks
-        return MapViewport(center: CGPoint(x: left + width / 2, y: top + height / 2),
-                           scale: min((size.width - padding * 2) / width, (size.height - padding * 2) / height))
+        return CGRect(x: left, y: top, width: width, height: height)
     }
 
     func distanceToCenter(_ region: RegionPosition) -> CGFloat {
