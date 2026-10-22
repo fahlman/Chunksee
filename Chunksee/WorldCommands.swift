@@ -133,6 +133,7 @@ struct WorldCommands: Commands {
             Button("Save Place…") { session?.annotations.savePlace() }
                 .keyboardShortcut("d")
                 .disabled(session?.map == nil)
+            PlanPortalCommand(session: session)
             Divider()
             Menu("Dimension") {
                 if let session {

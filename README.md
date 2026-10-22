@@ -58,6 +58,12 @@ with a link to this guide. Help opens only when requested.
 7. Click a Nether portal to see in the inspector where it leads: the matching portal in the other dimension (with a
    button to jump there), a warning if the link is one-way, or a warning that going through would
    make the game build a new portal. Portals that don't link both ways carry a small badge.
+   To plan a new portal, right-click its proposed location and choose **Plan Portal Here…**, or
+   choose **Navigate ▸ Plan Portal Here…** for the map's center. Edit **X Y Z** to see the matching
+   coordinates in the other dimension and the saved portal it would link to. You can copy either
+   location or show it in that dimension's window. The prediction uses the proposed entrance block
+   and saved portal data; it does not build anything or predict a return trip. Planning is available
+   in the Overworld and Nether.
 8. Find items with the search field in the toolbar (**⌘F**): type an item ("diamond", "golden apple")
    or a custom name to list every chest, barrel, shulker box, minecart and player inventory holding it,
    most items first. Each dimension lists the results in it; choose one to jump there. They show as yellow pins.
@@ -80,7 +86,7 @@ with a link to this guide. Help opens only when requested.
 Sidebar rows show names and icons only. Select any item in the sidebar or on the map to open its
 details in the inspector: structures, places, biome areas, saved places and search results all have
 panels, alongside pets, players and in-game maps. Coordinates use the same location control: click
-to jump, or Control-click for Copy Coordinates, Save Place and Measure Distance. Unknown heights
+to jump, or Control-click for Copy Coordinates, Save Place, Measure Distance and Plan Portal Here. Unknown heights
 remain absent, and items in an unavailable dimension still show details without moving the map.
 
 Enchantment labels retain the saved level, including `Sharpness I`. The nine single-level
@@ -118,7 +124,7 @@ starts a new path.
 Choose **Navigate ▸ Save Place…** (**⌘D**) to name the location at the map's center, or right-click
 a map point and choose **Save Place…**. Your **Saved Places** appear in their dimension's sidebar and on the
 map; click a sidebar place to visit it. Its map and sidebar context menus both offer Rename,
-Copy Coordinates, Measure Distance from Here and Remove. Places are
+Copy Coordinates, Measure Distance from Here, Plan Portal Here and Remove. Places are
 kept per world in Chunksee's preferences and remain available when the world is reopened or moved.
 The **Saved Places** group under **Places** shows its count and an eye that hides or shows its pins
 without removing the list. Each dimension remembers that choice. Creating or visiting a saved place

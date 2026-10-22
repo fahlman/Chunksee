@@ -99,7 +99,7 @@ import Testing
                                                          content: content, size: size, pasteboard: board))
             let pinMenu = menu(root)
             let sidebarMenu = menu(SavedPlaceMenu(session: session, place: place, pasteboard: board))
-            #expect(sidebarMenu.items.map(\.title) == ["Copy Coordinates", "Rename…", "Measure Distance from Here", "", "Remove"])
+            #expect(sidebarMenu.items.map(\.title) == ["Copy Coordinates", "Rename…", "Measure Distance from Here", "Plan Portal Here…", "", "Remove"])
             #expect(pinMenu.items.map(\.title) == sidebarMenu.items.map(\.title))
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             try perform("Rename…", in: pinMenu)
@@ -138,7 +138,7 @@ import Testing
             let root = try #require(MapContextMenuContent(at: click, session: session, map: map,
                                                          content: content, size: size, pasteboard: board))
             let markerMenu = menu(root)
-            #expect(markerMenu.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here"])
+            #expect(markerMenu.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here", "Plan Portal Here…"])
             try perform("Copy Coordinates", in: markerMenu)
             #expect(board.string(forType: .string) == "-9 63 -9")
             #expect(map.unfinishedCoordinateReads == 0)
@@ -147,6 +147,10 @@ import Testing
             session.annotations.draft = nil
             try perform("Measure Distance from Here", in: markerMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -9, y: -9))
+            try perform("Plan Portal Here…", in: markerMenu)
+            #expect(session.annotations.portalDraft?.entrance == .init(x: -9, y: 63, z: -9))
+            #expect(map.unfinishedCoordinateReads == 0)
+            session.annotations.portalDraft = nil
 
             // The same off-center pointer click while measuring uses the marker, not the block
             // behind its badge. Both entry paths keep whole-block endpoints at negative positions.
@@ -172,6 +176,10 @@ import Testing
             session.annotations.draft = nil
             try perform("Measure Distance from Here", in: emptyMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -5, y: -9))
+            try perform("Plan Portal Here…", in: emptyMenu)
+            await map.waitForCoordinateReads()
+            #expect(session.annotations.portalDraft?.entrance == .init(x: -5, y: 2, z: -9))
+            session.annotations.portalDraft = nil
             tappedRuler.clear()
             let emptyLocation = try #require(MapContent().location(at: click, viewport: map.viewport, size: size))
             tappedRuler.mark(emptyLocation.position)
@@ -201,7 +209,7 @@ import Testing
                     sources.append(menu(root))
                 }
                 for source in sources {
-                    #expect(source.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here"])
+                    #expect(source.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here", "Plan Portal Here…"])
                     board.clearContents()
                     board.setString("previous", forType: .string)
                     try perform("Copy Coordinates", in: source)
@@ -323,6 +331,7 @@ import Testing
             #expect(!copy.isEnabled)
             let measure = try #require(savedMenu.items.first { $0.title == "Measure Distance from Here" })
             #expect(!measure.isEnabled)
+            #expect(!(try #require(savedMenu.items.first { $0.title == "Plan Portal Here…" })).isEnabled)
             let unmapped = WorldSession(resources: session.resources, dimensionID: place.dimension)
             let withoutMap = menu(SavedPlaceMenu(session: unmapped, place: place, pasteboard: board))
             let unavailable = try #require(withoutMap.items.first { $0.title == "Measure Distance from Here" })
@@ -344,6 +353,8 @@ import Testing
                 source.update()
                 for item in source.items where !item.isSeparatorItem { #expect(!item.isEnabled) }
             }
+            try perform("Plan Portal Here…", in: rowMenu)
+            #expect(session.annotations.portalDraft == nil)
             try perform("Remove", in: savedMenu)
             try perform("Rename…", in: savedMenu)
             try perform("Copy Coordinates", in: mapMenu)
@@ -383,7 +394,7 @@ import Testing
             for control in [false, true] {
                 let native = try #require(view.menu(for: try event(own, at: CGPoint(x: 120, y: 100), control: control)))
                 native.update()
-                #expect(native.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here"])
+                #expect(native.items.map(\.title) == ["Copy Coordinates", "Save Place…", "Measure Distance from Here", "Plan Portal Here…"])
             }
             #expect(received == [CGPoint(x: 120, y: 200), CGPoint(x: 120, y: 200)])
         }
