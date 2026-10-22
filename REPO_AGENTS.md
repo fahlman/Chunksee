@@ -793,7 +793,9 @@ and [Offering help](https://developer.apple.com/design/human-interface-guideline
   and X coordinate.
 - Activity/status text and explanatory checkbox labels use sentence case. Complete informative
   sentences end with punctuation; short status fragments do not. Ongoing activity ends with an
-  ellipsis. Brief tooltips and accessibility hints use sentence case without ending punctuation.
+  ellipsis. Brief tooltips use sentence case without ending punctuation. Accessibility names
+  also omit ending punctuation. Accessibility hints are brief phrases that begin with a capital
+  letter and end with a period, following Apple's archived [hint guidance](https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/iPhoneAccessibility/Making_Application_Accessible/Making_Application_Accessible.html).
 - Localize complete phrases and reuse the existing number, unit, duration and name owners.
   Keep contextual phrases such as Your inventory and Where you last died in sentence case.
   They identify whose data is shown; the inspector's Inventory or Last Death heading names the field.

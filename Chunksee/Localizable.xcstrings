@@ -61,8 +61,11 @@
     "%@ (%@)" : {
       "comment" : "An item name and quantity followed by its enchantment descriptions in parentheses."
     },
-    "Set a measurement point" : {
+    "Set a measurement point." : {
       "comment" : "Accessibility hint for a map marker while the distance ruler is on. Activating the marker sets a ruler endpoint at its saved location."
+    },
+    "Center the map on this location." : {
+      "comment" : "Accessibility hint for a map marker. Activating the marker centers the map on its saved location. The period belongs to the spoken hint, unlike the corresponding tooltip."
     },
     "%@ (%lld)" : {
       "comment" : "A sidebar group or saved-search heading followed by its result count. The first placeholder is an already named group or the user's literal search query; do not translate the placeholder's contents."
