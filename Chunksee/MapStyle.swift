@@ -67,8 +67,7 @@ nonisolated enum MapStylePalette {
             let lightness = start.0 + (end.0 - start.0) * t
             let components = [lightness, start.1 + (end.1 - start.1) * t, start.2 + (end.2 - start.2) * t, 1].map(CGFloat.init)
             let converted = lab.flatMap { CGColor(colorSpace: $0, components: components) }
-                .flatMap { color in rgb.flatMap { color.converted(to: $0, intent: .relativeColorimetric, options: nil) } }
-                ?.components
+                .flatMap { color in rgb.flatMap { color.converted(to: $0, intent: .relativeColorimetric, options: nil) } }?.components
             // These system colour spaces are available on macOS; a missing conversion keeps
             // an ordered neutral scale rather than losing the map's height/depth information.
             func byte(_ channel: Int) -> UInt32 {
