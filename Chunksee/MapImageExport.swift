@@ -14,10 +14,7 @@ extension MapImage {
                        readTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
                            = { try await $0.tile(for: $1) }) async throws -> MapImage {
         try Task.checkCancellation()
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let destination = CGContext(data: nil, width: plan.width, height: plan.height,
-                                          bitsPerComponent: 8, bytesPerRow: plan.width * 4, space: space,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+        guard let destination = imageContext(width: plan.width, height: plan.height) else {
             throw ExportFailure.cannotRender
         }
         let visible = plan.viewport.visibleRegions(in: plan.size, among: regions)
@@ -32,7 +29,7 @@ extension MapImage {
                     MapView.drawTerrain(viewport: plan.viewport, regions: [region], image: { _ in image },
                                         in: context, size: size)
                 }
-                try drawExportLayer(terrain, plan: plan, into: destination)
+                guard drawImageLayer(terrain, size: plan.size, scale: 1, into: destination) else { throw ExportFailure.cannotRender }
                 if let write = tile.cacheWrite { await write.store() }
             }
             try Task.checkCancellation()
@@ -45,37 +42,19 @@ extension MapImage {
         .modifier(MapLegendOverlay(layers: content))
         .environment(\.colorScheme, colorScheme)
         .environment(\.locale, locale)
-        try drawExportLayer(overlays, plan: plan, into: destination)
+        guard drawImageLayer(overlays, size: plan.size, scale: 1, into: destination) else { throw ExportFailure.cannotRender }
         try Task.checkCancellation()
         guard let image = destination.makeImage() else { throw ExportFailure.cannotRender }
         return try await encodeExport(image)
-    }
-
-    @MainActor
-    private static func drawExportLayer<V: View>(_ layer: V, plan: MapExportPlan, into destination: CGContext) throws {
-        let renderer = ImageRenderer(content: layer.frame(width: plan.size.width, height: plan.size.height))
-        var drawn = false
-        renderer.render { _, draw in
-            destination.saveGState()
-            draw(destination)
-            destination.restoreGState()
-            drawn = true
-        }
-        guard drawn else { throw ExportFailure.cannotRender }
     }
 
     /// The completed CGImage is immutable and transferred to this encoder; no drawing resumes on it.
     @concurrent
     private static func encodeExport(_ image: sending CGImage) async throws -> MapImage {
         try Task.checkCancellation()
-        let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            throw ExportFailure.cannotRender
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else { throw ExportFailure.cannotRender }
+        guard let image = png(image) else { throw ExportFailure.cannotRender }
         try Task.checkCancellation()
-        return MapImage(data: data as Data)
+        return image
     }
 
     nonisolated enum ExportFailure: LocalizedError {
