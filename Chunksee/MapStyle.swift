@@ -65,7 +65,7 @@ nonisolated enum MapStylePalette {
         return (0..<256).map { index in
             let t = Double(index) / 255
             let lightness = start.0 + (end.0 - start.0) * t
-            let components = [lightness, start.1 + (end.1 - start.1) * t, start.2 + (end.2 - start.2) * t, 1].map(CGFloat.init)
+            let components = [lightness, start.1 + (end.1 - start.1) * t, start.2 + (end.2 - start.2) * t, 1].map { CGFloat($0) }
             let converted = lab.flatMap { CGColor(colorSpace: $0, components: components) }
                 .flatMap { color in rgb.flatMap { color.converted(to: $0, intent: .relativeColorimetric, options: nil) } }?.components
             // These system colour spaces are available on macOS; a missing conversion keeps
