@@ -11,7 +11,7 @@ import Testing
         let regions: Set<RegionPosition> = [.init(x: -2, z: -1), .init(x: 1, z: 2)]
         let bounds = try #require(MapViewport.bounds(of: regions))
         #expect(bounds == CGRect(x: -1024, y: -512, width: 2048, height: 2048))
-        let fit = try #require(MapViewport.fitting(regions, in: CGSize(width: 1048, height: 1048)))
+        let fit = try #require(MapViewport.fitting(regions, in: CGSize(width: 1072, height: 1072)))
         #expect(fit.center == CGPoint(x: bounds.midX, y: bounds.midY) && fit.scale == 0.5)
         let image = try MapExportPlan(bounds: bounds, blocksPerPixel: 2)
         #expect(image.width == 1024 && image.height == 1024)
@@ -92,7 +92,17 @@ import Testing
                         progress: { finished, total in progress.append(finished); #expect(total == 2) })
                     let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
                         size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
-                    #expect(try pixels(actual) == pixels(expected))
+                    let actualPixels = try pixels(actual), expectedPixels = try pixels(expected)
+                    if actualPixels != expectedPixels {
+                        Attachment.record(Array(actual.data), named: "export-actual-\(downsample)-\(appearance)-\(grid).png")
+                        Attachment.record(Array(expected.data), named: "export-expected-\(downsample)-\(appearance)-\(grid).png")
+                        let different = stride(from: 0, to: actualPixels.count, by: 4).filter {
+                            actualPixels[$0..<$0 + 4] != expectedPixels[$0..<$0 + 4]
+                        }
+                        print("EXPORT_PIXEL_DIFFERENCE", downsample, appearance, grid, "count", different.count,
+                              "samples", different.prefix(12).map { [String($0 / 4), String(describing: Array(actualPixels[$0..<$0 + 4])), String(describing: Array(expectedPixels[$0..<$0 + 4]))] })
+                    }
+                    #expect(actualPixels == expectedPixels)
                     #expect(progress == [0, 1, 2])
                 }
             }
