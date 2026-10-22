@@ -1,5 +1,6 @@
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 
 /// A biome, as a sidebar group.
@@ -72,51 +73,31 @@ nonisolated enum BiomeScanner {
         }
     }
 
-    /// Joins chunks of the same biome that share an edge. Every area is kept, down to a single
-    /// chunk, so nothing in the world is hidden (Ryan, 2026-10-13); one sample per chunk breaks
-    /// thin biomes such as rivers and beaches into many small areas.
+    /// Presents the shared index's areas as world-space paths. Every area is kept, down to a
+    /// single chunk; names, colors and surface/cave membership remain presentation choices.
     static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
-        let biomes = biomes.filter { $0.key.blockOrigin != nil }
-        var visited = Set<ChunkPosition>()
-        var areas: [BiomeArea] = []
-        for (start, biome) in biomes where !visited.contains(start) {
-            var chunks: [ChunkPosition] = []
-            var stack = [start]
-            visited.insert(start)
-            while let chunk = stack.popLast() {
-                chunks.append(chunk)
-                for next in [ChunkPosition(x: chunk.x + 1, z: chunk.z), ChunkPosition(x: chunk.x - 1, z: chunk.z),
-                             ChunkPosition(x: chunk.x, z: chunk.z + 1), ChunkPosition(x: chunk.x, z: chunk.z - 1)]
-                where !visited.contains(next) && biomes[next] == biome {
-                    visited.insert(next)
-                    stack.append(next)
-                }
-            }
-            let middleX = chunks.reduce(0.0) { $0 + Double($1.x) } / Double(chunks.count)
-            let middleZ = chunks.reduce(0.0) { $0 + Double($1.z) } / Double(chunks.count)
-            let inside = chunks.min {
-                let a = hypot(Double($0.x) - middleX, Double($0.z) - middleZ)
-                let b = hypot(Double($1.x) - middleX, Double($1.z) - middleZ)
-                return a == b ? ($0.x, $0.z) < ($1.x, $1.z) : a < b
-            }!
-            // Outline the edges between this area's chunks and anything else.
+        ChunkseeIndex.BiomeArea.connected(in: biomes).compactMap { area -> BiomeArea? in
+            guard let origin = area.representative.blockOrigin else { return nil }
             var fill = Path(), outline = Path()
-            let members = Set(chunks)
-            for chunk in chunks {
+            for chunk in area.chunks {
                 guard let origin = chunk.blockOrigin else { continue }
-                let x = CGFloat(origin.x), z = CGFloat(origin.z)
-                fill.addRect(CGRect(x: x, y: z, width: 16, height: 16))
-                for (dx, dz, from, to) in [(0, -1, (0, 0), (16, 0)), (1, 0, (16, 0), (16, 16)), (0, 1, (0, 16), (16, 16)), (-1, 0, (0, 0), (0, 16))]
-                where !members.contains(ChunkPosition(x: chunk.x + dx, z: chunk.z + dz)) {
-                    outline.move(to: CGPoint(x: x + CGFloat(from.0), y: z + CGFloat(from.1)))
-                    outline.addLine(to: CGPoint(x: x + CGFloat(to.0), y: z + CGFloat(to.1)))
-                }
+                fill.addRect(CGRect(x: origin.x, y: origin.z, width: 16, height: 16))
             }
-            guard let origin = inside.blockOrigin else { continue }
-            areas.append(BiomeArea(id: "\(biome)@\(inside.x),\(inside.z)", group: BiomeGroup(id: biome), chunkCount: chunks.count,
-                                   position: CGPoint(x: origin.x + 8, y: origin.z + 8), bounds: fill.boundingRect,
-                                   chunks: fill, outline: outline))
+            for edge in area.boundary {
+                guard let origin = edge.chunk.blockOrigin else { continue }
+                let x = CGFloat(origin.x), z = CGFloat(origin.z)
+                let (from, to): (CGPoint, CGPoint) = switch edge.side {
+                case .north: (CGPoint(x: x, y: z), CGPoint(x: x + 16, y: z))
+                case .east: (CGPoint(x: x + 16, y: z), CGPoint(x: x + 16, y: z + 16))
+                case .south: (CGPoint(x: x, y: z + 16), CGPoint(x: x + 16, y: z + 16))
+                case .west: (CGPoint(x: x, y: z), CGPoint(x: x, y: z + 16))
+                }
+                outline.move(to: from)
+                outline.addLine(to: to)
+            }
+            return BiomeArea(id: area.id, group: BiomeGroup(id: area.biomeID), chunkCount: area.chunkCount,
+                             position: CGPoint(x: origin.x + 8, y: origin.z + 8), bounds: fill.boundingRect,
+                             chunks: fill, outline: outline)
         }
-        return areas
     }
 }
