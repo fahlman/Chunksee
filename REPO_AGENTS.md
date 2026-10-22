@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.42.0`, resolved to `0.42.0` (`bad9f277f9bedc2a1650c4e2cea9fadede6b50f2`).
+  minor" from `0.43.0`, resolved to `0.43.0` (`092d71c46f7c9c717924da03d5d870faedb565f6`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -152,7 +152,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate values and their shared Foundation format style using ChunkseeKit’s checked block conversion, common CoordinateText digit styling, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Zoom-aware marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
-| `PointMarkers.swift` | Immutable Places/creature arrays and region buckets, built on index publication and shared by map drawing/export, hit testing and accessibility candidates |
+| `PointMarkers.swift` | Immutable Places/creature presentation using ChunkseeIndex.PointIndex; converts view bounds for shared map drawing/export, hit testing and accessibility candidates |
 | `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, with one common size at each zoom and selection-independent targets |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift`, `MapAdjustmentPopover.swift` | Local navigation/history and native height/zoom popovers; shared adjustment layout/buttons, with MapModel owning viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
@@ -455,8 +455,10 @@ world. Exact world, dimension or region-directory notifications reconcile full d
 and terrain availability. Other files beneath a dimension, including saved data such as raids and
 chunk tickets, do not invalidate region-derived results. Entity/POI file saves leave terrain images
 and inhabited-time reads alone.
-Places/creature point collections own their arrays and immutable region buckets. MapContent
-shares them with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
+ChunkseeIndex.PointIndex owns immutable point arrays, region buckets and candidate lookup.
+PointMarkers adapts the app's viewport bounds and scale guard to that shared owner; it contains
+no duplicate bucket, unbucketed-position or sparse-query algorithm. MapContent
+shares these snapshots with per-tab group visibility; pan/hover does not rebuild buckets or filter the entire
 arrays. Drawing, export, hit testing and accessibility request nearby candidates in original order,
 then retain their exact bounds/zoom/distance checks. Fit World visits occupied buckets rather than
 empty space. MapScene creates their shared items from those candidates, deferring formatted names
