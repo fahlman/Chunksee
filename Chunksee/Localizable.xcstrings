@@ -121,7 +121,10 @@
     "X Z or X Y Z" : {
       "comment" : "Coordinate-entry placeholder. Two numbers specify horizontal coordinates; three numbers use Minecraft's X Y Z order. Keep the axis letters and spaces."
     },
-    "Enter X Z or X Y Z, separated by spaces" : {
+    "Enter X Z or X Y Z in %@." : {
+      "comment" : "Coordinate-entry instructions, followed by the current dimension's name. Keep the Minecraft axis letters in this order; the format stays visible even while the field contains a value."
+    },
+    "Enter whole block coordinates separated by spaces; Y is optional" : {
       "comment" : "Help for a coordinate field that accepts typed or pasted block coordinates. Y is optional; it updates the selected height without switching Surface/Cutaway mode."
     },
     "Choose within this dimension’s build height, or type any Y coordinate below" : {

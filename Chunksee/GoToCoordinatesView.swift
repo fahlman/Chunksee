@@ -59,7 +59,7 @@ struct GoToCoordinatesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Go to Coordinates").font(.headline)
-            Text("Enter whole block coordinates in \(session.selectedDimensionID.map(session.presentation.dimensionName) ?? "").")
+            Text("Enter X Z or X Y Z in \(session.selectedDimensionID.map(session.presentation.dimensionName) ?? "").")
                 .foregroundStyle(.secondary)
             LabeledContent("Coordinates") {
                 TextField("X Z or X Y Z", text: $coordinates)
@@ -67,7 +67,7 @@ struct GoToCoordinatesView: View {
                     .accessibilityLabel("Coordinates")
                     .accessibilityIdentifier("coordinate-entry")
                     .focused($isFocused)
-                    .help("Enter X Z or X Y Z, separated by spaces")
+                    .help("Enter whole block coordinates separated by spaces; Y is optional")
             }
             .textFieldStyle(.roundedBorder)
             HStack {
