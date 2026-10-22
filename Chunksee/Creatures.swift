@@ -40,7 +40,11 @@ extension CreatureGroup {
 nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     private let entry: CreatureEntry
     /// Defaults to the shared identity; carried pets may supply their carrier/shoulder fallback.
-    var id: String
+    private var projectedID: String?
+    var id: String {
+        get { projectedID ?? entry.id }
+        set { projectedID = newValue }
+    }
     var creature: Creature { entry.creature }
     var group: CreatureGroup { entry.group }
     var dimension: String
@@ -58,7 +62,6 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
 
     init(_ entry: CreatureEntry, dimension: String) {
         self.entry = entry
-        id = entry.id
         self.dimension = dimension
     }
 }
