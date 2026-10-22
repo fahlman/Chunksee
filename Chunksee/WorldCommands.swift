@@ -77,15 +77,16 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("9")
                 .disabled(session?.navigation.canFitWorld != true)
             Menu("Map Style") {
-                Picker("Map Style", selection: Binding {
-                    session?.map?.style ?? .normal
-                } set: { session?.map?.setStyle($0) }) {
-                    ForEach(MapStyle.allCases, id: \.self) { style in
-                        Text(style.title).tag(style)
-                            .disabled(style == .height && session?.map?.heightScale == nil)
+                ForEach(MapStyle.allCases, id: \.self) { style in
+                    // Native menu toggles honor per-item availability. An inline Picker's
+                    // Text options remain enabled even when their .disabled value is true.
+                    Toggle(isOn: Binding {
+                        session?.map?.style == style
+                    } set: { if $0 { session?.map?.setStyle(style) } }) {
+                        Text(style.title)
                     }
+                    .disabled(style == .height && session?.map?.heightScale == nil)
                 }
-                .pickerStyle(.inline)
             }
             .disabled(session?.map == nil)
             Button("Map Height…") { showsMapHeight = true }
