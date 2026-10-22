@@ -122,7 +122,7 @@ struct MapView: View {
         .accessibilityLabel(Text("Map of \(map.dimension.id, format: session.presentation.dimensionNameStyle)"))
         .accessibilityIdentifier("world-map")
         .accessibilityValue(Text(accessibilityReadout))
-        .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
+        .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom"))
         .accessibilityChildren {
             ZStack(alignment: .topLeading) {
                 ForEach(content.accessibleLocations(viewport: map.viewport, size: size)) { location in

@@ -782,6 +782,26 @@ Loading states use native labeled ProgressView controls with sentence-case activ
 and an ellipsis. The compact Time Spent legend hides its redundant visual label with labelsHidden,
 keeping the activity named for accessibility. The existing async models own readiness and cancellation.
 
+## Interface wording
+
+Use a consistent style for each UI role, following Apple's [Writing](https://developer.apple.com/design/human-interface-guidelines/writing)
+and [Offering help](https://developer.apple.com/design/human-interface-guidelines/offering-help) guidance:
+
+- Named features, headings, commands and inspector field labels use title case. A control's
+  accessibility name matches its visible name; descriptive numeric fields use sentence case,
+  such as Zoom percentage and X coordinate.
+- Activity/status text and explanatory checkbox labels use sentence case. Complete informative
+  sentences end with punctuation; short status fragments do not. Ongoing activity ends with an
+  ellipsis. Brief tooltips and accessibility hints use sentence case without ending punctuation.
+- Localize complete phrases and reuse the existing number, unit, duration and name owners.
+  Keep contextual phrases such as Your inventory and Where you last died in sentence case.
+  They identify whose data is shown; the inspector's Inventory or Last Death heading names the field.
+- Preserve differences that carry information: Tamed By/Linked Pets and Riding With/On Shoulders
+  describe opposite relationships; Location, World Spawn, Last Death, Respawn Point and map Center
+  identify different locations. Boolean On/Off describes an enabled setting; Modded Yes/No,
+  Cheats Allowed and a pet's sitting order describe different facts. Do not invent missing data
+  to make labels match. Dimension names always come from DimensionPresentation, including in prose.
+
 ## Build and test
 
 Run from the repository root:
