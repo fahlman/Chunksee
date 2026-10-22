@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.43.0`, resolved to `0.43.0` (`092d71c46f7c9c717924da03d5d870faedb565f6`).
+  minor" from `0.44.0`, resolved to `0.44.0` (`08f4a317ec5a2cd09ecfe2ec6e3091df7db769cd`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -405,6 +405,13 @@ its availability and the action's guard: an open document with that dimension's 
 NSHostingMenu presents the SwiftUI commands; no manual NSMenuItem targets or
 selectors are kept. The existing NSView captures context-click points because SwiftUI contextMenu
 does not supply that point. Held menus disable/guard commands when their document closes.
+
+ChunkseeIndex.SearchQuery owns category-prefix parsing, word splitting and case-insensitive
+substring matching. WorldSearch passes one parsed query through its result builders; LayerFilter
+is an alias for the shared filter type with only app prompts and symbols. The app supplies its
+existing searchable names, item/book/sign/trade text, category membership and result presentation.
+Unknown prefixes stay literal, empty plain queries return no results, and bare filters list their
+categories. There is no second query parser or matcher in the app.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
 starts a synchronous scan. Each query retains its previous snapshot until its replacement is

@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 
 /// One dimension's part of the world index: what search, the sidebar and the map show.
 nonisolated struct DimensionIndex: Sendable {
@@ -112,11 +113,11 @@ nonisolated struct SearchIndex: Sendable {
 /// A search that looks at one sidebar layer instead of items and text: `structure:village`,
 /// `pet:`, `biome:pale garden`, or villagers' trades with `trade:mending`. On its own, a filter
 /// lists everything of its kind.
-nonisolated enum LayerFilter: String, CaseIterable, Sendable {
-    case structure, place, creature, pet, villager, trade, biome, block
+typealias LayerFilter = SearchQuery.Filter
 
+extension SearchQuery.Filter {
     /// What the filter finds, for search suggestions.
-    var prompt: String {
+    nonisolated var prompt: String {
         switch self {
         case .structure: String(localized: "structure: villages, strongholds…")
         case .place: String(localized: "place: portals, beds, bells…")
@@ -129,7 +130,7 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         }
     }
 
-    var symbol: String {
+    nonisolated var symbol: String {
         switch self {
         case .structure: StructureGroup.village.symbol
         case .place: PlaceGroup.portal.symbol
@@ -140,14 +141,6 @@ nonisolated enum LayerFilter: String, CaseIterable, Sendable {
         case .biome: BiomeGroup.symbol
         case .block: "cube"
         }
-    }
-
-    /// The filter a query starts with, and the rest of the query.
-    static func parse(_ query: String) -> (filter: LayerFilter, rest: String)? {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard let colon = trimmed.firstIndex(of: ":"),
-              let filter = LayerFilter(rawValue: trimmed[..<colon].lowercased()) else { return nil }
-        return (filter, String(trimmed[trimmed.index(after: colon)...]))
     }
 }
 
@@ -203,25 +196,21 @@ nonisolated enum WorldSearch {
         return results
     }
 
-    static func words(in query: String) -> [String] {
-        query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-    }
-
     /// One layer's markers matching every word (all of them with no words): biome areas largest
     /// first, everything else by id.
-    static func search(_ filter: LayerFilter, words: [String], in index: SearchIndex) -> [SearchHit] {
+    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex) -> [SearchHit] {
         let hits: [SearchHit]
         switch filter {
-        case .structure: hits = layerHits(index.structures, words: words, y: \.y) { .structure($0.group) }
-        case .place: hits = layerHits(index.places, words: words, y: { $0.y }) { .place($0.group) }
-        case .creature: hits = creatureHits(index.creatures, words: words)
-        case .pet: hits = creatureHits(index.creatures.filter { $0.value.group == .pet }, words: words)
-        case .villager: hits = creatureHits(index.creatures.filter { $0.value.group == .villager }, words: words)
-        case .trade: hits = tradeHits(index.creatures, words: words)
-        case .block: hits = blockHits(index, words: words)
+        case .structure: hits = layerHits(index.structures, query: query, y: \.y) { .structure($0.group) }
+        case .place: hits = layerHits(index.places, query: query, y: { $0.y }) { .place($0.group) }
+        case .creature: hits = creatureHits(index.creatures, query: query)
+        case .pet: hits = creatureHits(index.creatures.filter { $0.value.group == .pet }, query: query)
+        case .villager: hits = creatureHits(index.creatures.filter { $0.value.group == .villager }, query: query)
+        case .trade: hits = tradeHits(index.creatures, query: query)
+        case .block: hits = blockHits(index, query: query)
         case .biome:
             // An area is named by its size, so its biome leads the row.
-            hits = layerHits(index.biomeAreas, words: words, count: \.chunkCount) { .biome($0.group) }
+            hits = layerHits(index.biomeAreas, query: query, count: \.chunkCount) { .biome($0.group) }
                 .map { var hit = $0; swap(&hit.title, &hit.detail); return hit }
         }
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
@@ -234,8 +223,8 @@ nonisolated enum WorldSearch {
 
     /// The richest chunks holding a notable block whose name or id matches every word, one hit per
     /// chunk and block. The pin sits at the chunk's center; the detail gives the height range to dig.
-    private static func blockHits(_ index: SearchIndex, words: [String]) -> [SearchHit] {
-        let blocks = Set(NotableBlock.allCases.filter { contains($0.searchText, words: words) })
+    private static func blockHits(_ index: SearchIndex, query: SearchQuery) -> [SearchHit] {
+        let blocks = Set(NotableBlock.allCases.filter { query.matches($0.searchText) })
         guard !blocks.isEmpty else { return [] }
         // Each dimension's deposits are already richest first, so its first matches are its best.
         var best: [(dimension: String, deposit: ChunkDeposit)] = []
@@ -257,10 +246,10 @@ nonisolated enum WorldSearch {
 
     /// Villagers and traders with a trade matching every word (in an item's name or id, or an
     /// enchantment's name), one hit per villager listing those trades, most matching trades first.
-    private static func tradeHits(_ entries: [SearchIndex.Placed<CreatureMarker>], words: [String]) -> [SearchHit] {
+    private static func tradeHits(_ entries: [SearchIndex.Placed<CreatureMarker>], query: SearchQuery) -> [SearchHit] {
         entries.compactMap { entry in
             guard let villager = entry.value.creature.villager else { return nil }
-            let matching = villager.trades.filter { contains(TradeText.searchText(of: $0), words: words) }
+            let matching = villager.trades.filter { query.matches(TradeText.searchText(of: $0)) }
             guard !matching.isEmpty else { return nil }
             let detail = matching.map(TradeText.offer).joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
@@ -269,8 +258,8 @@ nonisolated enum WorldSearch {
         }
     }
 
-    private static func creatureHits(_ entries: [SearchIndex.Placed<CreatureMarker>], words: [String]) -> [SearchHit] {
-        layerHits(entries, words: words, y: { Coordinates.block($0.creature.y) }, caption: creatureCaption) { .creature($0.group) }
+    private static func creatureHits(_ entries: [SearchIndex.Placed<CreatureMarker>], query: SearchQuery) -> [SearchHit] {
+        layerHits(entries, query: query, y: { Coordinates.block($0.creature.y) }, caption: creatureCaption) { .creature($0.group) }
     }
 
     /// The row leads with the same name as the sidebar; its caption identifies the kind without repeating the name.
@@ -280,12 +269,12 @@ nonisolated enum WorldSearch {
     }
 
     /// Markers whose search text contains every word, as hits: the marker's name leads and its kind follows.
-    private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], words: [String],
+    private static func layerHits<Marker: MapLayerMarker & Sendable>(_ entries: [SearchIndex.Placed<Marker>], query: SearchQuery,
                                                                      count: (Marker) -> Int = { _ in 1 },
                                                                      y: (Marker) -> Int? = { _ in nil },
                                                                      caption: (Marker) -> String = { $0.group.name },
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
-        entries.filter { !Task.isCancelled && contains($0.value.searchText, words: words) }.map { entry in
+        entries.filter { !Task.isCancelled && query.matches($0.value.searchText) }.map { entry in
             layerHit(entry, count: count(entry.value), y: y(entry.value), caption: caption(entry.value), layer: layer(entry.value))
         }
     }
@@ -297,17 +286,11 @@ nonisolated enum WorldSearch {
                   position: entry.value.position, y: y, title: entry.value.name, detail: caption, count: count)
     }
 
-    /// Whether `text` contains every word, ignoring case.
-    static func contains(_ text: String, words: [String]) -> Bool {
-        let haystack = text.lowercased()
-        return words.allSatisfy(haystack.contains)
-    }
-
     /// Whether an item matches every word in its readable name, id, custom name or book text.
-    static func matches(_ item: ItemStack, words: [String]) -> Bool {
+    static func matches(_ item: ItemStack, query: SearchQuery) -> Bool {
         var text = [ItemAppearance.label(of: item), item.id]
         if let book = item.book { text += [book.title ?? "", book.author ?? ""] + book.pages }
-        return contains(text.joined(separator: "\n"), words: words)
+        return query.matches(text.joined(separator: "\n"))
     }
 
     private struct ItemLabel: Hashable {
@@ -321,8 +304,8 @@ nonisolated enum WorldSearch {
     }
 
     /// Matching items summarized as "64 Diamond, 3 Diamond Sword", with nested contents included.
-    static func summary(of items: [ItemStack], words: [String]) -> (text: String, count: Int)? {
-        let hits = items.flatMap(\.allItems).filter { matches($0, words: words) }
+    static func summary(of items: [ItemStack], query: SearchQuery) -> (text: String, count: Int)? {
+        let hits = items.flatMap(\.allItems).filter { matches($0, query: query) }
         guard !hits.isEmpty else { return nil }
         let grouped = Dictionary(grouping: hits, by: ItemLabel.init).mapValues { $0.reduce(0) { $0 + $1.count } }
         let text = grouped.sorted {
@@ -333,25 +316,25 @@ nonisolated enum WorldSearch {
         return (text, hits.reduce(0) { $0 + $1.count })
     }
 
-    /// Places matching `query`, most items first. `name(of:)` names players.
-    static func search(_ query: String, in index: SearchIndex, players: [PlayerInfo],
+    /// Places matching the query text, most items first. `name(of:)` names players.
+    static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo],
                        name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
-        if let (filter, rest) = LayerFilter.parse(query) {
-            return search(filter, words: words(in: rest), in: index)
+        let query = SearchQuery(text)
+        if let filter = query.filter {
+            return search(filter, query: query, in: index)
         }
-        let words = words(in: query)
-        guard !words.isEmpty else { return [] }
+        guard !query.isEmpty else { return [] }
         var hits: [SearchHit] = []
         for player in players {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
             let location = PlayerPresentation.position(of: player)
-            if let found = summary(of: player.inventory + player.equipment.values, words: words) {
+            if let found = summary(of: player.inventory + player.equipment.values, query: query) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
                                       position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
                                       title: who.inventory, detail: found.text, count: found.count))
             }
-            if let found = summary(of: player.enderChest, words: words) {
+            if let found = summary(of: player.enderChest, query: query) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", source: .enderChest(player.uuid), dimension: nil, position: nil, y: nil,
                                       title: who.enderChest, detail: found.text, count: found.count))
             }
@@ -359,7 +342,7 @@ nonisolated enum WorldSearch {
         for entry in index.containers {
             guard !Task.isCancelled else { return [] }
             let container = entry.value
-            guard let found = summary(of: container.items, words: words) else { continue }
+            guard let found = summary(of: container.items, query: query) else { continue }
             let title = ItemAppearance.label(kind: container.kind, customName: container.customName)
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
@@ -371,7 +354,7 @@ nonisolated enum WorldSearch {
             let sign = entry.value
             // Lines are matched together so a phrase can run across them, as signs are written.
             let lines = (sign.front + sign.back).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            guard contains(lines.joined(separator: " "), words: words) else { continue }
+            guard query.matches(lines.joined(separator: " ")) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(sign.kind)@\(sign.x),\(sign.y),\(sign.z)", source: .sign,
                                   dimension: entry.dimension, position: MapCoordinates.center(of: CGPoint(x: sign.x, y: sign.z)),
                                   y: sign.y, title: ReadableName.from(sign.kind), detail: lines.joined(separator: " / "), count: 1))
@@ -380,7 +363,7 @@ nonisolated enum WorldSearch {
         for entry in index.creatures {
             guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
-            guard let name = creature.customName, contains(name + " " + ReadableName.from(creature.id), words: words) else { continue }
+            guard let name = creature.customName, query.matches(name + " " + ReadableName.from(creature.id)) else { continue }
             hits.append(layerHit(entry, y: Coordinates.block(creature.y), caption: creatureCaption(entry.value),
                                  layer: .creature(entry.value.group)))
         }

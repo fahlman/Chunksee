@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -15,9 +16,9 @@ import Testing
     @Test func readableNamesAndMatching() throws {
         #expect(ReadableName.from("minecraft:diamond_sword") == "Diamond Sword")
         let sword = try #require(ItemStack(item("minecraft:diamond_sword", 1, components: ["minecraft:custom_name": .string("Excalibur")])))
-        #expect(WorldSearch.matches(sword, words: ["diamond", "sword"]))
-        #expect(WorldSearch.matches(sword, words: ["excal"]))
-        #expect(!WorldSearch.matches(sword, words: ["diamond", "pickaxe"]))
+        #expect(WorldSearch.matches(sword, query: SearchQuery("diamond sword")))
+        #expect(WorldSearch.matches(sword, query: SearchQuery("excal")))
+        #expect(!WorldSearch.matches(sword, query: SearchQuery("diamond pickaxe")))
     }
 
     @Test func searchFindsContainersNestedItemsAndPlayers() {
@@ -311,13 +312,6 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct LayerSearchTests {
-    @Test func filtersParseAndOtherColonsDont() {
-        #expect(LayerFilter.parse("Pet: Summer")?.filter == .pet && LayerFilter.parse("Pet: Summer")?.rest == " Summer")
-        #expect(LayerFilter.parse("structure:")?.filter == .structure)
-        #expect(LayerFilter.parse("note: diamonds") == nil)
-        #expect(LayerFilter.parse("diamond") == nil)
-    }
-
     @Test func structuresPlacesAndCreatures() throws {
         func start(_ id: String, _ x: Int32) -> NBT {
             .compound(["id": .string(id), "ChunkX": .int(x), "ChunkZ": .int(0),
