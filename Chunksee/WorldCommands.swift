@@ -58,6 +58,9 @@ struct WorldCommands: Commands {
                 Button("Find…") { focusSearch?.focus() }
                     .keyboardShortcut("f")
                     .disabled(focusSearch == nil)
+                Button("Save Search") { session?.search.saveSearch() }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .disabled(session?.search.canSaveSearch != true)
             }
         }
         CommandGroup(before: .sidebar) {
@@ -71,6 +74,7 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("0")
                 .disabled(session?.map == nil)
             Button("Fit World") { session?.navigation.fitWorld() }
+                .keyboardShortcut("9")
                 .disabled(session?.navigation.canFitWorld != true)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
@@ -84,13 +88,9 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("y", modifiers: [.command, .option])
                 .disabled(session?.map == nil)
             Divider()
-            Toggle("World Info", isOn: Binding {
-                session?.selection.inspector == .world
-            } set: { shown in
-                session?.selection.inspector = shown ? .world : nil
-            })
-            .keyboardShortcut("i")
-            .disabled(session == nil)
+            inspectorCommand("World Info", inspector: .world)
+                .keyboardShortcut("i")
+            inspectorCommand("Storage", inspector: .storage)
             Toggle("Time Spent", isOn: Binding {
                 session?.heatMap.isShown ?? false
             } set: { session?.heatMap.isShown = $0 })
@@ -142,9 +142,16 @@ struct WorldCommands: Commands {
                 }
             }
             .disabled(session == nil)
-            Button("Save Search") { session?.search.saveSearch() }
-                .disabled(session?.search.canSaveSearch != true)
         }
+    }
+
+    private func inspectorCommand(_ title: LocalizedStringKey, inspector: Inspector) -> some View {
+        Toggle(title, isOn: Binding {
+            session?.selection.inspector == inspector
+        } set: { shown in
+            session?.selection.inspector = shown ? inspector : nil
+        })
+        .disabled(session == nil)
     }
 }
 

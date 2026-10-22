@@ -97,8 +97,9 @@ as ordinary folders. **File** offers opening and closing commands; viewing a wor
 rename or move commands. When updating from the previous window system, reopen your worlds once
 with **File ▸ Open…**; macOS will remember them from then on.
 
-**View** includes zoom, World Info, Time Spent, sidebar and inspector commands. **Navigate** jumps
-to coordinates, the world spawn or another dimension and saves the current search. Choose
+**View** includes zoom, World Info, Storage, Time Spent, sidebar and inspector commands.
+**Fit World** uses **⌘9**; **Actual Size** uses **⌘0**. **Edit ▸ Find** contains **Find…** (**⌘F**)
+and **Save Search** (**⇧⌘S**). **Navigate** jumps to coordinates, the world spawn or another dimension. Choose
 **Navigate ▸ Go to Coordinates…** (**⇧⌘G**) and enter X and Z to center the current dimension's
 map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) to return to the world spawn. In player details,
 **Locations** offers the saved last position, last death and respawn point when available. VoiceOver can also explore
