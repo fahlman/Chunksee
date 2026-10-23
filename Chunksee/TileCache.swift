@@ -16,7 +16,8 @@ nonisolated struct TileCache: Sendable {
     /// 9: Shared WORLD_SURFACE/actual-block starts replace the MOTION_BLOCKING fallback.
     /// 10: saved dimension height/ceiling context replaces the Nether-ID view rule.
     /// 11: independent Normal, Height and Water Depth styles, including the saved height scale.
-    /// 12: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
+    /// 12: the visible floor blends into shallow water.
+    /// 13: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
     static let rendererVersion = 13
 
