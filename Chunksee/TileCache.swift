@@ -19,7 +19,8 @@ nonisolated struct TileCache: Sendable {
     /// 12: the visible floor blends into shallow water.
     /// 13: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 13
+    /// 14: per-dimension block filtering and separate unfiltered/filtered cache slots.
+    static let rendererVersion = 14
 
     let directory: URL
 
@@ -32,16 +33,17 @@ nonisolated struct TileCache: Sendable {
         var ceilingY: Int? = nil
         var style = MapStyle.normal
         var heightScale: MapHeightScale? = nil
+        var filterKey: String? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
                 ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
             let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
-            return "\(prefix)\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            return "\(prefix)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
-        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway")." }
+        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered")." }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -91,13 +93,13 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil) -> Key? {
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter()) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
-                   style: style, heightScale: style == .height ? heightScale : nil)
+                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {
@@ -114,8 +116,9 @@ nonisolated struct TileCache: Sendable {
                                          isWater: water.map { $0 == 1 })
     }
 
-    /// Keeps Surface and the latest cutaway per region and style, so dragging across many heights does not
-    /// retain every intermediate slice. Failures only cost a re-render.
+    /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
+    /// the latest filtered variant. Many heights/filter combinations cannot grow the cache unboundedly;
+    /// disabling a filter preserves the ordinary tile. Failures only cost a re-render.
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard surface.pixels.count == count * 4, surface.heights.count == count,
