@@ -52,7 +52,7 @@ import Testing
 
     @Test func elevationUsesTheSavedSeaLevelAndTheSharedBuildScale() throws {
         var surface = RegionTileRenderer.Canvas()
-        for (x, y) in [(0, -64), (4, -12), (8, 40), (12, 319)] {
+        for (x, y) in [(0, -64), (4, -12), (8, 40), (12, 319), (16, 160)] {
             surface.set(x: x, z: 4, column: column(y: y))
         }
         let lit = surface.litPixels(heightScale: try scale(sea: 40))
@@ -62,7 +62,7 @@ import Testing
         #expect(pixel(lit, x: 12, z: 4) == [184, 184, 184, 255])
         let shifted = surface.litPixels(heightScale: try scale(sea: -12))
         #expect(pixel(shifted, x: 4, z: 4) == [200, 200, 200, 255])
-        #expect(pixel(shifted, x: 8, z: 4)[0] < 200)
+        #expect(pixel(shifted, x: 16, z: 4)[0] < pixel(lit, x: 16, z: 4)[0])
         #expect(surface.litPixels(heightScale: nil) == surface.pixels)
         #expect(surface.litPixels(heightScale: try scale(sea: nil)) == surface.pixels)
     }
