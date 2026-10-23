@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.50.1`, resolved to `0.50.1` (`bb913bfd099af1fd014d1896487edb8482a4c728`).
+  minor" from `0.50.2`, resolved to `0.50.2` (`75a5c12dc0e8b52809017e40e4c866052cdfaa39`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1098,6 +1098,14 @@ thumbnail lighting is app presentation, not a claim of identical live game shadi
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
 symbols. Static fallback variants omit trim/custom-model/live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
+
+Kit 0.50.2 supplies verified 26.3 closed single-chest and shulker geometry through the same
+AssetItem cuboids. The existing item renderer and caches therefore draw their installed skins
+without an app-side shape table, item-ID catalog or special-renderer branch. Chest date choices
+use the static fallback. Unsupported game versions/models or missing skins retain the symbols.
+Synthetic 64x64 atlas tests distinguish chest top/lid/body/latch regions and the red shulker's
+turned top and upper/lower sides, including normal shared caching. #395's native and bounded
+rendering checks remain required; no installed artwork is included in the app or test fixtures.
 
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
 styling across equipment, trades, inventory slots, Storage and matching search-item details.
