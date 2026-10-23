@@ -40,8 +40,15 @@ final class MinecraftResources {
     func forget() {
         generation = UUID()
         reads.cancel()
+        let previousLibraries = libraries, previousAccess = access
         access = nil
         libraries = GameAssetLibraries()
+        // Hidden native tabs may not run a view task when the generation changes. Retire all
+        // previous readers here, keeping permission until their current actor work finishes.
+        work.start(priority: .utility) {
+            await previousLibraries.close()
+            withExtendedLifetime(previousAccess) {}
+        }
         defaults.removeObject(forKey: Self.bookmarkKey)
     }
 
@@ -88,9 +95,18 @@ actor GameAssetLibraries {
         init(_ value: GameItemPictures) { self.value = value }
     }
     private var live: [Identity: WeakLibrary] = [:]
+    private var isClosed = false
+
+    func close() async {
+        isClosed = true
+        let pictures = live.values.compactMap(\.value)
+        live.removeAll()
+        for library in pictures { await library.close() }
+    }
 
     func pictures(for version: GameAssetVersion, under folder: URL) throws -> GameItemPictures? {
         try Task.checkCancellation()
+        guard !isClosed else { return nil }
         let url = folder.appendingPathComponent("versions", isDirectory: true)
             .appendingPathComponent(version.name, isDirectory: true)
             .appendingPathComponent(version.name + ".jar").resolvingSymlinksInPath()

@@ -7,7 +7,7 @@ import Foundation
 actor GameItemPictures {
     nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
-    private let assets: GameAssets
+    private var assets: GameAssets?
     private nonisolated let caches = Caches()
 
     /// NSCache synchronizes get/set/eviction (Foundation's documented thread-safety contract).
@@ -91,6 +91,15 @@ actor GameItemPictures {
         version = assets.version
     }
 
+    /// The source owner retires this reader even when hidden tabs still retain the actor.
+    /// Actor isolation lets a current synchronous draw finish before releasing its archive.
+    func close() {
+        assets = nil
+        caches.models.removeAllObjects()
+        caches.textures.removeAllObjects()
+        caches.images.removeAllObjects()
+    }
+
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {
@@ -103,6 +112,7 @@ actor GameItemPictures {
 
     func picture(for stack: ItemStack) throws -> CGImage? {
         try Task.checkCancellation()
+        guard let assets else { return nil }
         let key = stack.id as NSString
         let entry: ModelEntry
         if let cached = caches.models.object(forKey: key) { entry = cached }
@@ -128,7 +138,7 @@ actor GameItemPictures {
     private func texture(_ id: Identifier) -> ItemTexture? {
         let key = id.description as NSString
         if let cached = caches.textures.object(forKey: key) { return cached.texture }
-        let decoded = assets.texture(id.description).flatMap(ItemTexture.init(png:))
+        let decoded = assets?.texture(id.description).flatMap(ItemTexture.init(png:))
         caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
         return decoded
     }
