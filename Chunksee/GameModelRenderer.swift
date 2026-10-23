@@ -69,8 +69,8 @@ nonisolated enum GameModelRenderer {
             try Task.checkCancellation()
             var faces: [Face] = []
             let model = part.model
-            func append(_ vertices: [SIMD3<Float>], material: AssetModel.Material, uv: SIMD4<Float>,
-                        rotation: Int, tintIndex: Int?, element: AssetModel.Element?) -> Bool {
+            func append(_ vertices: [SIMD3<Float>], material: AssetModel.Material, uv: [SIMD2<Float>],
+                        tintIndex: Int?, element: AssetModel.Element?) -> Bool {
                 let image: ItemTexture
                 if let retained = retainedTextures[material.texture] { image = retained }
                 else {
@@ -90,10 +90,7 @@ nonisolated enum GameModelRenderer {
                 if let tintIndex, colors[partIndex].indices.contains(tintIndex) { tint = colors[partIndex][tintIndex] }
                 else { tint = 0xFFFFFF }
                 let color = SIMD3<Float>(Float((tint >> 16) & 255), Float((tint >> 8) & 255), Float(tint & 255)) / 255 * light
-                let corners = [SIMD2<Float>(uv.x, uv.y), SIMD2<Float>(uv.x, uv.w),
-                               SIMD2<Float>(uv.z, uv.w), SIMD2<Float>(uv.z, uv.y)]
-                let turned = (0..<4).map { corners[($0 + rotation / 90) % 4] / 16 }
-                faces.append(Face(points: points, uv: turned, texture: image, color: color))
+                faces.append(Face(points: points, uv: uv, texture: image, color: color))
                 return true
             }
             switch model.geometry {
@@ -103,7 +100,7 @@ nonisolated enum GameModelRenderer {
                     // preserving the game's draw-order behavior for coplanar overlays.
                     let z = Float(8.5) + Float(layer.tintIndex) * 0.001
                     guard append([SIMD3(0, 16, z), SIMD3(0, 0, z), SIMD3(16, 0, z), SIMD3(16, 16, z)],
-                                 material: layer.material, uv: SIMD4(0, 0, 16, 16), rotation: 0,
+                                 material: layer.material, uv: [SIMD2(0, 0), SIMD2(0, 1), SIMD2(1, 1), SIMD2(1, 0)],
                                  tintIndex: layer.tintIndex, element: nil) else { return nil }
                 }
             case .elements(let elements):
@@ -112,7 +109,7 @@ nonisolated enum GameModelRenderer {
                     for direction in AssetModel.Direction.allCases {
                         guard let face = element.faces[direction] else { continue }
                         guard append(vertices(for: direction, from: element.from, to: element.to), material: face.material,
-                                     uv: face.uv, rotation: face.rotation, tintIndex: face.tintIndex, element: element) else { return nil }
+                                     uv: face.textureCoordinates, tintIndex: face.tintIndex, element: element) else { return nil }
                     }
                 }
             }
@@ -151,10 +148,7 @@ nonisolated enum GameModelRenderer {
             var options: [(faces: [Face], weight: Double)] = []
             for alternative in part.alternatives {
                 try Task.checkCancellation()
-                // UV-locked rotated partial faces need the game's separate UV transform.
-                // Until supported, preserve the known fallback rather than sample the wrong area.
-                guard !alternative.uvLock || alternative.rotation == .zero,
-                      case .elements(let elements) = alternative.model.geometry else { return nil }
+                guard case .elements(let elements) = alternative.model.geometry else { return nil }
                 let r = SIMD3<Float>(alternative.rotation) * (-Float.pi / 180)
                 let rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
                     * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0))
@@ -188,11 +182,8 @@ nonisolated enum GameModelRenderer {
                             rgb = value
                         } else { rgb = 0xffffff }
                         let color = SIMD3<Float>(Float((rgb >> 16) & 255), Float((rgb >> 8) & 255), Float(rgb & 255)) / 255
-                        let uv = face.uv
-                        let corners = [SIMD2<Float>(uv.x, uv.y), SIMD2<Float>(uv.x, uv.w),
-                                       SIMD2<Float>(uv.z, uv.w), SIMD2<Float>(uv.z, uv.y)]
-                        let turned = (0..<4).map { corners[($0 + face.rotation / 90) % 4] / 16 }
-                        faces.append(Face(points: points, uv: turned, texture: image, color: color))
+                        faces.append(Face(points: points, uv: alternative.textureCoordinates(for: face, facing: direction),
+                                          texture: image, color: color))
                     }
                 }
                 options.append((faces, Double(alternative.weight) / total))
