@@ -88,8 +88,10 @@ with a link to this guide. Help opens only when requested.
    saved shield colors and patterns, straw beds, other unsupported special models, animated textures
    and saved trim/custom-model variants are not drawn yet.
    The Normal map also averages the visible top textures of supported block models. Missing or
-   unresolved models keep the standard map palette; biome tints and high-zoom texture detail
-   are still in progress.
+   unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
+   leaves, vines and water use each block column's biome colors, including enabled data-pack
+   overrides. Cutaway uses the biome at the displayed height. Missing definitions or assets keep
+   the standard colors; biome edges are not blended. High-zoom texture detail is still in progress.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 

@@ -18,6 +18,7 @@ actor GameAssetLibrary {
         let models = NSCache<NSString, ModelEntry>()
         let textures = NSCache<NSString, TextureEntry>()
         let images = NSCache<NSString, CGImage>()
+        let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
 
         init() {
@@ -27,6 +28,8 @@ actor GameAssetLibrary {
             textures.totalCostLimit = 16 * 1024 * 1024
             blockColors.countLimit = 4096
             blockColors.totalCostLimit = 2 * 1024 * 1024
+            blockMaterials.countLimit = 512
+            blockMaterials.totalCostLimit = 16 * 1024 * 1024
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
         }
@@ -74,14 +77,7 @@ actor GameAssetLibrary {
         }
 
         var cost: Int {
-            let geometry = item?.parts.reduce(1) { total, part in
-                switch part.model.geometry {
-                case .layers(let layers):
-                    total + layers.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count }
-                case .elements(let elements):
-                    total + elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count } }
-                }
-            } ?? 1
+            let geometry = item?.parts.reduce(1) { $0 + GameAssetLibrary.modelCost($1.model) } ?? 1
             return geometry + tints.reduce(0) { $0 + 24 + $1.count * MemoryLayout<AssetItem.Tint>.stride }
         }
     }
@@ -103,14 +99,16 @@ actor GameAssetLibrary {
         caches.models.removeAllObjects()
         caches.textures.removeAllObjects()
         caches.images.removeAllObjects()
+        caches.blockMaterials.removeAllObjects()
         caches.blockColors.removeAllObjects()
     }
 
     nonisolated private final class BlockKey: NSObject {
-        let state: BlockState
-        init(_ state: BlockState) { self.state = state }
-        override var hash: Int { state.hashValue }
-        override func isEqual(_ object: Any?) -> Bool { (object as? BlockKey)?.state == state }
+        let request: MapBlockColorRequest
+        init(_ state: BlockState) { request = MapBlockColorRequest(state: state) }
+        init(_ request: MapBlockColorRequest) { self.request = request }
+        override var hash: Int { request.hashValue }
+        override func isEqual(_ object: Any?) -> Bool { (object as? BlockKey)?.request == request }
     }
     nonisolated private final class ColorEntry {
         let color: MapColor?
@@ -127,10 +125,14 @@ actor GameAssetLibrary {
     /// immutable cache entries directly; a missing entry goes through the actor to decode it.
     /// An inner nil is a cached unsupported model, not a cache miss.
     nonisolated func cachedMapColors(for states: [BlockState]) -> [MapColor?]? {
+        cachedMapColors(requests: states.map { MapBlockColorRequest(state: $0) })
+    }
+
+    nonisolated func cachedMapColors(requests: [MapBlockColorRequest]) -> [MapColor?]? {
         var result: [MapColor?] = []
-        result.reserveCapacity(states.count)
-        for state in states {
-            guard let entry = caches.blockColors.object(forKey: BlockKey(state)) else { return nil }
+        result.reserveCapacity(requests.count)
+        for request in requests {
+            guard let entry = caches.blockColors.object(forKey: BlockKey(request)) else { return nil }
             result.append(entry.color)
         }
         return result
@@ -139,29 +141,83 @@ actor GameAssetLibrary {
     /// Results retain input order, including repeated states and unavailable colors. The
     /// renderer indexes them by palette entry instead of hashing full states for every column.
     func mapColors(for states: [BlockState]) throws -> [MapColor?] {
+        try mapColors(requests: states.map { MapBlockColorRequest(state: $0) })
+    }
+
+    func mapColors(requests: [MapBlockColorRequest]) throws -> [MapColor?] {
         try checkAvailable()
-        guard let assets else { throw CancellationError() }
         var result: [MapColor?] = []
-        result.reserveCapacity(states.count)
-        for state in states {
+        result.reserveCapacity(requests.count)
+        for request in requests {
             try Task.checkCancellation()
-            let key = BlockKey(state)
+            let key = BlockKey(request)
             let entry: ColorEntry
             if let cached = caches.blockColors.object(forKey: key) { entry = cached }
             else {
                 let color: MapColor?
-                if let model = assets.blockModel(for: state) {
+                if let model = material(for: request.state).model {
                     color = try GameModelRenderer.topColor(model, tint: { index in
-                        if case .constant(let value) = state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
-                        return nil // Biome-dependent color is supplied by the separate biome-tint work.
+                        if let value = request.tints.first(where: { $0.index == index }) { return value.color }
+                        if case .constant(let value) = request.state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
+                        return nil
                     }, texture: texture)
                 } else { color = nil }
                 entry = ColorEntry(color)
-                caches.blockColors.setObject(entry, forKey: key, cost: 128 + state.description.utf8.count)
+                caches.blockColors.setObject(entry, forKey: key, cost: 128 + request.state.description.utf8.count + request.tints.count * 16)
             }
             result.append(entry.color)
         }
         return result
+    }
+
+    nonisolated func cachedMapMaterials(for states: [BlockState]) -> [MapBlockMaterial]? {
+        var result: [MapBlockMaterial] = []
+        result.reserveCapacity(states.count)
+        for state in states {
+            guard let entry = caches.blockMaterials.object(forKey: BlockKey(state)) else { return nil }
+            result.append(entry)
+        }
+        return result
+    }
+
+    func mapMaterials(for states: [BlockState]) throws -> [MapBlockMaterial] {
+        try checkAvailable()
+        return try states.map { state in
+            try Task.checkCancellation()
+            return material(for: state)
+        }
+    }
+
+    private func material(for state: BlockState) -> MapBlockMaterial {
+        let key = BlockKey(state)
+        if let cached = caches.blockMaterials.object(forKey: key) { return cached }
+        let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state), version: version.dataVersion)
+        let cost = material.model?.parts.reduce(1) { total, part in
+            total + part.alternatives.reduce(0) { $0 + Self.modelCost($1.model) }
+        } ?? 1
+        caches.blockMaterials.setObject(material, forKey: key, cost: cost + material.biomeTints.count * 32)
+        return material
+    }
+
+    private nonisolated static func modelCost(_ model: AssetModel) -> Int {
+        switch model.geometry {
+        case .layers(let layers): layers.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count }
+        case .elements(let elements):
+            elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count } }
+        }
+    }
+
+    /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels
+    /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
+    func biomeColors(in world: World) throws -> MapBiomeColors {
+        try checkAvailable()
+        let definitions = try world.biomeDefinitions(assets: assets)
+        var maps: [Identifier: ItemTexture] = [:]
+        for name in ["grass", "foliage", "dry_foliage"] {
+            try Task.checkCancellation()
+            if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
+        }
+        return MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
     }
 
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.

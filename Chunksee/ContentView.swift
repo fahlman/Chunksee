@@ -222,9 +222,7 @@ struct WorldView: View {
         .focusedSceneValue(\.mapImageSheet, $showsImageExport)
         .focusedSceneValue(\.mapBlockFilterSheet, $showsBlockFilter)
         .background { WorldKeyboardShortcuts(session: session) }
-        .modifier(WorldGameAssets(resources: session.names.minecraft,
-                                    version: GameAssetVersion(name: session.world.level.versionName, dataVersion: session.world.level.dataVersion),
-                                    map: session.map))
+        .modifier(WorldGameAssets(world: session.resources))
     }
 
     /// Only input through the native List binding navigates and requests sidebar focus.

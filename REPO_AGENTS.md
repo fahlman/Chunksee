@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.55.1`, resolved to `0.55.1` (`4bf571c8ca7b47957d1e7757a50efca9f2851d2a`).
+  minor" from `0.56.0`, resolved to `0.56.0` (`84030303a7ce0629e57a1daa63bab76b7e11ef5e`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1199,12 +1199,31 @@ orthographic top view. It averages visible premultiplied pixels, excluding trans
 weights model alternatives. Multipart combinations are bounded at 64 and visible faces at 4096;
 unresolved or over-budget models retain BlockColors. Animated strips use their first image frame.
 
-Constant block tints apply. Biome-dependent tints, rotated UV-locked faces and ambiguous compact
+Constant block tints apply. Rotated UV-locked faces and ambiguous compact
 states retain the existing fallback until their separate adoption; no registry defaults are
 invented. Transparent map blocks and water keep the map's rules. Height ignores the asset source.
 The shared library bounds color results (including misses), reuses decoded textures, and clears
 all caches on retirement. A retired reader cancels map work instead of caching fallback colors
-under its old source key. TileCache version 15 includes a stable URL/size/modification/version
+under its old source key. TileCache version 16 includes a stable URL/size/modification/version
 source key; changing or removing the source cancels old map jobs and redraws through MapModel's
 existing invalidator. No archive or installed artwork is bundled. High-zoom texture detail remains
 follow-up work in #363.
+
+Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
+dimension documents. The existing GameAssetLibrary actor loads Kit's complete registered-biome
+catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
+all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
+the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
+passes checked absolute X/Z to the swamp rule. No neighbor blending is applied. Height remains
+independent of game/biome colors; unavailable facts retain BlockColors.
+
+Prepared block materials are bounded to 512 entries and 16 MiB estimated cost. They share the
+item model's cost estimate, texture owner and rasterizer. A chunk groups color requests by palette
+index and resolved tint values, preserving warm synchronous cache reads and avoiding full-state
+hashing or rasterization for every column. Different worlds share the archive but never mutable
+pack-specific colors. Tile keys include the resolved biome fields; unchanged metadata/autosaves
+do not invalidate them. Source changes retire colors for all tabs once. World-level background
+work owns and drains color refreshes; newer reads and close reject old completions. Level changes
+check enabled pack/version metadata before rereading definitions; data-pack notifications force
+a reload that remains pending across overlapping autosaves. Read errors retain the last good
+snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.

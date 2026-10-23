@@ -25,6 +25,7 @@ final class MapModel {
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
     private var gameAssets: GameAssetLibrary?
+    private var biomeColors: MapBiomeColors?
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
     var currentRenderer: RegionTileRenderer {
         var current = renderer
@@ -32,6 +33,7 @@ final class MapModel {
         current.style = style
         current.blockFilter = blockFilter
         current.gameAssets = style == .height ? nil : gameAssets
+        current.biomeColors = style == .height ? nil : biomeColors
         return current
     }
     private let work: BackgroundWork
@@ -276,6 +278,8 @@ final class MapModel {
         coordinateWork.close()
         cacheWork.close()
         cancel()
+        gameAssets = nil
+        biomeColors = nil
     }
 
     // MARK: The hover readout's block
@@ -443,9 +447,10 @@ final class MapModel {
 
     /// The source owner shares this exact library with pictures. Swapping it cancels old
     /// renders; stable file keys let a reselected unchanged jar reuse its correct disk tiles.
-    func setGameAssets(_ library: GameAssetLibrary?) {
-        guard !isClosed, gameAssets?.identity != library?.identity else { return }
+    func setGameAssets(_ library: GameAssetLibrary?, biomeColors: MapBiomeColors? = nil) {
+        guard !isClosed, gameAssets?.identity != library?.identity || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
         gameAssets = library
+        self.biomeColors = library == nil ? nil : biomeColors
         if style != .height { reloadTiles() }
     }
 

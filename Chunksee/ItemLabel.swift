@@ -90,38 +90,33 @@ extension EnvironmentValues {
 /// A document retains its shared library. Changing the chosen folder or saved version makes
 /// old pictures ineligible immediately; returning to the app also notices a replaced jar.
 struct WorldGameAssets: ViewModifier {
-    let resources: MinecraftResources
-    let version: GameAssetVersion?
-    let map: MapModel?
+    let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
-    @State private var loaded: (source: Source, pictures: GameAssetLibrary)?
-
-    private struct Source: Equatable {
-        let generation: UUID
-        let version: GameAssetVersion?
-    }
+    @State private var loaded: (source: WorldGameAssetSource, pictures: GameAssetLibrary)?
     private struct Request: Equatable {
-        let source: Source
+        let source: WorldGameAssetSource
         let phase: ScenePhase
-        let map: ObjectIdentifier?
+        let world: ObjectIdentifier
     }
 
     func body(content: Content) -> some View {
-        let source = Source(generation: resources.generation, version: version)
+        let resources = world.names.minecraft
+        let version = GameAssetVersion(name: world.world.level.versionName, dataVersion: world.world.level.dataVersion)
+        let source = WorldGameAssetSource(generation: resources.generation, version: version)
         content
             .environment(\.gameAssetLibrary, loaded?.source == source ? loaded?.pictures : nil)
-            .task(id: Request(source: source, phase: scenePhase, map: map.map(ObjectIdentifier.init))) {
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world))) {
+                world.prepareGameAssets(source)
                 if loaded?.source != source {
                     loaded = nil
-                    map?.setGameAssets(nil)
                 }
                 guard scenePhase == .active else { return }
                 guard let version, let pictures = await resources.library(for: version), !Task.isCancelled else {
-                    if !Task.isCancelled { loaded = nil; map?.setGameAssets(nil) }
+                    if !Task.isCancelled { loaded = nil; world.setGameAssets(nil, source: source) }
                     return
                 }
                 loaded = (source, pictures)
-                map?.setGameAssets(pictures)
+                world.setGameAssets(pictures, source: source)
             }
     }
 }

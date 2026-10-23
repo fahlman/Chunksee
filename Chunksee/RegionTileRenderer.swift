@@ -26,6 +26,12 @@ nonisolated struct RegionTileRenderer: Sendable {
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
     var gameAssets: GameAssetLibrary?
+    var biomeColors: MapBiomeColors?
+
+    private var currentBiomeColors: MapBiomeColors? {
+        biomeColors?.assetSourceKey == gameAssets?.sourceKey ? biomeColors : nil
+    }
+    var colorSourceKey: String? { currentBiomeColors?.sourceKey ?? gameAssets?.sourceKey }
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
@@ -43,7 +49,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = try await coloredColumns(in: file, localX: localX, localZ: localZ) {
+                if let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ, style: style, heightScale: heightScale)
                 }
             }
@@ -56,7 +62,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        let columns = try await coloredColumns(in: file, localX: localX, localZ: localZ)
+                        let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ)
                         return columns.map { (localX, localZ, $0) }
                     }
                 }
@@ -107,7 +113,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if style != .height { try await gameAssets?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : gameAssets?.sourceKey)
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : colorSourceKey)
         var surface: Canvas?
         var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
@@ -153,10 +159,11 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     /// Color the already selected blocks; do not decode or traverse the chunk a second time.
-    private func coloredColumns(in file: RegionFile, localX: Int, localZ: Int) async throws -> [Column?]? {
+    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> [Column?]? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
         guard style != .height, let gameAssets else { return scanned.columns }
+        let biomeColors = currentBiomeColors
         var indices: [PaletteEntry: Int] = [:]
         var states: [BlockState] = []
         func index(for entry: PaletteEntry) -> Int? {
@@ -167,19 +174,73 @@ nonisolated struct RegionTileRenderer: Sendable {
             indices[entry] = index
             return index
         }
-        let positions = scanned.columns.map { column -> (surface: Int?, floor: Int?) in
+        var positions = scanned.columns.map { column -> (surface: Int?, floor: Int?) in
             guard let column else { return (nil, nil) }
             let surface = column.waterDepth == 0
                 ? index(for: PaletteEntry(section: column.section, palette: column.palette)) : nil
             return (surface, column.waterFloor.flatMap { index(for: $0) })
         }
+        let origin = region.blockOrigin
+        func coordinates(_ column: Int) -> (x: Int32, z: Int32)? {
+            guard let origin else { return nil }
+            let x = origin.x.addingReportingOverflow(localX * 16 + column % 16)
+            let z = origin.z.addingReportingOverflow(localZ * 16 + column / 16)
+            guard !x.overflow, !z.overflow,
+                  let x = Int32(exactly: x.partialValue), let z = Int32(exactly: z.partialValue) else { return nil }
+            return (x, z)
+        }
+        var requests = states.map { MapBlockColorRequest(state: $0) }
+        if let biomeColors {
+            let materials: [MapBlockMaterial]
+            if let cached = gameAssets.cachedMapMaterials(for: states) { materials = cached }
+            else { materials = try await gameAssets.mapMaterials(for: states) }
+            struct TintKey: Hashable {
+                let palette: Int
+                let tints: [MapBlockColorRequest.Tint]
+            }
+            var tintedIndices: [TintKey: Int] = [:]
+            requests = []
+            func tintedIndex(_ palette: Int?, column: Int, y: Int) -> Int? {
+                guard let palette else { return nil }
+                let material = materials[palette]
+                var tints: [MapBlockColorRequest.Tint] = []
+                if let point = coordinates(column) {
+                    for tint in material.biomeTints {
+                        let height = y.addingReportingOverflow(tint.yOffset)
+                        guard !height.overflow else { continue }
+                        let id = scanned.sections.biome(x: column % 16, y: height.partialValue, z: column / 16)
+                        if let rgb = biomeColors.color(tint.source, biome: id, x: point.x, z: point.z) {
+                            tints.append(.init(index: tint.index, color: rgb))
+                        }
+                    }
+                }
+                let key = TintKey(palette: palette, tints: tints)
+                if let index = tintedIndices[key] { return index }
+                let index = requests.count
+                requests.append(MapBlockColorRequest(state: material.state, tints: tints))
+                tintedIndices[key] = index
+                return index
+            }
+            positions = positions.enumerated().map { index, position in
+                guard let column = scanned.columns[index] else { return (nil, nil) }
+                let floorY = column.y.subtractingReportingOverflow(column.waterDepth)
+                return (tintedIndex(position.surface, column: index, y: column.y),
+                        floorY.overflow ? nil : tintedIndex(position.floor, column: index, y: floorY.partialValue))
+            }
+        }
         let colors: [MapColor?]
-        if let cached = gameAssets.cachedMapColors(for: states) { colors = cached }
-        else { colors = try await gameAssets.mapColors(for: states) }
-        return zip(scanned.columns, positions).map { value, position in
+        if let cached = gameAssets.cachedMapColors(requests: requests) { colors = cached }
+        else { colors = try await gameAssets.mapColors(requests: requests) }
+        return zip(scanned.columns, positions).enumerated().map { index, pair in
+            let (value, position) = pair
             guard var column = value else { return nil }
             if let index = position.surface, let color = colors[index] {
                 column.color = color.shaded(column.colorShade)
+            }
+            if column.waterDepth > 0, let biomeColors, let point = coordinates(index),
+               let rgb = biomeColors.color(.water,
+                   biome: scanned.sections.biome(x: index % 16, y: column.y, z: index / 16), x: point.x, z: point.z) {
+                column.color = MapColor(rgb).shaded(column.colorShade)
             }
             if let index = position.floor, let color = colors[index] {
                 column.waterFloorColor = color
@@ -269,6 +330,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         func blockID(section: Int, palette: Int) -> String {
             blockState(at: PaletteEntry(section: section, palette: palette))?.id ?? ""
         }
+
+        func biome(x: Int, y: Int, z: Int) -> String? { chunk.biome(x: x, y: y, z: z) }
 
         func blockState(at entry: PaletteEntry) -> BlockState? {
             guard chunk.sections.indices.contains(entry.section),
