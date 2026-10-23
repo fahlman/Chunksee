@@ -1118,13 +1118,17 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameAssetLibraries resolves only the saved version name
 and data version, checking the jar's own metadata and a fresh file stamp before/after reading.
 The jar is capped at 128 MiB and the live registry is weak: documents using one file share its
-GameItemPictures actor, while closing the last user releases it. A changed folder/version source
-also discards a document's old library while its scene is inactive; Settings must not leave the
-removed archive retained until each dimension becomes active. Only active scenes load a replacement.
-Returning to an active scene rechecks file identity. A jar is an immutable snapshot; no artwork
-is extracted or shipped. The native lifetime regression removes the folder while Settings is
-active, verifies fallback pictures and release of obsolete archive descriptors after pending work,
-then rechooses the folder and verifies pictures return in the still-open document.
+GameItemPictures actor, while closing the last user releases it. A changed folder generation
+also retires the previous registry through MinecraftResources' existing BackgroundWork owner.
+The registry rejects new requests and closes every live picture actor, clearing its archive and
+caches after any current synchronous draw. The cleanup retains the previous read-only access
+lease until that work finishes. Hidden native tabs may retain the empty actor, but cannot retain
+an obsolete archive or reopen it. View generation checks still hide stale pictures immediately;
+only active scenes load a replacement. Returning to an active scene rechecks file identity.
+A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
+across Remove/rechoose and close a registry containing two files. The native regression also
+covers a hidden document tab while Settings is active, then rechooses the folder and checks
+pictures in the still-open documents.
 
 GameItemPictures resolves definitions/models and saved dye/potion colors through published Kit
 APIs. Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures

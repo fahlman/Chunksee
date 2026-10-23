@@ -274,6 +274,9 @@ import UniformTypeIdentifiers
         let first = try #require(await resources.pictures(for: version))
         let second = try #require(await resources.pictures(for: version))
         #expect(first === second)
+        let stack = ItemStack(id: "test:flat")
+        #expect(try await first.picture(for: stack) != nil)
+        #expect(second.cachedPicture(for: stack) != nil)
         let wrong = try #require(GameAssetVersion(name: "26.3", dataVersion: 1))
         #expect(await resources.pictures(for: wrong) == nil)
         let missing = try #require(GameAssetVersion(name: "1.21", dataVersion: 3953))
@@ -282,12 +285,35 @@ import UniformTypeIdentifiers
         resources.forget()
         #expect(resources.generation != generation && resources.folder == nil)
         #expect(await resources.pictures(for: version) == nil)
+        await resources.waitUntilIdle()
+        // Retained inactive views cannot keep reading or warming the retired source.
+        #expect(first.cachedPicture(for: stack) == nil)
+        #expect(try await second.picture(for: stack) == nil)
         resources.choose(fixture.root)
         let reopened = try #require(await resources.pictures(for: version))
         #expect(first !== reopened)
-        // Old views may still finish immutable work, but their source generation no longer matches.
-        #expect(try await first.picture(for: ItemStack(id: "test:flat")) != nil)
+        #expect(try await reopened.picture(for: stack) != nil)
+        #expect(try await first.picture(for: stack) == nil)
         await resources.waitUntilIdle()
+    }
+
+    @Test func closingTheRegistryRetiresEveryRetainedLibraryAndCannotReopen() async throws {
+        let firstFixture = try ItemPictureFixture(), secondFixture = try ItemPictureFixture()
+        defer { firstFixture.remove(); secondFixture.remove() }
+        let libraries = GameAssetLibraries()
+        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
+        let first = try #require(try await libraries.pictures(for: version, under: firstFixture.root))
+        let second = try #require(try await libraries.pictures(for: version, under: secondFixture.root))
+        #expect(first !== second)
+        let stack = ItemStack(id: "test:flat")
+        #expect(try await first.picture(for: stack) != nil)
+        #expect(try await second.picture(for: stack) != nil)
+        await libraries.close()
+        for library in [first, second] {
+            #expect(library.cachedPicture(for: stack) == nil)
+            #expect(try await library.picture(for: stack) == nil)
+        }
+        #expect(try await libraries.pictures(for: version, under: firstFixture.root) == nil)
     }
 
     @Test func changingTheJarDoesNotReuseItsOldPictures() async throws {
