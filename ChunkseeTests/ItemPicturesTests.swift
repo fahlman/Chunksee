@@ -472,7 +472,7 @@ struct ItemPictureFixture {
     }
 
     func remove() { try? FileManager.default.removeItem(at: root) }
-    func library() throws -> GameAssetLibrary { GameAssetLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: jar.path) }
+    func library() throws -> GameAssetLibrary { GameAssetLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: CacheKey.hash(jar.path)) }
 
     static func png(_ pixels: [UInt8], width: Int = 2, height: Int = 2) throws -> Data {
         let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))

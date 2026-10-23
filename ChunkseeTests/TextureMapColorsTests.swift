@@ -136,15 +136,16 @@ import Testing
         try block("test:locked", ["variants": ["": ["model": "test:item/cube", "x": 90, "uvlock": true]]])
         try block("test:weighted", ["variants": ["": [["model": "test:block/red", "weight": 1], ["model": "test:block/blue", "weight": 3]]]])
         func face(_ texture: String, y: Int = 16, tint: Bool = false) -> [String: Any] {
-            var top: [String: Any] = ["texture": texture]
+            var top: [String: Any] = ["texture": "#" + String(texture.split(separator: "/").last!)]
             if tint { top["tintindex"] = 0 }
             return ["from": [0, 0, 0], "to": [16, y, 16], "faces": ["up": top]]
         }
+        let textures = Dictionary(uniqueKeysWithValues: ["red", "blue", "white", "clear", "animated"].map { ($0, "test:item/" + $0) })
         for id in ["red", "blue", "clear", "animated"] {
-            try json("assets/test/models/block/\(id).json", ["elements": [face("test:item/" + id)]])
+            try json("assets/test/models/block/\(id).json", ["textures": textures, "elements": [face("test:item/" + id)]])
         }
-        try json("assets/test/models/block/occluded.json", ["elements": [face("test:item/red", y: 8), face("test:item/blue")]])
-        try json("assets/test/models/block/tinted.json", ["elements": [face("test:item/white", tint: true)]])
+        try json("assets/test/models/block/occluded.json", ["textures": textures, "elements": [face("test:item/red", y: 8), face("test:item/blue")]])
+        try json("assets/test/models/block/tinted.json", ["textures": textures, "elements": [face("test:item/white", tint: true)]])
         for id in ["minecraft:spruce_leaves", "minecraft:grass_block"] {
             try block(id, ["variants": ["": ["model": "test:block/tinted"]]])
         }
