@@ -15,6 +15,15 @@ nonisolated struct MapColor: Equatable, Sendable {
         func channel(_ v: UInt8) -> UInt32 { UInt32(min(255, max(0, (Double(v) * factor).rounded()))) }
         return MapColor(channel(red) << 16 | channel(green) << 8 | channel(blue))
     }
+
+    /// Interpolates displayed sRGB channels; amount 0 retains this colour, 1 uses the other.
+    func blended(with other: MapColor, amount: Double) -> MapColor {
+        let amount = min(max(amount, 0), 1)
+        func channel(_ a: UInt8, _ b: UInt8) -> UInt32 {
+            UInt32((Double(a) + (Double(b) - Double(a)) * amount).rounded())
+        }
+        return MapColor(channel(red, other.red) << 16 | channel(green, other.green) << 8 | channel(blue, other.blue))
+    }
 }
 
 /// Top-down map colors for blocks. This is presentation, so it lives in the app, not ChunkseeKit.

@@ -172,6 +172,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// copying a block ID for every column the map draws.
         var section = 0
         var palette = 0
+        /// The first visible block directly below contiguous water; absent across gaps or at the depth cap.
+        var waterFloorColor: MapColor?
     }
 
     /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
@@ -303,6 +305,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         }
                     case .water:
                         guard case .water = entry, var column = states[i].column else {
+                            if case .solid(let color) = entry { states[i].column?.waterFloorColor = color }
                             states[i].phase = .done
                             return false
                         }
@@ -320,8 +323,10 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     static func baseColor(for column: Column) -> MapColor {
         guard column.waterDepth > 0 else { return column.color }
-        // Shallow water is lighter, deep water darker.
-        return column.color.shaded(1.15 - min(Double(column.waterDepth), 24) / 40)
+        let water = column.color.shaded(1.15 - min(Double(column.waterDepth), 24) / 40)
+        guard let floor = column.waterFloorColor, column.waterDepth < 16 else { return water }
+        // Retain a blue cast at the shore, fading the visible floor out over sixteen blocks.
+        return floor.blended(with: water, amount: 0.2 + Double(column.waterDepth) / 20)
     }
 
     /// Pixels plus the surface height of each column, kept so relief shading can compare

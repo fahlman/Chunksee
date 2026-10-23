@@ -17,7 +17,7 @@ nonisolated struct TileCache: Sendable {
     /// 10: saved dimension height/ceiling context replaces the Nether-ID view rule.
     /// 11: independent Normal, Height and Water Depth styles, including the saved height scale.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 11
+    static let rendererVersion = 12
 
     let directory: URL
 
