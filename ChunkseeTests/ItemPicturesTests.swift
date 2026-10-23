@@ -9,6 +9,54 @@ import UniformTypeIdentifiers
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct ItemPicturesTests {
+    @Test func chestsUseTheirTopLidBodyAndLatchTextureRegions() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let checks: [(String, [(Int, Int, [UInt8])])] = [
+            ("chest_front", [(20, 40, [0, 255, 0, 255]), (20, 16, [0, 0, 255, 255]),
+                              (32, 24, [255, 255, 0, 255])]),
+            ("chest_top", [(32, 32, [255, 0, 0, 255])]),
+            ("chest_side", [(32, 40, [0, 255, 255, 255])])
+        ]
+        for (id, samples) in checks {
+            let stack = ItemStack(id: "test:" + id)
+            let image = try #require(try await library.picture(for: stack))
+            let pixels = try ItemPictureFixture.pixels(image)
+            for (x, y, expected) in samples { #expect(pixels.color(x, y) == expected, "\(id) at \(x), \(y)") }
+            #expect(library.cachedPicture(for: ItemStack(id: stack.id, count: 64)) === image)
+        }
+    }
+
+    @Test func redShulkersUseTheirTopAndBothSideRegionsAfterTheLocalTurn() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let checks: [(String, [(Int, Int, [UInt8])])] = [
+            ("shulker_front", [(32, 12, [0, 0, 255, 255]), (32, 56, [0, 255, 0, 255])]),
+            ("shulker_top", [(32, 32, [255, 0, 0, 255])]),
+            ("shulker_side", [(32, 12, [0, 255, 255, 255])])
+        ]
+        for (id, samples) in checks {
+            let stack = ItemStack(id: "test:" + id)
+            let image = try #require(try await library.picture(for: stack))
+            let pixels = try ItemPictureFixture.pixels(image)
+            for (x, y, expected) in samples { #expect(pixels.color(x, y) == expected, "\(id) at \(x), \(y)") }
+            #expect(library.cachedPicture(for: stack) === image)
+        }
+    }
+
+    @Test func unverifiedContainerVersionsKeepTheirFallback() async throws {
+        let fixture = try ItemPictureFixture(dataVersion: 5024)
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        for id in ["test:chest_front", "test:shulker_front"] {
+            #expect(try await library.picture(for: ItemStack(id: id)) == nil)
+            #expect(library.cachedPicture(for: ItemStack(id: id)) == nil)
+        }
+        #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
+    }
+
     @Test func layeredSpritesKeepTheirOrientationAndNearestPixels() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
@@ -287,7 +335,7 @@ struct ItemPictureFixture {
     let root: URL
     let jar: URL
 
-    init() throws {
+    init(dataVersion: Int = 5023) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("ChunkseeTests-ItemPictures-" + UUID().uuidString)
         let source = root.appendingPathComponent("source")
         jar = root.appendingPathComponent("versions/26.3/26.3.jar")
@@ -299,7 +347,7 @@ struct ItemPictureFixture {
             try data.write(to: url)
         }
         func json(_ path: String, _ object: Any) throws { try write(path, JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) }
-        try json("version.json", ["id": "26.3", "world_version": 5023])
+        try json("version.json", ["id": "26.3", "world_version": dataVersion])
         for id in ["flat", "leather", "potion", "cube", "turned", "grass", "euler", "diagonal", "rescaled"] {
             var model: [String: Any] = ["type": "minecraft:model", "model": "test:item/" + id]
             if id == "leather" { model["tints"] = [["type": "minecraft:dye", "default": 0x804020]] }
@@ -342,6 +390,49 @@ struct ItemPictureFixture {
                                ("quadrants", red + green + blue + [255, 255, 0, 255]), ("overlay", red + clear + clear + clear)] {
             try write("assets/test/textures/item/\(name).png", Self.png(pixels))
         }
+        // Flat colors mark independent regions of a 64x64 entity skin. Axis-aligned views
+        // let the pixel tests identify the lid, body, latch and flipped shulker top directly.
+        for container in ["chest", "shulker"] {
+            for (view, rotation) in [("front", [0, 0, 0]), ("top", [90, 0, 0]), ("side", [0, -90, 0])] {
+                let id = container + "_" + view
+                var model: [String: Any] = [
+                    "type": "minecraft:special", "base": "test:item/" + id,
+                    "model": ["type": container == "chest" ? "minecraft:chest" : "minecraft:shulker_box",
+                              "texture": container == "chest" ? "minecraft:normal" : "minecraft:shulker_red"]
+                ]
+                if container == "shulker" {
+                    model["transformation"] = ["left_rotation": [1, 0, 0, 0],
+                                               "right_rotation": [0, 0, 0, 1],
+                                               "translation": [0.5, 1.4995, 0.5],
+                                               "scale": [0.9995, 0.9995, 0.9995]]
+                }
+                try json("assets/test/items/\(id).json", ["model": model])
+                try json("assets/test/models/item/\(id).json", [
+                    "gui_light": "front", "display": ["gui": ["rotation": rotation]]
+                ])
+            }
+        }
+        func skin(_ regions: [(Int, Int, Int, Int, [UInt8])]) throws -> Data {
+            var pixels = [UInt8](repeating: 0, count: 64 * 64 * 4)
+            for (x, y, width, height, color) in regions {
+                for row in y..<y + height {
+                    for column in x..<x + width {
+                        let index = (row * 64 + column) * 4
+                        pixels.replaceSubrange(index..<index + 4, with: color)
+                    }
+                }
+            }
+            return try Self.png(pixels, width: 64, height: 64)
+        }
+        let cyan: [UInt8] = [0, 255, 255, 255], yellow: [UInt8] = [255, 255, 0, 255]
+        try write("assets/minecraft/textures/entity/chest/normal.png", skin([
+            (28, 0, 14, 14, red), (42, 14, 14, 5, blue), (42, 33, 14, 10, green),
+            (28, 33, 14, 10, cyan), (4, 1, 2, 4, yellow)
+        ]))
+        try write("assets/minecraft/textures/entity/shulker/shulker_red.png", skin([
+            (16, 0, 16, 16, red), (16, 16, 16, 12, blue), (16, 44, 16, 8, green),
+            (32, 16, 16, 12, cyan)
+        ]))
         var colorMap = Array(repeating: red, count: 256 * 256).flatMap { $0 }
         colorMap.replaceSubrange(0..<4, with: green)
         try write("assets/minecraft/textures/colormap/grass.png", Self.png(colorMap, width: 256, height: 256))
