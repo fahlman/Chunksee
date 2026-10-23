@@ -324,7 +324,7 @@ import UniformTypeIdentifiers
         let first = try #require(try await libraries.library(for: version, under: fixture.root))
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: fixture.jar.path)
         let replacement = try #require(try await libraries.library(for: version, under: fixture.root))
-        #expect(first !== replacement)
+        #expect(first !== replacement && first.sourceKey != replacement.sourceKey)
         for name in ["", "..", "/tmp/test", "a/b", "a\\b", "a\0b"] {
             #expect(GameAssetVersion(name: name, dataVersion: 5023) == nil)
         }

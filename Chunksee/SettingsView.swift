@@ -23,7 +23,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder) to use saved player names and item pictures from the installed version matching each world. Items use symbols when their pictures aren’t available.")
+                Text("Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder) to use saved player names, item pictures and map colors from the installed version matching each world. Missing pictures use symbols; unavailable map colors use the standard palette.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
