@@ -61,7 +61,7 @@ import Testing
         let oldDirectory = worldFolder.appendingPathComponent("example_ice_caves")
         let region = RegionPosition(x: 0, z: 0)
         let key = TileCache.Key(region: region, fileSize: 12_288, modified: 1_790_000_000)
-        TileCache(directory: oldDirectory).store([UInt8](repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4), for: key)
+        TileCache(directory: oldDirectory).store(RegionTileRenderer.Canvas(), for: key)
         _ = try TestWorld.legacyCache([999], name: "inhabitedTimes.0.0.matching.v17",
                                       directory: oldDirectory.appendingPathComponent("scans"))
         for id in ["example:ice-caves", "example:ice_caves", "example:ice/caves"] {

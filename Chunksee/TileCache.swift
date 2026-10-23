@@ -2,7 +2,7 @@ import ChunkseeKit
 import CryptoKit
 import Foundation
 
-/// Rendered region pixels kept on disk, so reopening a world draws from the cache instead of
+/// Unlit region colours, heights and water masks kept on disk, so reopening a world draws from the cache instead of
 /// decoding every chunk again. An entry is valid only for the exact region file it was rendered
 /// from (size and modification date) and the current renderer version, so regions changed in
 /// game re-render automatically.
@@ -16,9 +16,11 @@ nonisolated struct TileCache: Sendable {
     /// 9: Shared WORLD_SURFACE/actual-block starts replace the MOTION_BLOCKING fallback.
     /// 10: saved dimension height/ceiling context replaces the Nether-ID view rule.
     /// 11: independent Normal, Height and Water Depth styles, including the saved height scale.
+    /// 12: the visible floor blends into shallow water.
+    /// 13: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    /// 12: per-dimension block filtering and separate unfiltered/filtered cache slots.
-    static let rendererVersion = 12
+    /// 14: per-dimension block filtering and separate unfiltered/filtered cache slots.
+    static let rendererVersion = 14
 
     let directory: URL
 
@@ -100,18 +102,32 @@ nonisolated struct TileCache: Sendable {
                    style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey)
     }
 
-    func load(_ key: Key) -> [UInt8]? {
+    func load(_ key: Key) -> RegionTileRenderer.Canvas? {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.fileName)),
-              let pixels = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              pixels.count == RegionTileRenderer.side * RegionTileRenderer.side * 4 else { return nil }
-        return [UInt8](pixels)
+              let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              bytes.count == count * 9 else { return nil }
+        let water = bytes[(count * 8)...]
+        guard water.allSatisfy({ $0 <= 1 }) else { return nil }
+        let heights = bytes.withUnsafeBytes { buffer in
+            (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: count * 4 + $0 * 4, as: Int32.self)) }
+        }
+        return RegionTileRenderer.Canvas(pixels: Array(bytes[..<(count * 4)]), heights: heights,
+                                         isWater: water.map { $0 == 1 })
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
     /// the latest filtered variant. Many heights/filter combinations cannot grow the cache unboundedly;
     /// disabling a filter preserves the ordinary tile. Failures only cost a re-render.
-    func store(_ pixels: [UInt8], for key: Key) {
-        guard let compressed = try? (Data(pixels) as NSData).compressed(using: .lzfse) as Data else { return }
+    func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
+        guard surface.pixels.count == count * 4, surface.heights.count == count,
+              surface.isWater.count == count else { return }
+        var bytes = Data(capacity: count * 9)
+        bytes.append(contentsOf: surface.pixels)
+        surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
+        bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
+        guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []

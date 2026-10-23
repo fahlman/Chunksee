@@ -69,7 +69,10 @@ import Testing
         for style in MapStyle.allCases {
             let actual = try #require(try await RegionTileRenderer(dimension: dimension, style: style,
                 heightScale: scale, blockFilter: filter).pixels(for: region))
-            #expect(Array(actual[0..<4]) == [accent.red, accent.green, accent.blue, 255])
+            // Highlight changes the surface colour; ordinary land relief still uses its height.
+            let highlighted = style == .height ? accent : accent.shaded(
+                MapRelief(heightScale: scale).factor(height: 2, north: 0, west: 0))
+            #expect(Array(actual[0..<4]) == [highlighted.red, highlighted.green, highlighted.blue, 255])
             let plain = try #require(try await RegionTileRenderer(dimension: dimension, style: style, heightScale: scale).pixels(for: region))
             // Flat rows have no relief difference, so only the filter dims this unselected water.
             for channel in 0..<3 { #expect(actual[8 * 4 + channel] == UInt8((Double(plain[8 * 4 + channel]) * 0.25).rounded())) }

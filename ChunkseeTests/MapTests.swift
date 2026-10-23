@@ -213,9 +213,9 @@ import Testing
         func rgba(_ c: MapColor) -> [UInt8] { [c.red, c.green, c.blue, 255] }
 
         #expect(pixel(2, 5) == rgba(MapColor(0x7CBD6B)))                    // grass, level with its north neighbor
-        #expect(pixel(10, 5) == rgba(MapColor(0x3F76E4).shaded(1.125)))     // water, one block deep
+        #expect(pixel(10, 5) == rgba(MapColor(0x707F9E)))     // one block of water over stone
         #expect(pixel(20, 5)[3] == 0)                                        // chunk (1, 0) not generated
-        #expect(pixel(2, 16) == rgba(MapColor(0x7D7D7D).shaded(1.12)))      // higher than the chunk to its north
+        #expect(pixel(2, 16) == rgba(MapColor(0x7D7D7D).shaded(1.025)))     // one block higher than the chunk to its north
         #expect(pixel(2, 17) == rgba(MapColor(0x7D7D7D)))                    // level with its north neighbor
         #expect(RegionTileRenderer.makeImage(pixels)?.width == 512)
     }
@@ -244,7 +244,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let pixels = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: RegionPosition(x: 0, z: 0)))
         func rgb(_ x: Int, _ z: Int) -> [UInt8] { Array(pixels[(z * 512 + x) * 4 ..< (z * 512 + x) * 4 + 3]) }
-        let lit = MapColor(0x7D7D7D).shaded(1.12)
+        let lit = MapColor(0x7D7D7D).shaded(1.025)
         #expect(rgb(3, 5) == [lit.red, lit.green, lit.blue])
         #expect(rgb(3, 0) == rgb(3, 5))  // the region's top row matches its neighbors
     }
