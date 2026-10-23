@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.59.0`, resolved to `0.59.0` (`32681c65f5834b82c3f5639f36fac6ad0c2a4ef2`).
+  minor" from `0.60.0`, resolved to `0.60.0` (`412b9fc0d82a1d24639553f2bab535278868955b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1225,9 +1225,30 @@ dimension documents. The existing GameAssetLibrary actor loads Kit's complete re
 catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
 all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
 the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
-passes checked absolute X/Z to the swamp rule. Sampling follows saved biome cells; the game's
-seed-derived fiddled border selection and neighbor blending remain on #361. Height remains
-independent of game/biome colors; unavailable facts retain BlockColors.
+passes checked absolute X/Z to the swamp rule. With a saved 26.3 seed, Kit's BiomeSampler chooses
+seed-displaced cells across chunk/section/region boundaries. The saved DimensionType clamps
+source Y to its build limits when known; missing interior sections and neighboring chunks stay
+unavailable. Per-block palettes retain direct lookup; an unknown seed never becomes seed zero.
+Unavailable facts retain BlockColors. Height remains independent of game/biome colors. Optional
+color blending remains on #361.
+
+The renderer pipelines in-region decoding and coloring under one shared worker limit. A chunk
+colors as soon as its neighboring reads finish, including missing or damaged chunks; decoding
+can advance two rows beyond the earliest unfinished row. Compact interior biome snapshots stay
+within that four-row window, including its preceding row, and terrain inputs leave the pending
+set when coloring starts. Each in-region chunk is decoded and traversed once. Needed snapshots
+from the surrounding one-chunk ring are read first, one region file at a time: RegionFile owns
+its entire byte buffer, so retaining all eight neighbors would retain their complete files.
+Ring reads use the same chunk limit, without terrain traversal or retained blocks/NBT. Both
+phases retain cancellation; there is no world-wide biome cache or task owner.
+Before coloring columns, each chunk task gathers the tint, floor and water sample positions,
+selects their cells through Kit, and reads each distinct cell once grouped by source chunk.
+It interns the resulting names into task-local color values and integer position indices. The
+per-column color loop does not read shared row dictionaries, saved palettes or biome names.
+TileCache version 18 keys the seed/color source, saved source-height limits and all nine region
+file stamps, including absent neighbors. Live region changes cancel and invalidate neighboring
+tiles, and the existing job identity rejects old publication. Height and unavailable-asset paths
+keep their existing file dependencies.
 
 Prepared block materials are bounded to 512 entries and 16 MiB estimated cost. They share the
 item model's cost estimate, texture owner and rasterizer. A chunk groups color requests by palette
@@ -1242,9 +1263,10 @@ once into local palette ranges, so columns do not retain shared material objects
 snapshot. This avoids reference-count contention between the parallel chunk workers.
 Tint requests keep their first tint inline, avoiding an array allocation for each ordinary
 column while retaining support for additional tint indices. Different worlds share the archive but never mutable
-pack-specific colors. Tile keys include the resolved biome fields; unchanged metadata/autosaves
+pack-specific colors. Tile keys include the resolved biome fields and optional seed; unchanged metadata/autosaves
 do not invalidate them. Source changes retire colors for all tabs once. World-level background
 work owns and drains color refreshes; newer reads and close reject old completions. Level changes
-check enabled pack/version metadata before rereading definitions; data-pack notifications force
+check enabled pack/version/seed metadata before rereading definitions; world-generation file
+notifications refresh the shared snapshot too. Data-pack notifications force
 a reload that remains pending across overlapping autosaves. Read errors retain the last good
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.

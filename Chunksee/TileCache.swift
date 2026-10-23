@@ -23,7 +23,8 @@ nonisolated struct TileCache: Sendable {
     /// 15: texture-derived colors keyed by the selected game archive.
     /// 16: per-column biome tints keyed by the resolved world color definitions.
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
-    static let rendererVersion = 17
+    /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
+    static let rendererVersion = 18
 
     let directory: URL
 
@@ -38,13 +39,15 @@ nonisolated struct TileCache: Sendable {
         var heightScale: MapHeightScale? = nil
         var filterKey: String? = nil
         var colorSource: String? = nil
+        var biomeSource: String? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
                 ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
             let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
+            let biomes = biomeSource.map { "biomes\($0)." } ?? ""
             let colors = colorSource.map { "assets\($0)." } ?? "fallback."
-            return "\(prefix)\(colors)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            return "\(prefix)\(colors)\(biomes)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
@@ -98,13 +101,14 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil) -> Key? {
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, biomeSource: String? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
-                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource)
+                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource,
+                   biomeSource: style == .height ? nil : biomeSource)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {

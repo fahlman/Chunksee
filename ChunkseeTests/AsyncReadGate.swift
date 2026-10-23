@@ -62,3 +62,9 @@ actor AsyncReadGate<Value: Sendable> {
         await withCheckedContinuation { cancellationWaiters[key, default: []].append($0) }
     }
 }
+
+/// Gives controlled asynchronous reads distinct keys across lifecycle tests.
+actor ReadNumbers {
+    private var count = 0
+    func next() -> Int { defer { count += 1 }; return count }
+}

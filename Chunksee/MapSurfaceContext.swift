@@ -5,11 +5,13 @@ import ChunkseeKit
 nonisolated struct MapSurfaceContext: Equatable, Sendable {
     static let unknown = MapSurfaceContext(dimensionID: nil, settings: nil)
 
+    let dimensionType: DimensionType?
     let buildHeight: Int?
     let ceilingY: Int?
     let biomeSampleY: Int?
 
     init(dimensionID: String?, settings: DimensionSettings?) {
+        dimensionType = settings?.type
         buildHeight = settings?.type?.height
         if let type = settings?.type, !type.hasCeiling {
             ceilingY = nil

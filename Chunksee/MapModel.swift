@@ -211,13 +211,18 @@ final class MapModel {
         for region in regions {
             let file = dimension.regionURL(.terrain, x: region.x, z: region.z)
             if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
-            // A render that started before the save may have read the old file; start it again.
+        }
+        let affected = currentRenderer.samplesNeighborBiomes
+            ? regions.reduce(into: Set<RegionPosition>()) { $0.formUnion(RegionTileRenderer.biomeRegions(around: $1)) }
+            : regions
+        for region in affected {
+            // Border colors may have read the changed file even when this tile's own file did not change.
             inFlight[region]?.task.cancel()
             inFlight[region] = nil
         }
-        failed.subtract(regions)
+        failed.subtract(affected)
         forgetTopBlocks(in: regions)
-        stale.formUnion(regions.filter { tiles[$0] != nil || previews[$0] != nil })
+        stale.formUnion(affected.filter { tiles[$0] != nil || previews[$0] != nil })
         lastRequest = nil
         if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
     }

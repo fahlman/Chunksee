@@ -668,9 +668,3 @@ import Testing
         #expect(map.unfinishedHoverReads == 0)
     }
 }
-
-/// Numbers calls in the order they arrive.
-private actor ReadNumbers {
-    private var count = 0
-    func next() -> Int { defer { count += 1 }; return count }
-}
