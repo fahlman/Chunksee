@@ -11,6 +11,7 @@ struct WorldView: View {
     @State private var sidebarRevealID = UUID()
     @State private var showsCoordinateSheet = false
     @State private var showsImageExport = false
+    @State private var showsBlockFilter = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
 
@@ -150,6 +151,7 @@ struct WorldView: View {
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
+                    .onChange(of: map.blockFilter) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) }])
                     // Remember the position a second after the map stops moving.
@@ -200,6 +202,9 @@ struct WorldView: View {
         .sheet(isPresented: $showsImageExport) {
             MapExportView(session: session)
         }
+        .sheet(isPresented: $showsBlockFilter) {
+            if let map = session.map { MapBlockFilterView(session: session, map: map) }
+        }
         .sheet(item: $annotations.draft) { draft in
             SavedPlaceEditor(session: session, draft: draft)
         }
@@ -211,10 +216,11 @@ struct WorldView: View {
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
-        .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
+        .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
+        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
         .focusedSceneValue(\.mapImageSheet, $showsImageExport)
+        .focusedSceneValue(\.mapBlockFilterSheet, $showsBlockFilter)
         .background { WorldKeyboardShortcuts(session: session) }
     }
 

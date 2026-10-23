@@ -67,7 +67,15 @@ final class WorldSettings {
         return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
     }
 
-    func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil, style: MapStyle? = nil) {
+    func blockFilter(for dimension: String) -> MapBlockFilter {
+        guard let value = (stored["blockFilters"] as? [String: [String: Any]])?[dimension] else { return MapBlockFilter() }
+        return MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? true,
+                              hiddenIDs: Set(value["hidden"] as? [String] ?? []),
+                              highlightedIDs: Set(value["highlighted"] as? [String] ?? []))
+    }
+
+    func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
+              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -82,6 +90,12 @@ final class WorldSettings {
             var styles = saved["styles"] as? [String: String] ?? [:]
             styles[dimension] = style.rawValue
             saved["styles"] = styles
+        }
+        if let blockFilter {
+            var filters = saved["blockFilters"] as? [String: [String: Any]] ?? [:]
+            filters[dimension] = ["enabled": blockFilter.isEnabled,
+                                  "hidden": blockFilter.hiddenIDs.sorted(), "highlighted": blockFilter.highlightedIDs.sorted()]
+            saved["blockFilters"] = filters
         }
         saved["dimension"] = selected
         defaults.set(saved, forKey: key)

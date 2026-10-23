@@ -928,6 +928,26 @@ prediction, the live shared portal index, and the existing coordinate-copy and d
 actions. Missing index data stays distinct from a known empty destination. Only Overworld/Nether
 travel is supported; planning neither invents a portal frame nor predicts the return leg.
 
+MapBlockFilter owns per-dimension Hide/Highlight choices, including an enable flag that preserves
+choices while showing the ordinary map. WorldSettings persists it; MapModel sends its immutable
+snapshot to the renderer, hover/coordinate reader and image exporter. Changing hidden blocks
+cancels old tiles and block reads together; changing only highlights preserves block reads. ColorSections resolves hiding and emphasis once per
+reached palette entry during the existing Kit column traversal. Hidden blocks are skipped; selected
+visible blocks use the shared yellow highlight and others dim. No second terrain scan is added.
+
+View > Show/Hide Blocks uses a native SwiftUI sheet with a searchable saved-palette catalog,
+individual Show/Hide/Highlight choices, a name-based Hide Leaves shortcut, Reset, Cancel and Apply.
+Editing the draft never redraws the live map; Apply commits it once. The leaf shortcut selects IDs
+ending in `_leaves`, not Minecraft's tag membership. Every exact ID remains editable. Saved choices
+remain listed after their last catalog entry disappears. Names in palettes are not occupancy claims.
+Kit #154 supplies the dimension catalog; its published dependency adoption and final checks remain
+pending in this working change. The app does not read another copy of the chunk data for the picker.
+
+TileCache keeps the unfiltered image and one latest filtered variant in each existing style and
+Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
+filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
+highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
+
 ## Interface wording
 
 Use a consistent style for each UI role, following Apple's [Writing](https://developer.apple.com/design/human-interface-guidelines/writing)

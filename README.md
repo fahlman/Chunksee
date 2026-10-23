@@ -165,3 +165,15 @@ Requires Xcode 27 and macOS 27. Open `Chunksee.xcodeproj` and run the **Chunksee
 ```sh
 xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' -configuration Release build
 ```
+
+### Show or hide blocks
+
+Use **View ▸ Show/Hide Blocks…** to hide a block and see below it, or highlight a block while
+dimming the rest of the map. Search the block names saved in the current dimension, make your
+choices, then choose **Apply**. **Hide Leaves** selects saved names ending in `_leaves`; each
+block can also be changed individually. Some saved palette names may not currently occur on the map.
+
+Turn off **Apply Block Choices** to see the ordinary map without forgetting your choices. Each
+dimension remembers its own settings. Hover details, copied block coordinates and map images
+follow the filtered surface. These controls are in development pending the shared palette-reader
+release and final checks; no world data is changed.

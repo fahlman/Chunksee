@@ -10,6 +10,7 @@ final class MapModel {
     var viewport: MapViewport
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
+    private(set) var blockFilter = MapBlockFilter()
     let heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
@@ -28,6 +29,7 @@ final class MapModel {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
+        current.blockFilter = blockFilter
         return current
     }
     private let work: BackgroundWork
@@ -372,7 +374,7 @@ final class MapModel {
                 ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
               let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
-                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY)
+                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter)
         else { return nil }
         return (file, blocks)
     }
@@ -405,14 +407,28 @@ final class MapModel {
         let previous = depth.cutawayY
         depth = value
         guard previous != value.cutawayY else { return }
-        clearRenderedTiles()
+        surfaceChanged()
+    }
+
+    /// Changing a hidden block can change its Y as well as its colour. Late reads of the previous
+    /// surface must never publish hover details or copy coordinates after applying new choices.
+    func setBlockFilter(_ value: MapBlockFilter) {
+        guard !isClosed, value != blockFilter else { return }
+        let previous = blockFilter
+        blockFilter = value
+        guard previous.cacheKey != value.cacheKey else { return }
+        if previous.effectiveHiddenIDs != value.effectiveHiddenIDs { surfaceChanged() }
+        else { reloadTiles() }
+    }
+
+    private func surfaceChanged() {
         hoverWork.cancel()
         coordinateWork.cancel()
         activeHoverRead = nil
         topBlocks = [:]
         topBlockOrder = []
         hoverRegion = nil
-        if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
+        reloadTiles()
         if let hoveredChunk { startHoverRead(of: hoveredChunk) }
     }
 
@@ -420,6 +436,10 @@ final class MapModel {
     func setStyle(_ value: MapStyle) {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
+        reloadTiles()
+    }
+
+    private func reloadTiles() {
         clearRenderedTiles()
         if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
     }
