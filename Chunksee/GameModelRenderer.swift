@@ -10,6 +10,10 @@ nonisolated struct ItemTexture: Sendable {
     let height: Int
     let pixels: [UInt8]
 
+    init(width: Int, height: Int, pixels: [UInt8]) {
+        self.width = width; self.height = height; self.pixels = pixels
+    }
+
     init?(png: Data) {
         guard let source = CGImageSourceCreateWithData(png as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -41,9 +45,9 @@ nonisolated struct ItemTexture: Sendable {
     }
 }
 
-/// A small orthographic thumbnail renderer, independent of SwiftUI and the main actor.
+/// Shared orthographic drawing for item pictures and top-down map colors, off the main actor.
 /// Kit resolves the format. This client projects its geometry, samples textures and lights faces.
-nonisolated enum ItemPictureRenderer {
+nonisolated enum GameModelRenderer {
     static let size = 64
 
     private struct Face {
@@ -112,13 +116,7 @@ nonisolated enum ItemPictureRenderer {
                     }
                 }
             }
-            var depths = [Float](repeating: -.infinity, count: size * size)
-            // Back-to-front handles transparent texels; a per-pixel depth check also handles
-            // intersecting cuboids without drawing a rear face over a nearer opaque surface.
-            for face in faces.enumerated().sorted(by: { $0.element.depth == $1.element.depth ? $0.offset < $1.offset : $0.element.depth < $1.element.depth }) {
-                try Task.checkCancellation()
-                rasterize(face.element, pixels: &pixels, depths: &depths)
-            }
+            try draw(faces, into: &pixels)
         }
         // A resolved empty model intentionally draws nothing; it is distinct from a missing model.
         guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
@@ -126,6 +124,100 @@ nonisolated enum ItemPictureRenderer {
                        bytesPerRow: size * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
+    private static func draw(_ faces: [Face], into pixels: inout [UInt8]) throws {
+        var depths = [Float](repeating: -.infinity, count: size * size)
+        for face in faces.enumerated().sorted(by: { $0.element.depth == $1.element.depth ? $0.offset < $1.offset : $0.element.depth < $1.element.depth }) {
+            try Task.checkCancellation()
+            rasterize(face.element, pixels: &pixels, depths: &depths)
+        }
+    }
+
+    /// Average the unlit, visible top pixels, weighting the game's alternatives instead of
+    /// arbitrarily choosing their first model. Transparent pixels contribute no color.
+    static func topColor(_ block: AssetBlock, tint: (Int) -> UInt32?,
+                         texture: (Identifier) -> ItemTexture?) throws -> MapColor? {
+        var choices: [[(faces: [Face], weight: Double)]] = []
+        var combinations = 1
+        var retained: [Identifier: ItemTexture] = [:]
+        var textureBytes = 0
+        for part in block.parts {
+            let count = combinations.multipliedReportingOverflow(by: part.alternatives.count)
+            // Bound unusual multipart/weighted combinations instead of expanding them forever.
+            guard !count.overflow, count.partialValue <= 64 else { return nil }
+            combinations = count.partialValue
+            let total = Double(part.alternatives.reduce(0) { $0 + $1.weight })
+            var options: [(faces: [Face], weight: Double)] = []
+            for alternative in part.alternatives {
+                try Task.checkCancellation()
+                // UV-locked rotated partial faces need the game's separate UV transform.
+                // Until supported, preserve the known fallback rather than sample the wrong area.
+                guard !alternative.uvLock || alternative.rotation == .zero,
+                      case .elements(let elements) = alternative.model.geometry else { return nil }
+                let r = SIMD3<Float>(alternative.rotation) * (-Float.pi / 180)
+                let rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
+                    * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0))
+                    * simd_quatf(angle: r.x, axis: SIMD3(1, 0, 0))
+                var faces: [Face] = []
+                for element in elements {
+                    for direction in AssetModel.Direction.allCases {
+                        guard let face = element.faces[direction] else { continue }
+                        let points = vertices(for: direction, from: element.from, to: element.to).map {
+                            let p = rotation.act(rotate($0, by: element.rotation) / 16 - 0.5)
+                            return SIMD3<Float>(p.x, -p.z, p.y)
+                        }
+                        guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else { return nil }
+                        let normal = simd_cross(points[1] - points[0], points[3] - points[0])
+                        guard normal.z > 0.000001 else { continue }
+                        let image: ItemTexture
+                        if let cached = retained[face.material.texture] { image = cached }
+                        else {
+                            guard let loaded = texture(face.material.texture), loaded.height >= loaded.width,
+                                  loaded.height % loaded.width == 0,
+                                  textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
+                            // Block animations are vertical strips; use their first image frame.
+                            image = ItemTexture(width: loaded.width, height: loaded.width,
+                                                pixels: Array(loaded.pixels.prefix(loaded.width * loaded.width * 4)))
+                            textureBytes += loaded.pixels.count
+                            retained[face.material.texture] = image
+                        }
+                        let rgb: UInt32
+                        if let index = face.tintIndex {
+                            guard let value = tint(index) else { return nil }
+                            rgb = value
+                        } else { rgb = 0xffffff }
+                        let color = SIMD3<Float>(Float((rgb >> 16) & 255), Float((rgb >> 8) & 255), Float(rgb & 255)) / 255
+                        let uv = face.uv
+                        let corners = [SIMD2<Float>(uv.x, uv.y), SIMD2<Float>(uv.x, uv.w),
+                                       SIMD2<Float>(uv.z, uv.w), SIMD2<Float>(uv.z, uv.y)]
+                        let turned = (0..<4).map { corners[($0 + face.rotation / 90) % 4] / 16 }
+                        faces.append(Face(points: points, uv: turned, texture: image, color: color))
+                    }
+                }
+                options.append((faces, Double(alternative.weight) / total))
+            }
+            choices.append(options)
+        }
+        guard choices.reduce(0, { $0 + ($1.map { $0.faces.count }.max() ?? 0) }) <= 4096 else { return nil }
+        var sum = SIMD3<Double>.zero, alpha = 0.0
+        func accumulate(_ part: Int, faces: [Face], weight: Double) throws {
+            if part < choices.count {
+                for choice in choices[part] { try accumulate(part + 1, faces: faces + choice.faces, weight: weight * choice.weight) }
+                return
+            }
+            var pixels = [UInt8](repeating: 0, count: size * size * 4)
+            try draw(faces, into: &pixels)
+            for i in stride(from: 0, to: pixels.count, by: 4) {
+                sum += SIMD3<Double>(Double(pixels[i]), Double(pixels[i + 1]), Double(pixels[i + 2])) * weight
+                alpha += Double(pixels[i + 3]) * weight
+            }
+        }
+        try accumulate(0, faces: [], weight: 1)
+        guard alpha > 0 else { return nil }
+        let rgb = sum * (255 / alpha)
+        return MapColor(UInt32(UInt8(clamping: Int(rgb.x.rounded()))) << 16
+            | UInt32(UInt8(clamping: Int(rgb.y.rounded()))) << 8 | UInt32(UInt8(clamping: Int(rgb.z.rounded()))))
     }
 
     private static func rasterize(_ face: Face, pixels: inout [UInt8], depths: inout [Float]) {
@@ -166,6 +258,10 @@ nonisolated enum ItemPictureRenderer {
     }
 
     private static func project(_ vertex: SIMD3<Float>, element: AssetModel.Rotation?, transform: AssetModel.Transform) -> SIMD3<Float> {
+        guiRotation(transform.rotation).act((rotate(vertex, by: element) / 16 - 0.5) * transform.scale) + transform.translation
+    }
+
+    private static func rotate(_ vertex: SIMD3<Float>, by element: AssetModel.Rotation?) -> SIMD3<Float> {
         var point = vertex
         if let element {
             let rotation: simd_quatf
@@ -190,7 +286,7 @@ nonisolated enum ItemPictureRenderer {
             }
             point = rotation.act(offset) + element.origin
         }
-        return guiRotation(transform.rotation).act((point / 16 - 0.5) * transform.scale) + transform.translation
+        return point
     }
 
     private static func guiRotation(_ degrees: SIMD3<Float>) -> simd_quatf {
