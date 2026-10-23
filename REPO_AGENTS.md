@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.54.0`, resolved to `0.54.0` (`e8a55c69a15f02dcddfd557974f41db08b321c93`).
+  minor" from `0.54.1`, resolved to `0.54.1` (`770c52e78ec80899942739ffc6f203165bae1833`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -942,7 +942,8 @@ individual Show/Hide/Highlight choices, a name-based Hide Leaves shortcut, Reset
 Editing the draft never redraws the live map; Apply commits it once. The leaf shortcut selects IDs
 ending in `_leaves`, not Minecraft's tag membership. Every exact ID remains editable. Saved choices
 remain listed after their last catalog entry disappears. Names in palettes are not occupancy claims.
-Published Kit 0.54.0 supplies the dimension catalog through RegionIndex.paletteBlockIDs.
+Kit 0.54.0 added the dimension catalog through RegionIndex.paletteBlockIDs; the app requires
+0.54.1 for its bounded archive-reader fix.
 Its RegionFacts interpretation version 7 invalidates older catalog-less scan archives once;
 the app does not read another copy of the chunk data for the picker. The cumulative dependency
 also retains the reviewed container models, block-state and biome/tint APIs; this change does
