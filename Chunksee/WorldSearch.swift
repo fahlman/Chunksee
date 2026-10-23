@@ -161,6 +161,15 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     var detail: String
     /// Total matching items, for sorting; 1 for a sign, the chunk count for a biome area.
     var count: Int
+    /// Aggregated matching kinds retain their identity for the shared item picture/label.
+    var items: [ItemMatch] = []
+
+    struct ItemMatch: Equatable, Sendable {
+        let id: String
+        let name: String
+        let count: Int
+        var text: String { ItemAppearance.counted(name, count: count, includingOne: true) }
+    }
 }
 
 /// Builds the search index and answers searches against it: item names, custom names, book
@@ -281,15 +290,15 @@ nonisolated enum WorldSearch {
     }
 
     /// Matching items summarized as "64 Diamond, 3 Diamond Sword", with nested contents included.
-    static func summary(of items: [ItemStack], query: SearchQuery) -> (text: String, count: Int)? {
+    static func summary(of items: [ItemStack], query: SearchQuery) -> (text: String, count: Int, items: [SearchHit.ItemMatch])? {
         let totals = ItemTotals(in: items, matching: { matches($0, query: query) }, groupingBy: ItemLabel.init)
         guard !totals.isEmpty else { return nil }
-        let text = totals.quantities.sorted {
+        let matches = totals.quantities.sorted {
             if $0.value != $1.value { return $0.value > $1.value }
             if $0.key.text != $1.key.text { return $0.key.text < $1.key.text }
             return $0.key.id < $1.key.id
-        }.map { ItemAppearance.counted($0.key.text, count: $0.value, includingOne: true) }.joined(separator: ", ")
-        return (text, totals.count)
+        }.map { SearchHit.ItemMatch(id: $0.key.id, name: $0.key.text, count: $0.value) }
+        return (matches.map(\.text).joined(separator: ", "), totals.count, matches)
     }
 
     /// Places matching the query text, most items first. `name(of:)` names players.
@@ -308,11 +317,11 @@ nonisolated enum WorldSearch {
             if let found = summary(of: player.searchableInventory, query: query) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
                                       position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
-                                      title: who.inventory, detail: found.text, count: found.count))
+                                      title: who.inventory, detail: found.text, count: found.count, items: found.items))
             }
             if let found = summary(of: player.enderChest, query: query) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", source: .enderChest(player.uuid), dimension: nil, position: nil, y: nil,
-                                      title: who.enderChest, detail: found.text, count: found.count))
+                                      title: who.enderChest, detail: found.text, count: found.count, items: found.items))
             }
         }
         for entry in index.containers {
@@ -323,7 +332,7 @@ nonisolated enum WorldSearch {
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
                                   position: MapCoordinates.center(of: CGPoint(x: container.x, y: container.z)), y: container.y,
-                                  title: title, detail: found.text, count: found.count))
+                                  title: title, detail: found.text, count: found.count, items: found.items))
         }
         for entry in index.signs {
             guard !Task.isCancelled else { return [] }
