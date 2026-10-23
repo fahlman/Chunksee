@@ -174,7 +174,8 @@ import Testing
         defer { fixture.remove() }
         let kinds = ["grass_block", "oak_leaves", "spruce_leaves", "stone"]
         let chunks = (0..<16).map { x in
-            let rotated = Array(kinds[x % kinds.count...] + kinds[..<(x % kinds.count)])
+            let shift = x % kinds.count
+            let rotated = Array(kinds[shift...] + kinds[..<shift])
             return chunk(x: x, palette: rotated.map { .string("minecraft:" + $0) },
                          blocks: { x, _, _ in x / 4 }, biomes: { _, _, z in z / 8 })
         }
