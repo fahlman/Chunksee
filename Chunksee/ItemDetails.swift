@@ -99,7 +99,14 @@ struct SelectedSearchSection: View {
                 case .inventory, .enderChest: LabeledContent("Found In", value: hit.title)
                 default: EmptyView()
                 }
-                Text(hit.detail).textSelection(.enabled)
+                if hit.items.isEmpty {
+                    Text(hit.detail).textSelection(.enabled)
+                } else {
+                    ForEach(Array(hit.items.enumerated()), id: \.offset) { _, item in
+                        ItemLabel(id: item.id, title: Text(item.text))
+                            .textSelection(.enabled)
+                    }
+                }
                 if case .enderChest = hit.source {
                     Text("An Ender Chest has no single location.").foregroundStyle(.secondary)
                 }

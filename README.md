@@ -80,7 +80,12 @@ with a link to this guide. Help opens only when requested.
    inventory, health, gear and pets in the inspector, or click their marker for the same details.
    Use the eye button beside a player in the sidebar to show or hide that player's markers.
    **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
-   can read the names Minecraft remembers. You can also turn on looking up other players' names
+   can read the names Minecraft remembers and item pictures from the installed version matching
+   each world. Inventory slots, equipment, trades, Storage and matching items in search details
+   share those pictures, including three-sided block icons and saved leather and potion colors.
+   Items keep their category symbols when pictures are unavailable. Some special models (such as
+   chests and shields), animated textures and saved trim/custom-model variants are not drawn yet.
+   No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
 Sidebar rows show names and icons only. Select any item in the sidebar or on the map to open its
