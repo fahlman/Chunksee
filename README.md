@@ -91,7 +91,9 @@ with a link to this guide. Help opens only when requested.
    unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
    leaves, vines and water use each block column's biome colors, including enabled data-pack
    overrides. Cutaway uses the biome at the displayed height. Missing definitions or assets keep
-   the standard colors; biome edges are not blended. High-zoom texture detail is still in progress.
+   the standard colors. Biome boundaries currently follow the save's four-block cells rather
+   than the game's irregular borders, and their colors are not blended. High-zoom texture
+   detail is still in progress.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 

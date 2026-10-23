@@ -1214,13 +1214,18 @@ dimension documents. The existing GameAssetLibrary actor loads Kit's complete re
 catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
 all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
 the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
-passes checked absolute X/Z to the swamp rule. No neighbor blending is applied. Height remains
+passes checked absolute X/Z to the swamp rule. Sampling follows saved biome cells; the game's
+seed-derived fiddled border selection and neighbor blending remain on #361. Height remains
 independent of game/biome colors; unavailable facts retain BlockColors.
 
 Prepared block materials are bounded to 512 entries and 16 MiB estimated cost. They share the
 item model's cost estimate, texture owner and rasterizer. A chunk groups color requests by palette
 index and resolved tint values, preserving warm synchronous cache reads and avoiding full-state
-hashing or rasterization for every column. Different worlds share the archive but never mutable
+hashing or rasterization for every column. Each snapshot resolves position-independent biome
+colors once through Kit. Each chunk resolves each saved biome string once, including missing
+definitions; only swamp grass calls Kit's position-dependent color calculation per column.
+Tint requests keep their first tint inline, avoiding an array allocation for each ordinary
+column while retaining support for additional tint indices. Different worlds share the archive but never mutable
 pack-specific colors. Tile keys include the resolved biome fields; unchanged metadata/autosaves
 do not invalidate them. Source changes retire colors for all tabs once. World-level background
 work owns and drains color refreshes; newer reads and close reject old completions. Level changes

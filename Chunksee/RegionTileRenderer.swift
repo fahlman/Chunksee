@@ -164,6 +164,15 @@ nonisolated struct RegionTileRenderer: Sendable {
                                       cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
         guard style != .height, let gameAssets else { return scanned.columns }
         let biomeColors = currentBiomeColors
+        var biomes: [String: MapBiomeColors.Biome] = [:]
+        func biome(column: Int, y: Int) -> MapBiomeColors.Biome? {
+            guard let biomeColors,
+                  let name = scanned.sections.biome(x: column % 16, y: y, z: column / 16) else { return nil }
+            if let cached = biomes[name] { return cached }
+            let colors = biomeColors.biome(name)
+            biomes[name] = colors
+            return colors
+        }
         var indices: [PaletteEntry: Int] = [:]
         var states: [BlockState] = []
         func index(for entry: PaletteEntry) -> Int? {
@@ -190,26 +199,25 @@ nonisolated struct RegionTileRenderer: Sendable {
             return (x, z)
         }
         var requests = states.map { MapBlockColorRequest(state: $0) }
-        if let biomeColors {
+        if biomeColors != nil {
             let materials: [MapBlockMaterial]
             if let cached = gameAssets.cachedMapMaterials(for: states) { materials = cached }
             else { materials = try await gameAssets.mapMaterials(for: states) }
             struct TintKey: Hashable {
                 let palette: Int
-                let tints: [MapBlockColorRequest.Tint]
+                let tints: MapBlockColorRequest.Tints
             }
             var tintedIndices: [TintKey: Int] = [:]
             requests = []
             func tintedIndex(_ palette: Int?, column: Int, y: Int) -> Int? {
                 guard let palette else { return nil }
                 let material = materials[palette]
-                var tints: [MapBlockColorRequest.Tint] = []
+                var tints = MapBlockColorRequest.Tints()
                 if let point = coordinates(column) {
                     for tint in material.biomeTints {
                         let height = y.addingReportingOverflow(tint.yOffset)
                         guard !height.overflow else { continue }
-                        let id = scanned.sections.biome(x: column % 16, y: height.partialValue, z: column / 16)
-                        if let rgb = biomeColors.color(tint.source, biome: id, x: point.x, z: point.z) {
+                        if let rgb = biome(column: column, y: height.partialValue)?.color(tint.source, x: point.x, z: point.z) {
                             tints.append(.init(index: tint.index, color: rgb))
                         }
                     }
@@ -237,9 +245,8 @@ nonisolated struct RegionTileRenderer: Sendable {
             if let index = position.surface, let color = colors[index] {
                 column.color = color.shaded(column.colorShade)
             }
-            if column.waterDepth > 0, let biomeColors, let point = coordinates(index),
-               let rgb = biomeColors.color(.water,
-                   biome: scanned.sections.biome(x: index % 16, y: column.y, z: index / 16), x: point.x, z: point.z) {
+            if column.waterDepth > 0, let point = coordinates(index),
+               let rgb = biome(column: index, y: column.y)?.color(.water, x: point.x, z: point.z) {
                 column.color = MapColor(rgb).shaded(column.colorShade)
             }
             if let index = position.floor, let color = colors[index] {

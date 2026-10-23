@@ -157,7 +157,7 @@ actor GameAssetLibrary {
                 let color: MapColor?
                 if let model = material(for: request.state).model {
                     color = try GameModelRenderer.topColor(model, tint: { index in
-                        if let value = request.tints.first(where: { $0.index == index }) { return value.color }
+                        if let value = request.tints.color(at: index) { return value }
                         if case .constant(let value) = request.state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
                         return nil
                     }, texture: texture)

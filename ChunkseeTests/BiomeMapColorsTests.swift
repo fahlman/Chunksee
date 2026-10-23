@@ -16,18 +16,18 @@ import Testing
         let library = try fixture.library()
         let a = try await library.biomeColors(in: World(contentsOf: first))
         let b = try await library.biomeColors(in: World(contentsOf: second))
-        #expect(a.color(.grass, biome: "test:a", x: 0, z: 0) == 0x123456)
-        #expect(b.color(.grass, biome: "test:a", x: 0, z: 0) == 0xabcdef)
+        #expect(a.biome("test:a").color(.grass, x: 0, z: 0) == 0x123456)
+        #expect(b.biome("test:a").color(.grass, x: 0, z: 0) == 0xabcdef)
         #expect(a.sourceKey != b.sourceKey)
         try level(at: first, packs: ["vanilla", "file/override"], name: "Renamed during autosave")
         let unchanged = try await library.biomeColors(in: World(contentsOf: first))
         #expect(a.sourceKey == unchanged.sourceKey)
         try level(at: first, packs: ["vanilla"])
         let removed = try await library.biomeColors(in: World(contentsOf: first))
-        #expect(removed.color(.grass, biome: "test:a", x: 0, z: 0) == 0xff0000)
+        #expect(removed.biome("test:a").color(.grass, x: 0, z: 0) == 0xff0000)
         #expect(removed.sourceKey != a.sourceKey)
-        #expect(removed.color(.grass, biome: "test:missing", x: 0, z: 0) == nil)
-        #expect(removed.color(.grass, biome: "test:climate", x: 0, z: 0) == 0x00ff00)
+        #expect(removed.biome("test:missing").color(.grass, x: 0, z: 0) == nil)
+        #expect(removed.biome("test:climate").color(.grass, x: 0, z: 0) == 0x00ff00)
         await library.close()
     }
 
@@ -115,6 +115,49 @@ import Testing
         // The official 26.3 probe gives 0x4c763c at (-100, -100). In region (-1, -1)
         // that is pixel (412, 412), inside chunk (-7, -7).
         #expect(image.color(412, 412) == [76, 118, 60, 255])
+        await library.close()
+    }
+
+    @Test func biomeNamesAndMissingDefinitionsKeepTheirMeaningWithinOneChunk() async throws {
+        let fixture = try fixture(extraFiles: ["data/minecraft/worldgen/biome/plains.json":
+            definition(grass: 0x123456, foliage: 0xabcdef, water: 0x789abc)])
+        defer { fixture.remove() }
+        let url = try world(chunks: [chunk(palette: [.string("minecraft:grass_block")],
+            blocks: { _, _, _ in 0 }, biomes: { x, _, _ in x / 4 },
+            biomeIDs: ["plains", "minecraft:plains", "test:missing", "not an id"], biomeBits: 2)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library
+        renderer.biomeColors = try await library.biomeColors(in: world)
+        let image = try await pixels(renderer)
+        #expect(image.color(2, 2) == [18, 52, 86, 255])
+        #expect(image.color(6, 2) == image.color(2, 2))
+        #expect(image.color(10, 2) == [124, 189, 107, 255])
+        #expect(image.color(14, 2) == image.color(10, 2))
+        await library.close()
+    }
+
+    @Test func aBiomeTintAtAnotherFaceIndexKeepsItsColor() async throws {
+        let fixture = try fixture(extraFiles: [
+            "assets/test/models/block/petals.json": ItemPictureFixture.json([
+                "textures": ["top": "test:item/white"],
+                "elements": [["from": [0, 0, 0], "to": [16, 16, 16],
+                              "faces": ["up": ["texture": "#top", "tintindex": 1]]]]]),
+            "assets/minecraft/blockstates/pink_petals.json": ItemPictureFixture.json([
+                "variants": ["": ["model": "test:block/petals"]]])
+        ])
+        defer { fixture.remove() }
+        let url = try world(chunks: [chunk(palette: [.string("minecraft:pink_petals")],
+            blocks: { _, _, _ in 0 }, biomes: { x, _, _ in x < 8 ? 0 : 1 })])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library
+        renderer.biomeColors = try await library.biomeColors(in: world)
+        let image = try await pixels(renderer)
+        #expect(image.color(2, 2) == [255, 0, 0, 255])
+        #expect(image.color(12, 2) == [0, 0, 255, 255])
         await library.close()
     }
 
@@ -221,7 +264,7 @@ import Testing
         await resources.waitForRefresh()
         let updated = session.map?.currentRenderer.biomeColors
         #expect(updated?.sourceKey != original.sourceKey)
-        #expect(updated?.color(.grass, biome: "test:a", x: 0, z: 0) == 0x0000ff)
+        #expect(updated?.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
         resources.close()
         await resources.waitUntilClosed()
         await library.close()
@@ -231,14 +274,15 @@ import Testing
         try ItemPictureFixture.pixels(#require(try await renderer.image(for: .init(x: 0, z: 0))))
     }
 
-    private func chunk(x: Int = 0, z: Int = 0, palette: [NBT], blocks: (Int, Int, Int) -> Int, biomes: (Int, Int, Int) -> Int) -> TestWorld.ChunkSpec {
+    private func chunk(x: Int = 0, z: Int = 0, palette: [NBT], blocks: (Int, Int, Int) -> Int,
+                       biomes: (Int, Int, Int) -> Int, biomeIDs: [String] = ["test:a", "test:b"], biomeBits: Int = 1) -> TestWorld.ChunkSpec {
         func indices(_ read: (Int, Int, Int) -> Int) -> [Int] {
             (0..<16).flatMap { y in (0..<16).flatMap { z in (0..<16).map { x in read(x, y, z) } } }
         }
         // 26.3 stores one biome for each 4×4×4 cell, independently of the block palette.
         let biomeCells = (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in biomes(x * 4, y * 4, z * 4) } } }
         let section = Fixtures.section(y: 0, palette: palette, indices: indices(blocks),
-            biomes: ["test:a", "test:b"], biomeIndices: biomeCells)
+            biomes: biomeIDs, biomeIndices: biomeCells, biomeBits: biomeBits)
         return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: 5023, sections: [section], extra: ["yPos": .int(0)]))
     }
 

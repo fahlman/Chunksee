@@ -13,16 +13,14 @@ nonisolated struct MapBiomeColors: Sendable {
     let assetSourceKey: String
     let dataVersion: Int?
     let enabledPacks: [String]
-    private let definitions: [String: BiomeDefinition]
-    private let colorMaps: [Identifier: ItemTexture]
+    private let colors: [String: Biome]
 
     init(world: World, assetSourceKey: String, definitions: [String: BiomeDefinition],
          colorMaps: [Identifier: ItemTexture]) {
         self.assetSourceKey = assetSourceKey
         dataVersion = world.level.dataVersion
         enabledPacks = world.level.enabledDataPacks
-        self.definitions = definitions
-        self.colorMaps = colorMaps
+        colors = definitions.mapValues { Biome(definition: $0, colorMaps: colorMaps) }
         // Hash resolved values, not level.dat's timestamp: ordinary autosaves do not change
         // color meaning. Resource IDs cannot contain these field/record separators.
         let rows = definitions.keys.sorted().map { id in
@@ -40,11 +38,41 @@ nonisolated struct MapBiomeColors: Sendable {
             && enabledPacks == world.level.enabledDataPacks
     }
 
-    func color(_ source: BiomeColor, biome: String?, x: Int32, z: Int32) -> UInt32? {
-        guard let biome, let id = Identifier(biome), let definition = definitions[id.description] else { return nil }
-        return definition.color(source, x: x, z: z) { id, pixel in
-            guard let texture = colorMaps[id], texture.width == 256, texture.height == 256 else { return nil }
-            return texture.rgb(at: pixel)
+    /// The renderer retains this lookup once per distinct saved biome string in a chunk.
+    func biome(_ name: String) -> Biome {
+        guard let id = Identifier(name) else { return .unavailable }
+        return colors[id.description] ?? .unavailable
+    }
+
+    struct Biome: Sendable {
+        static let unavailable = Biome(constants: [:], swamp: nil)
+        private let constants: [BiomeColor: UInt32]
+        private let swamp: BiomeDefinition?
+
+        private init(constants: [BiomeColor: UInt32], swamp: BiomeDefinition?) {
+            self.constants = constants
+            self.swamp = swamp
+        }
+
+        fileprivate init(definition: BiomeDefinition, colorMaps: [Identifier: ItemTexture]) {
+            // Kit documents swamp grass as its only position-dependent source. Resolve all
+            // other sources once per world snapshot; Kit still owns every color calculation.
+            let swamp = definition.grassColorModifier == .swamp ? definition : nil
+            var constants: [BiomeColor: UInt32] = [:]
+            for source in BiomeColor.allCases where source != .grass || swamp == nil {
+                constants[source] = definition.color(source, x: 0, z: 0) { id, pixel in
+                    guard let texture = colorMaps[id], texture.width == 256, texture.height == 256 else { return nil }
+                    return texture.rgb(at: pixel)
+                }
+            }
+            self.init(constants: constants, swamp: swamp)
+        }
+
+        func color(_ source: BiomeColor, x: Int32, z: Int32) -> UInt32? {
+            if source == .grass, let swamp {
+                return swamp.color(source, x: x, z: z) { _, _ in nil }
+            }
+            return constants[source]
         }
     }
 }
@@ -85,6 +113,23 @@ nonisolated struct MapBlockColorRequest: Hashable, Sendable {
         let index: Int
         let color: UInt32
     }
+    /// Keep the common zero/one-tint request inline instead of allocating per map column.
+    struct Tints: Hashable, Sendable {
+        private var first: Tint?
+        private var remaining: [Tint] = []
+
+        mutating func append(_ tint: Tint) {
+            if first == nil { first = tint }
+            else { remaining.append(tint) }
+        }
+
+        func color(at index: Int) -> UInt32? {
+            if first?.index == index { return first?.color }
+            return remaining.first { $0.index == index }?.color
+        }
+
+        var count: Int { (first == nil ? 0 : 1) + remaining.count }
+    }
     let state: BlockState
-    var tints: [Tint] = []
+    var tints = Tints()
 }
