@@ -83,10 +83,11 @@ with a link to this guide. Help opens only when requested.
    can read the names Minecraft remembers, item pictures and map colors from the installed version matching
    each world. Inventory slots, equipment, trades, Storage and matching items in search details
    share those pictures, including three-sided blocks, closed chests, shulker boxes, plain shields
-   and colored or straw beds in Minecraft 26.3, and saved leather and potion colors.
+   and colored or straw beds in Minecraft 26.3, saved leather and potion colors, and saved
+   item-model overrides when the selected model is available.
    Items keep their category symbols when pictures are unavailable. Shields use their plain skin;
    saved shield colors and patterns, other unsupported special models, animated textures
-   and saved trim/custom-model variants are not drawn yet.
+   and saved trim/custom-model-data variants are not drawn yet.
    The Normal map also averages the visible top textures of supported block models. Missing or
    unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
    leaves, vines and water use each block column's biome colors, including enabled data-pack

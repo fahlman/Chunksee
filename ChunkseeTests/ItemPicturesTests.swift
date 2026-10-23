@@ -275,6 +275,102 @@ import UniformTypeIdentifiers
         #expect(library.cachedPicture(for: ItemStack(id: "test:special")) == nil)
     }
 
+    @Test(arguments: [false, true])
+    func savedModelReferencesKeepPicturesDistinctInEitherVisitOrder(reversed: Bool) async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let ordinary = ItemStack(id: "test:flat")
+        let red = ItemStack(id: ordinary.id, count: 12, customName: "Keeps its name", components: .compound([
+            "minecraft:item_model": .string("test:leather"), "minecraft:dyed_color": .int(0xFF0000)
+        ]))
+        let blue = ItemStack(id: ordinary.id, components: .compound([
+            "minecraft:item_model": .string("test:potion"),
+            "minecraft:potion_contents": .compound(["custom_color": .int(0x0000FF)])
+        ]))
+        let stacks = [ordinary, red, blue]
+        let expected: [[UInt8]] = [[255, 255, 0, 255], [255, 0, 0, 255], [0, 0, 255, 255]]
+        var images: [Int: CGImage] = [:]
+        for index in reversed ? [2, 1, 0] : [0, 1, 2] {
+            #expect(library.cachedPicture(for: stacks[index]) == nil)
+            let image = try #require(try await library.picture(for: stacks[index]))
+            images[index] = image
+            #expect(try ItemPictureFixture.pixels(image).color(56, 56) == expected[index])
+        }
+        for index in stacks.indices {
+            #expect(library.cachedPicture(for: stacks[index]) === images[index])
+            #expect(try await library.picture(for: stacks[index]) === images[index])
+        }
+        #expect(red.id == ordinary.id && red.count == 12 && red.customName == "Keeps its name")
+        #expect(ItemAppearance.name(of: red, locale: Locale(identifier: "en_US")) == "12 Flat “Keeps its name”")
+    }
+
+    @Test func picturesShareSelectedModelsAndRetainTheOriginalStacksTints() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let red = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0xFF0000)]))
+        let shared = ItemStack(id: "test:flat", count: 64, components: .compound([
+            "minecraft:item_model": .string("test:leather"), "minecraft:dyed_color": .int(0xFF0000)
+        ]))
+        let blue = ItemStack(id: shared.id, components: .compound([
+            "minecraft:item_model": .string("test:leather"), "minecraft:dyed_color": .int(0x0000FF)
+        ]))
+        let redImage = try #require(try await library.picture(for: red))
+        #expect(library.cachedPicture(for: shared) === redImage)
+        #expect(try await library.picture(for: shared) === redImage)
+        #expect(library.cachedPicture(for: blue) == nil)
+        let blueImage = try #require(try await library.picture(for: blue))
+        #expect(redImage !== blueImage)
+        #expect(try ItemPictureFixture.pixels(redImage).color(56, 56) == [255, 0, 0, 255])
+        #expect(try ItemPictureFixture.pixels(blueImage).color(56, 56) == [0, 0, 255, 255])
+        #expect(library.cachedPicture(for: shared) === redImage)
+        #expect(library.cachedPicture(for: blue) === blueImage)
+    }
+
+    @Test func unavailableModelReferencesNeverReuseTheOrdinaryPicture() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library(), ordinary = ItemStack(id: "test:flat")
+        let image = try #require(try await library.picture(for: ordinary))
+        let components: [NBT] = [
+            .compound(["!minecraft:item_model": .compound([:])]),
+            .compound(["!minecraft:item_model": .compound([:]), "minecraft:item_model": .string(ordinary.id)]),
+            .compound(["minecraft:item_model": .int(1)]),
+            .compound(["minecraft:item_model": .string("Bad Model")]),
+            .compound(["minecraft:item_model": .string("test:missing")]),
+            .compound(["minecraft:item_model": .string("test:special")]),
+            .int(1)
+        ]
+        for value in components {
+            let stack = ItemStack(id: ordinary.id, components: value)
+            #expect(library.cachedPicture(for: stack) == nil)
+            #expect(try await library.picture(for: stack) == nil)
+            #expect(library.cachedPicture(for: stack) == nil)
+            #expect(library.cachedPicture(for: ordinary) === image)
+        }
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func warmItemIconUsesTheSavedModelAndTint(colorScheme: ColorScheme) async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let ordinary = ItemStack(id: "test:flat")
+        let overridden = ItemStack(id: ordinary.id, components: .compound([
+            "minecraft:item_model": .string("test:leather"), "minecraft:dyed_color": .int(0x0000FF)
+        ]))
+        _ = try #require(try await library.picture(for: ordinary))
+        _ = try #require(try await library.picture(for: overridden))
+        // The native initial frame reads the warm cache before its asynchronous load task.
+        let renderer = ImageRenderer(content: ItemIcon(item: overridden)
+            .environment(\.gameAssetLibrary, library).environment(\.colorScheme, colorScheme))
+        renderer.scale = 4
+        let pixels = try ItemPictureFixture.pixels(try #require(renderer.cgImage))
+        #expect(pixels.color(10, 10) == [255, 0, 0, 255]) // Unchanged overlay.
+        #expect(pixels.color(70, 70) == [0, 0, 255, 255]) // Original stack's dye.
+    }
+
     @Test func warmItemIconDrawsItsPictureInTheInitialFrame() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
