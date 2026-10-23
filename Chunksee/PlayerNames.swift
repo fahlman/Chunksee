@@ -47,7 +47,8 @@ struct PlayerNameRequest: Equatable {
 final class PlayerNames {
     private(set) var local: [UUID: String] = [:]
     private(set) var online: [UUID: String] = [:]
-    private(set) var minecraftFolder: URL?
+    let minecraft: MinecraftResources
+    var minecraftFolder: URL? { minecraft.folder }
 
     /// Looking up a name sends that player's UUID to Mojang, only while this remains on.
     var looksUpOnline: Bool {
@@ -63,7 +64,6 @@ final class PlayerNames {
     private let work: BackgroundWork
     private let localWork: BackgroundWork.Scope
     private let onlineWork: BackgroundWork.Scope
-    @ObservationIgnored private var folderAccess: WorldReadAccess?
     @ObservationIgnored private var localGeneration = UUID()
     @ObservationIgnored private var localTask: Task<Void, Never>?
     @ObservationIgnored private var onlineGeneration = UUID()
@@ -72,7 +72,6 @@ final class PlayerNames {
     private enum Keys {
         static let looksUpOnline = "looksUpPlayerNamesOnline"
         static let online = "onlinePlayerNames"
-        static let folder = "minecraftFolderBookmark"
     }
 
     init(defaults: UserDefaults, mojang: MojangProfiles = MojangProfiles(),
@@ -82,13 +81,13 @@ final class PlayerNames {
         localWork = work.makeScope()
         onlineWork = work.makeScope()
         self.defaults = defaults
+        minecraft = MinecraftResources(defaults: defaults)
         self.mojang = mojang
         self.readCaches = readCaches
         looksUpOnline = defaults.bool(forKey: Keys.looksUpOnline)
         if let saved = defaults.dictionary(forKey: Keys.online) as? [String: String] {
             online = Dictionary(uniqueKeysWithValues: saved.compactMap { key, name in UUID(uuidString: key).map { ($0, name) } })
         }
-        restoreFolder()
     }
 
     isolated deinit {
@@ -109,42 +108,27 @@ final class PlayerNames {
     }
 
     func chooseMinecraftFolder(_ url: URL) async {
-        forgetMinecraftFolder()
-        folderAccess = WorldReadAccess(url)
-        minecraftFolder = url
-        let data = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-                                        includingResourceValuesForKeys: nil, relativeTo: nil)
-        defaults.set(data, forKey: Keys.folder)
+        clearLocal()
+        minecraft.choose(url)
         await reloadLocal()
     }
 
     func forgetMinecraftFolder() {
+        clearLocal()
+        minecraft.forget()
+    }
+
+    private func clearLocal() {
         localGeneration = UUID()
         localWork.cancel()
         localTask = nil
-        // A read already running retains its own access until it returns.
-        folderAccess = nil
-        minecraftFolder = nil
         local = [:]
-        defaults.removeObject(forKey: Keys.folder)
-    }
-
-    private func restoreFolder() {
-        guard let data = defaults.data(forKey: Keys.folder) else { return }
-        var isStale = false
-        guard let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
-                                 relativeTo: nil, bookmarkDataIsStale: &isStale) else {
-            defaults.removeObject(forKey: Keys.folder)
-            return
-        }
-        folderAccess = WorldReadAccess(url)
-        minecraftFolder = url
     }
 
     /// Pending reads belong to the shared source, including when a requesting view disappears.
     /// Only overlapping requests coalesce; a subsequent reload still rereads the local caches.
     func reloadLocal() async {
-        guard let folder = minecraftFolder, let access = folderAccess, !Task.isCancelled else { return }
+        guard let folder = minecraftFolder, let access = minecraft.access, !Task.isCancelled else { return }
         if let pending = localTask {
             await pending.value
             return

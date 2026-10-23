@@ -1,8 +1,7 @@
 import ChunkseeKit
 import SwiftUI
 
-/// How an item looks in a slot. Minecraft's textures can't be redistributed, so items are drawn as
-/// an SF Symbol for their category, tinted by their material.
+/// Shared item wording and fallback symbols/colors when no installed picture is available.
 nonisolated enum ItemAppearance {
     static let mapSymbol = "map.fill"
 
@@ -248,7 +247,7 @@ private struct SlotView: View {
             .frame(width: 28, height: 28)
             .overlay {
                 if let item {
-                    ItemIcon(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item))
+                    ItemIcon(item: item)
                 }
             }
             .overlay(alignment: .bottom) {

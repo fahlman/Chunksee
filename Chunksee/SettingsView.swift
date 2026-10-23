@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Where player names come from: Minecraft's own name caches, and optionally Mojang.
+/// Read-only installed-game resources, and optional online player-name lookup.
 struct SettingsView: View {
     @Bindable var names: PlayerNames
     @State private var isChoosingFolder = false
@@ -23,11 +23,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("Minecraft remembers the names of players who have played on this Mac. Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder) so Chunksee can use them.")
+                Text("Choose your Minecraft folder (usually Library ▸ Application Support ▸ minecraft in your home folder) to use saved player names and item pictures from the installed version matching each world. Items use symbols when their pictures aren’t available.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Player Names on This Mac")
+                Text("Minecraft on This Mac")
             }
 
             Section {

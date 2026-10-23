@@ -13,8 +13,7 @@ struct EquipmentSection: View {
                     VStack(alignment: .leading) {
                         LabeledContent(EquipmentPresentation.slot(row.slot)) {
                             VStack(alignment: .trailing) {
-                                ItemLabel(id: row.item.id, title: Text(row.item, format: ItemAppearance.LabelStyle()),
-                                          isEnchanted: ItemAppearance.isEnchanted(row.item))
+                                ItemLabel(item: row.item, title: Text(row.item, format: ItemAppearance.LabelStyle()))
                                 .foregroundStyle(.primary)
                                 .help(ItemAppearance.details(of: row.item))
                                 ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
