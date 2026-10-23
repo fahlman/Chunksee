@@ -29,13 +29,27 @@ import Testing
         #expect(colors == [MapColor(0xff0000), MapColor(0xff0000), MapColor(0x4000bf)])
     }
 
-    @Test func constantTintsApplyButUnresolvedBiomeAndLockedUVsKeepFallbacks() async throws {
+    @Test func constantTintsAndLockedModelsResolveWhileUnknownBiomeKeepsItsFallback() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
         let library = try fixture.library()
         let states = [BlockState("minecraft:spruce_leaves"), BlockState("minecraft:grass_block"), BlockState("test:locked")]
         let colors = try await library.mapColors(for: states)
-        #expect(colors == [MapColor(0x619961), nil, nil])
+        #expect(colors == [MapColor(0x619961), nil, MapColor(0xffffff)])
+    }
+
+    @Test func lockedPartialFacesUseTheGameCoordinatesBeforeAveragingAndCaching() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let states = ["locked_0", "locked_90", "locked_180", "locked_270", "unlocked_90",
+                      "locked_north", "locked_east", "locked_inverted"].map { BlockState("test:" + $0) }
+        // The UV rectangle covers one quarter of an asymmetric four-color texture. UV lock
+        // moves that rectangle around the texture center, not just its four vertex indexes.
+        let expected = [0xff0000, 0x00ff00, 0xffff00, 0x0000ff, 0xff0000, 0xffff00, 0x0000ff, 0x00ff00]
+            .map { MapColor(UInt32($0)) }
+        #expect(try await library.mapColors(for: states) == expected.map(Optional.some))
+        #expect(library.cachedMapColors(for: states) == expected.map(Optional.some))
     }
 
     @Test func warmColorsPreserveOrderMissingModelsAndSourceRemoval() async throws {
@@ -77,7 +91,7 @@ import Testing
         let fixture = try fixture()
         defer { fixture.remove() }
         let url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
-            palette: ["test:new", "minecraft:barrier"], index: { _, y, _ in y == 15 ? 1 : 0 })])
+            palette: ["test:locked_90", "minecraft:barrier"], index: { _, y, _ in y == 15 ? 1 : 0 })])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let library = try fixture.library(), position = RegionPosition(x: 0, z: 0)
@@ -89,7 +103,7 @@ import Testing
         let image = try #require(try await colored.tile(for: position))
         let hit = try #require(try await colored.tile(for: position))
         let pixels = try ItemPictureFixture.pixels(image.full)
-        #expect(pixels.color(8, 8) == [255, 0, 0, 255])
+        #expect(pixels.color(8, 8) == [0, 255, 0, 255])
         #expect(try ItemPictureFixture.pixels(hit.full).bytes == pixels.bytes)
         #expect(try ItemPictureFixture.pixels(original.full).bytes != pixels.bytes)
         let file = try #require(try dimension.region(x: 0, z: 0))
@@ -142,6 +156,22 @@ import Testing
             "axis=y": ["model": "test:item/cube"], "axis=x": ["model": "test:item/cube", "x": 90],
             "axis=z": ["model": "test:item/cube", "x": 270]]])
         try block("test:locked", ["variants": ["": ["model": "test:item/cube", "x": 90, "uvlock": true]]])
+        for direction in ["up", "north", "east", "inverted"] {
+            let facing = direction == "inverted" ? "up" : direction
+            let uv = direction == "inverted" ? [8, 8, 0, 0] : [0, 0, 8, 8]
+            try json("assets/test/models/block/partial_\(direction).json", [
+                "textures": ["skin": "test:item/quadrants"],
+                "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": [
+                    facing: ["texture": "#skin", "uv": uv]
+                ]]]])
+        }
+        for turn in [0, 90, 180, 270] {
+            try block("test:locked_\(turn)", ["variants": ["": ["model": "test:block/partial_up", "y": turn, "uvlock": true]]])
+        }
+        try block("test:unlocked_90", ["variants": ["": ["model": "test:block/partial_up", "y": 90]]])
+        try block("test:locked_north", ["variants": ["": ["model": "test:block/partial_north", "x": 270, "uvlock": true]]])
+        try block("test:locked_east", ["variants": ["": ["model": "test:block/partial_east", "z": 270, "uvlock": true]]])
+        try block("test:locked_inverted", ["variants": ["": ["model": "test:block/partial_inverted", "y": 90, "uvlock": true]]])
         try block("test:weighted", ["variants": ["": [["model": "test:block/red", "weight": 1], ["model": "test:block/blue", "weight": 3]]]])
         func face(_ texture: String, y: Int = 16, tint: Bool = false) -> [String: Any] {
             var top: [String: Any] = ["texture": "#" + String(texture.split(separator: "/").last!)]

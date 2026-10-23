@@ -22,7 +22,8 @@ nonisolated struct TileCache: Sendable {
     /// 14: per-dimension block filtering and separate unfiltered/filtered cache slots.
     /// 15: texture-derived colors keyed by the selected game archive.
     /// 16: per-column biome tints keyed by the resolved world color definitions.
-    static let rendererVersion = 16
+    /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
+    static let rendererVersion = 17
 
     let directory: URL
 

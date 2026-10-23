@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.57.1`, resolved to `0.57.1` (`62890614c212a7ad229b0c4769957a5210983653`).
+  minor" from `0.58.0`, resolved to `0.58.0` (`14fa8bd5930c4930a28675259aa1ca85180eb26a`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1201,12 +1201,16 @@ orthographic top view. It averages visible premultiplied pixels, excluding trans
 weights model alternatives. Multipart combinations are bounded at 64 and visible faces at 4096;
 unresolved or over-budget models retain BlockColors. Animated strips use their first image frame.
 
-Constant block tints apply. Rotated UV-locked faces and ambiguous compact
-states retain the existing fallback until their separate adoption; no registry defaults are
-invented. Transparent map blocks and water keep the map's rules. Height ignores the asset source.
+Constant block tints apply. Item element faces and map block faces use Kit 0.58.0's shared
+texture coordinates. The block path additionally applies UV lock using the original face
+direction before rotating geometry, so rotated locked partial faces sample the correct texture
+area. The app has no face-UV corner or rotation rule of its own. Ambiguous compact states retain
+the existing fallback; no registry defaults are invented. Transparent map blocks and water keep
+the map's rules. Height ignores the asset source.
 The shared library bounds color results (including misses), reuses decoded textures, and clears
 all caches on retirement. A retired reader cancels map work instead of caching fallback colors
-under its old source key. TileCache version 16 includes a stable URL/size/modification/version
+under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
+includes a stable URL/size/modification/version
 source key; changing or removing the source cancels old map jobs and redraws through MapModel's
 existing invalidator. No archive or installed artwork is bundled. High-zoom texture detail remains
 follow-up work in #363.
