@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.54.1`, resolved to `0.54.1` (`770c52e78ec80899942739ffc6f203165bae1833`).
+  minor" from `0.55.1`, resolved to `0.55.1` (`4bf571c8ca7b47957d1e7757a50efca9f2851d2a`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1155,6 +1155,14 @@ use the static fallback. Unsupported game versions/models or missing skins retai
 Synthetic 64x64 atlas tests distinguish chest top/lid/body/latch regions and the red shulker's
 turned top and upper/lower sides, including normal shared caching. #395's native and bounded
 rendering checks remain required; no installed artwork is included in the app or test fixtures.
+
+Kit 0.55.1 also supplies the verified 26.3 plain-shield geometry and preserves ordinary-model
+translations used to separate colored-bed parts. They use the same item renderer, skin decoding
+and memory caches, with no app-side model table. Synthetic pixel tests exercise translated bed
+halves and the shield's front plate/back handle through GameAssetLibrary, plus native bed icons
+in both appearances. Shields use the default unpatterned skin; saved banner patterns/base colors
+and the straw bed's separate Y rotation remain on #390. The published library also exposes saved
+light validity and dimension spawn-light limits; #86's app overlay is still separate work.
 
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
 styling across equipment, trades, inventory slots, Storage and matching search-item details.
