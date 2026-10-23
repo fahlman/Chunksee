@@ -217,7 +217,7 @@ actor GameAssetLibrary {
             try Task.checkCancellation()
             if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
         }
-        return MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
+        return try MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
     }
 
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.

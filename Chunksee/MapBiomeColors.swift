@@ -13,10 +13,14 @@ nonisolated struct MapBiomeColors: Sendable {
     let assetSourceKey: String
     let dataVersion: Int?
     let enabledPacks: [String]
+    let seed: Int64?
+    let sampler: BiomeSampler?
     private let colors: [String: Biome]
 
     init(world: World, assetSourceKey: String, definitions: [String: BiomeDefinition],
-         colorMaps: [Identifier: ItemTexture]) {
+         colorMaps: [Identifier: ItemTexture]) throws {
+        seed = try world.seed()
+        sampler = world.level.dataVersion == SaveVersion.java26_3 ? seed.map(BiomeSampler.init(seed:)) : nil
         self.assetSourceKey = assetSourceKey
         dataVersion = world.level.dataVersion
         enabledPacks = world.level.enabledDataPacks
@@ -30,12 +34,13 @@ nonisolated struct MapBiomeColors: Sendable {
                     value.foliageColor.map(String.init) ?? "-", value.dryFoliageColor.map(String.init) ?? "-",
                     value.grassColorModifier.rawValue].joined(separator: "|")
         }
-        sourceKey = CacheKey.hash(assetSourceKey + "\n" + rows.joined(separator: "\n"))
+        sourceKey = CacheKey.hash(assetSourceKey + "\nseed:" + (seed.map(String.init) ?? "unknown") + "\n" + rows.joined(separator: "\n"))
     }
 
-    func matchesMetadata(_ world: World, assetSourceKey: String) -> Bool {
-        self.assetSourceKey == assetSourceKey && dataVersion == world.level.dataVersion
-            && enabledPacks == world.level.enabledDataPacks
+    func matchesMetadata(_ world: World, assetSourceKey: String) throws -> Bool {
+        guard self.assetSourceKey == assetSourceKey, dataVersion == world.level.dataVersion,
+              enabledPacks == world.level.enabledDataPacks else { return false }
+        return seed == (try world.seed())
     }
 
     /// The renderer retains this lookup once per distinct saved biome string in a chunk.

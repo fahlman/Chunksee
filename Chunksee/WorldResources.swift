@@ -212,7 +212,7 @@ final class WorldResources {
                                                        previous: MapBiomeColors?, reload: Bool) async throws -> MapBiomeColors {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        if !reload, let previous, previous.matchesMetadata(current, assetSourceKey: library.sourceKey) { return previous }
+        if !reload, let previous, try previous.matchesMetadata(current, assetSourceKey: library.sourceKey) { return previous }
         return try await library.biomeColors(in: current)
     }
 
@@ -318,6 +318,9 @@ final class WorldResources {
                 pendingBiomePacks = true
             } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path {
                 pendingPlayers = true
+                pendingBiomeMetadata = true
+            } else if ["data", "data/minecraft", "data/world_gen_settings.dat", "data/minecraft/world_gen_settings.dat"]
+                .contains(where: { path == url.appendingPathComponent($0).standardizedFileURL.path }) {
                 pendingBiomeMetadata = true
             } else if path == url.appendingPathComponent("datapacks").standardizedFileURL.path ||
                         path.hasPrefix(url.appendingPathComponent("datapacks").standardizedFileURL.path + "/") {

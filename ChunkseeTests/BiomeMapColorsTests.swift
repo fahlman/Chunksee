@@ -306,33 +306,246 @@ import Testing
         await library.close()
     }
 
+    @Test func displacedCellsCrossChunkRegionAndVerticalBoundariesWithIdenticalSerialAndParallelPixels() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let centers = [ChunkPosition(x: -32, z: -32), .init(x: -1, z: 0), .init(x: 0, z: 0), .init(x: 31, z: 31)]
+        var positions: Set<ChunkPosition> = []
+        for center in centers {
+            for x in -1...1 { for z in -1...1 { positions.insert(.init(x: center.x + x, z: center.z + z)) } }
+        }
+        func blue(_ x: Int, _ y: Int, _ z: Int) -> Bool { ((x >> 2) ^ (y >> 2) ^ (z >> 2)) & 1 == 1 }
+        let chunks = positions.map { sampledChunk($0, blue: blue) }
+        let url = try world(chunks: chunks, seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library
+        renderer.biomeColors = try await library.biomeColors(in: world)
+        #expect(renderer.samplesNeighborBiomes)
+        let sampler = BiomeSampler(seed: 0)
+        for region in Set(centers.map(\.region)) {
+            let serial = try ItemPictureFixture.pixels(#require(try await renderer.image(for: region)))
+            renderer.chunkConcurrency = 14
+            let parallel = try ItemPictureFixture.pixels(#require(try await renderer.image(for: region)))
+            #expect(serial.bytes == parallel.bytes)
+            for center in centers where center.region == region {
+                let origin = try #require(center.blockOrigin)
+                for z in 0..<16 { for x in 0..<16 {
+                    let cell = try #require(sampler.cellOrigin(at: BlockPosition(blockX: origin.x + x, blockY: 15, blockZ: origin.z + z)))
+                    #expect(parallel.color(center.localX * 16 + x, center.localZ * 16 + z)
+                        == (blue(cell.x, cell.y, cell.z) ? [0, 0, 255, 255] : [255, 0, 0, 255]))
+                } }
+            }
+            renderer.chunkConcurrency = 1
+        }
+        renderer.cutawayY = 7
+        let slice = try await pixels(renderer)
+        for z in 2..<14 { for x in 2..<14 {
+            let cell = try #require(sampler.cellOrigin(at: BlockPosition(blockX: x, blockY: 7, blockZ: z)))
+            #expect(slice.color(x, z) == (blue(cell.x, cell.y, cell.z) ? [0, 0, 255, 255] : [255, 0, 0, 255]))
+        } }
+        await library.close()
+    }
+
+    @Test func creatingChangingAndDeletingANeighborInvalidatesDiskTiles() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, _, _ in false })], seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld"))
+        let library = try fixture.library(), region = RegionPosition(x: 0, z: 0)
+        let cache = TileCache(directory: url.appendingPathComponent("tiles"))
+        var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        let point = try westSample()
+        let own = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
+        let neighbor = dimension.regionURL(at: .init(x: -1, z: 0))
+        func color() async throws -> [UInt8] {
+            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).color(point.x, point.z)
+        }
+        let missing = try await color()
+        #expect(missing == [124, 189, 107, 255])
+        for (blue, expected, stamp) in [(true, [0, 0, 255, 255], 1000.0), (false, [255, 0, 0, 255], 2000.0)] {
+            try Data(TestWorld.regionFile([sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in blue })])).write(to: neighbor)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: stamp)], ofItemAtPath: neighbor.path)
+            #expect(try await color() == expected.map(UInt8.init))
+            #expect(try await color() == expected.map(UInt8.init)) // Stable dependencies reuse the current pixels.
+        }
+        try FileManager.default.removeItem(at: neighbor)
+        #expect(try await color() == missing)
+        let after = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
+        #expect(after.size == own.size && after.modified == own.modified)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        await library.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func neighborSaveCancelsTheOlderRenderAndOnlyTheReplacementPublishes() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, _, _ in false }),
+                                     sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in false })], seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
+        let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
+        let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
+            renderTile: { renderer, region in
+                let name = String(await reads.next())
+                let tile = try await renderer.tile(for: region)
+                _ = await gate.read(name)
+                return tile
+            })
+        map.setGameAssets(library, biomeColors: try await library.biomeColors(in: world))
+        map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
+        await gate.waitForRequest("0")
+        try Data(TestWorld.regionFile([sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in true })]))
+            .write(to: dimension.regionURL(at: .init(x: -1, z: 0)))
+        map.regionsChanged([.init(x: -1, z: 0)])
+        await gate.waitForCancellation("0")
+        await gate.waitForRequest("1")
+        await gate.finish("1", with: true)
+        await map.waitUntilIdle()
+        await gate.finish("0", with: true)
+        await work.waitUntilFinished()
+        let point = try westSample(), image = try #require(map.tiles[.init(x: 0, z: 0)])
+        #expect(try ItemPictureFixture.pixels(image).color(point.x, point.z) == [0, 0, 255, 255])
+        map.close(); await work.waitUntilFinished(); await library.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func savedGenerationSeedRefreshesSharedColorIdentityWithoutChangingLevelMetadata() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(seed: 0), defaults = TestDefaults.make()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        await resources.index.waitForIndex()
+        let session = WorldSession(resources: resources), library = try fixture.library()
+        resources.refreshDelay = .zero
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation,
+            version: GameAssetVersion(name: resources.world.level.versionName, dataVersion: resources.world.level.dataVersion))
+        resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
+        await resources.waitForRefresh()
+        let original = try #require(session.map?.currentRenderer.biomeColors)
+        let file = url.appendingPathComponent("data/minecraft/world_gen_settings.dat")
+        try Fixtures.writeGzippedNBT(.compound(["data": .compound(["seed": .long(1)])]), to: file)
+        resources.worldChanged([file])
+        await resources.waitForRefresh()
+        let changed = try #require(session.map?.currentRenderer.biomeColors)
+        #expect(original.seed == 0 && changed.seed == 1 && original.sourceKey != changed.sourceKey)
+        #expect(try !original.matchesMetadata(World(contentsOf: url), assetSourceKey: library.sourceKey))
+        #expect(try changed.matchesMetadata(World(contentsOf: url), assetSourceKey: library.sourceKey))
+        try Data([0]).write(to: file) // A transient unreadable source must retain the last good snapshot.
+        resources.worldChanged([file]); await resources.waitForRefresh()
+        #expect(session.map?.currentRenderer.biomeColors?.sourceKey == changed.sourceKey)
+        resources.close(); await resources.waitUntilClosed(); await library.close()
+    }
+
+    @Test func missingSeedDoesNotInventACellAndHeightDoesNotDependOnNeighbors() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, _, _ in false })])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), library = try fixture.library()
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        #expect(renderer.biomeColors?.seed == nil && !renderer.samplesNeighborBiomes)
+        #expect(try await pixels(renderer).color(8, 8) == [124, 189, 107, 255])
+        try level(at: url, packs: ["vanilla"], seed: 0)
+        renderer.biomeColors = try await library.biomeColors(in: World(contentsOf: url))
+        #expect(renderer.samplesNeighborBiomes)
+        renderer.style = .height
+        #expect(!renderer.samplesNeighborBiomes)
+        await library.close()
+    }
+
+    @Test func sampledCutawayClampsToSavedBuildHeightAndUsesThatRangeInTheDiskKey() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, y, _ in y >= 16 })], seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
+        let file = url.appendingPathComponent("data/minecraft/world_gen_settings.dat")
+        func context(height: Int) throws -> MapSurfaceContext {
+            let type: NBT = .compound(["min_y": .int(0), "height": .int(Int32(height)),
+                                      "logical_height": .int(0), "has_ceiling": .byte(0)])
+            try Fixtures.writeGzippedNBT(.compound(["data": .compound([
+                "seed": .long(0), "dimensions": .compound(["minecraft:overworld": .compound(["type": type])])
+            ])]), to: file)
+            return MapSurfaceContext(dimensionID: dimension.id,
+                settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings[dimension.id])
+        }
+        let cache = TileCache(directory: url.appendingPathComponent("tiles"))
+        var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false, cutawayY: 15)
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        renderer.surfaceContext = try context(height: 32)
+        #expect(renderer.surfaceContext.dimensionType?.maxY == 31)
+        let tall = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full)
+        renderer.surfaceContext = try context(height: 16)
+        let short = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full)
+        var crossed = 0
+        for z in 2..<14 { for x in 2..<14 {
+            let cell = try #require(BiomeSampler(seed: 0).cellOrigin(at: .init(blockX: x, blockY: 15, blockZ: z)))
+            if cell.y == 16 {
+                crossed += 1
+                #expect(tall.color(x, z) == [0, 0, 255, 255] && short.color(x, z) == [255, 0, 0, 255])
+            }
+        } }
+        #expect(crossed > 0)
+        await library.close()
+    }
+
+    private func westSample() throws -> (x: Int, z: Int) {
+        let sampler = BiomeSampler(seed: 0)
+        for x in 0...1 { for z in 4...11 {
+            if sampler.cellOrigin(at: BlockPosition(blockX: x, blockY: 15, blockZ: z))?.chunk == ChunkPosition(x: -1, z: 0) {
+                return (x, z)
+            }
+        } }
+        throw NSError(domain: "Expected west-neighbor cell in the verified sampler", code: 1)
+    }
+
+    private func sampledChunk(_ position: ChunkPosition, blue: (Int, Int, Int) -> Bool) -> TestWorld.ChunkSpec {
+        let origin = position.blockOrigin!
+        let sections = (0...1).map { section in
+            let cells = (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in
+                blue(origin.x + x * 4, section * 16 + y * 4, origin.z + z * 4) ? 1 : 0
+            } } }
+            return Fixtures.section(y: section, palette: [.string(section == 0 ? "minecraft:grass_block" : "minecraft:air")],
+                                    biomes: ["test:a", "test:b"], biomeIndices: cells)
+        }
+        return .init(x: position.x, z: position.z, nbt: Fixtures.chunk(x: position.x, z: position.z, dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
+    }
+
     private func pixels(_ renderer: RegionTileRenderer) async throws -> ItemPictureFixture.Pixels {
         try ItemPictureFixture.pixels(#require(try await renderer.image(for: .init(x: 0, z: 0))))
     }
 
     private func chunk(x: Int = 0, z: Int = 0, palette: [NBT], blocks: (Int, Int, Int) -> Int,
-                       biomes: (Int, Int, Int) -> Int, biomeIDs: [String] = ["test:a", "test:b"], biomeBits: Int = 1) -> TestWorld.ChunkSpec {
+                       biomes: (Int, Int, Int) -> Int, biomeIDs: [String] = ["test:a", "test:b"], biomeBits: Int = 1, perBlock: Bool = true) -> TestWorld.ChunkSpec {
         func indices(_ read: (Int, Int, Int) -> Int) -> [Int] {
             (0..<16).flatMap { y in (0..<16).flatMap { z in (0..<16).map { x in read(x, y, z) } } }
         }
-        // 26.3 stores one biome for each 4×4×4 cell, independently of the block palette.
-        let biomeCells = (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in biomes(x * 4, y * 4, z * 4) } } }
+        // These tint/offset tests use synthetic per-block palettes; displaced-cell cases below
+        // separately exercise the verified 26.3 four-block layout and neighboring data.
+        let biomeCells = perBlock ? indices(biomes) : (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in biomes(x * 4, y * 4, z * 4) } } }
         let section = Fixtures.section(y: 0, palette: palette, indices: indices(blocks),
             biomes: biomeIDs, biomeIndices: biomeCells, biomeBits: biomeBits)
-        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: 5023, sections: [section], extra: ["yPos": .int(0)]))
+        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: perBlock ? SaveVersion.perBlockBiomes : SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
     }
 
-    private func world(chunks: [TestWorld.ChunkSpec] = []) throws -> URL {
+    private func world(chunks: [TestWorld.ChunkSpec] = [], seed: Int64? = nil) throws -> URL {
         let url = try TestWorld.make(chunks: chunks)
-        try level(at: url, packs: ["vanilla"])
+        try level(at: url, packs: ["vanilla"], seed: seed)
         return url
     }
 
-    private func level(at url: URL, packs: [String], name: String = "Biome Map Check") throws {
+    private func level(at url: URL, packs: [String], name: String = "Biome Map Check", seed: Int64? = nil) throws {
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
             "LevelName": .string(name), "DataVersion": .int(5023),
             "Version": .compound(["Name": .string("26.3")]),
-            "DataPacks": .compound(["Enabled": .list(packs.map(NBT.string))])
+            "DataPacks": .compound(["Enabled": .list(packs.map(NBT.string))]),
+            "WorldGenSettings": .compound(seed.map { ["seed": NBT.long($0)] } ?? [:])
         ])]), to: url.appendingPathComponent("level.dat"))
     }
 
