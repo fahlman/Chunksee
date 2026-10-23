@@ -330,6 +330,8 @@ dynamic time-of-day lighting or cross-region cast shadows (#357/#359).
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and minus/plus buttons share that owner; height controls are disabled on Surface.
+Height edits use MapModel.setHeight, preserving the chosen mode when the formatted field writes
+back during a focus or enabled-state change. Only the mode controls switch Surface/Cutaway.
 The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
 MapAdjustmentPopover owns both adjustment popovers' heading, spacing and 340-point width;
 their native step and Done buttons share presentation too. Map Height names the feature, Mode

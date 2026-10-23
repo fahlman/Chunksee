@@ -52,9 +52,10 @@ private struct MapDepthPopover: View {
 
     private var height: Binding<Int> {
         Binding { displayedY } set: {
-            // TextField writes its formatted value back as the slider draft changes too.
+            // Formatted-field writes also arrive when Surface disables the field. Height
+            // edits must preserve the mode chosen by the picker or View menu.
             if draggedY != nil { draggedY = $0 }
-            else { map.setDepth(MapDepth(y: $0, isSurface: false)) }
+            else { map.setHeight($0) }
         }
     }
 
