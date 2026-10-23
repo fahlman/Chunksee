@@ -25,6 +25,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     var style = MapStyle.normal
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
+    var gameAssets: GameAssetLibrary?
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
     /// Columns in ungenerated chunks stay fully transparent.
@@ -42,7 +43,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = Self.columns(in: file, localX: localX, localZ: localZ, context: surfaceContext, cutawayY: cutawayY, blockFilter: blockFilter) {
+                if let columns = try await coloredColumns(in: file, localX: localX, localZ: localZ) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ, style: style, heightScale: heightScale)
                 }
             }
@@ -55,7 +56,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        return Self.columns(in: file, localX: localX, localZ: localZ, context: surfaceContext, cutawayY: cutawayY, blockFilter: blockFilter).map { (localX, localZ, $0) }
+                        let columns = try await coloredColumns(in: file, localX: localX, localZ: localZ)
+                        return columns.map { (localX, localZ, $0) }
                     }
                 }
                 for _ in 0..<chunkConcurrency { startNext() }
@@ -65,6 +67,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         }
+        if style != .height { try await gameAssets?.checkAvailable() }
         return canvas
     }
 
@@ -101,9 +104,10 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// method would otherwise run on the main actor when called from the map model.
     @concurrent
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
+        if style != .height { try await gameAssets?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter)
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : gameAssets?.sourceKey)
         var surface: Canvas?
         var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
@@ -148,6 +152,42 @@ nonisolated struct RegionTileRenderer: Sendable {
         scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter)?.columns
     }
 
+    /// Color the already selected blocks; do not decode or traverse the chunk a second time.
+    private func coloredColumns(in file: RegionFile, localX: Int, localZ: Int) async throws -> [Column?]? {
+        guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
+                                      cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
+        guard style != .height, let gameAssets else { return scanned.columns }
+        var indices: [PaletteEntry: Int] = [:]
+        var states: [BlockState] = []
+        func index(for entry: PaletteEntry) -> Int? {
+            if let index = indices[entry] { return index }
+            guard let state = scanned.sections.blockState(at: entry) else { return nil }
+            let index = states.count
+            states.append(state)
+            indices[entry] = index
+            return index
+        }
+        let positions = scanned.columns.map { column -> (surface: Int?, floor: Int?) in
+            guard let column else { return (nil, nil) }
+            let surface = column.waterDepth == 0
+                ? index(for: PaletteEntry(section: column.section, palette: column.palette)) : nil
+            return (surface, column.waterFloor.flatMap { index(for: $0) })
+        }
+        let colors: [MapColor?]
+        if let cached = gameAssets.cachedMapColors(for: states) { colors = cached }
+        else { colors = try await gameAssets.mapColors(for: states) }
+        return zip(scanned.columns, positions).map { value, position in
+            guard var column = value else { return nil }
+            if let index = position.surface, let color = colors[index] {
+                column.color = color.shaded(column.colorShade)
+            }
+            if let index = position.floor, let color = colors[index] {
+                column.waterFloorColor = color
+            }
+            return column
+        }
+    }
+
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
     /// readout: the same scan the map is drawn with, naming what it found.
     static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter()) -> [TopBlock?]? {
@@ -173,6 +213,11 @@ nonisolated struct RegionTileRenderer: Sendable {
         return (sections, columns)
     }
 
+    struct PaletteEntry: Hashable, Sendable {
+        var section: Int
+        var palette: Int
+    }
+
     /// The highest block the map should show in a column, and how deep the water above it is.
     struct Column: Equatable {
         var y: Int
@@ -185,6 +230,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         var palette = 0
         /// The first visible block directly below contiguous water; absent across gaps or at the depth cap.
         var waterFloorColor: MapColor?
+        var waterFloor: PaletteEntry?
+        var colorShade = 1.0
     }
 
     /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
@@ -220,10 +267,14 @@ nonisolated struct RegionTileRenderer: Sendable {
         private let highestSection: Int?
 
         func blockID(section: Int, palette: Int) -> String {
-            guard chunk.sections.indices.contains(section),
-                  let states = chunk.sections[section].blockStates,
-                  states.palette.indices.contains(palette) else { return "" }
-            return states.palette[palette].id
+            blockState(at: PaletteEntry(section: section, palette: palette))?.id ?? ""
+        }
+
+        func blockState(at entry: PaletteEntry) -> BlockState? {
+            guard chunk.sections.indices.contains(entry.section),
+                  let states = chunk.sections[entry.section].blockStates,
+                  states.palette.indices.contains(entry.palette) else { return nil }
+            return states.palette[entry.palette]
         }
 
         init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter()) {
@@ -301,7 +352,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                                 let y = min(run.y.upperBound, belowBand.partialValue)
                                 if !belowBand.overflow, y >= run.y.lowerBound {
                                     states[i].column = Column(y: y, color: paint.color.shaded(0.6), waterDepth: 0, emphasis: paint.emphasis,
-                                                              section: run.sectionIndex, palette: palette)
+                                                              section: run.sectionIndex, palette: palette, colorShade: 0.6)
                                 }
                             }
                         case .unresolved:
@@ -327,7 +378,10 @@ nonisolated struct RegionTileRenderer: Sendable {
                         }
                     case .water:
                         guard case .water = entry, var column = states[i].column else {
-                            if case .solid(let paint) = entry { states[i].column?.waterFloorColor = paint.color }
+                            if case .solid(let paint) = entry {
+                                states[i].column?.waterFloorColor = paint.color
+                                states[i].column?.waterFloor = PaletteEntry(section: run.sectionIndex, palette: palette)
+                            }
                             states[i].phase = .done
                             return false
                         }

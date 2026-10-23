@@ -52,12 +52,12 @@ final class MinecraftResources {
         defaults.removeObject(forKey: Self.bookmarkKey)
     }
 
-    func pictures(for version: GameAssetVersion) async -> GameItemPictures? {
+    func library(for version: GameAssetVersion) async -> GameAssetLibrary? {
         guard let access, !Task.isCancelled else { return nil }
         let generation = generation, libraries = libraries
-        var result: GameItemPictures?
+        var result: GameAssetLibrary?
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
-            let loaded = try? await libraries.pictures(for: version, under: access.url)
+            let loaded = try? await libraries.library(for: version, under: access.url)
             withExtendedLifetime(access) {}
             guard !Task.isCancelled, self?.generation == generation else { return }
             result = loaded
@@ -91,8 +91,8 @@ actor GameAssetLibraries {
         let modified: Int64
     }
     nonisolated private final class WeakLibrary {
-        weak var value: GameItemPictures?
-        init(_ value: GameItemPictures) { self.value = value }
+        weak var value: GameAssetLibrary?
+        init(_ value: GameAssetLibrary) { self.value = value }
     }
     private var live: [Identity: WeakLibrary] = [:]
     private var isClosed = false
@@ -104,7 +104,7 @@ actor GameAssetLibraries {
         for library in pictures { await library.close() }
     }
 
-    func pictures(for version: GameAssetVersion, under folder: URL) throws -> GameItemPictures? {
+    func library(for version: GameAssetVersion, under folder: URL) throws -> GameAssetLibrary? {
         try Task.checkCancellation()
         guard !isClosed else { return nil }
         let url = folder.appendingPathComponent("versions", isDirectory: true)
@@ -122,7 +122,7 @@ actor GameAssetLibraries {
               assets.version.dataVersion == version.dataVersion,
               let after = CacheKey.fileStamp(for: url), after.size == stamp.size, after.modified == stamp.modified else { return nil }
         try Task.checkCancellation()
-        let pictures = GameItemPictures(assets: assets)
+        let pictures = GameAssetLibrary(assets: assets, sourceKey: CacheKey.hash("\(url.absoluteString)|\(stamp.size)|\(stamp.modified)|\(version.name)|\(version.dataVersion)"))
         live[key] = WeakLibrary(pictures)
         return pictures
     }

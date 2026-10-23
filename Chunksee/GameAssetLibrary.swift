@@ -2,11 +2,12 @@ import ChunkseeKit
 import CoreGraphics
 import Foundation
 
-/// One live jar's immutable resources and bounded, shared thumbnail caches. All decode/drawing
+/// One live jar's resources and bounded, shared picture and map-color caches. All decode/drawing
 /// work is serial off-main; scrolling requests already drawn items without repeating that work.
-actor GameItemPictures {
+actor GameAssetLibrary {
     nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
+    nonisolated let sourceKey: String
     private var assets: GameAssets?
     private nonisolated let caches = Caches()
 
@@ -17,12 +18,15 @@ actor GameItemPictures {
         let models = NSCache<NSString, ModelEntry>()
         let textures = NSCache<NSString, TextureEntry>()
         let images = NSCache<NSString, CGImage>()
+        let blockColors = NSCache<BlockKey, ColorEntry>()
 
         init() {
             models.countLimit = 512
             models.totalCostLimit = 16 * 1024 * 1024
             textures.countLimit = 512
             textures.totalCostLimit = 16 * 1024 * 1024
+            blockColors.countLimit = 4096
+            blockColors.totalCostLimit = 2 * 1024 * 1024
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
         }
@@ -86,7 +90,8 @@ actor GameItemPictures {
         init(_ texture: ItemTexture?) { self.texture = texture }
     }
 
-    init(assets: GameAssets) {
+    init(assets: GameAssets, sourceKey: String) {
+        self.sourceKey = sourceKey
         self.assets = assets
         version = assets.version
     }
@@ -98,6 +103,65 @@ actor GameItemPictures {
         caches.models.removeAllObjects()
         caches.textures.removeAllObjects()
         caches.images.removeAllObjects()
+        caches.blockColors.removeAllObjects()
+    }
+
+    nonisolated private final class BlockKey: NSObject {
+        let state: BlockState
+        init(_ state: BlockState) { self.state = state }
+        override var hash: Int { state.hashValue }
+        override func isEqual(_ object: Any?) -> Bool { (object as? BlockKey)?.state == state }
+    }
+    nonisolated private final class ColorEntry {
+        let color: MapColor?
+        init(_ color: MapColor?) { self.color = color }
+    }
+
+    /// Old renderers must not save fallback pixels under a removed source's disk key.
+    func checkAvailable() throws {
+        try Task.checkCancellation()
+        guard assets != nil else { throw CancellationError() }
+    }
+
+    /// The renderer checks source availability at region boundaries. Warm chunk lookups read
+    /// immutable cache entries directly; a missing entry goes through the actor to decode it.
+    /// An inner nil is a cached unsupported model, not a cache miss.
+    nonisolated func cachedMapColors(for states: [BlockState]) -> [MapColor?]? {
+        var result: [MapColor?] = []
+        result.reserveCapacity(states.count)
+        for state in states {
+            guard let entry = caches.blockColors.object(forKey: BlockKey(state)) else { return nil }
+            result.append(entry.color)
+        }
+        return result
+    }
+
+    /// Results retain input order, including repeated states and unavailable colors. The
+    /// renderer indexes them by palette entry instead of hashing full states for every column.
+    func mapColors(for states: [BlockState]) throws -> [MapColor?] {
+        try checkAvailable()
+        guard let assets else { throw CancellationError() }
+        var result: [MapColor?] = []
+        result.reserveCapacity(states.count)
+        for state in states {
+            try Task.checkCancellation()
+            let key = BlockKey(state)
+            let entry: ColorEntry
+            if let cached = caches.blockColors.object(forKey: key) { entry = cached }
+            else {
+                let color: MapColor?
+                if let model = assets.blockModel(for: state) {
+                    color = try GameModelRenderer.topColor(model, tint: { index in
+                        if case .constant(let value) = state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
+                        return nil // Biome-dependent color is supplied by the separate biome-tint work.
+                    }, texture: texture)
+                } else { color = nil }
+                entry = ColorEntry(color)
+                caches.blockColors.setObject(entry, forKey: key, cost: 128 + state.description.utf8.count)
+            }
+            result.append(entry.color)
+        }
+        return result
     }
 
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
@@ -125,7 +189,7 @@ actor GameItemPictures {
         try Task.checkCancellation()
         let imageKey = Self.imageKey(for: stack, colors: colors)
         if let image = caches.images.object(forKey: imageKey) { return image }
-        guard let image = try ItemPictureRenderer.render(item, colors: colors, texture: texture) else { return nil }
+        guard let image = try GameModelRenderer.render(item, colors: colors, texture: texture) else { return nil }
         try Task.checkCancellation()
         caches.images.setObject(image, forKey: imageKey, cost: image.bytesPerRow * image.height)
         return image

@@ -189,7 +189,7 @@ import UniformTypeIdentifiers
         let stack = ItemStack(id: "test:flat")
         _ = try #require(try await library.picture(for: stack))
         // ImageRenderer captures the initial view without running its asynchronous load task.
-        let renderer = ImageRenderer(content: ItemIcon(item: stack).environment(\.gameItemPictures, library))
+        let renderer = ImageRenderer(content: ItemIcon(item: stack).environment(\.gameAssetLibrary, library))
         renderer.scale = 4
         let image = try #require(renderer.cgImage)
         let pixels = try ItemPictureFixture.pixels(image)
@@ -255,12 +255,12 @@ import UniformTypeIdentifiers
         let names = PlayerNames(defaults: defaults, readCaches: { _ in [:] })
         #expect(names.minecraftFolder?.standardizedFileURL == fixture.root.standardizedFileURL)
         let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        #expect(await names.minecraft.pictures(for: version) != nil)
+        #expect(await names.minecraft.library(for: version) != nil)
         names.forgetMinecraftFolder()
         #expect(names.minecraft.folder == nil && names.minecraftFolder == nil)
         #expect(defaults.data(forKey: "minecraftFolderBookmark") == nil)
         await names.chooseMinecraftFolder(fixture.root)
-        #expect(await names.minecraft.pictures(for: version) != nil)
+        #expect(await names.minecraft.library(for: version) != nil)
         await names.minecraft.waitUntilIdle()
     }
 
@@ -269,28 +269,28 @@ import UniformTypeIdentifiers
         defer { fixture.remove() }
         let resources = MinecraftResources(defaults: TestDefaults.make())
         let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        #expect(await resources.pictures(for: version) == nil)
+        #expect(await resources.library(for: version) == nil)
         resources.choose(fixture.root)
-        let first = try #require(await resources.pictures(for: version))
-        let second = try #require(await resources.pictures(for: version))
+        let first = try #require(await resources.library(for: version))
+        let second = try #require(await resources.library(for: version))
         #expect(first === second)
         let stack = ItemStack(id: "test:flat")
         #expect(try await first.picture(for: stack) != nil)
         #expect(second.cachedPicture(for: stack) != nil)
         let wrong = try #require(GameAssetVersion(name: "26.3", dataVersion: 1))
-        #expect(await resources.pictures(for: wrong) == nil)
+        #expect(await resources.library(for: wrong) == nil)
         let missing = try #require(GameAssetVersion(name: "1.21", dataVersion: 3953))
-        #expect(await resources.pictures(for: missing) == nil)
+        #expect(await resources.library(for: missing) == nil)
         let generation = resources.generation
         resources.forget()
         #expect(resources.generation != generation && resources.folder == nil)
-        #expect(await resources.pictures(for: version) == nil)
+        #expect(await resources.library(for: version) == nil)
         await resources.waitUntilIdle()
         // Retained inactive views cannot keep reading or warming the retired source.
         #expect(first.cachedPicture(for: stack) == nil)
         #expect(try await second.picture(for: stack) == nil)
         resources.choose(fixture.root)
-        let reopened = try #require(await resources.pictures(for: version))
+        let reopened = try #require(await resources.library(for: version))
         #expect(first !== reopened)
         #expect(try await reopened.picture(for: stack) != nil)
         #expect(try await first.picture(for: stack) == nil)
@@ -302,8 +302,8 @@ import UniformTypeIdentifiers
         defer { firstFixture.remove(); secondFixture.remove() }
         let libraries = GameAssetLibraries()
         let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        let first = try #require(try await libraries.pictures(for: version, under: firstFixture.root))
-        let second = try #require(try await libraries.pictures(for: version, under: secondFixture.root))
+        let first = try #require(try await libraries.library(for: version, under: firstFixture.root))
+        let second = try #require(try await libraries.library(for: version, under: secondFixture.root))
         #expect(first !== second)
         let stack = ItemStack(id: "test:flat")
         #expect(try await first.picture(for: stack) != nil)
@@ -313,7 +313,7 @@ import UniformTypeIdentifiers
             #expect(library.cachedPicture(for: stack) == nil)
             #expect(try await library.picture(for: stack) == nil)
         }
-        #expect(try await libraries.pictures(for: version, under: firstFixture.root) == nil)
+        #expect(try await libraries.library(for: version, under: firstFixture.root) == nil)
     }
 
     @Test func changingTheJarDoesNotReuseItsOldPictures() async throws {
@@ -321,10 +321,10 @@ import UniformTypeIdentifiers
         defer { fixture.remove() }
         let libraries = GameAssetLibraries()
         let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        let first = try #require(try await libraries.pictures(for: version, under: fixture.root))
+        let first = try #require(try await libraries.library(for: version, under: fixture.root))
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: fixture.jar.path)
-        let replacement = try #require(try await libraries.pictures(for: version, under: fixture.root))
-        #expect(first !== replacement)
+        let replacement = try #require(try await libraries.library(for: version, under: fixture.root))
+        #expect(first !== replacement && first.sourceKey != replacement.sourceKey)
         for name in ["", "..", "/tmp/test", "a/b", "a\\b", "a\0b"] {
             #expect(GameAssetVersion(name: name, dataVersion: 5023) == nil)
         }
@@ -361,7 +361,7 @@ struct ItemPictureFixture {
     let root: URL
     let jar: URL
 
-    init(dataVersion: Int = 5023) throws {
+    init(dataVersion: Int = 5023, extraFiles: [String: Data] = [:]) throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("ChunkseeTests-ItemPictures-" + UUID().uuidString)
         let source = root.appendingPathComponent("source")
         jar = root.appendingPathComponent("versions/26.3/26.3.jar")
@@ -462,6 +462,7 @@ struct ItemPictureFixture {
         var colorMap = Array(repeating: red, count: 256 * 256).flatMap { $0 }
         colorMap.replaceSubrange(0..<4, with: green)
         try write("assets/minecraft/textures/colormap/grass.png", Self.png(colorMap, width: 256, height: 256))
+        for (path, data) in extraFiles { try write(path, data) }
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/ditto")
         process.arguments = ["-c", "-k", "--norsrc", "--noextattr", source.path, jar.path]
@@ -471,7 +472,7 @@ struct ItemPictureFixture {
     }
 
     func remove() { try? FileManager.default.removeItem(at: root) }
-    func library() throws -> GameItemPictures { GameItemPictures(assets: try #require(try GameAssets(contentsOf: jar))) }
+    func library() throws -> GameAssetLibrary { GameAssetLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: CacheKey.hash(jar.path)) }
 
     static func png(_ pixels: [UInt8], width: Int = 2, height: Int = 2) throws -> Data {
         let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))

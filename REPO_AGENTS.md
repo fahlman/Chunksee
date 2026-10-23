@@ -176,7 +176,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; exact saved-version jar lookup, file identity and weak sharing across live documents |
-| `GameItemPictures.swift`, `ItemPictureRenderer.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
+| `GameAssetLibrary.swift`, `GameModelRenderer.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
@@ -303,7 +303,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
 restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
-TileCache version 14 separates each style's Surface/latest-cutaway entries; Height keys include
+TileCache version 15 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
 styles' cached tiles. No scan-cache change is needed.
 MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
@@ -1118,7 +1118,7 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameAssetLibraries resolves only the saved version name
 and data version, checking the jar's own metadata and a fresh file stamp before/after reading.
 The jar is capped at 128 MiB and the live registry is weak: documents using one file share its
-GameItemPictures actor, while closing the last user releases it. A changed folder generation
+GameAssetLibrary actor, while closing the last user releases it. A changed folder generation
 also retires the previous registry through MinecraftResources' existing BackgroundWork owner.
 The registry rejects new requests and closes every live picture actor, clearing its archive and
 caches after any current synchronous draw. The cleanup retains the previous read-only access
@@ -1130,7 +1130,7 @@ across Remove/rechoose and close a registry containing two files. The native reg
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
 pictures in the still-open documents.
 
-GameItemPictures resolves definitions/models and saved dye/potion colors through published Kit
+GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
 APIs. Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
 prepared once off-main. A synchronous NSCache hit reads only immutable cached
@@ -1140,7 +1140,7 @@ the actor inserts immutable values. Warm ItemIcon views show the picture immedia
 it while visible, avoiding a fallback-to-picture layout change or actor hop on repeat visits.
 Per-picture retained
 textures are limited to 16 MiB; ImageIO dimensions are checked before decoding (at most 1024 square
-pixels per side). ItemPictureRenderer projects resolved element geometry and GUI transforms into
+pixels per side). GameModelRenderer projects resolved element geometry and GUI transforms into
 64-pixel thumbnails, uses face UVs and nearest samples, and retains ordered generated layers and
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
@@ -1176,3 +1176,27 @@ matching helper. Search details supply the kind, or the group when the name alre
 CreatureDetailSections owns their shared applicable health, owner,
 appearance, equipment and trade details. The inspector and On Shoulders disclosure supply only
 their headings and location presentation; a carried pet never displays its old mounting position.
+
+### Texture-derived map colors
+
+Normal and Water Depth land colors share the selected version's GameAssetLibrary with item
+pictures. The existing column scan chooses the surface and shallow-water floor once. Each reached
+palette entry is resolved once per chunk, and columns reuse its color by index. Warm immutable
+colors are read directly from the library's thread-safe cache; a miss goes through the actor in
+one ordered batch, retaining nil entries for unsupported models. Region-boundary availability
+checks reject results from a retired source. Kit still owns
+blockstate predicates, inherited geometry and tint facts. GameModelRenderer shares its element
+transforms, face vertices and depth/texture rasterization between item pictures and an unlit
+orthographic top view. It averages visible premultiplied pixels, excluding transparency, and
+weights model alternatives. Multipart combinations are bounded at 64 and visible faces at 4096;
+unresolved or over-budget models retain BlockColors. Animated strips use their first image frame.
+
+Constant block tints apply. Biome-dependent tints, rotated UV-locked faces and ambiguous compact
+states retain the existing fallback until their separate adoption; no registry defaults are
+invented. Transparent map blocks and water keep the map's rules. Height ignores the asset source.
+The shared library bounds color results (including misses), reuses decoded textures, and clears
+all caches on retirement. A retired reader cancels map work instead of caching fallback colors
+under its old source key. TileCache version 15 includes a stable URL/size/modification/version
+source key; changing or removing the source cancels old map jobs and redraws through MapModel's
+existing invalidator. No archive or installed artwork is bundled. High-zoom texture detail remains
+follow-up work in #363.

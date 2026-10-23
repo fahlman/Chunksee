@@ -4,7 +4,7 @@ import SwiftUI
 /// Item rows and compact inventory slots use one picture and fallback path.
 struct ItemIcon: View {
     let item: ItemStack
-    @Environment(\.gameItemPictures) private var pictures
+    @Environment(\.gameAssetLibrary) private var pictures
     @State private var loaded: (request: Request, image: CGImage)?
 
     private struct Request: Equatable {
@@ -76,24 +76,25 @@ struct ItemLabel: View {
     }
 }
 
-private struct GameItemPicturesKey: EnvironmentKey {
-    nonisolated static let defaultValue: GameItemPictures? = nil
+private struct GameAssetLibraryKey: EnvironmentKey {
+    nonisolated static let defaultValue: GameAssetLibrary? = nil
 }
 
 extension EnvironmentValues {
-    var gameItemPictures: GameItemPictures? {
-        get { self[GameItemPicturesKey.self] }
-        set { self[GameItemPicturesKey.self] = newValue }
+    var gameAssetLibrary: GameAssetLibrary? {
+        get { self[GameAssetLibraryKey.self] }
+        set { self[GameAssetLibraryKey.self] = newValue }
     }
 }
 
 /// A document retains its shared library. Changing the chosen folder or saved version makes
 /// old pictures ineligible immediately; returning to the app also notices a replaced jar.
-struct WorldItemPictures: ViewModifier {
+struct WorldGameAssets: ViewModifier {
     let resources: MinecraftResources
     let version: GameAssetVersion?
+    let map: MapModel?
     @Environment(\.scenePhase) private var scenePhase
-    @State private var loaded: (source: Source, pictures: GameItemPictures)?
+    @State private var loaded: (source: Source, pictures: GameAssetLibrary)?
 
     private struct Source: Equatable {
         let generation: UUID
@@ -102,19 +103,25 @@ struct WorldItemPictures: ViewModifier {
     private struct Request: Equatable {
         let source: Source
         let phase: ScenePhase
+        let map: ObjectIdentifier?
     }
 
     func body(content: Content) -> some View {
         let source = Source(generation: resources.generation, version: version)
         content
-            .environment(\.gameItemPictures, loaded?.source == source ? loaded?.pictures : nil)
-            .task(id: Request(source: source, phase: scenePhase)) {
+            .environment(\.gameAssetLibrary, loaded?.source == source ? loaded?.pictures : nil)
+            .task(id: Request(source: source, phase: scenePhase, map: map.map(ObjectIdentifier.init))) {
+                if loaded?.source != source {
+                    loaded = nil
+                    map?.setGameAssets(nil)
+                }
                 guard scenePhase == .active else { return }
-                guard let version, let pictures = await resources.pictures(for: version), !Task.isCancelled else {
-                    if !Task.isCancelled { loaded = nil }
+                guard let version, let pictures = await resources.library(for: version), !Task.isCancelled else {
+                    if !Task.isCancelled { loaded = nil; map?.setGameAssets(nil) }
                     return
                 }
                 loaded = (source, pictures)
+                map?.setGameAssets(pictures)
             }
     }
 }

@@ -24,12 +24,14 @@ final class MapModel {
 
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
+    private var gameAssets: GameAssetLibrary?
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
     var currentRenderer: RegionTileRenderer {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
         current.blockFilter = blockFilter
+        current.gameAssets = style == .height ? nil : gameAssets
         return current
     }
     private let work: BackgroundWork
@@ -437,6 +439,14 @@ final class MapModel {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
         reloadTiles()
+    }
+
+    /// The source owner shares this exact library with pictures. Swapping it cancels old
+    /// renders; stable file keys let a reselected unchanged jar reuse its correct disk tiles.
+    func setGameAssets(_ library: GameAssetLibrary?) {
+        guard !isClosed, gameAssets?.identity != library?.identity else { return }
+        gameAssets = library
+        if style != .height { reloadTiles() }
     }
 
     private func reloadTiles() {

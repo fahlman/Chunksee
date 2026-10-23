@@ -20,7 +20,8 @@ nonisolated struct TileCache: Sendable {
     /// 13: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
     /// 14: per-dimension block filtering and separate unfiltered/filtered cache slots.
-    static let rendererVersion = 14
+    /// 15: texture-derived colors keyed by the selected game archive.
+    static let rendererVersion = 15
 
     let directory: URL
 
@@ -34,12 +35,14 @@ nonisolated struct TileCache: Sendable {
         var style = MapStyle.normal
         var heightScale: MapHeightScale? = nil
         var filterKey: String? = nil
+        var colorSource: String? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
                 ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
             let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
-            return "\(prefix)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            let colors = colorSource.map { "assets\($0)." } ?? "fallback."
+            return "\(prefix)\(colors)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
@@ -93,13 +96,13 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter()) -> Key? {
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
-                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey)
+                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {
