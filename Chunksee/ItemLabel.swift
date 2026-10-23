@@ -109,6 +109,9 @@ struct WorldItemPictures: ViewModifier {
         content
             .environment(\.gameItemPictures, loaded?.source == source ? loaded?.pictures : nil)
             .task(id: Request(source: source, phase: scenePhase)) {
+                // Settings is active when access changes; inactive documents must release the
+                // previous library too, even though only an active scene starts a new read.
+                if loaded?.source != source { loaded = nil }
                 guard scenePhase == .active else { return }
                 guard let version, let pictures = await resources.pictures(for: version), !Task.isCancelled else {
                     if !Task.isCancelled { loaded = nil }
