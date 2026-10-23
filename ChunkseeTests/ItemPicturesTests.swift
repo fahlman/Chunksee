@@ -66,7 +66,8 @@ import UniformTypeIdentifiers
                                                               "scale": [0.5, 0.5, 0.5]]]
             ])
         }
-        var skin = Array(repeating: [UInt8(255), 0, 0, 255], count: 64 * 64).flatMap { $0 }
+        let red: [UInt8] = [255, 0, 0, 255]
+        var skin: [UInt8] = Array(repeating: red, count: 64 * 64).flatMap { $0 }
         // Blue regions identify the handle independently of the red front/back plate.
         for x in [32, 40] {
             for y in 6..<12 {
@@ -80,7 +81,8 @@ import UniformTypeIdentifiers
         let fixture = try ItemPictureFixture(extraFiles: files)
         defer { fixture.remove() }
         let library = try fixture.library()
-        for (view, center) in [("front", [UInt8(255), 0, 0, 255]), ("back", [0, 0, 255, 255])] {
+        let views: [(String, [UInt8])] = [("front", red), ("back", [0, 0, 255, 255])]
+        for (view, center) in views {
             let stack = ItemStack(id: "test:shield_" + view)
             let image = try #require(try await library.picture(for: stack))
             let pixels = try ItemPictureFixture.pixels(image)
