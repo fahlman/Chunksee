@@ -14,11 +14,16 @@ struct ItemIcon: View {
 
     var body: some View {
         let request = Request(library: pictures?.identity, item: item)
+        let image = loaded?.request == request ? loaded?.image : pictures?.cachedPicture(for: item)
         ItemGraphic(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item),
-                    image: loaded?.request == request ? loaded?.image : nil)
+                    image: image)
             .task(id: request) {
-                guard let pictures, let image = try? await pictures.picture(for: request.item), !Task.isCancelled else { return }
-                loaded = (request, image)
+                guard loaded?.request != request, let pictures else { return }
+                let resolved: CGImage?
+                if let image { resolved = image }
+                else { resolved = try? await pictures.picture(for: request.item) }
+                // Retain warm hits too, so cache eviction cannot replace a visible picture.
+                if let resolved, !Task.isCancelled { loaded = (request, resolved) }
             }
     }
 }

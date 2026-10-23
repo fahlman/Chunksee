@@ -113,17 +113,64 @@ import UniformTypeIdentifiers
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
         let library = try fixture.library()
+        #expect(library.cachedPicture(for: ItemStack(id: "test:flat")) == nil)
         let first = try #require(try await library.picture(for: ItemStack(id: "test:flat", count: 1)))
+        #expect(library.cachedPicture(for: ItemStack(id: "test:flat", count: 64)) === first)
         let more = try #require(try await library.picture(for: ItemStack(id: "test:flat", count: 64)))
         #expect(first === more)
         let red = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0xFF0000)]))
         let blue = ItemStack(id: "test:leather", components: .compound(["minecraft:dyed_color": .int(0x0000FF)]))
         let redImage = try #require(try await library.picture(for: red))
+        #expect(library.cachedPicture(for: blue) == nil)
         let blueImage = try #require(try await library.picture(for: blue))
         #expect(redImage !== blueImage)
+        #expect(library.cachedPicture(for: red) === redImage)
+        #expect(library.cachedPicture(for: blue) === blueImage)
+        let otherLibrary = try fixture.library()
+        #expect(otherLibrary.cachedPicture(for: red) == nil)
         #expect(try ItemPictureFixture.pixels(redImage).color(56, 56) != ItemPictureFixture.pixels(blueImage).color(56, 56))
         #expect(try await library.picture(for: ItemStack(id: "test:unknown")) == nil)
         #expect(try await library.picture(for: ItemStack(id: "test:special")) == nil)
+        #expect(library.cachedPicture(for: ItemStack(id: "test:special")) == nil)
+    }
+
+    @Test func warmItemIconDrawsItsPictureInTheInitialFrame() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let stack = ItemStack(id: "test:flat")
+        _ = try #require(try await library.picture(for: stack))
+        // ImageRenderer captures the initial view without running its asynchronous load task.
+        let renderer = ImageRenderer(content: ItemIcon(item: stack).environment(\.gameItemPictures, library))
+        renderer.scale = 4
+        let image = try #require(renderer.cgImage)
+        let pixels = try ItemPictureFixture.pixels(image)
+        #expect(pixels.color(10, 10) == [255, 0, 0, 255])
+        #expect(pixels.color(70, 10) == [0, 255, 0, 255])
+        #expect(pixels.color(10, 70) == [0, 0, 255, 255])
+        #expect(pixels.color(70, 70) == [255, 255, 0, 255])
+    }
+
+    @Test func synchronousReadersSharePicturesDuringActorLoads() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let warm = ItemStack(id: "test:flat")
+        let picture = try #require(try await library.picture(for: warm))
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<24 {
+                group.addTask {
+                    #expect(library.cachedPicture(for: warm) === picture)
+                    let stack = ItemStack(id: "test:leather", components: .compound([
+                        "minecraft:dyed_color": .int(Int32(index * 0x070707))
+                    ]))
+                    let image = try #require(try await library.picture(for: stack))
+                    #expect(library.cachedPicture(for: stack) === image)
+                    #expect(library.cachedPicture(for: warm) === picture)
+                }
+            }
+            try await group.waitForAll()
+        }
     }
 
     @Test func colorMapsUseTheReadersPixelAndOversizedImagesAreRejected() async throws {
@@ -131,6 +178,7 @@ import UniformTypeIdentifiers
         defer { fixture.remove() }
         let library = try fixture.library()
         let grass = try #require(try await library.picture(for: ItemStack(id: "test:grass")))
+        #expect(library.cachedPicture(for: ItemStack(id: "test:grass")) === grass)
         #expect(try ItemPictureFixture.pixels(grass).color(32, 32) == [0, 255, 0, 255])
         let large = try ItemPictureFixture.png([UInt8](repeating: 255, count: 1025 * 4), width: 1025, height: 1)
         #expect(ItemTexture(png: large) == nil)

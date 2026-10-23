@@ -1083,7 +1083,13 @@ rechecks file identity. A jar is an immutable snapshot; no artwork is extracted 
 
 GameItemPictures resolves definitions/models and saved dye/potion colors through published Kit
 APIs. Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
-(16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Per-picture retained
+(16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
+prepared once off-main. A synchronous NSCache hit reads only immutable cached
+models, textures and images; it performs no I/O, decoding or drawing. NSCache's documented thread
+safety permits this narrow unchecked-Sendable holder: limits are set before publication and only
+the actor inserts immutable values. Warm ItemIcon views show the picture immediately and retain
+it while visible, avoiding a fallback-to-picture layout change or actor hop on repeat visits.
+Per-picture retained
 textures are limited to 16 MiB; ImageIO dimensions are checked before decoding (at most 1024 square
 pixels per side). ItemPictureRenderer projects resolved element geometry and GUI transforms into
 64-pixel thumbnails, uses face UVs and nearest samples, and retains ordered generated layers and
