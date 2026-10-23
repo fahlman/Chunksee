@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.58.0`, resolved to `0.58.0` (`14fa8bd5930c4930a28675259aa1ca85180eb26a`).
+  minor" from `0.59.0`, resolved to `0.59.0` (`32681c65f5834b82c3f5639f36fac6ad0c2a4ef2`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1133,7 +1133,12 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
+APIs. Kit 0.59.0 owns saved item-model reference selection through ItemStack.itemModelID. Both
+cold and warm picture lookups key models and thumbnails by that selected reference, with saved
+tints still evaluated from the original stack. Removed, malformed and unresolved references keep
+the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
+rejects stale results when a reference changes; item names and counts retain their original owner.
+Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
 prepared once off-main. A synchronous NSCache hit reads only immutable cached
 models, textures and images; it performs no I/O, decoding or drawing. NSCache's documented thread
@@ -1147,7 +1152,7 @@ pixels per side). GameModelRenderer projects resolved element geometry and GUI t
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
-symbols. Static fallback variants omit trim/custom-model/live predicates; firework tint uses the
+symbols. Static fallback variants omit trim/custom-model-data/live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
 
 Kit 0.50.2 supplies verified 26.3 closed single-chest and shulker geometry through the same

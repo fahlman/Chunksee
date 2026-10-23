@@ -223,27 +223,28 @@ actor GameAssetLibrary {
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {
-        guard let entry = caches.models.object(forKey: stack.id as NSString), entry.item != nil,
+        guard let model = stack.itemModelID,
+              let entry = caches.models.object(forKey: model.description as NSString), entry.item != nil,
               let colors = entry.colors(for: stack, version: version, texture: {
                   caches.textures.object(forKey: $0.description as NSString)?.texture
               }) else { return nil }
-        return caches.images.object(forKey: Self.imageKey(for: stack, colors: colors))
+        return caches.images.object(forKey: Self.imageKey(for: model, colors: colors))
     }
 
     func picture(for stack: ItemStack) throws -> CGImage? {
         try Task.checkCancellation()
-        guard let assets else { return nil }
-        let key = stack.id as NSString
+        guard let assets, let model = stack.itemModelID else { return nil }
+        let key = model.description as NSString
         let entry: ModelEntry
         if let cached = caches.models.object(forKey: key) { entry = cached }
         else {
-            entry = ModelEntry(assets.defaultItemModel(stack.id))
+            entry = ModelEntry(assets.defaultItemModel(model.description))
             caches.models.setObject(entry, forKey: key, cost: entry.cost)
         }
         guard let item = entry.item else { return nil }
         guard let colors = entry.colors(for: stack, version: version, texture: texture) else { return nil }
         try Task.checkCancellation()
-        let imageKey = Self.imageKey(for: stack, colors: colors)
+        let imageKey = Self.imageKey(for: model, colors: colors)
         if let image = caches.images.object(forKey: imageKey) { return image }
         guard let image = try GameModelRenderer.render(item, colors: colors, texture: texture) else { return nil }
         try Task.checkCancellation()
@@ -251,8 +252,8 @@ actor GameAssetLibrary {
         return image
     }
 
-    private nonisolated static func imageKey(for stack: ItemStack, colors: [[UInt32]]) -> NSString {
-        (stack.id + "|" + colors.map { $0.map(String.init).joined(separator: ",") }.joined(separator: ";")) as NSString
+    private nonisolated static func imageKey(for model: Identifier, colors: [[UInt32]]) -> NSString {
+        (model.description + "|" + colors.map { $0.map(String.init).joined(separator: ",") }.joined(separator: ";")) as NSString
     }
 
     private func texture(_ id: Identifier) -> ItemTexture? {
