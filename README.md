@@ -82,9 +82,10 @@ with a link to this guide. Help opens only when requested.
    **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
    can read the names Minecraft remembers and item pictures from the installed version matching
    each world. Inventory slots, equipment, trades, Storage and matching items in search details
-   share those pictures, including three-sided block icons and saved leather and potion colors.
-   Items keep their category symbols when pictures are unavailable. Some special models (such as
-   chests and shields), animated textures and saved trim/custom-model variants are not drawn yet.
+   share those pictures, including three-sided blocks, closed chests and shulker boxes in Minecraft
+   26.3, and saved leather and potion colors.
+   Items keep their category symbols when pictures are unavailable. Other special models (such as
+   shields), animated textures and saved trim/custom-model variants are not drawn yet.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
