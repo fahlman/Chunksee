@@ -962,8 +962,8 @@ Kit 0.54.0 added the dimension catalog through RegionIndex.paletteBlockIDs; the 
 0.54.1 for its bounded archive-reader fix.
 Its RegionFacts interpretation version 7 invalidates older catalog-less scan archives once;
 the app does not read another copy of the chunk data for the picker. The cumulative dependency
-also retains the reviewed container models, block-state and biome/tint APIs; this change does
-not adopt the unmerged bounded archive reader or add texture/biome map rendering.
+also retains the reviewed container models, block-state and biome/tint APIs and adopts the
+bounded archive reader. Texture and biome map rendering remain separate work.
 
 TileCache keeps the unfiltered image and one latest filtered variant in each existing style and
 Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
