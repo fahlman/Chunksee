@@ -12,16 +12,12 @@ import Testing
         let upright = BlockState("test:log", properties: ["axis": "y"])
         let sideways = BlockState("test:log", properties: ["axis": "x"])
         let turned = BlockState("test:log", properties: ["axis": "z"])
-        let states: Set<BlockState> = [BlockState("test:new"), upright, sideways, turned,
+        let states = [BlockState("test:new"), upright, sideways, turned,
             BlockState("test:log"), BlockState("test:missing"), BlockState("test:occluded")]
         let colors = try await library.mapColors(for: states)
-        #expect(colors[BlockState("test:new")] == MapColor(0xff0000))
-        #expect(colors[upright] == MapColor(0xff0000))
-        #expect(colors[sideways] == MapColor(0xffffff)) // The south face turns up at X 90°.
-        #expect(colors[turned] == MapColor(0x00ff00)) // The north face turns up at X 270°.
-        #expect(colors[BlockState("test:occluded")] == MapColor(0x0000ff))
-        #expect(colors[BlockState("test:log")] == nil) // Asset JSON has no registry default.
-        #expect(colors[BlockState("test:missing")] == nil)
+        // South turns up at X 90°; north at X 270°. Missing states keep their slot as nil.
+        #expect(colors == [MapColor(0xff0000), MapColor(0xff0000), MapColor(0xffffff),
+                           MapColor(0x00ff00), nil, nil, MapColor(0x0000ff)])
         #expect(try await library.mapColors(for: states) == colors)
     }
 
@@ -29,21 +25,33 @@ import Testing
         let fixture = try fixture()
         defer { fixture.remove() }
         let library = try fixture.library()
-        let colors = try await library.mapColors(for: Set(["clear", "animated", "weighted"].map { BlockState("test:" + $0) }))
-        #expect(colors[BlockState("test:clear")] == MapColor(0xff0000))
-        #expect(colors[BlockState("test:animated")] == MapColor(0xff0000))
-        #expect(colors[BlockState("test:weighted")] == MapColor(0x4000bf))
+        let colors = try await library.mapColors(for: ["clear", "animated", "weighted"].map { BlockState("test:" + $0) })
+        #expect(colors == [MapColor(0xff0000), MapColor(0xff0000), MapColor(0x4000bf)])
     }
 
     @Test func constantTintsApplyButUnresolvedBiomeAndLockedUVsKeepFallbacks() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
         let library = try fixture.library()
-        let states: Set<BlockState> = [BlockState("minecraft:spruce_leaves"), BlockState("minecraft:grass_block"), BlockState("test:locked")]
+        let states = [BlockState("minecraft:spruce_leaves"), BlockState("minecraft:grass_block"), BlockState("test:locked")]
         let colors = try await library.mapColors(for: states)
-        #expect(colors[BlockState("minecraft:spruce_leaves")] == MapColor(0x619961))
-        #expect(colors[BlockState("minecraft:grass_block")] == nil)
-        #expect(colors[BlockState("test:locked")] == nil)
+        #expect(colors == [MapColor(0x619961), nil, nil])
+    }
+
+    @Test func warmColorsPreserveOrderMissingModelsAndSourceRemoval() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let states = [BlockState("test:new"), BlockState("test:missing"), BlockState("test:new")]
+        #expect(library.cachedMapColors(for: states) == nil)
+        let colors = try await library.mapColors(for: states)
+        #expect(colors == [MapColor(0xff0000), nil, MapColor(0xff0000)])
+        #expect(library.cachedMapColors(for: states) == colors)
+        #expect(library.cachedMapColors(for: states + [BlockState("test:unrequested")]) == nil)
+        #expect(library.cachedMapColors(for: [BlockState("test:missing")]) == [nil])
+        await library.close()
+        #expect(library.cachedMapColors(for: states) == nil)
+        await #expect(throws: CancellationError.self) { try await library.mapColors(for: states) }
     }
 
     @Test func sourceRemovalCannotWriteFallbackColorsUnderThePreviousSource() async throws {

@@ -157,22 +157,31 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
         guard style != .height, let gameAssets else { return scanned.columns }
-        var states: [PaletteEntry: BlockState] = [:]
-        for column in scanned.columns.compactMap({ $0 }) {
-            if column.waterDepth == 0 {
-                let entry = PaletteEntry(section: column.section, palette: column.palette)
-                states[entry] = scanned.sections.blockState(at: entry)
-            }
-            if let floor = column.waterFloor { states[floor] = scanned.sections.blockState(at: floor) }
+        var indices: [PaletteEntry: Int] = [:]
+        var states: [BlockState] = []
+        func index(for entry: PaletteEntry) -> Int? {
+            if let index = indices[entry] { return index }
+            guard let state = scanned.sections.blockState(at: entry) else { return nil }
+            let index = states.count
+            states.append(state)
+            indices[entry] = index
+            return index
         }
-        let colors = try await gameAssets.mapColors(for: Set(states.values))
-        return scanned.columns.map { value in
+        let positions = scanned.columns.map { column -> (surface: Int?, floor: Int?) in
+            guard let column else { return (nil, nil) }
+            let surface = column.waterDepth == 0
+                ? index(for: PaletteEntry(section: column.section, palette: column.palette)) : nil
+            return (surface, column.waterFloor.flatMap { index(for: $0) })
+        }
+        let colors: [MapColor?]
+        if let cached = gameAssets.cachedMapColors(for: states) { colors = cached }
+        else { colors = try await gameAssets.mapColors(for: states) }
+        return zip(scanned.columns, positions).map { value, position in
             guard var column = value else { return nil }
-            let entry = PaletteEntry(section: column.section, palette: column.palette)
-            if column.waterDepth == 0, let state = states[entry], let color = colors[state] {
+            if let index = position.surface, let color = colors[index] {
                 column.color = color.shaded(column.colorShade)
             }
-            if let entry = column.waterFloor, let state = states[entry], let color = colors[state] {
+            if let index = position.floor, let color = colors[index] {
                 column.waterFloorColor = color
             }
             return column

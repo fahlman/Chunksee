@@ -1180,8 +1180,11 @@ their headings and location presentation; a carried pet never displays its old m
 ### Texture-derived map colors
 
 Normal and Water Depth land colors share the selected version's GameAssetLibrary with item
-pictures. The existing column scan chooses the surface and shallow-water floor once; only those
-reached palette states are sent to the off-main library in one batch per chunk. Kit still owns
+pictures. The existing column scan chooses the surface and shallow-water floor once. Each reached
+palette entry is resolved once per chunk, and columns reuse its color by index. Warm immutable
+colors are read directly from the library's thread-safe cache; a miss goes through the actor in
+one ordered batch, retaining nil entries for unsupported models. Region-boundary availability
+checks reject results from a retired source. Kit still owns
 blockstate predicates, inherited geometry and tint facts. GameModelRenderer shares its element
 transforms, face vertices and depth/texture rasterization between item pictures and an unlit
 orthographic top view. It averages visible premultiplied pixels, excluding transparency, and

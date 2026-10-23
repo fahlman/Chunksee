@@ -123,12 +123,26 @@ actor GameAssetLibrary {
         guard assets != nil else { throw CancellationError() }
     }
 
-    /// Only the states reached by the ordinary column scan are requested, once per chunk.
-    /// Nil results are cached too; unsupported geometry keeps the map's existing fallback.
-    func mapColors(for states: Set<BlockState>) throws -> [BlockState: MapColor] {
+    /// The renderer checks source availability at region boundaries. Warm chunk lookups read
+    /// immutable cache entries directly; a missing entry goes through the actor to decode it.
+    /// An inner nil is a cached unsupported model, not a cache miss.
+    nonisolated func cachedMapColors(for states: [BlockState]) -> [MapColor?]? {
+        var result: [MapColor?] = []
+        result.reserveCapacity(states.count)
+        for state in states {
+            guard let entry = caches.blockColors.object(forKey: BlockKey(state)) else { return nil }
+            result.append(entry.color)
+        }
+        return result
+    }
+
+    /// Results retain input order, including repeated states and unavailable colors. The
+    /// renderer indexes them by palette entry instead of hashing full states for every column.
+    func mapColors(for states: [BlockState]) throws -> [MapColor?] {
         try checkAvailable()
         guard let assets else { throw CancellationError() }
-        var result: [BlockState: MapColor] = [:]
+        var result: [MapColor?] = []
+        result.reserveCapacity(states.count)
         for state in states {
             try Task.checkCancellation()
             let key = BlockKey(state)
@@ -145,7 +159,7 @@ actor GameAssetLibrary {
                 entry = ColorEntry(color)
                 caches.blockColors.setObject(entry, forKey: key, cost: 128 + state.description.utf8.count)
             }
-            if let color = entry.color { result[state] = color }
+            result.append(entry.color)
         }
         return result
     }
