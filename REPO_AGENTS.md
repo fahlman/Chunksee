@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.56.0`, resolved to `0.56.0` (`84030303a7ce0629e57a1daa63bab76b7e11ef5e`).
+  minor" from `0.57.0`, resolved to `0.57.0` (`dd6ee688aa9d1c4c824a1bda3846e82908cbb6f9`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1222,8 +1222,10 @@ Prepared block materials are bounded to 512 entries and 16 MiB estimated cost. T
 item model's cost estimate, texture owner and rasterizer. A chunk groups color requests by palette
 index and resolved tint values, preserving warm synchronous cache reads and avoiding full-state
 hashing or rasterization for every column. Each snapshot resolves position-independent biome
-colors once through Kit. Each chunk resolves each saved biome string once, including missing
-definitions; only swamp grass calls Kit's position-dependent color calculation per column.
+colors once through Kit's `BiomeDefinition.colorDependsOnPosition(_:)` rule; the app has no
+modifier predicate of its own. Each chunk resolves each saved biome string once, including
+missing definitions; position-dependent sources call Kit with the absolute block coordinates
+and the same colormap sampler used for static sources.
 Tint requests keep their first tint inline, avoiding an array allocation for each ordinary
 column while retaining support for additional tint indices. Different worlds share the archive but never mutable
 pack-specific colors. Tile keys include the resolved biome fields; unchanged metadata/autosaves

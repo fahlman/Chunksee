@@ -100,7 +100,8 @@ import Testing
 
     @Test func swampGrassUsesAbsoluteCoordinatesInNegativeRegions() async throws {
         let biome = try ItemPictureFixture.json(["temperature": 0.8, "downfall": 0.9,
-            "effects": ["water_color": 0x617b64, "grass_color_modifier": "swamp"]])
+            "effects": ["water_color": 0x617b64, "grass_color_modifier": "swamp",
+                        "grass_color": 0xffffff, "foliage_color": 0x123456, "dry_foliage_color": 0xabcdef]])
         let fixture = try fixture(extraFiles: ["data/test/worldgen/biome/a.json": biome])
         defer { fixture.remove() }
         let url = try world(chunks: [chunk(x: -7, z: -7, palette: [.string("minecraft:grass_block")],
@@ -108,6 +109,13 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let library = try fixture.library(), world = try World(contentsOf: url)
         let colors = try await library.biomeColors(in: world)
+        let retained = colors.biome("test:a")
+        #expect(retained.color(.grass, x: 0, z: 0) == 0x6a7039)
+        #expect(retained.color(.grass, x: -100, z: -100) == 0x4c763c)
+        for (source, expected) in [(BiomeColor.foliage, UInt32(0x123456)), (.dryFoliage, 0xabcdef), (.water, 0x617b64)] {
+            #expect(retained.color(source, x: 0, z: 0) == expected)
+            #expect(retained.color(source, x: -100, z: -100) == expected)
+        }
         var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
         renderer.gameAssets = library
         renderer.biomeColors = colors

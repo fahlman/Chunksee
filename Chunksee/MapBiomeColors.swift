@@ -45,34 +45,37 @@ nonisolated struct MapBiomeColors: Sendable {
     }
 
     struct Biome: Sendable {
-        static let unavailable = Biome(constants: [:], swamp: nil)
+        static let unavailable = Biome(constants: [:], definition: nil, colorMaps: [:])
         private let constants: [BiomeColor: UInt32]
-        private let swamp: BiomeDefinition?
+        private let definition: BiomeDefinition?
+        private let colorMaps: [Identifier: ItemTexture]
 
-        private init(constants: [BiomeColor: UInt32], swamp: BiomeDefinition?) {
+        private init(constants: [BiomeColor: UInt32], definition: BiomeDefinition?,
+                     colorMaps: [Identifier: ItemTexture]) {
             self.constants = constants
-            self.swamp = swamp
+            self.definition = definition
+            self.colorMaps = colorMaps
         }
 
         fileprivate init(definition: BiomeDefinition, colorMaps: [Identifier: ItemTexture]) {
-            // Kit documents swamp grass as its only position-dependent source. Resolve all
-            // other sources once per world snapshot; Kit still owns every color calculation.
-            let swamp = definition.grassColorModifier == .swamp ? definition : nil
             var constants: [BiomeColor: UInt32] = [:]
-            for source in BiomeColor.allCases where source != .grass || swamp == nil {
-                constants[source] = definition.color(source, x: 0, z: 0) { id, pixel in
-                    guard let texture = colorMaps[id], texture.width == 256, texture.height == 256 else { return nil }
-                    return texture.rgb(at: pixel)
-                }
+            for source in BiomeColor.allCases where !definition.colorDependsOnPosition(source) {
+                constants[source] = Self.resolve(source, definition: definition, x: 0, z: 0, colorMaps: colorMaps)
             }
-            self.init(constants: constants, swamp: swamp)
+            self.init(constants: constants, definition: definition, colorMaps: colorMaps)
         }
 
         func color(_ source: BiomeColor, x: Int32, z: Int32) -> UInt32? {
-            if source == .grass, let swamp {
-                return swamp.color(source, x: x, z: z) { _, _ in nil }
+            guard let definition, definition.colorDependsOnPosition(source) else { return constants[source] }
+            return Self.resolve(source, definition: definition, x: x, z: z, colorMaps: colorMaps)
+        }
+
+        private static func resolve(_ source: BiomeColor, definition: BiomeDefinition, x: Int32, z: Int32,
+                                    colorMaps: [Identifier: ItemTexture]) -> UInt32? {
+            definition.color(source, x: x, z: z) { id, pixel in
+                guard let texture = colorMaps[id], texture.width == 256, texture.height == 256 else { return nil }
+                return texture.rgb(at: pixel)
             }
-            return constants[source]
         }
     }
 }
