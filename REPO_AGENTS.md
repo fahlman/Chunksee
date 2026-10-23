@@ -1228,6 +1228,9 @@ colors once through Kit's `BiomeDefinition.colorDependsOnPosition(_:)` rule; the
 modifier predicate of its own. Each chunk resolves each saved biome string once, including
 missing definitions; position-dependent sources call Kit with the absolute block coordinates
 and the same colormap sampler used for static sources.
+Constant colors are plain values. Each chunk flattens its reached materials' tint descriptors
+once into local palette ranges, so columns do not retain shared material objects or the world
+snapshot. This avoids reference-count contention between the parallel chunk workers.
 Tint requests keep their first tint inline, avoiding an array allocation for each ordinary
 column while retaining support for additional tint indices. Different worlds share the archive but never mutable
 pack-specific colors. Tile keys include the resolved biome fields; unchanged metadata/autosaves

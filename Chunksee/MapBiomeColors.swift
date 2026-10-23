@@ -45,29 +45,49 @@ nonisolated struct MapBiomeColors: Sendable {
     }
 
     struct Biome: Sendable {
-        static let unavailable = Biome(constants: [:], definition: nil, colorMaps: [:])
-        private let constants: [BiomeColor: UInt32]
-        private let definition: BiomeDefinition?
-        private let colorMaps: [Identifier: ItemTexture]
+        static let unavailable = Biome(grass: .constant(nil), foliage: .constant(nil),
+                                       dryFoliage: .constant(nil), water: .constant(nil))
+        private let grass: Color
+        private let foliage: Color
+        private let dryFoliage: Color
+        private let water: Color
 
-        private init(constants: [BiomeColor: UInt32], definition: BiomeDefinition?,
-                     colorMaps: [Identifier: ItemTexture]) {
-            self.constants = constants
-            self.definition = definition
-            self.colorMaps = colorMaps
+        func color(_ source: BiomeColor, x: Int32, z: Int32) -> UInt32? {
+            let color: Color
+            switch source {
+            case .grass: color = grass
+            case .foliage: color = foliage
+            case .dryFoliage: color = dryFoliage
+            case .water: color = water
+            }
+            switch color {
+            case .constant(let rgb): return rgb
+            case .positioned(let definition, let colorMaps):
+                return Self.resolve(source, definition: definition, x: x, z: z, colorMaps: colorMaps)
+            }
+        }
+
+        // Constant colors carry no shared storage to retain on every parallel column read.
+        // Kit alone decides which sources need their definition and maps at a position.
+        private enum Color: Sendable {
+            case constant(UInt32?)
+            case positioned(BiomeDefinition, [Identifier: ItemTexture])
+        }
+
+        private init(grass: Color, foliage: Color, dryFoliage: Color, water: Color) {
+            self.grass = grass
+            self.foliage = foliage
+            self.dryFoliage = dryFoliage
+            self.water = water
         }
 
         fileprivate init(definition: BiomeDefinition, colorMaps: [Identifier: ItemTexture]) {
-            var constants: [BiomeColor: UInt32] = [:]
-            for source in BiomeColor.allCases where !definition.colorDependsOnPosition(source) {
-                constants[source] = Self.resolve(source, definition: definition, x: 0, z: 0, colorMaps: colorMaps)
+            func prepare(_ source: BiomeColor) -> Color {
+                if definition.colorDependsOnPosition(source) { return .positioned(definition, colorMaps) }
+                return .constant(Self.resolve(source, definition: definition, x: 0, z: 0, colorMaps: colorMaps))
             }
-            self.init(constants: constants, definition: definition, colorMaps: colorMaps)
-        }
-
-        func color(_ source: BiomeColor, x: Int32, z: Int32) -> UInt32? {
-            guard let definition, definition.colorDependsOnPosition(source) else { return constants[source] }
-            return Self.resolve(source, definition: definition, x: x, z: z, colorMaps: colorMaps)
+            self.init(grass: prepare(.grass), foliage: prepare(.foliage),
+                      dryFoliage: prepare(.dryFoliage), water: prepare(.water))
         }
 
         private static func resolve(_ source: BiomeColor, definition: BiomeDefinition, x: Int32, z: Int32,

@@ -169,6 +169,33 @@ import Testing
         await library.close()
     }
 
+    @Test func parallelChunksKeepTintDescriptorsWithTheirPaletteAndBiome() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let kinds = ["grass_block", "oak_leaves", "spruce_leaves", "stone"]
+        let chunks = (0..<16).map { x in
+            let rotated = Array(kinds[x % kinds.count...] + kinds[..<(x % kinds.count)])
+            return chunk(x: x, palette: rotated.map { .string("minecraft:" + $0) },
+                         blocks: { x, _, _ in x / 4 }, biomes: { _, _, z in z / 8 })
+        }
+        let url = try world(chunks: chunks)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library
+        renderer.biomeColors = try await library.biomeColors(in: world)
+        let serial = try await pixels(renderer)
+        renderer.chunkConcurrency = 14
+        let parallel = try await pixels(renderer)
+        #expect(parallel.bytes == serial.bytes)
+        for x in 0..<16 {
+            let grass = (kinds.count - x % kinds.count) % kinds.count
+            #expect(parallel.color(x * 16 + grass * 4 + 2, 2) == [255, 0, 0, 255])
+            #expect(parallel.color(x * 16 + grass * 4 + 2, 10) == [0, 0, 255, 255])
+        }
+        await library.close()
+    }
+
     @Test func changedPackValuesUseDifferentDiskTilesButIdenticalValuesReuseThem() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }

@@ -164,11 +164,13 @@ nonisolated struct RegionTileRenderer: Sendable {
                                       cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
         guard style != .height, let gameAssets else { return scanned.columns }
         let biomeColors = currentBiomeColors
+        let usesBiomeColors = biomeColors != nil
         var biomes: [String: MapBiomeColors.Biome] = [:]
         func biome(column: Int, y: Int) -> MapBiomeColors.Biome? {
-            guard let biomeColors,
+            guard usesBiomeColors,
                   let name = scanned.sections.biome(x: column % 16, y: y, z: column / 16) else { return nil }
             if let cached = biomes[name] { return cached }
+            guard let biomeColors else { return nil }
             let colors = biomeColors.biome(name)
             biomes[name] = colors
             return colors
@@ -199,10 +201,19 @@ nonisolated struct RegionTileRenderer: Sendable {
             return (x, z)
         }
         var requests = states.map { MapBlockColorRequest(state: $0) }
-        if biomeColors != nil {
+        if usesBiomeColors {
             let materials: [MapBlockMaterial]
             if let cached = gameAssets.cachedMapMaterials(for: states) { materials = cached }
             else { materials = try await gameAssets.mapMaterials(for: states) }
+            // Copy the small descriptors once per palette. Reading cached material objects
+            // per column makes all workers contend on their shared reference counts.
+            var tintRanges: [Range<Int>] = []
+            var biomeTints: [MapBlockMaterial.BiomeTint] = []
+            for material in materials {
+                let start = biomeTints.count
+                biomeTints.append(contentsOf: material.biomeTints)
+                tintRanges.append(start..<biomeTints.count)
+            }
             struct TintKey: Hashable {
                 let palette: Int
                 let tints: MapBlockColorRequest.Tints
@@ -211,10 +222,10 @@ nonisolated struct RegionTileRenderer: Sendable {
             requests = []
             func tintedIndex(_ palette: Int?, column: Int, y: Int) -> Int? {
                 guard let palette else { return nil }
-                let material = materials[palette]
                 var tints = MapBlockColorRequest.Tints()
                 if let point = coordinates(column) {
-                    for tint in material.biomeTints {
+                    for index in tintRanges[palette] {
+                        let tint = biomeTints[index]
                         let height = y.addingReportingOverflow(tint.yOffset)
                         guard !height.overflow else { continue }
                         if let rgb = biome(column: column, y: height.partialValue)?.color(tint.source, x: point.x, z: point.z) {
@@ -225,7 +236,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 let key = TintKey(palette: palette, tints: tints)
                 if let index = tintedIndices[key] { return index }
                 let index = requests.count
-                requests.append(MapBlockColorRequest(state: material.state, tints: tints))
+                requests.append(MapBlockColorRequest(state: states[palette], tints: tints))
                 tintedIndices[key] = index
                 return index
             }
