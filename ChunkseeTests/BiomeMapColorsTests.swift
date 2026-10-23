@@ -353,7 +353,9 @@ import Testing
         defer { fixture.remove() }
         let sampler = BiomeSampler(seed: 0)
         let upper: NBT = .compound(["id": .string("minecraft:tall_grass"), "properties": .compound(["half": .string("upper")])])
-        let palette: [NBT] = [.string("minecraft:grass_block"), .string("minecraft:water"), upper, .string("minecraft:air")]
+        let palette: [NBT] = [.compound(["id": .string("minecraft:grass_block")]),
+                              .compound(["id": .string("minecraft:water")]), upper,
+                              .compound(["id": .string("minecraft:air")])]
         func blocks(_ x: Int, _ y: Int, _ z: Int) -> Int {
             if x < 8 { return y >= 12 ? 1 : 0 }
             return y > 12 ? 3 : y == 12 ? 2 : 0
