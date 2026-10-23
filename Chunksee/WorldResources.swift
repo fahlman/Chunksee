@@ -56,7 +56,15 @@ final class WorldResources {
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
     @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
     @ObservationIgnored private var pendingPlayers = false
+    @ObservationIgnored private var pendingBiomeMetadata = false
+    @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
+    private let biomeWork: BackgroundWork.Scope
+    @ObservationIgnored private var gameAssetSource: WorldGameAssetSource?
+    @ObservationIgnored private var gameAssets: GameAssetLibrary?
+    @ObservationIgnored private var biomeColors: MapBiomeColors?
+    @ObservationIgnored private var biomeReadGeneration = 0
+    @ObservationIgnored private var needsBiomeReload = false
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
     /// Tests can hold this boundary without making refresh correctness depend on scheduler speed.
     @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
@@ -64,6 +72,9 @@ final class WorldResources {
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
     @ObservationIgnored var readPlayers: @Sendable (World) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0) }
+    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
+        try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3)
+    }
 
     private final class WeakSession {
         weak var value: WorldSession?
@@ -85,6 +96,7 @@ final class WorldResources {
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
+        biomeWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
@@ -148,7 +160,60 @@ final class WorldResources {
 
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
+        session.map?.setGameAssets(gameAssets, biomeColors: biomeColors)
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
+    }
+
+    /// Multiple dimension views can observe the same source change. Retire it once for the
+    /// world; opening another tab must not clear its siblings' color snapshot.
+    func prepareGameAssets(_ source: WorldGameAssetSource) {
+        guard !isClosed, source.generation == names.minecraft.generation, gameAssetSource != source else { return }
+        gameAssetSource = source
+        biomeReadGeneration += 1
+        biomeWork.cancel()
+        gameAssets = nil
+        biomeColors = nil
+        for session in sessions.values.compactMap(\.value) { session.map?.setGameAssets(nil) }
+    }
+
+    func setGameAssets(_ library: GameAssetLibrary?, source: WorldGameAssetSource) {
+        guard !isClosed, source.generation == names.minecraft.generation,
+              gameAssetSource == source, gameAssets?.identity != library?.identity else { return }
+        biomeReadGeneration += 1
+        biomeWork.cancel()
+        gameAssets = library
+        biomeColors = nil
+        for session in sessions.values.compactMap(\.value) { session.map?.setGameAssets(nil) }
+        refreshBiomeColors(reload: true)
+    }
+
+    private func refreshBiomeColors(reload: Bool) {
+        guard !isClosed, let library = gameAssets else { return }
+        needsBiomeReload = needsBiomeReload || reload
+        biomeReadGeneration += 1
+        let generation = biomeReadGeneration
+        biomeWork.cancel()
+        let read = readBiomeColors, world = world, previous = biomeColors
+        let reload = needsBiomeReload
+        biomeWork.start(priority: nil) { [weak self] in
+            let updated = try? await read(world, library, previous, reload)
+            guard !Task.isCancelled, let self, !self.isClosed,
+                  self.biomeReadGeneration == generation, self.gameAssets?.identity == library.identity else { return }
+            // A transient unreadable save keeps its last good colors. A successful empty
+            // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
+            if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
+            for session in self.sessions.values.compactMap(\.value) {
+                session.map?.setGameAssets(library, biomeColors: self.biomeColors)
+            }
+        }
+    }
+
+    @concurrent nonisolated static func readBiomeColors(_ world: World, library: GameAssetLibrary,
+                                                       previous: MapBiomeColors?, reload: Bool) async throws -> MapBiomeColors {
+        try Task.checkCancellation()
+        let current = try World(contentsOf: world.url)
+        if !reload, let previous, previous.matchesMetadata(current, assetSourceKey: library.sourceKey) { return previous }
+        return try await library.biomeColors(in: current)
     }
 
     func saveViews() {
@@ -221,6 +286,8 @@ final class WorldResources {
         backgroundWork.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
+        gameAssets = nil
+        biomeColors = nil
         let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
@@ -247,8 +314,15 @@ final class WorldResources {
                     pendingTerrain[dimension.id] = .all
                 }
                 pendingPlayers = true
-            } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path ||
-                        path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
+                pendingBiomeMetadata = true
+                pendingBiomePacks = true
+            } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path {
+                pendingPlayers = true
+                pendingBiomeMetadata = true
+            } else if path == url.appendingPathComponent("datapacks").standardizedFileURL.path ||
+                        path.hasPrefix(url.appendingPathComponent("datapacks").standardizedFileURL.path + "/") {
+                pendingBiomePacks = true
+            } else if path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
                 pendingPlayers = true
             } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
                 .max(by: { $0.url.path.count < $1.url.path.count }) {
@@ -272,7 +346,7 @@ final class WorldResources {
                 }
             }
         }
-        guard !pendingIndex.isEmpty || pendingPlayers else { return }
+        guard !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -291,12 +365,14 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await refreshWork.waitUntilFinished()
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork])
     }
 
     private func refresh() async {
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
+        let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
         pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
+        pendingBiomeMetadata = false; pendingBiomePacks = false
         for session in sessions.values.compactMap(\.value) {
             if let id = session.selectedDimensionID, let changes = terrain[id] {
                 session.map?.regionsChanged(changes.mapRegions)
@@ -305,6 +381,7 @@ final class WorldResources {
             }
         }
         if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }
+        if biomesChanged { refreshBiomeColors(reload: reloadBiomes) }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
             // an older, slower read finishing later must not put old positions back.

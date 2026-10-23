@@ -21,7 +21,8 @@ nonisolated struct TileCache: Sendable {
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
     /// 14: per-dimension block filtering and separate unfiltered/filtered cache slots.
     /// 15: texture-derived colors keyed by the selected game archive.
-    static let rendererVersion = 15
+    /// 16: per-column biome tints keyed by the resolved world color definitions.
+    static let rendererVersion = 16
 
     let directory: URL
 
