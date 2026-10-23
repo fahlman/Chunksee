@@ -223,37 +223,59 @@ actor GameAssetLibrary {
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {
-        guard let model = stack.itemModelID,
-              let entry = caches.models.object(forKey: model.description as NSString), entry.item != nil,
+        guard let selection = stack.itemModelSelection,
+              let entry = caches.models.object(forKey: Self.modelKey(for: selection) as NSString), entry.item != nil,
               let colors = entry.colors(for: stack, version: version, texture: {
                   caches.textures.object(forKey: $0.description as NSString)?.texture
               }) else { return nil }
-        return caches.images.object(forKey: Self.imageKey(for: model, colors: colors))
+        return caches.images.object(forKey: Self.imageKey(for: selection, colors: colors))
     }
 
     func picture(for stack: ItemStack) throws -> CGImage? {
         try Task.checkCancellation()
-        guard let assets, let model = stack.itemModelID else { return nil }
-        let key = model.description as NSString
+        guard let assets, let selection = stack.itemModelSelection else { return nil }
+        let key = Self.modelKey(for: selection) as NSString
         let entry: ModelEntry
         if let cached = caches.models.object(forKey: key) { entry = cached }
         else {
-            entry = ModelEntry(assets.defaultItemModel(model.description))
+            entry = ModelEntry(assets.itemModel(for: selection))
             caches.models.setObject(entry, forKey: key, cost: entry.cost)
         }
         guard let item = entry.item else { return nil }
         guard let colors = entry.colors(for: stack, version: version, texture: texture) else { return nil }
         try Task.checkCancellation()
-        let imageKey = Self.imageKey(for: model, colors: colors)
+        let imageKey = Self.imageKey(for: selection, colors: colors)
         if let image = caches.images.object(forKey: imageKey) { return image }
-        guard let image = try GameModelRenderer.render(item, colors: colors, texture: texture) else { return nil }
+        guard let image = try GameModelRenderer.render(item, colors: colors, texture: itemTexture) else { return nil }
         try Task.checkCancellation()
         caches.images.setObject(image, forKey: imageKey, cost: image.bytesPerRow * image.height)
         return image
     }
 
-    private nonisolated static func imageKey(for model: Identifier, colors: [[UInt32]]) -> NSString {
-        (model.description + "|" + colors.map { $0.map(String.init).joined(separator: ",") }.joined(separator: ";")) as NSString
+    private nonisolated static func modelKey(for selection: ItemModelSelection) -> String {
+        // Identifier excludes separators, so nil and every valid material have distinct keys.
+        selection.modelID.description + "|" + (selection.trimMaterialID?.description ?? "")
+    }
+
+    private nonisolated static func imageKey(for selection: ItemModelSelection, colors: [[UInt32]]) -> NSString {
+        (modelKey(for: selection) + "|" + colors.map { $0.map(String.init).joined(separator: ",") }.joined(separator: ";")) as NSString
+    }
+
+    /// Atlas sprites have their own identity: a generated item sprite must neither replace
+    /// a direct colormap read nor bypass a later atlas source with the same resource name.
+    private func itemTexture(_ id: Identifier) -> ItemTexture? {
+        let key = ("items|" + id.description) as NSString
+        if let cached = caches.textures.object(forKey: key) { return cached.texture }
+        let decoded: ItemTexture?
+        if let source = assets?.palettedTexture(id.description, in: "minecraft:items") {
+            if let base = assets?.texture(source.texture.description),
+               let key = assets?.texture(source.paletteKey.description),
+               let palette = assets?.texture(source.palette.description) {
+                decoded = ItemTexture(png: base, paletteKey: key, palette: palette)
+            } else { decoded = nil }
+        } else { decoded = texture(id) }
+        caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
+        return decoded
     }
 
     private func texture(_ id: Identifier) -> ItemTexture? {

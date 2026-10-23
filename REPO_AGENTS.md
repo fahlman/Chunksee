@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.60.0`, resolved to `0.60.0` (`412b9fc0d82a1d24639553f2bab535278868955b`).
+  minor" from `0.61.0`, resolved to `0.61.0` (`d3020d78a4786c8bb86002ede0e9e567b87b5c48`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -176,7 +176,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; exact saved-version jar lookup, file identity and weak sharing across live documents |
-| `GameAssetLibrary.swift`, `GameModelRenderer.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
+| `GameAssetLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
@@ -1133,9 +1133,11 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Kit 0.59.0 owns saved item-model reference selection through ItemStack.itemModelID. Both
-cold and warm picture lookups key models and thumbnails by that selected reference, with saved
-tints still evaluated from the original stack. Removed, malformed and unresolved references keep
+APIs. Kit 0.61.0 owns saved model-reference and trim-material selection through
+ItemStack.itemModelSelection. Both cold and warm lookups key models and thumbnails by that
+selection, with saved tints evaluated separately from the original stack. Pattern, name and count
+do not split otherwise identical pictures. Missing/removed/inline trim materials keep the generic
+fallback, including older jars; non-nil trim selection requires verified 26.3 semantics. Removed, malformed and unresolved references keep
 the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
 rejects stale results when a reference changes; item names and counts retain their original owner.
 Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
@@ -1152,8 +1154,17 @@ pixels per side). GameModelRenderer projects resolved element geometry and GUI t
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
-symbols. Static fallback variants omit trim/custom-model-data/live predicates; firework tint uses the
+symbols. Static fallback variants omit custom-model-data/live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
+
+Kit 0.61.0 also owns item-atlas palette-source precedence and AssetPaletteMapping. ItemTexture
+uses ImageIO's bounded 8-bit straight gray/RGB pixels for palette matching before the existing
+CGContext conversion to premultiplied RGBA. Palette inputs are limited to 4,096 pixels and
+unsupported layouts/missing resources remain unavailable; no game palette math or trim catalog
+is copied into the app. Generated item sprites have a separate cache key from direct raw textures,
+so map colors and tint colormaps keep their existing decoding and cannot reuse a generated sprite.
+Tests cover trim/dye cache identity, warm native icons in both appearances, older untrimmed armor,
+source precedence, raw map isolation, source retirement, partial alpha and palette bounds.
 
 Kit 0.50.2 supplies verified 26.3 closed single-chest and shulker geometry through the same
 AssetItem cuboids. The existing item renderer and caches therefore draw their installed skins
