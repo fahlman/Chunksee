@@ -9,6 +9,88 @@ import UniformTypeIdentifiers
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct ItemPicturesTests {
+    @Test func translatedBedHalvesRemainSeparateInTheSharedPictureAndNativeIcon() async throws {
+        let gui: [String: Any] = ["rotation": [90, 0, 0], "translation": [0, 4, 0], "scale": [0.5, 0.5, 0.5]]
+        let fixture = try ItemPictureFixture(extraFiles: [
+            "assets/test/items/bed.json": ItemPictureFixture.json(["model": [
+                "type": "composite", "models": [
+                    ["type": "model", "model": "test:block/bed_head"],
+                    ["type": "model", "model": "test:block/bed_foot", "transformation": [
+                        "left_rotation": [0, 0, 0, 1], "right_rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1], "translation": [0, 0, 1]
+                    ]]
+                ]
+            ]]),
+            "assets/test/models/block/bed_head.json": ItemPictureFixture.json([
+                "gui_light": "front", "display": ["gui": gui], "textures": ["skin": "test:item/red"],
+                "elements": [["from": [0, 3, 0], "to": [16, 9, 16], "faces": ["up": ["texture": "#skin"]]]]
+            ]),
+            "assets/test/models/block/bed_foot.json": ItemPictureFixture.json([
+                "parent": "test:block/bed_head", "textures": ["skin": "test:item/blue"]
+            ])
+        ])
+        defer { fixture.remove() }
+        let library = try fixture.library(), stack = ItemStack(id: "test:bed")
+        let image = try #require(try await library.picture(for: stack))
+        let pixels = try ItemPictureFixture.pixels(image)
+        // Distinct halves expose a lost translation: the foot would cover the head instead.
+        #expect(pixels.color(32, 16) == [255, 0, 0, 255])
+        #expect(pixels.color(32, 48) == [0, 0, 255, 255])
+        #expect(pixels.color(8, 32) == [0, 0, 0, 0])
+        #expect(library.cachedPicture(for: stack) === image)
+        for appearance in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(content: ItemIcon(item: stack)
+                .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+            renderer.scale = 4
+            let native = try #require(renderer.cgImage)
+            #expect(native.width == 80 && native.height == 80)
+            let drawn = try ItemPictureFixture.pixels(native)
+            #expect(drawn.color(40, 20) == [255, 0, 0, 255])
+            #expect(drawn.color(40, 60) == [0, 0, 255, 255])
+        }
+    }
+
+    @Test func plainShieldShowsItsPlateInFrontAndHandleBehind() async throws {
+        var files = [String: Data]()
+        for (view, rotation, translation) in [("front", [0, 0, 0], [4, 4, 0]),
+                                               ("back", [0, 180, 0], [-4, 4, 0])] {
+            let id = "shield_" + view
+            files["assets/test/items/\(id).json"] = try ItemPictureFixture.json(["model": [
+                "type": "condition", "property": "using_item", "transformation": [
+                    "left_rotation": [0, 0, 0, 1], "right_rotation": [0, 0, 0, 1],
+                    "scale": [1, -1, -1], "translation": [0, 0, 0]
+                ], "on_false": ["type": "special", "base": "test:item/" + id, "model": ["type": "shield"]]
+            ]])
+            files["assets/test/models/item/\(id).json"] = try ItemPictureFixture.json([
+                "gui_light": "front", "display": ["gui": ["rotation": rotation, "translation": translation,
+                                                              "scale": [0.5, 0.5, 0.5]]]
+            ])
+        }
+        var skin = Array(repeating: [UInt8(255), 0, 0, 255], count: 64 * 64).flatMap { $0 }
+        // Blue regions identify the handle independently of the red front/back plate.
+        for x in [32, 40] {
+            for y in 6..<12 {
+                for column in x..<x + 2 {
+                    let offset = (y * 64 + column) * 4
+                    skin.replaceSubrange(offset..<offset + 4, with: [0, 0, 255, 255])
+                }
+            }
+        }
+        files["assets/minecraft/textures/entity/shield/shield_base_nopattern.png"] = try ItemPictureFixture.png(skin, width: 64, height: 64)
+        let fixture = try ItemPictureFixture(extraFiles: files)
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        for (view, center) in [("front", [UInt8(255), 0, 0, 255]), ("back", [0, 0, 255, 255])] {
+            let stack = ItemStack(id: "test:shield_" + view)
+            let image = try #require(try await library.picture(for: stack))
+            let pixels = try ItemPictureFixture.pixels(image)
+            #expect(pixels.color(32, 32) == center, "\(view) center")
+            #expect(pixels.color(22, 32) == [255, 0, 0, 255], "\(view) plate")
+            #expect(pixels.color(8, 32) == [0, 0, 0, 0])
+            #expect(library.cachedPicture(for: stack) === image)
+        }
+    }
+
     @Test func chestsUseTheirTopLidBodyAndLatchTextureRegions() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
@@ -372,7 +454,7 @@ struct ItemPictureFixture {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url)
         }
-        func json(_ path: String, _ object: Any) throws { try write(path, JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) }
+        func json(_ path: String, _ object: Any) throws { try write(path, Self.json(object)) }
         try json("version.json", ["id": "26.3", "world_version": dataVersion])
         for id in ["flat", "leather", "potion", "cube", "turned", "grass", "euler", "diagonal", "rescaled"] {
             var model: [String: Any] = ["type": "minecraft:model", "model": "test:item/" + id]
@@ -473,6 +555,10 @@ struct ItemPictureFixture {
 
     func remove() { try? FileManager.default.removeItem(at: root) }
     func library() throws -> GameAssetLibrary { GameAssetLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: CacheKey.hash(jar.path)) }
+
+    static func json(_ object: Any) throws -> Data {
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
 
     static func png(_ pixels: [UInt8], width: Int = 2, height: Int = 2) throws -> Data {
         let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))
