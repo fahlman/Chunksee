@@ -9,20 +9,25 @@ import UniformTypeIdentifiers
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct ItemPicturesTests {
-    @Test func translatedBedHalvesRemainSeparateInTheSharedPictureAndNativeIcon() async throws {
+    @Test(arguments: [false, true])
+    func bedHalvesKeepPlacementAndTextureDirectionInTheSharedPictureAndNativeIcon(halfTurn: Bool) async throws {
         let gui: [String: Any] = ["rotation": [90, 0, 0], "translation": [0, 4, 0], "scale": [0.5, 0.5, 0.5]]
+        let models: [[String: Any]] = (0..<2).map { index in
+            var node: [String: Any] = ["type": "model", "model": "test:block/bed_" + (index == 0 ? "head" : "foot")]
+            if halfTurn || index == 1 {
+                node["transformation"] = [
+                    "left_rotation": halfTurn ? [0, 1, 0, 0] : [0, 0, 0, 1], "right_rotation": [0, 0, 0, 1],
+                    "scale": [1, 1, 1], "translation": [halfTurn ? 1 : 0, 0, index + (halfTurn ? 1 : 0)]
+                ]
+            }
+            return node
+        }
         let fixture = try ItemPictureFixture(extraFiles: [
             "assets/test/items/bed.json": ItemPictureFixture.json(["model": [
-                "type": "composite", "models": [
-                    ["type": "model", "model": "test:block/bed_head"],
-                    ["type": "model", "model": "test:block/bed_foot", "transformation": [
-                        "left_rotation": [0, 0, 0, 1], "right_rotation": [0, 0, 0, 1],
-                        "scale": [1, 1, 1], "translation": [0, 0, 1]
-                    ]]
-                ]
+                "type": "composite", "models": models
             ]]),
             "assets/test/models/block/bed_head.json": ItemPictureFixture.json([
-                "gui_light": "front", "display": ["gui": gui], "textures": ["skin": "test:item/red"],
+                "gui_light": "front", "display": ["gui": gui], "textures": ["skin": "test:item/quadrants"],
                 "elements": [["from": [0, 3, 0], "to": [16, 9, 16], "faces": ["up": ["texture": "#skin"]]]]
             ]),
             "assets/test/models/block/bed_foot.json": ItemPictureFixture.json([
@@ -33,8 +38,12 @@ import UniformTypeIdentifiers
         let library = try fixture.library(), stack = ItemStack(id: "test:bed")
         let image = try #require(try await library.picture(for: stack))
         let pixels = try ItemPictureFixture.pixels(image)
-        // Distinct halves expose a lost translation: the foot would cover the head instead.
-        #expect(pixels.color(32, 16) == [255, 0, 0, 255])
+        // The foot exposes lost translation; the asymmetric head exposes a lost UV turn.
+        let original: [[UInt8]] = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]]
+        let expected = halfTurn ? Array(original.reversed()) : original
+        for (index, position) in [(24, 8), (40, 8), (24, 24), (40, 24)].enumerated() {
+            #expect(pixels.color(position.0, position.1) == expected[index])
+        }
         #expect(pixels.color(32, 48) == [0, 0, 255, 255])
         #expect(pixels.color(8, 32) == [0, 0, 0, 0])
         #expect(library.cachedPicture(for: stack) === image)
@@ -45,7 +54,7 @@ import UniformTypeIdentifiers
             let native = try #require(renderer.cgImage)
             #expect(native.width == 80 && native.height == 80)
             let drawn = try ItemPictureFixture.pixels(native)
-            #expect(drawn.color(40, 20) == [255, 0, 0, 255])
+            #expect(drawn.color(30, 10) == expected[0])
             #expect(drawn.color(40, 60) == [0, 0, 255, 255])
         }
     }
