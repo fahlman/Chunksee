@@ -668,6 +668,3 @@ import Testing
         #expect(map.unfinishedHoverReads == 0)
     }
 }
-
-/// Numbers calls in the order they arrive.
-
