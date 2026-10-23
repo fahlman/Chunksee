@@ -1,49 +1,7 @@
 import ChunkseeKit
 import CoreGraphics
 import Foundation
-import ImageIO
 import simd
-
-/// Decoded pixels have a top-left origin and premultiplied RGBA channels.
-nonisolated struct ItemTexture: Sendable {
-    let width: Int
-    let height: Int
-    let pixels: [UInt8]
-
-    init(width: Int, height: Int, pixels: [UInt8]) {
-        self.width = width; self.height = height; self.pixels = pixels
-    }
-
-    init?(png: Data) {
-        guard let source = CGImageSourceCreateWithData(png as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              (1...1024).contains(width), (1...1024).contains(height),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        let decoded = pixels.withUnsafeMutableBytes { bytes -> Bool in
-            guard let context = CGContext(data: bytes.baseAddress, width: width, height: height,
-                                          bitsPerComponent: 8, bytesPerRow: width * 4,
-                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.interpolationQuality = .none
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
-        }
-        guard decoded else { return nil }
-        self.width = width
-        self.height = height
-        self.pixels = pixels
-    }
-
-    func rgb(at pixel: SIMD2<Int>) -> UInt32? {
-        guard (0..<width).contains(pixel.x), (0..<height).contains(pixel.y) else { return nil }
-        let index = (pixel.y * width + pixel.x) * 4
-        guard pixels[index + 3] == 255 else { return nil }
-        return UInt32(pixels[index]) << 16 | UInt32(pixels[index + 1]) << 8 | UInt32(pixels[index + 2])
-    }
-}
 
 /// Shared orthographic drawing for item pictures and top-down map colors, off the main actor.
 /// Kit resolves the format. This client projects its geometry, samples textures and lights faces.
