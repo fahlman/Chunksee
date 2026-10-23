@@ -26,7 +26,16 @@ private struct MapImageSheetKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+private struct MapBlockFilterSheetKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
 extension FocusedValues {
+    var mapBlockFilterSheet: Binding<Bool>? {
+        get { self[MapBlockFilterSheetKey.self] }
+        set { self[MapBlockFilterSheetKey.self] = newValue }
+    }
+
     var mapImageSheet: Binding<Bool>? {
         get { self[MapImageSheetKey.self] }
         set { self[MapImageSheetKey.self] = newValue }
@@ -60,6 +69,7 @@ struct WorldCommands: Commands {
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
     @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
     @FocusedBinding(\.mapImageSheet) private var showsImageExport
+    @FocusedBinding(\.mapBlockFilterSheet) private var showsBlockFilter
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -99,6 +109,8 @@ struct WorldCommands: Commands {
                 }
             }
             .disabled(session?.map == nil)
+            Button("Show/Hide Blocks…") { showsBlockFilter = true }
+                .disabled(session?.map == nil || showsBlockFilter == nil)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)

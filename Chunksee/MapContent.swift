@@ -6,6 +6,7 @@ import SwiftUI
 struct MapContent {
     var mapStyle = MapStyle.normal
     var heightScale: MapHeightScale?
+    var blockFilter = MapBlockFilter()
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -117,6 +118,7 @@ extension MapContent {
         guard session.map != nil, let id = session.selectedDimensionID else { return }
         mapStyle = session.map?.style ?? .normal
         heightScale = session.map?.heightScale
+        blockFilter = session.map?.blockFilter ?? MapBlockFilter()
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown

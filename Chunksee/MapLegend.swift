@@ -6,9 +6,21 @@ struct MapLegendOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottomTrailing) {
-            if layers.mapStyle != .normal || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil {
+            if layers.mapStyle != .normal || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil || layers.blockFilter.cacheKey != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    MapStyleLegend(style: layers.mapStyle, heightScale: layers.heightScale)
+                    if layers.blockFilter.isEnabled, !layers.blockFilter.highlightedIDs.isEmpty {
+                        key("Highlighted Blocks") {
+                            let accent = MapBlockFilter.Emphasis.accent
+                            Rectangle().fill(Color(.sRGB, red: Double(accent.red) / 255,
+                                                   green: Double(accent.green) / 255, blue: Double(accent.blue) / 255))
+                        }
+                    } else {
+                        MapStyleLegend(style: layers.mapStyle, heightScale: layers.heightScale)
+                    }
+                    if !layers.blockFilter.effectiveHiddenIDs.isEmpty {
+                        Label("Some Blocks Hidden", systemImage: "line.3.horizontal.decrease")
+                            .font(.caption)
+                    }
                     if layers.showsHeatMap { HeatMapLegend() }
                     if layers.slimeSeed != nil {
                         key("Slime Chunks") {

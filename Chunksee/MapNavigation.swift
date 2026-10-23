@@ -59,6 +59,7 @@ final class MapNavigation {
         map.viewport = oldMap.viewport
         map.setDepth(oldMap.depth)
         map.setStyle(oldMap.style)
+        map.setBlockFilter(oldMap.blockFilter)
     }
 
     private func navigate(_ change: (MapModel) -> Void) {

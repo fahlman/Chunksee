@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.50.2`, resolved to `0.50.2` (`75a5c12dc0e8b52809017e40e4c866052cdfaa39`).
+  minor" from `0.54.1`, resolved to `0.54.1` (`770c52e78ec80899942739ffc6f203165bae1833`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -303,7 +303,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
 restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
-TileCache version 13 separates each style's Surface/latest-cutaway entries; Height keys include
+TileCache version 14 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
 styles' cached tiles. No scan-cache change is needed.
 MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
@@ -945,6 +945,30 @@ The sheet uses MapCoordinates for editable X Y Z, NetherPortal.destination/link 
 prediction, the live shared portal index, and the existing coordinate-copy and dimension-opening
 actions. Missing index data stays distinct from a known empty destination. Only Overworld/Nether
 travel is supported; planning neither invents a portal frame nor predicts the return leg.
+
+MapBlockFilter owns per-dimension Hide/Highlight choices, including an enable flag that preserves
+choices while showing the ordinary map. WorldSettings persists it; MapModel sends its immutable
+snapshot to the renderer, hover/coordinate reader and image exporter. Changing hidden blocks
+cancels old tiles and block reads together; changing only highlights preserves block reads. ColorSections resolves hiding and emphasis once per
+reached palette entry during the existing Kit column traversal. Hidden blocks are skipped; selected
+visible blocks use the shared yellow highlight and others dim. No second terrain scan is added.
+
+View > Show/Hide Blocks uses a native SwiftUI sheet with a searchable saved-palette catalog,
+individual Show/Hide/Highlight choices, a name-based Hide Leaves shortcut, Reset, Cancel and Apply.
+Editing the draft never redraws the live map; Apply commits it once. The leaf shortcut selects IDs
+ending in `_leaves`, not Minecraft's tag membership. Every exact ID remains editable. Saved choices
+remain listed after their last catalog entry disappears. Names in palettes are not occupancy claims.
+Kit 0.54.0 added the dimension catalog through RegionIndex.paletteBlockIDs; the app requires
+0.54.1 for its bounded archive-reader fix.
+Its RegionFacts interpretation version 7 invalidates older catalog-less scan archives once;
+the app does not read another copy of the chunk data for the picker. The cumulative dependency
+also retains the reviewed container models, block-state and biome/tint APIs and adopts the
+bounded archive reader. Texture and biome map rendering remain separate work.
+
+TileCache keeps the unfiltered image and one latest filtered variant in each existing style and
+Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
+filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
+highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
 
 ## Interface wording
 

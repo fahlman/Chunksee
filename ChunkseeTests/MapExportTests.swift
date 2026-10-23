@@ -196,11 +196,13 @@ import Testing
             let session = WorldSession(resources: resources, renderTile: { renderer, _ in
                 #expect(renderer.cutawayY == 12)
                 #expect(renderer.style == .waterDepth)
+                #expect(renderer.blockFilter == MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
                 return await gate.read("tile")
             })
             await session.search.waitForIndex()
             session.map?.setDepth(MapDepth(y: 12, isSurface: false))
             session.map?.setStyle(.waterDepth)
+            session.map?.setBlockFilter(MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
             let export = session.imageExport
             export.options.area = .dimension
             #expect(export.canCreate)
@@ -209,6 +211,7 @@ import Testing
             #expect(export.isRunning && export.renderedDepth?.y == 12)
             session.map?.setDepth(MapDepth(y: 3, isSurface: false))
             session.map?.setStyle(.normal)
+            session.map?.setBlockFilter(MapBlockFilter())
             #expect(export.renderedDepth?.y == 12)
             if closeDocument { session.close() } else { export.cancel() }
             #expect(export.isRunning && export.isCancelling && !export.canCreate)
