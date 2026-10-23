@@ -160,8 +160,13 @@ exits the tool. Each dimension keeps its own measurement.
 With **Grid** enabled, individual block lines appear at **800% zoom** and above.
 Chunk and region boundaries remain emphasized, with their coordinates along the map edges.
 
-Rendered map tiles are kept in Chunksee's cache folder, so reopening a world is nearly instant; any
-part of the world that has changed since is drawn again.
+Land shading shows gentle slopes and steep cliffs with different contrast, including ridges in
+both directions. Where the save supplies a sea level, land is brightest near it and slightly darker
+far above or below it. Water keeps its depth shading, and the Height view keeps its colour scale.
+
+Map colours and surface heights are kept in Chunksee's cache folder, so reopening a world can
+reuse them; any part of the world that has changed since is drawn again. Lighting is applied after
+loading the cached surface.
 
 ## Building
 

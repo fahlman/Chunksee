@@ -22,9 +22,9 @@ import Testing
         // Prime Foundation's URL metadata before changing this same URL's file.
         _ = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let original = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(original.fileName == "r.-1.2.normal.surface.hunknown.cnone.3.1790000000500000.v11.lzfse")
+        #expect(original.fileName == "r.-1.2.normal.surface.hunknown.cnone.3.1790000000500000.v12.lzfse")
         #expect(TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName
-                == "r.-1.2.normal.cutaway.y-16.3.1790000000500000.v11.lzfse")
+                == "r.-1.2.normal.cutaway.y-16.3.1790000000500000.v12.lzfse")
         #expect(ScanCache.fingerprint([file, missing]) == "573ac917b6c1e815")
         #expect(ScanCache.fingerprint([missing, file]) != ScanCache.fingerprint([file, missing]))
 
@@ -73,7 +73,7 @@ import Testing
         let grass = try #require(BlockColors.color(for: "minecraft:grass_block"))
         #expect(Array(pixels[offset..<offset + 4]) == [grass.red, grass.green, grass.blue, 255])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
-        #expect(cache.load(key) == Array(pixels))
+        #expect(cache.load(key)?.pixels == Array(pixels))
     }
 
     @Test func secondRenderComesFromTheCacheAndChangesInvalidateIt() async throws {
@@ -335,7 +335,7 @@ import Testing
             #expect(finished && map.unfinishedCacheWrites == 0)
             let key = try #require(TileCache.key(for: RegionPosition(x: 0, z: 0), regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
             let bytes = try #require(map.tiles[RegionPosition(x: 0, z: 0)]?.dataProvider?.data as Data?)
-            #expect(TileCache(directory: f.cache).load(key) == Array(bytes))
+            #expect(TileCache(directory: f.cache).load(key)?.pixels == Array(bytes))
             try FileManager.default.removeItem(at: f.cache)
             #expect(!FileManager.default.fileExists(atPath: f.cache.path))
         }

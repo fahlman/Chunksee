@@ -298,7 +298,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
 restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
-TileCache version 11 separates each style's Surface/latest-cutaway entries; Height keys include
+TileCache version 12 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
 styles' cached tiles. No scan-cache change is needed.
 MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
@@ -310,6 +310,17 @@ a fixed Lab lightness ramp; Water Depth replaces water colours, keeping normal l
 labelling the existing 32-block cap as “32 or deeper.” Core Graphics prepares the sRGB ramps once.
 The on-screen/exported MapLegendOverlay hosts the styles and existing overlay keys; MapLegendScale
 shares bar/tick layout with Time Spent. No world files or normal app defaults are written by tests.
+
+Normal and Water Depth land lighting share MapRelief: north/west height differences vary contrast
+from 0.75 to 1.2, with top/left edge extrapolation. A gentle elevation curve darkens land by at most
+8 percent away from the saved sea level, using the same MapHeightScale as Height. Missing sea-level
+metadata skips this elevation tint; water keeps its depth colours and Height bypasses lighting.
+The cached Canvas contains unlit RGBA bytes, signed little-endian Int32 heights and a water mask.
+Lighting forms the displayed/exported full image and its preview after rendering or loading that
+surface, so changed height-scale metadata can relight a cache hit without rereading chunks. Normal
+and Water Depth keys therefore do not include the lighting scale; Height's baked palette still does.
+Cache writes retain the existing map-owned cancellation/draining lifecycle. This does not implement
+dynamic time-of-day lighting or cross-region cast shadows (#357/#359).
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled

@@ -15,9 +15,9 @@ nonisolated struct RegionTileRenderer: Sendable {
     var surfaceContext: MapSurfaceContext = .unknown
     /// How many chunks of one region decode at the same time.
     var chunkConcurrency = 1
-    /// Rendered pixels saved between launches; `nil` renders every time.
+    /// Unlit colours and surface heights saved between launches; `nil` renders every time.
     var cache: TileCache?
-    /// Saving compresses and writes about 1 MB, so by default it happens after the tile is
+    /// Saving compresses the colours, heights and water mask, so by default it happens after the tile is
     /// returned. MapModel owns that low-priority write and its lifetime. Tests save synchronously.
     var savesInBackground = true
     /// Nil keeps the normal view from saved dimension context; a height starts each column there.
@@ -29,6 +29,11 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Columns in ungenerated chunks stay fully transparent.
     @concurrent
     func pixels(for region: RegionPosition) async throws -> [UInt8]? {
+        try await surface(for: region).map(displayPixels)
+    }
+
+    @concurrent
+    private func surface(for region: RegionPosition) async throws -> Canvas? {
         guard style != .height || heightScale != nil,
               let file = try dimension.region(x: region.x, z: region.z) else { return nil }
         let coordinates = file.chunkCoordinates
@@ -59,8 +64,11 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         }
-        if style != .height { canvas.applyRelief() }
-        return canvas.pixels
+        return canvas
+    }
+
+    private func displayPixels(_ surface: Canvas) -> [UInt8] {
+        style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
     }
 
     @concurrent
@@ -80,10 +88,10 @@ nonisolated struct RegionTileRenderer: Sendable {
     struct CacheWrite: Sendable {
         let cache: TileCache
         let key: TileCache.Key
-        let pixels: [UInt8]
+        let surface: Canvas
 
         @concurrent
-        func store() async { cache.store(pixels, for: key) }
+        func store() async { cache.store(surface, for: key) }
     }
 
     static let previewSide = side / 2
@@ -95,22 +103,23 @@ nonisolated struct RegionTileRenderer: Sendable {
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
         let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale)
-        var pixels: [UInt8]?
+        var surface: Canvas?
         var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
-            pixels = cached
+            surface = cached
         } else {
-            pixels = try await self.pixels(for: region)
-            if let cache, let key, let pixels {
+            surface = try await self.surface(for: region)
+            if let cache, let key, let surface {
                 if savesInBackground {
-                    cacheWrite = CacheWrite(cache: cache, key: key, pixels: pixels)
+                    cacheWrite = CacheWrite(cache: cache, key: key, surface: surface)
                 } else {
-                    cache.store(pixels, for: key)
+                    cache.store(surface, for: key)
                 }
             }
         }
-        guard let pixels,
-              let full = Self.makeImage(pixels, side: Self.side),
+        guard let surface else { return nil }
+        let pixels = displayPixels(surface)
+        guard let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
         return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite)
     }
@@ -326,7 +335,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// Pixels plus the surface height of each column, kept so relief shading can compare
     /// neighbors across chunk edges after every chunk is drawn.
-    struct Canvas {
+    struct Canvas: Sendable {
         static let noHeight = Int32.min
 
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
@@ -338,12 +347,13 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
 
         private mutating func set(x: Int, z: Int, column: Column, color: MapColor) {
+            guard let height = Int32(exactly: column.y), height != Self.noHeight else { return }
             let i = z * side + x
             pixels[i * 4] = color.red
             pixels[i * 4 + 1] = color.green
             pixels[i * 4 + 2] = color.blue
             pixels[i * 4 + 3] = 255
-            heights[i] = Int32(column.y)
+            heights[i] = height
             isWater[i] = column.waterDepth > 0
         }
 
@@ -374,30 +384,32 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
 
-        /// Lightens land that is higher than the block to its north and darkens land that is lower.
-        /// The top row has no north neighbor in this region, so its north height is extrapolated from
-        /// the row below; leaving it unshaded drew a visible line along every region edge.
-        mutating func applyRelief() {
-            for z in stride(from: side - 1, through: 0, by: -1) {
+        /// Lighting is applied to a copy, so a cached surface can be lit again without reading chunks.
+        /// Top/left differences extrapolate from the next row/column to avoid an unshaded region edge.
+        func litPixels(heightScale: MapHeightScale?) -> [UInt8] {
+            let lighting = MapRelief(heightScale: heightScale)
+            var lit = pixels
+            for z in 0..<side {
                 for x in 0..<side {
                     let i = z * side + x
-                    let north: Int32
-                    if z > 0 {
-                        north = heights[i - side]
-                    } else {
-                        let below = heights[i + side]
-                        north = heights[i] == Self.noHeight || below == Self.noHeight ? Self.noHeight : 2 * heights[i] - below
-                    }
-                    guard heights[i] != Self.noHeight, north != Self.noHeight, !isWater[i] else { continue }
-                    let factor: Double = heights[i] > north ? 1.12 : heights[i] < north ? 0.85 : 1
+                    let height = heights[i]
+                    guard height != Self.noHeight, !isWater[i] else { continue }
+                    let north = heights[z > 0 ? i - side : i + side]
+                    let west = heights[x > 0 ? i - 1 : i + 1]
+                    let northDifference = north == Self.noHeight ? 0
+                        : (Int64(height) - Int64(north)) * (z > 0 ? 1 : -1)
+                    let westDifference = west == Self.noHeight ? 0
+                        : (Int64(height) - Int64(west)) * (x > 0 ? 1 : -1)
+                    let factor = lighting.factor(height: height, north: northDifference, west: westDifference)
                     guard factor != 1 else { continue }
                     let shaded = MapColor(UInt32(pixels[i * 4]) << 16 | UInt32(pixels[i * 4 + 1]) << 8
                                           | UInt32(pixels[i * 4 + 2])).shaded(factor)
-                    pixels[i * 4] = shaded.red
-                    pixels[i * 4 + 1] = shaded.green
-                    pixels[i * 4 + 2] = shaded.blue
+                    lit[i * 4] = shaded.red
+                    lit[i * 4 + 1] = shaded.green
+                    lit[i * 4 + 2] = shaded.blue
                 }
             }
+            return lit
         }
     }
 
