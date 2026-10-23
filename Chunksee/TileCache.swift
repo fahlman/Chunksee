@@ -18,7 +18,7 @@ nonisolated struct TileCache: Sendable {
     /// 11: independent Normal, Height and Water Depth styles, including the saved height scale.
     /// 12: unlit colours, signed surface heights and water masks; bounded slope/elevation lighting.
     /// Bump on every change, even between unreleased builds: a stale version serves old tiles.
-    static let rendererVersion = 12
+    static let rendererVersion = 13
 
     let directory: URL
 

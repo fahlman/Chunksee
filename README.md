@@ -82,9 +82,10 @@ with a link to this guide. Help opens only when requested.
    **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
    can read the names Minecraft remembers and item pictures from the installed version matching
    each world. Inventory slots, equipment, trades, Storage and matching items in search details
-   share those pictures, including three-sided block icons and saved leather and potion colors.
-   Items keep their category symbols when pictures are unavailable. Some special models (such as
-   chests and shields), animated textures and saved trim/custom-model variants are not drawn yet.
+   share those pictures, including three-sided blocks, closed chests and shulker boxes in Minecraft
+   26.3, and saved leather and potion colors.
+   Items keep their category symbols when pictures are unavailable. Other special models (such as
+   shields), animated textures and saved trim/custom-model variants are not drawn yet.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
@@ -110,6 +111,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 
 **View** includes zoom, World Info, Storage, Time Spent, World Border, sidebar and inspector commands.
 **View ▸ Map Style** offers Normal, Height and Water Depth. Each dimension remembers its choice.
+Normal shows the floor through shallow water, fading to the water's own colour as it gets deeper.
 Height uses that dimension’s saved build limits and sea level; it is unavailable when the limits
 can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
 Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses

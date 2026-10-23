@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.50.1`, resolved to `0.50.1` (`bb913bfd099af1fd014d1896487edb8482a4c728`).
+  minor" from `0.50.2`, resolved to `0.50.2` (`75a5c12dc0e8b52809017e40e4c866052cdfaa39`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -125,6 +125,11 @@ depth during that same walk. Uniform sections arrive as spans, and columns stop 
 Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
 above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
 app; map pixels and hover names use the same scan.
+Normal-view shallow water blends the immediately underlying visible block's colour into the
+existing water shade, fading the floor out by sixteen blocks. The same traversal retains that
+colour; no extra block read or scan is added. Gaps, air and unreadable references leave the floor
+unknown. The contiguous-water depth cap, surface location, hover/copy and Height/Water Depth
+styles stay unchanged. Tile renderer version 12 discards the earlier opaque-water pixels.
 WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurfaceContext derives
 normal-view choices from those saved type/generation facts: known build height reaches the shared
 heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's
@@ -298,7 +303,7 @@ previous index and heat contributions; successful empty reads and deleted files 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
 restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
-TileCache version 12 separates each style's Surface/latest-cutaway entries; Height keys include
+TileCache version 13 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
 styles' cached tiles. No scan-cache change is needed.
 MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
@@ -1109,6 +1114,14 @@ thumbnail lighting is app presentation, not a claim of identical live game shadi
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
 symbols. Static fallback variants omit trim/custom-model/live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
+
+Kit 0.50.2 supplies verified 26.3 closed single-chest and shulker geometry through the same
+AssetItem cuboids. The existing item renderer and caches therefore draw their installed skins
+without an app-side shape table, item-ID catalog or special-renderer branch. Chest date choices
+use the static fallback. Unsupported game versions/models or missing skins retain the symbols.
+Synthetic 64x64 atlas tests distinguish chest top/lid/body/latch regions and the red shulker's
+turned top and upper/lower sides, including normal shared caching. #395's native and bounded
+rendering checks remain required; no installed artwork is included in the app or test fixtures.
 
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
 styling across equipment, trades, inventory slots, Storage and matching search-item details.
