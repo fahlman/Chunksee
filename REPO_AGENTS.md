@@ -125,6 +125,11 @@ depth during that same walk. Uniform sections arrive as spans, and columns stop 
 Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
 above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
 app; map pixels and hover names use the same scan.
+Normal-view shallow water blends the immediately underlying visible block's colour into the
+existing water shade, fading the floor out by sixteen blocks. The same traversal retains that
+colour; no extra block read or scan is added. Gaps, air and unreadable references leave the floor
+unknown. The contiguous-water depth cap, surface location, hover/copy and Height/Water Depth
+styles stay unchanged. Tile renderer version 12 discards the earlier opaque-water pixels.
 WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurfaceContext derives
 normal-view choices from those saved type/generation facts: known build height reaches the shared
 heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's

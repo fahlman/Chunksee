@@ -213,7 +213,7 @@ import Testing
         func rgba(_ c: MapColor) -> [UInt8] { [c.red, c.green, c.blue, 255] }
 
         #expect(pixel(2, 5) == rgba(MapColor(0x7CBD6B)))                    // grass, level with its north neighbor
-        #expect(pixel(10, 5) == rgba(MapColor(0x3F76E4).shaded(1.125)))     // water, one block deep
+        #expect(pixel(10, 5) == rgba(MapColor(0x707F9E)))     // one block of water over stone
         #expect(pixel(20, 5)[3] == 0)                                        // chunk (1, 0) not generated
         #expect(pixel(2, 16) == rgba(MapColor(0x7D7D7D).shaded(1.12)))      // higher than the chunk to its north
         #expect(pixel(2, 17) == rgba(MapColor(0x7D7D7D)))                    // level with its north neighbor

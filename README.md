@@ -105,6 +105,7 @@ with **File ▸ Open…**; macOS will remember them from then on.
 
 **View** includes zoom, World Info, Storage, Time Spent, World Border, sidebar and inspector commands.
 **View ▸ Map Style** offers Normal, Height and Water Depth. Each dimension remembers its choice.
+Normal shows the floor through shallow water, fading to the water's own colour as it gets deeper.
 Height uses that dimension’s saved build limits and sea level; it is unavailable when the limits
 can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
 Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses
