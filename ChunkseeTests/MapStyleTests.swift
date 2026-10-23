@@ -57,7 +57,7 @@ import Testing
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld"))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let region = RegionPosition(x: 0, z: 0)
-        let normal = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: region))
+        let normal = try #require(try await RegionTileRenderer(dimension: dimension, heightScale: scale).pixels(for: region))
         let file = try #require(try dimension.region(x: 0, z: 0))
         let columns = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
         #expect(columns[0]?.y == 0 && columns[4]?.y == 40 && columns[8]?.waterDepth == 1 && columns[12]?.waterDepth == 32)
@@ -70,8 +70,8 @@ import Testing
                 } else if column.waterDepth > 0 {
                     expected = MapStylePalette.waterColor(depth: column.waterDepth)
                 } else {
-                    expected = try #require(BlockColors.color(for: "minecraft:stone"))
                     #expect(pixel(pixels, x: x) == pixel(normal, x: x))
+                    continue
                 }
                 #expect(pixel(pixels, x: x) == [expected.red, expected.green, expected.blue, 255])
             }

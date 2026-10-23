@@ -130,7 +130,7 @@ import Testing
         let cache = TileCache(directory: root.appendingPathComponent("export-tiles"))
         let key = TileCache.Key(region: region, fileSize: 0, modified: 0)
         let late = RegionTileRenderer.RenderedTile(full: image, preview: image,
-            cacheWrite: .init(cache: cache, key: key, pixels: [100, 100, 100, 255]))
+            cacheWrite: .init(cache: cache, key: key, surface: RegionTileRenderer.Canvas()))
         await gate.finish("tile", with: late)
         do {
             _ = try await task.value
