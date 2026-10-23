@@ -1236,6 +1236,10 @@ The renderer retains a three-row window of compact terrain inputs and Kit ChunkB
 Each in-region chunk is decoded and traversed once. Only the surrounding one-chunk ring supplies
 extra biome reads, without terrain traversal or retained blocks/NBT. Row work uses the existing
 bounded chunk concurrency and cancellation; there is no world-wide biome cache or task owner.
+Before coloring columns, each chunk task gathers the tint, floor and water sample positions,
+selects their cells through Kit, and reads each distinct cell once grouped by source chunk.
+It interns the resulting names into task-local color values and integer position indices. The
+per-column color loop does not read shared row dictionaries, saved palettes or biome names.
 TileCache version 18 keys the seed/color source, saved source-height limits and all nine region
 file stamps, including absent neighbors. Live region changes cancel and invalidate neighboring
 tiles, and the existing job identity rejects old publication. Height and unavailable-asset paths

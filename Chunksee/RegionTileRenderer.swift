@@ -323,31 +323,12 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let gameAssets else { return scanned.columns }
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
-        let sampler = biomeColors?.sampler
         let states = scanned.states
         var positions = scanned.positions
-        var biomes: [String: MapBiomeColors.Biome] = [:]
+        var biomes = PreparedBiomes()
         func biome(column: Int, y: Int) -> MapBiomeColors.Biome? {
-            guard usesBiomeColors else { return nil }
-            let name: String?
-            if scanned.biomes.hasPerBlockBiomes(atBlockY: y) == true {
-                name = scanned.biomes.biome(x: column % 16, y: y, z: column / 16)
-            } else if let sampler, let point = coordinates(column), let origin = region.chunkOrigin {
-                let block = BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z))
-                let cell = surfaceContext.dimensionType.flatMap { sampler.cellOrigin(at: block, in: $0) }
-                    ?? sampler.cellOrigin(at: block)
-                guard let cell else { return nil }
-                let x = cell.chunk.x.subtractingReportingOverflow(origin.x)
-                let z = cell.chunk.z.subtractingReportingOverflow(origin.z)
-                guard !x.overflow, !z.overflow else { return nil }
-                name = neighbors[z.partialValue]?.biomes[x.partialValue]?.biome(x: cell.x, y: cell.y, z: cell.z)
-            } else { name = nil } // A missing seed cannot establish the game's displaced cell.
-            guard let name else { return nil }
-            if let cached = biomes[name] { return cached }
-            guard let biomeColors else { return nil }
-            let colors = biomeColors.biome(name)
-            biomes[name] = colors
-            return colors
+            guard let point = coordinates(column) else { return nil }
+            return biomes.biome(at: BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z)))
         }
         let origin = region.blockOrigin
         func coordinates(_ column: Int) -> (x: Int32, z: Int32)? {
@@ -371,6 +352,30 @@ nonisolated struct RegionTileRenderer: Sendable {
                 let start = biomeTints.count
                 biomeTints.append(contentsOf: material.biomeTints)
                 tintRanges.append(start..<biomeTints.count)
+            }
+            // Prepare only the tint/floor/water samples this chunk will use. The pixel loop
+            // then reads task-local integer indices, never shared row/palette buffers.
+            var samples: Set<BlockPosition> = []
+            func request(_ column: Int, y: Int) {
+                guard let point = coordinates(column) else { return }
+                samples.insert(BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z)))
+            }
+            func requestTints(_ palette: Int?, column: Int, y: Int) {
+                guard let palette else { return }
+                for index in tintRanges[palette] {
+                    let height = y.addingReportingOverflow(biomeTints[index].yOffset)
+                    if !height.overflow { request(column, y: height.partialValue) }
+                }
+            }
+            for (index, position) in positions.enumerated() {
+                guard let column = scanned.columns[index] else { continue }
+                requestTints(position.surface, column: index, y: column.y)
+                let floor = column.y.subtractingReportingOverflow(column.waterDepth)
+                if !floor.overflow { requestTints(position.floor, column: index, y: floor.partialValue) }
+                if column.waterDepth > 0 { request(index, y: column.y) }
+            }
+            if let biomeColors {
+                biomes = prepareBiomes(samples, current: scanned.biomes, region: region, neighbors: neighbors, colors: biomeColors)
             }
             struct TintKey: Hashable {
                 let palette: Int
@@ -423,6 +428,72 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
             return column
         }
+    }
+
+    /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
+    /// addressing; the app interns the resulting names into its resolved color table.
+    private struct PreparedBiomes {
+        var indices: [BlockPosition: Int] = [:]
+        var colors: [MapBiomeColors.Biome] = []
+
+        func biome(at point: BlockPosition) -> MapBiomeColors.Biome? {
+            indices[point].map { colors[$0] }
+        }
+    }
+
+    private func prepareBiomes(_ points: Set<BlockPosition>, current: ChunkBiomeSnapshot,
+                               region: RegionPosition, neighbors: [Int: BiomeRow],
+                               colors: MapBiomeColors) -> PreparedBiomes {
+        guard let currentChunk = points.first?.chunk, let origin = region.chunkOrigin else { return PreparedBiomes() }
+        let sampler = colors.sampler
+        var perBlockAtHeight: [Int: Bool] = [:]
+        var sources: [ChunkPosition: Set<BlockPosition>] = [:]
+        var cells: [BlockPosition: BlockPosition] = [:]
+        for point in points {
+            let perBlock: Bool
+            if let cached = perBlockAtHeight[point.y] { perBlock = cached }
+            else {
+                perBlock = current.hasPerBlockBiomes(atBlockY: point.y) == true
+                perBlockAtHeight[point.y] = perBlock
+            }
+            let cell: BlockPosition?
+            if perBlock { cell = point }
+            else if let sampler {
+                cell = surfaceContext.dimensionType.flatMap { sampler.cellOrigin(at: point, in: $0) }
+                    ?? sampler.cellOrigin(at: point)
+            } else { cell = nil } // A missing seed cannot establish the game's displaced cell.
+            guard let cell else { continue }
+            cells[point] = cell
+            sources[cell.chunk, default: []].insert(cell)
+        }
+        var result = PreparedBiomes()
+        var namedColors: [String: Int] = [:]
+        var cellColors: [BlockPosition: Int] = [:]
+        for (chunk, cells) in sources {
+            let snapshot: ChunkBiomeSnapshot?
+            if chunk == currentChunk { snapshot = current }
+            else {
+                let x = chunk.x.subtractingReportingOverflow(origin.x), z = chunk.z.subtractingReportingOverflow(origin.z)
+                guard !x.overflow, !z.overflow else { continue }
+                snapshot = neighbors[z.partialValue]?.biomes[x.partialValue]
+            }
+            guard let snapshot else { continue }
+            // Each needed cell is read once, grouped by source chunk. No row lookup, saved
+            // palette lookup or biome-name hashing remains in the per-column color path.
+            for cell in cells {
+                guard let name = snapshot.biome(x: cell.x, y: cell.y, z: cell.z) else { continue }
+                let index: Int
+                if let existing = namedColors[name] { index = existing }
+                else {
+                    index = result.colors.count
+                    result.colors.append(colors.biome(name))
+                    namedColors[name] = index
+                }
+                cellColors[cell] = index
+            }
+        }
+        for (point, cell) in cells { result.indices[point] = cellColors[cell] }
+        return result
     }
 
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover

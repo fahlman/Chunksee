@@ -348,6 +348,48 @@ import Testing
         await library.close()
     }
 
+    @Test func sampledWaterFloorsAndUpperPlantsMatchExplicitPerBlockColors() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let sampler = BiomeSampler(seed: 0)
+        let upper: NBT = .compound(["id": .string("minecraft:tall_grass"), "properties": .compound(["half": .string("upper")])])
+        let palette: [NBT] = [.string("minecraft:grass_block"), .string("minecraft:water"), upper, .string("minecraft:air")]
+        func blocks(_ x: Int, _ y: Int, _ z: Int) -> Int {
+            if x < 8 { return y >= 12 ? 1 : 0 }
+            return y > 12 ? 3 : y == 12 ? 2 : 0
+        }
+        func biome(_ x: Int, _ y: Int, _ z: Int) -> Int { ((x >> 2) ^ (y >> 2) ^ (z >> 2)) & 1 }
+        func chunks(perBlock: Bool) -> [TestWorld.ChunkSpec] {
+            (-1...1).flatMap { z in (-1...1).map { x in
+                chunk(x: x, z: z, palette: palette, blocks: blocks, biomes: { localX, y, localZ in
+                    let blockX = x * 16 + localX, blockZ = z * 16 + localZ
+                    if !perBlock { return biome(blockX, y, blockZ) }
+                    guard let cell = sampler.cellOrigin(at: .init(blockX: blockX, blockY: y, blockZ: blockZ)),
+                          (0..<16).contains(cell.y), (-1...1).contains(cell.chunk.x), (-1...1).contains(cell.chunk.z)
+                    else { return 2 }
+                    return biome(cell.x, cell.y, cell.z)
+                }, biomeIDs: ["test:a", "test:b", "test:missing"], biomeBits: 2, perBlock: perBlock)
+            } }
+        }
+        let sampledURL = try world(chunks: chunks(perBlock: false), seed: 0)
+        let explicitURL = try world(chunks: chunks(perBlock: true))
+        defer { try? FileManager.default.removeItem(at: sampledURL); try? FileManager.default.removeItem(at: explicitURL) }
+        let library = try fixture.library()
+        func renderer(_ url: URL) async throws -> RegionTileRenderer {
+            let world = try World(contentsOf: url)
+            var value = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), chunkConcurrency: 14)
+            value.gameAssets = library; value.biomeColors = try await library.biomeColors(in: world)
+            return value
+        }
+        var sampled = try await renderer(sampledURL), explicit = try await renderer(explicitURL)
+        for style in [MapStyle.normal, .waterDepth] {
+            sampled.style = style; explicit.style = style
+            let actual = try await pixels(sampled), expected = try await pixels(explicit)
+            #expect(actual.bytes == expected.bytes)
+        }
+        await library.close()
+    }
+
     @Test func creatingChangingAndDeletingANeighborInvalidatesDiskTiles() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
