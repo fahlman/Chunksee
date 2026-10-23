@@ -1232,10 +1232,15 @@ unavailable. Per-block palettes retain direct lookup; an unknown seed never beco
 Unavailable facts retain BlockColors. Height remains independent of game/biome colors. Optional
 color blending remains on #361.
 
-The renderer retains a three-row window of compact terrain inputs and Kit ChunkBiomeSnapshots.
-Each in-region chunk is decoded and traversed once. Only the surrounding one-chunk ring supplies
-extra biome reads, without terrain traversal or retained blocks/NBT. Row work uses the existing
-bounded chunk concurrency and cancellation; there is no world-wide biome cache or task owner.
+The renderer pipelines in-region decoding and coloring under one shared worker limit. A chunk
+colors as soon as its neighboring reads finish, including missing or damaged chunks; decoding
+can advance two rows beyond the earliest unfinished row. Compact interior biome snapshots stay
+within that four-row window, including its preceding row, and terrain inputs leave the pending
+set when coloring starts. Each in-region chunk is decoded and traversed once. Needed snapshots
+from the surrounding one-chunk ring are read first, one region file at a time: RegionFile owns
+its entire byte buffer, so retaining all eight neighbors would retain their complete files.
+Ring reads use the same chunk limit, without terrain traversal or retained blocks/NBT. Both
+phases retain cancellation; there is no world-wide biome cache or task owner.
 Before coloring columns, each chunk task gathers the tint, floor and water sample positions,
 selects their cells through Kit, and reads each distinct cell once grouped by source chunk.
 It interns the resulting names into task-local color values and integer position indices. The

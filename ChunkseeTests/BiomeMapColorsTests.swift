@@ -348,6 +348,45 @@ import Testing
         await library.close()
     }
 
+    @Test func sparseAndDamagedChunksDoNotPreventLaterRowsFromRendering() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let damaged: Set<ChunkPosition> = [.init(x: 0, z: 0), .init(x: 3, z: 2), .init(x: 2, z: 6),
+                                          .init(x: 5, z: 31), .init(x: -1, z: 0), .init(x: 32, z: 31)]
+        let positions = Set([0, 1, 2, 3, 4, 5, 6, 12, 31].flatMap { z in
+            [0, 1, 2, 3, 4, 5, 31].map { x in ChunkPosition(x: x, z: z) }
+        }).union([.init(x: -1, z: 1), .init(x: 32, z: 30)])
+        let valid = positions.subtracting(damaged)
+        func blue(_ x: Int, _ y: Int, _ z: Int) -> Bool { ((x >> 2) ^ (y >> 2) ^ (z >> 2)) & 1 == 1 }
+        let chunks = valid.map { sampledChunk($0, blue: blue) }
+            + damaged.map { TestWorld.ChunkSpec(x: $0.x, z: $0.z, nbt: .compound([:])) }
+        let url = try world(chunks: chunks, seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        let serial = try await pixels(renderer)
+        renderer.chunkConcurrency = 14
+        let parallel = try await pixels(renderer)
+        #expect(serial.bytes == parallel.bytes)
+        let sampler = BiomeSampler(seed: 0)
+        for position in valid where position.region == RegionPosition(x: 0, z: 0) {
+            let origin = try #require(position.blockOrigin)
+            for z in [0, 7, 15] { for x in [0, 7, 15] {
+                let point = BlockPosition(blockX: origin.x + x, blockY: 15, blockZ: origin.z + z)
+                let cell = try #require(sampler.cellOrigin(at: point))
+                let expected: [UInt8] = valid.contains(cell.chunk)
+                    ? (blue(cell.x, cell.y, cell.z) ? [0, 0, 255, 255] : [255, 0, 0, 255])
+                    : [124, 189, 107, 255]
+                #expect(parallel.color(point.x, point.z) == expected)
+            } }
+        }
+        for z in 0..<32 { for x in 0..<32 where !valid.contains(.init(x: x, z: z)) {
+            #expect(parallel.color(x * 16 + 8, z * 16 + 8) == [0, 0, 0, 0])
+        } }
+        await library.close()
+    }
+
     @Test func sampledWaterFloorsAndUpperPlantsMatchExplicitPerBlockColors() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }

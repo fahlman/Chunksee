@@ -13,7 +13,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     let dimension: ChunkseeKit.Dimension
     /// Saved type/generation context, shared with hover reads and the region scanner.
     var surfaceContext: MapSurfaceContext = .unknown
-    /// How many chunks of one region decode at the same time.
+    /// Maximum simultaneous chunk jobs, shared by decoding and coloring.
     var chunkConcurrency = 1
     /// Unlit colours and surface heights saved between launches; `nil` renders every time.
     var cache: TileCache?
@@ -94,98 +94,150 @@ nonisolated struct RegionTileRenderer: Sendable {
         return canvas
     }
 
-    private struct BiomeRow: Sendable {
-        var biomes: [Int: ChunkBiomeSnapshot] = [:]
-        var columns: [Int: ColorInput] = [:]
+    private typealias BiomeRows = [Int: [Int: ChunkBiomeSnapshot]]
+
+    private enum BiomeWork: Sendable {
+        case decoded(ChunkPosition, ColorInput?)
+        case colored(ChunkPosition, [Column?])
     }
 
-    private struct BiomeFile: Sendable {
-        let file: RegionFile
-        let present: Set<Int>
-        init(_ file: RegionFile) {
-            self.file = file
-            present = Set(file.chunkCoordinates.map { $0.localZ * 32 + $0.localX })
+    /// A RegionFile owns its entire byte buffer. Read the surrounding ring one file at a time
+    /// so compact snapshots, rather than eight complete neighboring files, survive this phase.
+    private func neighborBiomes(origin: ChunkPosition, neededBy chunks: Set<ChunkPosition>) async throws -> BiomeRows {
+        var positions: [RegionPosition: Set<ChunkPosition>] = [:]
+        for chunk in chunks where chunk.x == 0 || chunk.x == 31 || chunk.z == 0 || chunk.z == 31 {
+            for z in (chunk.z - 1)...(chunk.z + 1) {
+                for x in (chunk.x - 1)...(chunk.x + 1) where !(0..<32).contains(x) || !(0..<32).contains(z) {
+                    let absoluteX = origin.x.addingReportingOverflow(x), absoluteZ = origin.z.addingReportingOverflow(z)
+                    guard !absoluteX.overflow, !absoluteZ.overflow else { continue }
+                    let position = ChunkPosition(x: absoluteX.partialValue, z: absoluteZ.partialValue)
+                    positions[position.region, default: []].insert(position)
+                }
+            }
         }
-    }
-
-    /// Retain three rows of compact inputs, not 1,024 full chunks. Every in-region chunk is
-    /// decoded/scanned once; only biome palettes are retained from the outer one-chunk ring.
-    private func sampledSurface(in file: RegionFile, region: RegionPosition, origin: ChunkPosition) async throws -> Canvas {
-        var files = [region: BiomeFile(file)]
-        for neighbor in Self.biomeRegions(around: region) where neighbor != region {
+        var biomes: BiomeRows = [:]
+        for region in positions.keys.sorted(by: { ($0.x, $0.z) < ($1.x, $1.z) }) {
             try Task.checkCancellation()
-            if let file = try? dimension.region(x: neighbor.x, z: neighbor.z) { files[neighbor] = BiomeFile(file) }
-        }
-        var rows: [Int: BiomeRow] = [:]
-        var canvas = Canvas()
-        for z in -1...32 {
-            try Task.checkCancellation()
-            rows[z] = try await biomeRow(z, origin: origin, files: files)
-            let center = z - 1
-            guard let row = rows[center], (0..<32).contains(center) else { continue }
-            let neighbors = rows
-            let columns = row.columns.sorted { $0.key < $1.key }
-            try await withThrowingTaskGroup(of: (Int, [Column?]).self) { group in
-                var next = columns.startIndex
+            guard let file = try? dimension.region(x: region.x, z: region.z) else { continue }
+            let sources = positions[region, default: []].filter { file.containsChunk(localX: $0.localX, localZ: $0.localZ) }
+                .sorted { ($0.z, $0.x) < ($1.z, $1.x) }
+            try await withThrowingTaskGroup(of: (ChunkPosition, ChunkBiomeSnapshot?).self) { group in
+                var next = sources.startIndex
                 func startNext() {
-                    guard next < columns.endIndex else { return }
-                    let (x, input) = columns[next]; next += 1
+                    guard next < sources.endIndex else { return }
+                    let position = sources[next]; next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        let colored = try await coloredColumns(input, region: region, localX: x, localZ: center, neighbors: neighbors)
-                        return (x, colored)
+                        let snapshot: ChunkBiomeSnapshot?
+                        if let nbt = try? file.chunkNBT(localX: position.localX, localZ: position.localZ,
+                                                       skipping: Chunk.keysNotNeededForTerrain),
+                           let chunk = try? Chunk(nbt: nbt) { snapshot = chunk.biomeSnapshot }
+                        else { snapshot = nil }
+                        return (position, snapshot)
                     }
                 }
-                for _ in 0..<max(1, chunkConcurrency) { startNext() }
-                for try await (x, colored) in group {
-                    canvas.set(colored, chunkX: x, chunkZ: center, style: style, heightScale: heightScale)
+                for _ in 0..<min(max(1, chunkConcurrency), sources.count) { startNext() }
+                for try await (position, snapshot) in group {
+                    try Task.checkCancellation()
+                    if let snapshot { biomes[position.z - origin.z, default: [:]][position.x - origin.x] = snapshot }
                     startNext()
                 }
             }
-            rows[center]?.columns = [:] // The next row needs only these biome palettes.
-            rows[center - 1] = nil
+        }
+        return biomes
+    }
+
+    /// Decode ahead while coloring chunks whose nine neighbor reads have completed. Both jobs
+    /// share one worker limit; a four-row window bounds retained compact interior data without a
+    /// decode/color barrier after every row. No full Chunk or NBT survives a decode task.
+    private func sampledSurface(in file: RegionFile, region: RegionPosition, origin: ChunkPosition) async throws -> Canvas {
+        let sources = file.chunkCoordinates.map { ChunkPosition(x: $0.localX, z: $0.localZ) }
+            .sorted { ($0.z, $0.x) < ($1.z, $1.x) }
+        let present = Set(sources)
+        var remaining = [Int](repeating: 0, count: 32)
+        for position in present { remaining[position.z] += 1 }
+        var firstUnfinished = 0
+        var biomes = try await neighborBiomes(origin: origin, neededBy: present)
+        var inputs: [ChunkPosition: ColorInput] = [:]
+        var decoded: Set<ChunkPosition> = []
+        var queued: Set<ChunkPosition> = []
+        var ready: [ChunkPosition] = []
+        var nextReady = 0, nextSource = 0
+        var canvas = Canvas()
+
+        func advance() {
+            while firstUnfinished < 32, remaining[firstUnfinished] == 0 { firstUnfinished += 1 }
+            // Only the immediately preceding row can still supply an unfinished chunk.
+            for z in biomes.keys where z < firstUnfinished - 1 { biomes[z] = nil }
+        }
+        advance()
+        try await withThrowingTaskGroup(of: BiomeWork.self) { group in
+            var active = 0
+            func fillWorkers() {
+                while active < max(1, chunkConcurrency) {
+                    if nextReady < ready.count {
+                        let position = ready[nextReady]; nextReady += 1
+                        guard let input = inputs.removeValue(forKey: position) else { continue }
+                        // Capture biome buffers only, never other chunks' pending terrain inputs.
+                        var neighbors: BiomeRows = [:]
+                        for z in (position.z - 1)...(position.z + 1) { neighbors[z] = biomes[z] }
+                        let snapshots = neighbors
+                        group.addTask {
+                            try Task.checkCancellation()
+                            let columns = try await coloredColumns(input, region: region, localX: position.x,
+                                                                   localZ: position.z, neighbors: snapshots)
+                            return .colored(position, columns)
+                        }
+                    } else {
+                        guard firstUnfinished < 32, nextSource < sources.count,
+                              sources[nextSource].z <= firstUnfinished + 2 else { break }
+                        let position = sources[nextSource]; nextSource += 1
+                        group.addTask {
+                            try Task.checkCancellation()
+                            let scanned = Self.scan(file, localX: position.x, localZ: position.z, context: surfaceContext,
+                                                    cutawayY: cutawayY, blockFilter: blockFilter)
+                            return .decoded(position, scanned.map { Self.colorInput($0.sections, columns: $0.columns) })
+                        }
+                    }
+                    active += 1
+                }
+            }
+            fillWorkers()
+            while let result = try await group.next() {
+                try Task.checkCancellation()
+                active -= 1
+                switch result {
+                case .decoded(let position, let input):
+                    decoded.insert(position)
+                    if let input {
+                        biomes[position.z, default: [:]][position.x] = input.biomes
+                        inputs[position] = input
+                    } else { remaining[position.z] -= 1 }
+                    // A completed read can unblock at most the nine chunks that use it.
+                    for z in max(0, position.z - 1)...min(31, position.z + 1) {
+                        for x in max(0, position.x - 1)...min(31, position.x + 1) {
+                            let center = ChunkPosition(x: x, z: z)
+                            guard inputs[center] != nil, !queued.contains(center) else { continue }
+                            var complete = true
+                            for dz in -1...1 {
+                                for dx in -1...1 {
+                                    let neighbor = ChunkPosition(x: x + dx, z: z + dz)
+                                    if present.contains(neighbor), !decoded.contains(neighbor) { complete = false }
+                                }
+                            }
+                            if complete { queued.insert(center); ready.append(center) }
+                        }
+                    }
+                case .colored(let position, let columns):
+                    canvas.set(columns, chunkX: position.x, chunkZ: position.z, style: style, heightScale: heightScale)
+                    remaining[position.z] -= 1
+                }
+                advance()
+                fillWorkers()
+            }
         }
         try await gameAssets?.checkAvailable()
         return canvas
-    }
-
-    private func biomeRow(_ z: Int, origin: ChunkPosition, files: [RegionPosition: BiomeFile]) async throws -> BiomeRow {
-        var sources: [(x: Int, position: ChunkPosition, file: RegionFile)] = []
-        for x in -1...32 {
-            let absoluteX = origin.x.addingReportingOverflow(x), absoluteZ = origin.z.addingReportingOverflow(z)
-            guard !absoluteX.overflow, !absoluteZ.overflow else { continue }
-            let position = ChunkPosition(x: absoluteX.partialValue, z: absoluteZ.partialValue)
-            if let source = files[position.region], source.present.contains(position.localZ * 32 + position.localX) {
-                sources.append((x, position, source.file))
-            }
-        }
-        return try await withThrowingTaskGroup(of: (Int, ChunkBiomeSnapshot, ColorInput?)?.self) { group in
-            var next = sources.startIndex
-            func startNext() {
-                guard next < sources.endIndex else { return }
-                let source = sources[next]; next += 1
-                group.addTask {
-                    try Task.checkCancellation()
-                    if (0..<32).contains(source.x), (0..<32).contains(z) {
-                        guard let scanned = Self.scan(source.file, localX: source.position.localX, localZ: source.position.localZ,
-                                                      context: surfaceContext, cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
-                        let input = Self.colorInput(scanned.sections, columns: scanned.columns)
-                        return (source.x, input.biomes, input)
-                    }
-                    guard let nbt = try? source.file.chunkNBT(localX: source.position.localX, localZ: source.position.localZ,
-                                                            skipping: Chunk.keysNotNeededForTerrain),
-                          let chunk = try? Chunk(nbt: nbt) else { return nil }
-                    return (source.x, chunk.biomeSnapshot, nil)
-                }
-            }
-            for _ in 0..<max(1, chunkConcurrency) { startNext() }
-            var row = BiomeRow()
-            for try await result in group {
-                if let (x, biomes, columns) = result { row.biomes[x] = biomes; row.columns[x] = columns }
-                startNext()
-            }
-            return row
-        }
     }
 
     /// A displaced cell can use any adjacent region, including diagonal corners.
@@ -319,7 +371,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Color the selected blocks without another decode or traversal. Neighbor keys are local
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
-                                neighbors: [Int: BiomeRow]) async throws -> [Column?] {
+                                neighbors: BiomeRows) async throws -> [Column?] {
         guard let gameAssets else { return scanned.columns }
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
@@ -442,7 +494,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private func prepareBiomes(_ points: Set<BlockPosition>, current: ChunkBiomeSnapshot,
-                               region: RegionPosition, neighbors: [Int: BiomeRow],
+                               region: RegionPosition, neighbors: BiomeRows,
                                colors: MapBiomeColors) -> PreparedBiomes {
         guard let currentChunk = points.first?.chunk, let origin = region.chunkOrigin else { return PreparedBiomes() }
         let sampler = colors.sampler
@@ -475,7 +527,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             else {
                 let x = chunk.x.subtractingReportingOverflow(origin.x), z = chunk.z.subtractingReportingOverflow(origin.z)
                 guard !x.overflow, !z.overflow else { continue }
-                snapshot = neighbors[z.partialValue]?.biomes[x.partialValue]
+                snapshot = neighbors[z.partialValue]?[x.partialValue]
             }
             guard let snapshot else { continue }
             // Each needed cell is read once, grouped by source chunk. No row lookup, saved
