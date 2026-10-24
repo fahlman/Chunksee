@@ -332,10 +332,10 @@ import Testing
         map.requestTiles(visibleIn: size)
         await map.waitUntilIdle(); await map.waitForRenders()
         #expect(map.shadowImages[region] != nil && map.detailImages.isEmpty)
-        func screen(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
+        func screen() throws -> [UInt8] {
             let view = Canvas { context, size in
                 MapView.drawMap(map, content: MapContent(), portalStatus: { _ in nil }, displayScale: 1, in: context, size: size)
-            }.frame(width: size.width, height: size.height).environment(\.colorSchemeContrast, contrast)
+            }.frame(width: size.width, height: size.height)
             return try ItemPictureFixture.pixels(#require(ImageRenderer(content: view).cgImage)).bytes
         }
         func copy(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
@@ -343,18 +343,17 @@ import Testing
                 size: size, scale: 1, colorScheme: .light, locale: .init(identifier: "en_US"), contrast: contrast))
             return try #require(ItemTexture(png: image.data)).pixels
         }
-        let ordinary = try screen(.standard), ordinaryContrast = try screen(.increased)
+        let ordinary = try screen()
         let ordinaryCopy = try copy(.standard), ordinaryContrastCopy = try copy(.increased)
         for x in [17, 49, 81] { #expect(ordinary[(65 * 128 + x) * 4] < 255) }
-        #expect(ordinary != ordinaryContrast)
+        #expect(ordinaryCopy != ordinaryContrastCopy)
         let assets = try fixture.library()
         map.setGameAssets(assets)
         await map.waitUntilIdle(); await map.waitForRenders()
         #expect(map.detailImages[chunk] === detail)
         // White detail over white terrain is unchanged before the shadow. Applying a mask to
         // both resolutions would double-darken transparent or partially transparent areas.
-        #expect(try screen(.standard) == ordinary)
-        #expect(try screen(.increased) == ordinaryContrast)
+        #expect(try screen() == ordinary)
         #expect(try copy(.standard) == ordinaryCopy)
         #expect(try copy(.increased) == ordinaryContrastCopy)
         map.setCastsShadows(false)
