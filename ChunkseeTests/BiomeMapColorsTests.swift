@@ -473,6 +473,9 @@ import Testing
         let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
         let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
             renderTile: { renderer, region in
+                // Only hold the visible tile under test. Shadow-height neighbors can finish
+                // normally without taking a gate intended for this tile's replacement.
+                guard region == RegionPosition(x: 0, z: 0) else { return try await renderer.tile(for: region) }
                 let name = String(await reads.next())
                 let tile = try await renderer.tile(for: region)
                 _ = await gate.read(name)

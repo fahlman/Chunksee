@@ -68,6 +68,10 @@ import Testing
         for direction: SIMD3<Float> in [SIMD3(0, 1, 0), SIMD3(1, -1, 0), SIMD3(.nan, 1, 0), SIMD3(1, .infinity, 0)] {
             #expect(MapShadow.Light.saved(direction) == nil)
         }
+        #expect(MapShadow.retainedSources(for: region, savedTime: true) == [
+            .init(x: -1, z: 0), region, .init(x: 1, z: 0)])
+        #expect(MapShadow.retainedSources(for: region, savedTime: false) == [
+            .init(x: -1, z: -1), .init(x: 0, z: -1), .init(x: -1, z: 0), region])
     }
 
     @Test func cancellationStopsTheSameBackgroundMaskWork() async throws {

@@ -136,10 +136,10 @@ final class MapModel {
         let previousVisible = visibleRegions, previousSources = shadowSources
         visibleRegions = Set(visible)
         wantsFullResolution = full
-        // Keep a full ring for the light's changing east/west direction. A clock update then
+        // Keep both sides for the light's changing east/west direction. A clock update then
         // uses these immutable heights without starting any terrain read.
         shadowSources = !castsShadows || style == .height ? [] : visible.reduce(into: Set<RegionPosition>()) {
-            $0.formUnion(RegionTileRenderer.neighboringRegions(around: $1).intersection(availableRegions))
+            $0.formUnion(MapShadow.retainedSources(for: $1, savedTime: lighting != nil).intersection(availableRegions))
         }
         shadowHeights = shadowHeights.filter { shadowSources.contains($0.key) }
         shadowImages = shadowImages.filter { visibleRegions.contains($0.key) }

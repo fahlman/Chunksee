@@ -24,6 +24,13 @@ nonisolated enum MapShadow {
     /// neighborhood on either side of a region boundary. Unknown columns never occlude.
     static let reach = RegionTileRenderer.side
 
+    /// Retain both directions of the moving sun/moon, including while it is overhead. Fixed
+    /// Daylight needs only its northwest neighbors; neither mode needs the southern row.
+    static func retainedSources(for region: RegionPosition, savedTime: Bool) -> Set<RegionPosition> {
+        savedTime ? RegionTileRenderer.neighboringRegions(around: region).filter { $0.z == region.z }
+            : sources(for: region, light: .daylight)
+    }
+
     static func sources(for region: RegionPosition, light: Light) -> Set<RegionPosition> {
         RegionTileRenderer.neighboringRegions(around: region).filter { other in
             (light.x == 0 ? other.x == region.x : light.x < 0 ? other.x <= region.x : other.x >= region.x)

@@ -357,11 +357,12 @@ Daylight uses the fixed northwest presentation direction. Adjacent cached height
 across region edges, including negative coordinates and corners; missing heights never occlude.
 This is a surface effect, without voxel/overhang ray tracing or ambient occlusion.
 MapModel owns the Cast Shadows toggle (initially on, remembered per dimension), active height
-ring, shadow images and revision checks. The existing terrain reader supplies immutable heights;
-there is no extra block scan or disk format change. The ring includes both light directions even
-at noon, so clock changes read no terrain. Panning drops heights outside the new ring. Active
+neighbors, shadow images and revision checks. The existing terrain reader supplies immutable heights;
+there is no extra scan of a requested tile or disk format change. Saved Time retains east/west
+neighbors even at noon, so clock changes read no terrain; fixed Daylight retains only northwest
+neighbors. No southern row is requested. Panning drops heights outside the new neighborhood. Active
 heights and masks count against the full-image budget, evicting distant color images first;
-visible images and their required height ring keep the existing retention exception. Height style
+visible images and their required neighboring heights keep the existing retention exception. Height style
 bypasses shadows. Region edits, depth/filter/source changes, hide and close invalidate work through
 one additional BackgroundWork scope, drained with the map. Old jobs cannot publish after a new
 revision or closure. Terrain alone is darkened, including water; normal opacity is 22 percent and
