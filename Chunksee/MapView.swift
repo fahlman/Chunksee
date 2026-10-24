@@ -40,16 +40,14 @@ struct MapView: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.locale) private var locale
 
-    private var zoomPercentage: String {
-        ZoomPercentage.text(map.viewport.scale)
-    }
-
-    private var accessibilityReadout: String {
+    static func accessibilityReadout(map: MapModel, content: MapContent) -> String {
+        let zoomPercentage = ZoomPercentage.text(map.viewport.scale)
         let position = String(localized: "Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)")
         var descriptions = [position]
         if let seed = content.slimeSeed, let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) { descriptions.append(slime) }
         if map.showsDarkSpots {
             descriptions.append(String(localized: "Dark Spots shown. \(DarkSpots.explanation)"))
+            descriptions.append((map.topBlock(at: map.viewport.center)?.nightLight ?? .unknown).description)
         }
         return descriptions.joined(separator: "; ")
     }
@@ -126,7 +124,7 @@ struct MapView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(session.presentation.mapTitle(in: map.dimension.id, locale: locale))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text(accessibilityReadout))
+        .accessibilityValue(Text(Self.accessibilityReadout(map: map, content: content)))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ZStack(alignment: .topLeading) {

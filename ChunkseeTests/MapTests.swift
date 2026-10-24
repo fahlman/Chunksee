@@ -660,11 +660,11 @@ import Testing
         map.loadTopBlocks(at: CGPoint(x: 16.5, y: 0.5))      // chunk 1 replaces it, cancelling chunk 0's read
         await gate.waitForRequest("1")
         await gate.waitForCancellation("0")
-        #expect(map.unfinishedHoverReads == 2)               // the cancelled read is still kept
+        #expect(map.unfinishedTopBlockReads == 2)               // the cancelled read is still kept
         map.close()
         await gate.finish("1", with: nil)
         await gate.finish("0", with: nil)
         await map.waitForRenders()
-        #expect(map.unfinishedHoverReads == 0)
+        #expect(map.unfinishedTopBlockReads == 0)
     }
 }

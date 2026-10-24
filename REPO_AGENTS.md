@@ -982,7 +982,11 @@ is available, it uses the shared terrain/light profile and samples the block abo
 surface during the same decode. The layer indicates only whether ordinary monsters can pass the
 clear-night light check, not full spawnability. Missing, stale or unsupported facts remain unknown.
 TileCache version 19 stores optional status bytes, with separate on/off slots and rule identities.
-The on-screen map, hover readout and exports use the same red/striped presentation and legend.
+The map, legend and exports use red dots for dark areas and stripes for unknown light, so colour
+is not the only distinction. The pointer and centered accessibility readout share MapModel's
+top-block cache and pending reads. Only Dark Spots requests a center read; moving, hiding, saving
+and closing cancel obsolete reads without cancelling another readout's interest in the same chunk.
+The accessibility value reports the center's dark/bright/unknown result as its column changes.
 Appearance-only changes preserve pending coordinate reads because the displayed height is unchanged.
 
 ## Interface wording

@@ -140,7 +140,10 @@ import Testing
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
-                           readTopBlocks: { _, _, _ in await gate.read("coordinate") })
+                           readTopBlocks: { _, renderer, _ in
+            // Center reads start with the layer; this gate holds only the original copy.
+            renderer.darkSpots == nil ? await gate.read("coordinate") : nil
+        })
         var copiedHeight: Int?
         map.readTopBlock(at: CGPoint(x: 3, y: 4)) { copiedHeight = $0?.y }
         await gate.waitForRequest("coordinate")
@@ -230,6 +233,137 @@ import Testing
         await map.waitForRenders()
     }
 
+    @Test func accessibilityReportsTheCenteredColumnWithoutAPointer() async throws {
+        let root = try world([
+            chunk { x, _, _ in x == 0 ? 0 : 15 },
+            chunk(x: 1, valid: false) { _, _, _ in 0 }
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (dimension, overlay) = try inputs(root)
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero)
+        defer { map.close() }
+        func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent()) }
+        map.setNightLighting(overlay.rule)
+        map.viewport.center = CGPoint(x: 0.5, y: 0.5)
+        #expect(map.unfinishedTopBlockReads == 0 && map.topBlocks.isEmpty)
+        #expect(!readout().contains("Dark Spots"))
+        map.setDarkSpots(true)
+        #expect(readout().contains(DarkSpots.Status.unknown.description))
+        await map.waitForTopBlocks()
+        #expect(readout().contains(DarkSpots.Status.dark.description))
+        map.viewport.center.x = 1.5
+        #expect(map.unfinishedTopBlockReads == 0) // Same chunk, another cached column.
+        #expect(readout().contains(DarkSpots.Status.bright.description))
+        map.viewport.center.x = 16.5
+        await map.waitForTopBlocks()
+        #expect(readout().contains(DarkSpots.Status.unknown.description))
+        map.viewport.center.x = -0.5 // Ungenerated column, also unknown.
+        await map.waitForTopBlocks()
+        #expect(readout().contains(DarkSpots.Status.unknown.description))
+        map.setDarkSpots(false)
+        #expect(!readout().contains("Dark Spots") && !readout().contains("at night"))
+    }
+
+    @Test(.timeLimit(.minutes(1))) func centerAndPointerShareReadsAndMovingEitherKeepsTheOthersWork() async throws {
+        let root = try world([chunk { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (dimension, overlay) = try inputs(root)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                           readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })
+        map.setNightLighting(overlay.rule)
+        map.setDarkSpots(true)
+        await gate.waitForRequest("0")
+        map.loadTopBlocks(at: CGPoint(x: 1, y: 1))
+        #expect(map.unfinishedTopBlockReads == 1)
+        map.loadTopBlocks(at: CGPoint(x: 16, y: 0))
+        await gate.waitForRequest("1")
+        #expect(map.unfinishedTopBlockReads == 2)
+        map.viewport.center.x = 16
+        await gate.waitForCancellation("0")
+        map.endHover() // Center still needs chunk 1.
+        await gate.finish("0", with: (file, blocks))
+        await gate.finish("1", with: (file, blocks))
+        await map.waitForTopBlocks()
+        #expect(await gate.requested == ["0", "1"])
+        #expect(map.topBlock(at: .zero) == nil)
+        #expect(map.topBlock(at: map.viewport.center)?.nightLight == .dark)
+
+        map.viewport.center.x = 32
+        await gate.waitForRequest("2")
+        map.setDarkSpots(false)
+        await gate.waitForCancellation("2")
+        await gate.finish("2", with: (file, blocks))
+        await map.waitForTopBlocks()
+        #expect(map.topBlocks.isEmpty)
+        map.close()
+        await map.waitForRenders()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func savingRereadsTheCenterAndClosingRejectsPendingResults() async throws {
+        let root = try world([chunk { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (dimension, overlay) = try inputs(root)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let gate = AsyncReadGate<MapModel.TopBlockRead?>(), numbers = ReadNumbers()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                           readTopBlocks: { _, _, _ in await gate.read(String(await numbers.next())) })
+        map.setNightLighting(overlay.rule)
+        map.setDarkSpots(true)
+        await gate.waitForRequest("0")
+        map.regionsChanged([RegionPosition(x: 1, z: 0)]) // Unrelated save keeps this read.
+        #expect(map.unfinishedTopBlockReads == 1)
+        map.regionsChanged([region])
+        await gate.waitForCancellation("0")
+        await gate.waitForRequest("1")
+        await gate.finish("1", with: (file, blocks))
+        await gate.finish("0", with: (file, Array(repeating: nil, count: 256)))
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: .zero)?.nightLight == .dark)
+        map.regionsChanged([region])
+        #expect(map.topBlock(at: .zero) == nil)
+        await gate.waitForRequest("2")
+        map.close()
+        await gate.waitForCancellation("2")
+        await gate.finish("2", with: (file, blocks))
+        await map.waitForRenders()
+        #expect(map.topBlocks.isEmpty && map.unfinishedTopBlockReads == 0)
+    }
+
+    @Test func movingThePointerCannotEvictTheCenteredResult() async throws {
+        let root = try world([chunk { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (dimension, overlay) = try inputs(root)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+                           readTopBlocks: { _, _, _ in (file, blocks) })
+        defer { map.close() }
+        map.setNightLighting(overlay.rule)
+        map.setDarkSpots(true)
+        await map.waitForTopBlocks()
+        for x in 1...65 {
+            map.loadTopBlocks(at: CGPoint(x: x * 16, y: 0))
+            await map.waitForTopBlocks()
+        }
+        #expect(map.topBlocks.count == 64)
+        #expect(map.topBlock(at: .zero)?.nightLight == .dark)
+        #expect(map.topBlock(at: CGPoint(x: 65 * 16, y: 0))?.nightLight == .dark)
+    }
+
+    @Test func legendSamplesDistinguishDarkBrightAndUnknownWithoutColor() throws {
+        let dark = try ItemPictureFixture.pixels(#require(DarkSpots.sample(.dark)))
+        let bright = try ItemPictureFixture.pixels(#require(DarkSpots.sample(.bright)))
+        let unknown = try ItemPictureFixture.pixels(#require(DarkSpots.sample(.unknown)))
+        #expect(dark.color(1, 1) != dark.color(0, 1)) // Dots, not just a solid tint.
+        #expect(dark.color(0, 0) == dark.color(2, 0))
+        #expect(unknown.color(0, 0) != unknown.color(2, 0)) // Diagonal stripes.
+        #expect(bright.color(0, 0) == bright.color(1, 1))
+    }
+
     private func pngPixels(_ value: MapImage) throws -> [UInt8] {
         let source = try #require(CGImageSourceCreateWithData(value.data as CFData, nil))
         return try ItemPictureFixture.pixels(#require(CGImageSourceCreateImageAtIndex(source, 0, nil))).bytes
@@ -256,7 +390,7 @@ import Testing
         ])
     }
 
-    private func chunk(valid: Bool = true, block: Bool = true, sky: Bool = true, malformedBlock: Bool = false,
+    private func chunk(x chunkX: Int = 0, valid: Bool = true, block: Bool = true, sky: Bool = true, malformedBlock: Bool = false,
                        light: (Int, Int, Int) -> Int) -> TestWorld.ChunkSpec {
         let indices = (0..<16).flatMap { y in (0..<256).map { _ in y <= 7 ? 1 : 0 } }
         guard case .compound(var section) = Fixtures.section(y: 0, palette: [.string("minecraft:air"), .string("minecraft:stone")], indices: indices) else {
@@ -271,7 +405,7 @@ import Testing
         }
         if malformedBlock { section["BlockLight"] = .byteArray([0]) }
         if sky { section["SkyLight"] = .byteArray(Array(repeating: -1, count: 2048)) }
-        return .init(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+        return .init(x: chunkX, z: 0, nbt: Fixtures.chunk(x: chunkX, z: 0, dataVersion: SaveVersion.java26_3,
             sections: [.compound(section)], extra: ["isLightOn": .byte(valid ? 1 : 0), "yPos": .int(0)]))
     }
 }

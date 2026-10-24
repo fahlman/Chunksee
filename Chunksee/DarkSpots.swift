@@ -37,12 +37,13 @@ nonisolated struct DarkSpots: Equatable, Sendable {
         return value ? .dark : .bright
     }
 
-    /// Unknown light is striped instead of silently looking safe. Both treatments preserve
-    /// the terrain underneath, and use identical pixels on screen and in an exported image.
+    /// Dots distinguish dark areas from bright terrain without relying on red; unknown light
+    /// is striped. The map, legend and exports all use these same treatments.
     static func color(_ original: MapColor, status: Status, x: Int, z: Int) -> MapColor {
         switch status {
         case .bright: original
-        case .dark: original.blended(with: MapColor(0xf04f38), amount: 0.6)
+        case .dark:
+            original.blended(with: MapColor(x % 4 == 1 && z % 4 == 1 ? 0x682318 : 0xf04f38), amount: 0.6)
         case .unknown:
             original.blended(with: MapColor((x + z) % 4 < 2 ? 0x30343b : 0xc4c8ce), amount: 0.5)
         }

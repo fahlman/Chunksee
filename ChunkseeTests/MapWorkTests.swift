@@ -64,7 +64,7 @@ struct MapWorkTests {
         await render.waitForRequest("render")
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
-        #expect(map.unfinishedHoverReads == 1 && map.unfinishedCoordinateReads == 1)
+        #expect(map.unfinishedTopBlockReads == 1 && map.unfinishedCoordinateReads == 1)
         work.close()
         await render.waitForCancellation("render")
         await columns.waitForCancellation("0")
@@ -75,7 +75,7 @@ struct MapWorkTests {
         await work.waitUntilFinished()
         await map.waitForRenders()
         #expect(map.tiles.isEmpty && map.previews.isEmpty && !map.isLoading && !copied)
-        #expect(map.unfinishedHoverReads == 0 && map.unfinishedCoordinateReads == 0)
+        #expect(map.unfinishedTopBlockReads == 0 && map.unfinishedCoordinateReads == 0)
         map.requestTiles(visibleIn: CGSize(width: 20, height: 20))
         map.loadTopBlocks(at: CGPoint(x: 32, y: 0))
         map.readTopBlock(at: CGPoint(x: 32, y: 0)) { _ in copied = true }
