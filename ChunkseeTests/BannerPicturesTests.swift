@@ -94,7 +94,8 @@ import Testing
                 "gui_light": "front", "display": ["gui": ["translation": [0, -3.25, 0], "scale": [0.5325, 0.5325, 0.5325]]]
             ])
         ]
-        let wood = Array(repeating: [UInt8(80), 48, 16, 255], count: 64 * 64).flatMap { $0 }
+        let woodColor: [UInt8] = [80, 48, 16, 255]
+        let wood = Array(repeating: woodColor, count: 64 * 64).flatMap { $0 }
         let white = [UInt8](repeating: 255, count: 64 * 64 * 4)
         var left = [UInt8](repeating: 0, count: white.count)
         for y in 0..<64 {
