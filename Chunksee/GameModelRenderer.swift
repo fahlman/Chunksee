@@ -22,26 +22,31 @@ nonisolated enum GameModelRenderer {
         var retainedTextures: [Identifier: ItemTexture] = [:]
         var retainedMaterials: [AssetModel.Material: ItemTexture] = [:]
         var textureBytes = 0
-        func load(_ id: Identifier) -> ItemTexture? {
-            if let retained = retainedTextures[id] { return retained }
-            guard let loaded = texture(id), loaded.width == loaded.height,
-                  textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
-            textureBytes += loaded.pixels.count
-            retainedTextures[id] = loaded
+        func load(_ id: Identifier, aspectRatio: Float?) -> ItemTexture? {
+            let retained = retainedTextures[id]
+            guard let loaded = retained ?? texture(id),
+                  Float(loaded.width) / Float(loaded.height) == (aspectRatio ?? 1) else { return nil }
+            // Verified static skins can be rectangular. Ordinary textures retain the existing
+            // square-only policy, so an unspecified animation strip is not stretched into a skin.
+            if retained == nil {
+                guard textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
+                textureBytes += loaded.pixels.count
+                retainedTextures[id] = loaded
+            }
             return loaded
         }
         func resolve(_ material: AssetModel.Material) throws -> ItemTexture? {
             // The ordinary path keeps its identifier cache and does not hash overlay recipes.
-            guard !material.overlays.isEmpty else { return load(material.texture) }
+            guard !material.overlays.isEmpty else { return load(material.texture, aspectRatio: material.staticTextureAspectRatio) }
             if let retained = retainedMaterials[material] { return retained }
-            guard var image = load(material.texture),
+            guard var image = load(material.texture, aspectRatio: material.staticTextureAspectRatio),
                   textureBytes + image.pixels.count <= 16 * 1024 * 1024 else { return nil }
             // Charge the composed skin while its source textures are loaded, so all retained
             // images share the existing budget. Faces reuse one immutable composed result.
             textureBytes += image.pixels.count
             for overlay in material.overlays {
                 try Task.checkCancellation()
-                guard let layer = load(overlay.texture),
+                guard let layer = load(overlay.texture, aspectRatio: material.staticTextureAspectRatio),
                       let composed = try image.compositing(layer, color: overlay.color) else { return nil }
                 image = composed
             }
