@@ -1324,8 +1324,10 @@ View > Map Style > Blend Biome Colors is an initially-off, per-dimension display
 by MapModel and persisted by WorldSettings. BiomeBlending averages the client's default 5-by-5
 square at the same Y, using integer RGB channels. Kit still selects every biome and resolves
 every color, including position-dependent modifiers at each neighboring block. The renderer
-deduplicates the requested color samples within each chunk task and reuses its bounded biome
-snapshot window, without another terrain traversal. A missing sample keeps the exact unblended
+uses a task-local 20-by-20 grid for each requested height, retaining only reached sample positions
+and requested tint sources. Overlapping squares reuse integer sample indices, and each source at
+each position is resolved once. The same bounded biome snapshot window supplies those samples,
+without another terrain traversal. A missing sample keeps the exact unblended
 center; no partial average or guessed seed is used. Neighbor file changes invalidate blended
 tiles even for per-block palettes without a seed. A blend-specific color source key separates
 these pixels; the unchanged cache format/version preserves existing unblended tiles. The cache

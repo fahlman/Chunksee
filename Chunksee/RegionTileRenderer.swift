@@ -436,20 +436,20 @@ nonisolated struct RegionTileRenderer: Sendable {
         let states = scanned.states
         var positions = scanned.positions
         var biomes = PreparedBiomes()
-        // Resolve each neighboring tint once per coloring task; adjacent squares overlap heavily.
-        var tintColors: [BiomeColor: [BlockPosition: UInt32]] = [:]
+        let origin = region.blockOrigin
+        var samples = coordinates(0).map {
+            BiomeColorSamples(originX: Int($0.x), originZ: Int($0.z), blendsColors: blendsBiomeColors)
+        }
         func biome(column: Int, y: Int) -> MapBiomeColors.Biome? {
             guard let point = coordinates(column) else { return nil }
-            return biomes.biome(at: BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z)))
+            return biomes.biome(at: samples?.index(at: BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z))))
         }
         func tint(_ source: BiomeColor, column: Int, y: Int) -> UInt32? {
             guard let point = coordinates(column) else { return nil }
             guard blendsBiomeColors else { return biome(column: column, y: y)?.color(source, x: point.x, z: point.z) }
-            let samples = tintColors[source]
-            return BiomeBlending.color(at: BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z))) { samples?[$0] }
+            return samples?.color(source, at: BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z)))
                 ?? biome(column: column, y: y)?.color(source, x: point.x, z: point.z)
         }
-        let origin = region.blockOrigin
         func coordinates(_ column: Int) -> (x: Int32, z: Int32)? {
             guard let origin else { return nil }
             let x = origin.x.addingReportingOverflow(localX * 16 + column % 16)
@@ -474,18 +474,10 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
             // Prepare only the tint/floor/water samples this chunk will use. The pixel loop
             // then reads task-local integer indices, never shared row/palette buffers.
-            var samples: Set<BlockPosition> = []
-            var colorSamples: [BiomeColor: Set<BlockPosition>] = [:]
             func request(_ source: BiomeColor, column: Int, y: Int) {
                 guard let point = coordinates(column) else { return }
                 let position = BlockPosition(blockX: Int(point.x), blockY: y, blockZ: Int(point.z))
-                samples.insert(position) // Retain the exact center if a full blend is unavailable.
-                if blendsBiomeColors {
-                    BiomeBlending.forEachSample(at: position) {
-                        samples.insert($0)
-                        colorSamples[source, default: []].insert($0)
-                    }
-                }
+                samples?.request(source, at: position)
             }
             func requestTints(_ palette: Int?, column: Int, y: Int) {
                 guard let palette else { return }
@@ -503,13 +495,11 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
             if let biomeColors, let point = coordinates(0) {
                 let current = ChunkPosition(containingBlockX: Int(point.x), blockZ: Int(point.z))
-                biomes = prepareBiomes(samples, current: scanned.biomes, currentChunk: current,
+                biomes = prepareBiomes(samples?.points ?? [], current: scanned.biomes, currentChunk: current,
                                       region: region, neighbors: neighbors, colors: biomeColors)
-                for (source, positions) in colorSamples {
-                    for point in positions {
-                        // The checked neighborhood supplies Int32 X/Z; unknown facts have no entry.
-                        tintColors[source, default: [:]][point] = biomes.biome(at: point)?.color(source, x: Int32(point.x), z: Int32(point.z))
-                    }
+                samples?.resolveColors { index, point, source in
+                    // The checked neighborhood supplies Int32 X/Z; unknown facts stay unavailable.
+                    biomes.biome(at: index)?.color(source, x: Int32(point.x), z: Int32(point.z))
                 }
             }
             struct TintKey: Hashable {
@@ -565,18 +555,20 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
     /// addressing; the app interns the resulting names into its resolved color table.
     private struct PreparedBiomes {
-        var indices: [BlockPosition: Int] = [:]
+        var indices: [Int?] = []
         var colors: [MapBiomeColors.Biome] = []
 
-        func biome(at point: BlockPosition) -> MapBiomeColors.Biome? {
-            indices[point].map { colors[$0] }
+        func biome(at index: Int?) -> MapBiomeColors.Biome? {
+            guard let index, let color = indices[index] else { return nil }
+            return colors[color]
         }
     }
 
-    private func prepareBiomes(_ points: Set<BlockPosition>, current: ChunkBiomeSnapshot, currentChunk: ChunkPosition,
+    private func prepareBiomes(_ points: [BlockPosition], current: ChunkBiomeSnapshot, currentChunk: ChunkPosition,
                                region: RegionPosition, neighbors: BiomeRows,
                                colors: MapBiomeColors) -> PreparedBiomes {
-        guard let origin = region.chunkOrigin else { return PreparedBiomes() }
+        var result = PreparedBiomes(indices: Array(repeating: nil, count: points.count))
+        guard let origin = region.chunkOrigin else { return result }
         let sampler = colors.sampler
         func snapshot(for chunk: ChunkPosition) -> ChunkBiomeSnapshot? {
             if chunk == currentChunk { return current }
@@ -590,8 +582,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
         var perBlockAtHeight: [SourceHeight: Bool] = [:]
         var sources: [ChunkPosition: Set<BlockPosition>] = [:]
-        var cells: [BlockPosition: BlockPosition] = [:]
-        for point in points {
+        var cells = Array<BlockPosition?>(repeating: nil, count: points.count)
+        for (index, point) in points.enumerated() {
             let source = SourceHeight(chunk: point.chunk, y: point.y)
             let perBlock: Bool
             if let cached = perBlockAtHeight[source] { perBlock = cached }
@@ -607,10 +599,9 @@ nonisolated struct RegionTileRenderer: Sendable {
                     ?? sampler.cellOrigin(at: point)
             } else { cell = nil } // A missing seed cannot establish the game's displaced cell.
             guard let cell else { continue }
-            cells[point] = cell
+            cells[index] = cell
             sources[cell.chunk, default: []].insert(cell)
         }
-        var result = PreparedBiomes()
         var namedColors: [String: Int] = [:]
         var cellColors: [BlockPosition: Int] = [:]
         for (chunk, cells) in sources {
@@ -629,7 +620,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 cellColors[cell] = index
             }
         }
-        for (point, cell) in cells { result.indices[point] = cellColors[cell] }
+        for (index, cell) in cells.enumerated() { result.indices[index] = cell.flatMap { cellColors[$0] } }
         return result
     }
 

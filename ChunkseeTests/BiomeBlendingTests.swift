@@ -42,6 +42,87 @@ import Testing
         }
     }
 
+    @Test func denseSamplesMatchTheSquareOracleForEverySourceAcrossHeightsAndEdges() {
+        var samples = BiomeColorSamples(originX: -16, originZ: -32, blendsColors: true)
+        let heights = [Int.min, -40, Int.max]
+        func color(_ point: BlockPosition, _ source: BiomeColor) -> UInt32? {
+            if source == .dryFoliage, point.x == -2, point.z == -17 { return nil }
+            let sourceIndex = UInt32(BiomeColor.allCases.firstIndex(of: source)!)
+            return ((UInt32(truncatingIfNeeded: point.x) & 255) << 16)
+                | ((UInt32(truncatingIfNeeded: point.z) & 255) << 8)
+                | ((UInt32(truncatingIfNeeded: point.y) & 63) + sourceIndex * 64)
+        }
+        for y in heights {
+            for z in -32 ..< -16 {
+                for x in -16 ..< 0 {
+                    for source in BiomeColor.allCases {
+                        samples.request(source, at: .init(blockX: x, blockY: y, blockZ: z))
+                    }
+                }
+            }
+        }
+        var calls: [BiomeColor: Set<BlockPosition>] = [:]
+        var duplicates = 0
+        samples.resolveColors { _, point, source in
+            if !calls[source, default: []].insert(point).inserted { duplicates += 1 }
+            return color(point, source)
+        }
+        #expect(duplicates == 0)
+        #expect(calls.values.allSatisfy { $0.count == 20 * 20 * heights.count })
+        for y in heights {
+            for z in [-32, -24, -17] {
+                for x in [-16, -8, -1] {
+                    let point = BlockPosition(blockX: x, blockY: y, blockZ: z)
+                    for source in BiomeColor.allCases {
+                        let expected = BiomeBlending.color(at: point) { color($0, source) }
+                        #expect(samples.color(source, at: point) == expected)
+                    }
+                }
+            }
+        }
+        #expect(samples.index(at: .init(blockX: -16, blockY: 0, blockZ: -32)) == nil)
+        #expect(samples.index(at: .init(blockX: Int.max, blockY: -40, blockZ: Int.min)) == nil)
+    }
+
+    @Test func sparseRequestsKeepTheirSourceAndUnblendedCentersWithoutInventingMissingColors() {
+        let first = BlockPosition(blockX: -16, blockY: 3, blockZ: -32)
+        let second = BlockPosition(blockX: -15, blockY: 3, blockZ: -32)
+        var samples = BiomeColorSamples(originX: -16, originZ: -32, blendsColors: true)
+        samples.request(.grass, at: first)
+        samples.request(.grass, at: first)
+        samples.request(.water, at: second)
+        var calls: [BiomeColor: Int] = [:]
+        samples.resolveColors { _, _, source in
+            calls[source, default: 0] += 1
+            return source == .grass ? 0x123456 : 0xabcdef
+        }
+        #expect(calls == [.grass: 25, .water: 25])
+        #expect(samples.color(.grass, at: first) == 0x123456)
+        #expect(samples.color(.water, at: second) == 0xabcdef)
+        #expect(samples.color(.grass, at: second) == nil)
+        #expect(samples.color(.foliage, at: first) == nil)
+        var unblended = BiomeColorSamples(originX: -16, originZ: -32, blendsColors: false)
+        unblended.request(.grass, at: first)
+        unblended.request(.water, at: first)
+        var resolved = false
+        unblended.resolveColors { _, _, _ in resolved = true; return 0 }
+        #expect(unblended.points == [first] && !resolved)
+        #expect(unblended.index(at: first) == 0)
+        #expect(unblended.color(.grass, at: first) == nil)
+    }
+
+    @Test func denseSamplesKeepAnUnblendableCenterAtTheWorldCoordinateLimit() {
+        let origin = Int(Int32.min)
+        let point = BlockPosition(blockX: origin, blockY: Int.max, blockZ: 0)
+        var samples = BiomeColorSamples(originX: origin, originZ: 0, blendsColors: true)
+        samples.request(.grass, at: point)
+        var resolved = false
+        samples.resolveColors { _, _, _ in resolved = true; return 0xffffff }
+        #expect(samples.points == [point] && !resolved)
+        #expect(samples.index(at: point) == 0)
+        #expect(samples.color(.grass, at: point) == nil)
+    }
+
     @Test(.timeLimit(.minutes(1))) func aToggleRejectsOldTilesWithoutCancellingHoverOrCoordinateCopies() async throws {
         let url = try TestWorld.make(chunks: [.init(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
             dataVersion: SaveVersion.java26_3, sections: [Fixtures.section(y: 0, palette: [.string("minecraft:stone")])]))])
@@ -72,7 +153,7 @@ import Testing
         await columns.finish("0", with: (file, Array(repeating: block, count: 256)))
         await columns.finish("1", with: (file, Array(repeating: block, count: 256)))
         await map.waitForRenders()
-        #expect(map.tiles[.init(x: 0, z: 0)] === blended && map.currentRenderer.blendsBiomeColors)
+        #expect(map.tiles[.init(x: 0, z: 0)]?.image === blended && map.currentRenderer.blendsBiomeColors)
         #expect(map.topBlock(at: CGPoint(x: 1, y: 1)) == block && copiedY == 15)
         #expect(await render.requested == ["false", "true"])
         map.close()
