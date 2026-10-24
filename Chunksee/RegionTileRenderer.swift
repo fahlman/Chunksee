@@ -139,7 +139,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         try Task.checkCancellation()
                         let snapshot: ChunkBiomeSnapshot?
                         if let nbt = try? file.chunkNBT(localX: position.localX, localZ: position.localZ,
-                                                       skipping: Chunk.keysNotNeededForTerrain),
+                                                       skipping: Chunk.keysNotNeededForBiomes),
                            let chunk = try? Chunk(nbt: nbt) { snapshot = chunk.biomeSnapshot }
                         else { snapshot = nil }
                         return (position, snapshot)
