@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.62.0`, resolved to `0.62.0` (`9c82b53d6c16a3d2d32fa20035b83fe6e011a8ec`).
+  minor" from `0.66.1`, resolved to `0.66.1` (`09ae14770c8f9cf942da61a329b8bdc1313cc51c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1156,16 +1156,24 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Kit 0.61.0 owns saved model-reference and trim-material selection through
-ItemStack.itemModelSelection. Both cold and warm lookups key models and thumbnails by that
-selection, with saved tints evaluated separately from the original stack. Pattern, name and count
+APIs. Kit 0.66.1 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
+ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
+that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
+a partial string identity. Custom conditions, strings, numeric ranges and colors stay in Kit;
+custom colors resolve to the existing constant tint. Other saved tints are evaluated separately
+from the original stack. Trim pattern, name and count
 do not split otherwise identical pictures. Missing/removed/inline trim materials keep the generic
 fallback, including older jars; non-nil trim selection requires verified 26.3 semantics. Removed, malformed and unresolved references keep
 the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
 rejects stale results when a reference changes; item names and counts retain their original owner.
 Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
-prepared once off-main. A synchronous NSCache hit reads only immutable cached
+prepared once off-main. Retained selection strings/arrays are conservatively charged to the model
+and image budgets at insertion, including custom-data and ordered banner-design keys. Public production-path tests keep
+otherwise identical stacks' numeric, flag, exact Unicode string and color choices distinct in
+cold and warm caches; native ItemIcon pixels are checked in Light and Dark. There is no app-side
+component parser, model selector, resource-pack loader or game artwork.
+A synchronous NSCache hit reads only immutable cached
 models, textures and images; it performs no I/O, decoding or drawing. NSCache's documented thread
 safety permits this narrow unchecked-Sendable holder: limits are set before publication and only
 the actor inserts immutable values. Warm ItemIcon views show the picture immediately and retain
@@ -1177,7 +1185,7 @@ pixels per side). GameModelRenderer projects resolved element geometry and GUI t
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
-symbols. Static fallback variants omit custom-model-data/live predicates; firework tint uses the
+symbols. Static fallback variants omit live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
 
 Kit 0.61.0 also owns item-atlas palette-source precedence and AssetPaletteMapping. ItemTexture
@@ -1197,12 +1205,20 @@ Synthetic 64x64 atlas tests distinguish chest top/lid/body/latch regions and the
 turned top and upper/lower sides, including normal shared caching. #395's native and bounded
 rendering checks remain required; no installed artwork is included in the app or test fixtures.
 
-Kit supplies the verified 26.3 plain-shield geometry, translations used to separate colored-bed
+Kit supplies the verified 26.3 shield geometry, translations used to separate colored-bed
 parts and, in 0.57.1, the half-turns used by the straw bed. They use the same item renderer, skin
 decoding and memory caches, with no app-side model table. Synthetic pixel tests exercise both
 bed layouts and their texture orientation, plus the shield's front plate/back handle through
-GameAssetLibrary and native bed icons in both appearances. Shields use the default unpatterned
-skin; saved banner patterns/base colors remain on #390. The published library also exposes saved
+GameAssetLibrary and native bed icons in both appearances. Kit 0.66.1 resolves saved shield designs
+into ordered dyed material overlays on the same plate/handle geometry. ItemTexture composites
+the premultiplied pixels before projection, so the shared depth test still protects the nearer
+handle. Every face reuses one immutable composed skin. Base, layer sources and composed results
+share the existing per-picture 16 MiB retention limit; source dimensions must match. Model-cache
+cost includes the overlay recipes. No app dye palette, pattern parser or shield renderer is added.
+Tests cover cold/warm identity, layer order, cancellation, source retirement, unavailable layers,
+the common budget, handle occlusion and native ItemIcon pixels in both appearances. Plain shields
+keep their original picture. Resource-pack layering and world registry overrides remain outside
+the supplied-jar reader. The published library also exposes saved
 light validity and dimension spawn-light limits; #86's app overlay is still separate work.
 
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
