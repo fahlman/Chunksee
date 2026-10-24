@@ -169,9 +169,8 @@ struct MapView: View {
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    shadow: { map.shadowImages[$0] }, detail: map.detailImages,
                     protectsWater: map.style == .waterDepth, in: context, size: size)
-        drawDetail(viewport: map.viewport, images: map.detailImages, lighting: map.lighting, in: context, size: size)
-        drawShadows(viewport: map.viewport, regions: visible, shadow: { map.shadowImages[$0] }, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
@@ -179,7 +178,8 @@ struct MapView: View {
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
                             lighting: MapLighting? = nil, shadow: (RegionPosition) -> CGImage? = { _ in nil },
-                            protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
+                            detail: [ChunkPosition: MapTileImage] = [:], protectsWater: Bool = false,
+                            increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
@@ -188,21 +188,13 @@ struct MapView: View {
             let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
             drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: lighting,
                              protectsWater: protectsWater, increasedContrast: increasedContrast, in: context)
+            drawDetail(viewport: viewport, region: region, images: detail, lighting: lighting,
+                       increasedContrast: increasedContrast, in: context, size: size)
+            // Finish each region before drawing the next overlapping edge. This keeps the
+            // screen and streamed area export identical, without double-shading transparent detail.
             if let mask = shadow(region) {
                 drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
             }
-        }
-    }
-
-    /// Composite the mask once after both terrain resolutions. Transparent texture pixels must
-    /// not darken the ordinary fallback beneath them a second time.
-    static func drawShadows(viewport: MapViewport, regions: [RegionPosition], shadow: (RegionPosition) -> CGImage?,
-                            increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
-        let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
-        for region in regions {
-            guard let mask = shadow(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
-            drawShadow(mask, rect: rect.insetBy(dx: -0.5, dy: -0.5), interpolation: interpolation,
-                       increasedContrast: increasedContrast, in: context)
         }
     }
 
@@ -215,15 +207,15 @@ struct MapView: View {
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
-    static func drawDetail(viewport: MapViewport, images: [ChunkPosition: MapTileImage], lighting: MapLighting? = nil,
-                           in context: GraphicsContext, size: CGSize) {
+    static func drawDetail(viewport: MapViewport, region: RegionPosition, images: [ChunkPosition: MapTileImage],
+                           lighting: MapLighting?, increasedContrast: Bool?, in context: GraphicsContext, size: CGSize) {
         guard viewport.scale >= MapDetailRenderer.minimumScale else { return }
         let bounds = CGRect(origin: .zero, size: size)
-        for chunk in images.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
+        for chunk in images.keys.filter({ $0.region == region }).sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
             guard let image = images[chunk], let rect = viewport.viewRect(for: chunk, in: size) else { continue }
             guard rect.intersects(bounds) else { continue }
             drawTerrainImage(image, rect: rect, interpolation: .none, lighting: lighting,
-                             protectsWater: false, increasedContrast: nil, in: context)
+                             protectsWater: false, increasedContrast: increasedContrast, in: context)
         }
     }
 

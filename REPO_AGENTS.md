@@ -1410,8 +1410,10 @@ retirement. MapDetailRenderer applies the same MapRelief column calculation and 
 partial pixels remain premultiplied. Its normals remain one pixel per block and its sidecar keeps
 optional nighttime status. Ordinary tiles and close-up pictures use the same saved-time shader
 and Dark Spots color treatment; clock-only changes reuse both pictures. The shared shadow mask is
-composited once after coarse terrain and close-up images, before the other overlays, on screen and
-in current-view Copy/Share. Transparent close-up pixels therefore cannot double-darken the fallback. Full tile budgets count
+composited once after coarse terrain and close-up images in each region, before the other overlays,
+on screen and in current-view Copy/Share. Each region finishes before the next overlapping edge,
+matching streamed area exports. Transparent close-up pixels therefore cannot double-darken the
+fallback. Full tile budgets count
 color, normals, shadow heights/masks and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail

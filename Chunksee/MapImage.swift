@@ -25,18 +25,9 @@ nonisolated struct MapImage: Sendable {
             if let tile = map.image(for: region, fullResolution: full),
                !drawTerrainLayer(tile, region: region, viewport: map.viewport, size: size, scale: scale,
                                  lighting: map.lighting, protectsWater: map.style == .waterDepth,
-                                 contrast: contrast, into: destination) { return nil }
-        }
-        if map.viewport.scale >= MapDetailRenderer.minimumScale {
-            for chunk in map.detailImages.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
-                guard let image = map.detailImages[chunk], let rect = map.viewport.viewRect(for: chunk, in: size) else { continue }
-                guard drawTerrainImageLayer(image, rect: rect, interpolation: .none, size: size, scale: scale,
-                    lighting: map.lighting, protectsWater: false, contrast: contrast, into: destination) else { return nil }
-            }
+                                 contrast: contrast, shadow: map.shadowImages[region], detail: map.detailImages, into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            MapView.drawShadows(viewport: map.viewport, regions: visible, shadow: { map.shadowImages[$0] },
-                                increasedContrast: contrast == .increased, in: context, size: size)
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
                                  portalStatus: portalStatus, in: context, size: size)
         }
@@ -50,37 +41,25 @@ nonisolated struct MapImage: Sendable {
 
     /// Custom SwiftUI shaders require ImageRenderer.cgImage; its CGContext callback ignores
     /// them. Rasterize only the visible part of this region, in at most 1024-pixel squares,
-    /// before compositing. A large area export never allocates a second full-size terrain image.
+    /// before compositing. Each region includes ordinary terrain, close-up detail, then one shadow.
+    /// A large area export never allocates a second full-size terrain image.
     @MainActor
     static func drawTerrainLayer(_ tile: MapTileImage, region: RegionPosition, viewport: MapViewport,
                                  size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
-                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil, into destination: CGContext) -> Bool {
-        guard let rect = viewport.viewRect(for: region, in: size) else { return true }
-        guard drawTerrainImageLayer(tile, rect: rect.insetBy(dx: -0.5, dy: -0.5),
-            interpolation: viewport.scale >= 1 ? .none : .medium, size: size, scale: scale,
-            lighting: lighting, protectsWater: protectsWater, contrast: contrast, into: destination) else { return false }
-        guard let shadow else { return true }
-        let shading = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            MapView.drawShadows(viewport: viewport, regions: [region], shadow: { _ in shadow },
-                                increasedContrast: contrast == .increased, in: context, size: size)
-        }
-        return drawImageLayer(shading, size: size, scale: scale, into: destination)
-    }
-
-    /// Region and close-up chunk images use the same bounded shader rasterizer.
-    @MainActor
-    private static func drawTerrainImageLayer(_ tile: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
-                                              size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
-                                              contrast: ColorSchemeContrast, into destination: CGContext) -> Bool {
-        let visible = rect.intersection(CGRect(origin: .zero, size: size))
-        guard !visible.isNull, !visible.isEmpty else { return true }
-        guard lighting != nil, tile.normals != nil else {
-            let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
-                MapView.drawTerrainImage(tile, rect: rect, interpolation: interpolation,
-                    lighting: nil, protectsWater: protectsWater, increasedContrast: contrast == .increased, in: context)
+                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil,
+                                 detail: [ChunkPosition: MapTileImage] = [:], into destination: CGContext) -> Bool {
+        let needsShader = lighting != nil && (tile.normals != nil ||
+            (viewport.scale >= MapDetailRenderer.minimumScale && detail.contains { $0.key.region == region && $0.value.normals != nil }))
+        guard needsShader else {
+            let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
+                                    shadow: { _ in shadow }, detail: detail, increasedContrast: contrast == .increased, in: context, size: size)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
         }
+        guard let regionRect = viewport.viewRect(for: region, in: size) else { return true }
+        let visible = regionRect.insetBy(dx: -0.5, dy: -0.5).intersection(CGRect(origin: .zero, size: size))
+        guard !visible.isNull, !visible.isEmpty else { return true }
         let pixels = CGRect(x: visible.minX * scale, y: visible.minY * scale,
                             width: visible.width * scale, height: visible.height * scale).integral
         for y in stride(from: pixels.minY, to: pixels.maxY, by: 1024) {
@@ -90,9 +69,9 @@ nonisolated struct MapImage: Sendable {
                 let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
-                    MapView.drawTerrainImage(tile, rect: rect, interpolation: interpolation,
-                        lighting: lighting, protectsWater: protectsWater,
-                        increasedContrast: contrast == .increased, in: translated)
+                    MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
+                                        lighting: lighting, shadow: { _ in shadow }, detail: detail, protectsWater: protectsWater,
+                                        increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)
                 let renderer = ImageRenderer(content: canvas)
