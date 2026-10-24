@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Increase Y Level" : {
+      "comment" : "View menu command: raise the remembered cutaway height by one block and enter Cutaway, including from Surface."
+    },
+    "Decrease Y Level" : {
+      "comment" : "View menu command: lower the remembered cutaway height by one block and enter Cutaway, including from Surface."
+    },
     "Dark Spots" : {
       "comment" : "Opt-in map layer showing clear-night light eligibility; not a complete monster spawnability test."
     },

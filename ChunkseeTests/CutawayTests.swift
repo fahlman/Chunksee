@@ -44,6 +44,43 @@ import SwiftUI
         await fixture.close()
     }
 
+    @Test(arguments: [-1, 1], [true, false])
+    func heightCommandsStepOneLevelAndEnterCutaway(step: Int, isSurface: Bool) async throws {
+        try await withFixture { f in
+            let map = MapModel(work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            f.maps.append(map)
+            map.setDepth(MapDepth(y: 64, isSurface: isSurface))
+            let viewport = map.viewport
+            map.stepHeight(by: step)
+            #expect(map.depth == MapDepth(y: 64 + step, isSurface: false))
+            map.stepHeight(by: step)
+            #expect(map.depth == MapDepth(y: 64 + 2 * step, isSurface: false))
+            #expect(map.viewport == viewport)
+        }
+    }
+
+    @Test func heightCommandsKeepCustomHeightsAndGuardIntegerEndpointsAndClosure() async throws {
+        try await withFixture { f in
+            let map = MapModel(work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
+            f.maps.append(map)
+            for (height, step) in [(-900, -1), (900, 1), (Int.min, -1), (Int.max, 1)] {
+                map.setDepth(MapDepth(y: height, isSurface: true))
+                map.stepHeight(by: step)
+                if height == Int.min || height == Int.max {
+                    #expect(map.depth == MapDepth(y: height, isSurface: true))
+                    map.stepHeight(by: -step)
+                    #expect(map.depth == MapDepth(y: height - step, isSurface: false))
+                } else {
+                    #expect(map.depth == MapDepth(y: height + step, isSurface: false))
+                }
+            }
+            let depth = map.depth
+            map.close()
+            map.stepHeight(by: -1)
+            #expect(map.depth == depth)
+        }
+    }
+
     @Test func columnsAndHoverStartAtOrBelowTheChosenHeight() async throws {
         try await withFixture { f in
             let file = try #require(try f.dimension().region(x: 0, z: 0))
@@ -96,9 +133,10 @@ import SwiftUI
                 return await gate.read(renderer.cutawayY.map(String.init) ?? "surface")
             })
             f.maps.append(map)
+            map.setHeight(8)
             map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
             await gate.waitForRequest("surface")
-            map.setDepth(MapDepth(y: 7, isSurface: false))
+            map.stepHeight(by: -1)
             await gate.waitForCancellation("surface")
             await gate.waitForRequest("7")
             await gate.finish("7", with: cutaway)
@@ -172,8 +210,11 @@ import SwiftUI
             f.resources.append(resources)
             let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
             let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
-            overworld.map?.setDepth(MapDepth(y: -20, isSurface: false))
+            overworld.map?.setHeight(-19)
             nether.map?.setDepth(MapDepth(y: 31, isSurface: true))
+            overworld.map?.stepHeight(by: -1)
+            #expect(overworld.map?.depth == MapDepth(y: -20, isSurface: false))
+            #expect(nether.map?.depth == MapDepth(y: 31, isSurface: true))
             overworld.close()
             await overworld.waitUntilClosed()
             let reopened = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
