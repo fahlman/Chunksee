@@ -16,6 +16,7 @@ final class MapModel {
     }
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
+    private(set) var blendsBiomeColors = false
     private(set) var lightingMode = MapLightingMode.savedTime
     private(set) var savedLighting: MapLighting?
     var lighting: MapLighting? { style != .height && lightingMode == .savedTime ? savedLighting : nil }
@@ -55,6 +56,7 @@ final class MapModel {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
+        current.blendsBiomeColors = blendsBiomeColors
         current.usesSavedLighting = lighting != nil
         current.blockFilter = blockFilter
         current.darkSpots = darkSpots
@@ -558,6 +560,12 @@ final class MapModel {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
         reloadTiles()
+    }
+
+    func setBiomeBlending(_ enabled: Bool) {
+        guard !isClosed, enabled != blendsBiomeColors else { return }
+        blendsBiomeColors = enabled
+        if style != .height { reloadTiles() }
     }
 
     /// Time changes only the drawing snapshot. Rebuild image inputs from the unlit disk cache

@@ -67,6 +67,10 @@ final class WorldSettings {
         return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
     }
 
+    func blendsBiomeColors(for dimension: String) -> Bool {
+        (stored["biomeBlending"] as? [String: Bool])?[dimension] ?? false
+    }
+
     func lightingMode(for dimension: String) -> MapLightingMode {
         let value = (stored["lightingModes"] as? [String: String])?[dimension]
         return value.flatMap(MapLightingMode.init(rawValue:)) ?? .savedTime
@@ -84,8 +88,8 @@ final class WorldSettings {
     }
 
     func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
-              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, lightingMode: MapLightingMode? = nil,
-              castsShadows: Bool? = nil) {
+              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, blendsBiomeColors: Bool? = nil,
+              lightingMode: MapLightingMode? = nil, castsShadows: Bool? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -100,6 +104,11 @@ final class WorldSettings {
             var styles = saved["styles"] as? [String: String] ?? [:]
             styles[dimension] = style.rawValue
             saved["styles"] = styles
+        }
+        if let blendsBiomeColors {
+            var choices = saved["biomeBlending"] as? [String: Bool] ?? [:]
+            choices[dimension] = blendsBiomeColors
+            saved["biomeBlending"] = choices
         }
         if let lightingMode {
             var modes = saved["lightingModes"] as? [String: String] ?? [:]

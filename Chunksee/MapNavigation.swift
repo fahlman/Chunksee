@@ -59,6 +59,7 @@ final class MapNavigation {
         map.viewport = oldMap.viewport
         map.setDepth(oldMap.depth)
         map.setStyle(oldMap.style)
+        map.setBiomeBlending(oldMap.blendsBiomeColors)
         map.setBlockFilter(oldMap.blockFilter)
     }
 

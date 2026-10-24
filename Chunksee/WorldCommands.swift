@@ -107,6 +107,12 @@ struct WorldCommands: Commands {
                     }
                     .disabled(style == .height && session?.map?.heightScale == nil)
                 }
+                Divider()
+                Toggle("Blend Biome Colors", isOn: Binding {
+                    session?.map?.blendsBiomeColors ?? false
+                } set: { session?.map?.setBiomeBlending($0) })
+                .help("Smooth grass, foliage and water colors across biome boundaries")
+                .disabled(session?.map?.style == .height)
             }
             .disabled(session?.map == nil)
             Menu("Lighting") {
