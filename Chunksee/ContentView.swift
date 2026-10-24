@@ -159,6 +159,7 @@ struct WorldView: View {
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
+                    .onChange(of: map.blendsBiomeColors) { session.saveView() }
                     .onChange(of: map.lightingMode) { session.saveView() }
                     .onChange(of: map.castsShadows) { session.saveView() }
                     .onChange(of: map.blockFilter) { session.saveView() }

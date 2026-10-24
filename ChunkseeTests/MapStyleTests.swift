@@ -159,6 +159,8 @@ import Testing
         let first = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         first.map?.setStyle(.height)
+        first.map?.setBiomeBlending(true)
+        #expect(first.map?.currentRenderer.samplesNeighborBiomes == false)
         second.map?.setStyle(.waterDepth)
         first.saveView()
         second.saveView()
