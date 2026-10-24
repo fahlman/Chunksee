@@ -56,8 +56,8 @@ import Testing
         // This compositor receives only retained materials and heights. Removing the synthetic
         // region proves crossing the threshold cannot introduce another terrain file read.
         try FileManager.default.removeItem(at: dimension.regionURL(at: region))
-        let detailed = try #require(try await MapDetailRenderer.render(chunk, surface: surface, assets: assets, heightScale: nil))
-        let pixels = try ItemPictureFixture.pixels(detailed)
+        let detailed = try #require(try await MapDetailRenderer.render(chunk, surface: surface, assets: assets, heightScale: nil, usesSavedLighting: false))
+        let pixels = try ItemPictureFixture.pixels(detailed.image)
         #expect(pixels.color(2, 2) == [255, 0, 0, 255])
         #expect(pixels.color(14, 2) == [0, 255, 0, 255])
         #expect(pixels.color(2, 14) == [0, 0, 255, 255])
@@ -127,9 +127,9 @@ import Testing
         let root = try world(twoChunks: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let assets = try fixture.library(), gate = AsyncReadGate<CGImage?>()
+        let assets = try fixture.library(), gate = AsyncReadGate<MapTileImage?>()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
-                          renderDetail: { chunk, _, _, _ in await gate.read("\(chunk.x),\(chunk.z)") })
+                          renderDetail: { chunk, _, _, _, _ in await gate.read("\(chunk.x),\(chunk.z)") })
         map.setGameAssets(assets)
         map.viewport.scale = 8
         let size = CGSize(width: 64, height: 64)
@@ -138,15 +138,15 @@ import Testing
         map.viewport.center.x = -7
         map.requestTiles(visibleIn: size)
         let image = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
-        await gate.finish("-1,-1", with: image)
+        await gate.finish("-1,-1", with: MapTileImage(image))
         await map.waitUntilIdle()
-        #expect(map.detailImages[.init(x: -1, z: -1)] === image)
+        #expect(map.detailImages[.init(x: -1, z: -1)]?.image === image)
         map.viewport.center.x = -24
         map.requestTiles(visibleIn: size)
         await gate.waitForRequest("-2,-1")
         map.close()
         await gate.waitForCancellation("-2,-1")
-        await gate.finish("-2,-1", with: image)
+        await gate.finish("-2,-1", with: MapTileImage(image))
         await map.waitForRenders()
         #expect(map.detailImages.isEmpty && !map.isLoading)
     }
@@ -157,9 +157,9 @@ import Testing
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let first = try fixture.library(), second = try fixture.library(), gate = AsyncReadGate<CGImage?>()
+        let first = try fixture.library(), second = try fixture.library(), gate = AsyncReadGate<MapTileImage?>()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
-                          renderDetail: { _, _, assets, _ in await gate.read(assets.identity.uuidString) })
+                          renderDetail: { _, _, assets, _, _ in await gate.read(assets.identity.uuidString) })
         defer { map.close() }
         map.setGameAssets(first)
         map.viewport.scale = 8
@@ -170,11 +170,11 @@ import Testing
         await gate.waitForRequest(second.identity.uuidString)
         let old = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
         let current = try #require(CGImage.rgba([0, 255, 0, 255], width: 1, height: 1))
-        await gate.finish(second.identity.uuidString, with: current)
+        await gate.finish(second.identity.uuidString, with: MapTileImage(current))
         await map.waitUntilIdle()
-        await gate.finish(first.identity.uuidString, with: old)
+        await gate.finish(first.identity.uuidString, with: MapTileImage(old))
         await map.waitForRenders()
-        #expect(map.detailImages[.init(x: -1, z: -1)] === current)
+        #expect(map.detailImages[.init(x: -1, z: -1)]?.image === current)
     }
 
     @Test func zoomAndShareUseTheSameDetailWhileCutawaysReplaceIt() async throws {
@@ -220,6 +220,116 @@ import Testing
         await map.waitUntilIdle()
         #expect(map.detailImages.isEmpty)
         await map.waitForRenders()
+    }
+
+    @Test func closeUpKeepsNighttimePatternsAndTheSameSlopeNormalsAsOrdinaryTerrain() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let assets = try fixture.library(), region = RegionPosition(x: -1, z: -1), chunk = ChunkPosition(x: -1, z: -1)
+        var renderer = RegionTileRenderer(dimension: dimension)
+        renderer.gameAssets = assets
+        var surface = try #require(try await renderer.surface(for: region))
+        for z in 496..<512 { for x in 496..<512 { surface.heights[z * 512 + x] = Int32(x - 496) } }
+        for status in [DarkSpots.Status.bright, .dark, .unknown] {
+            surface.nightLight = Array(repeating: status.rawValue, count: 512 * 512)
+            let detail = try #require(try await MapDetailRenderer.render(chunk, surface: surface.detailSurface,
+                assets: assets, heightScale: nil, usesSavedLighting: true))
+            let normals = try #require(detail.normals)
+            #expect(normals.width == 16 && normals.height == 16)
+            let bytes = try #require(normals.dataProvider?.data as Data?)
+            let coarse = try #require(surface.drawingPixels(heightScale: nil, includesNormals: true).normals)
+            for z in 0..<16 { for x in 0..<16 {
+                let i = (z * 16 + x) * 4, j = ((z + 496) * 512 + x + 496) * 4
+                #expect(Array(bytes[i..<(i + 4)]) == Array(coarse[j..<(j + 4)]))
+            } }
+            let pixels = try ItemPictureFixture.pixels(detail.image)
+            for (x, z) in [(0, 0), (1, 1), (2, 1)] {
+                let expected = DarkSpots.color(MapColor(0xff0000), status: status, x: x, z: z)
+                #expect(pixels.color(x * 16 + 2, z * 16 + 2) == [expected.red, expected.green, expected.blue, 255])
+            }
+        }
+        await assets.close()
+    }
+
+    @Test func clockChangesRelightCloseUpPicturesWithoutRebuildingThemAndDarkSpotsStayVisible() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+                          cacheDirectory: root.appendingPathComponent("tiles"))
+        defer { map.close() }
+        map.setGameAssets(try fixture.library())
+        map.setSavedLighting(try lighting(night: false))
+        map.viewport.scale = 8
+        let size = CGSize(width: 128, height: 128), chunk = ChunkPosition(x: -1, z: -1)
+        map.requestTiles(visibleIn: size)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        let image = try #require(map.detailImages[chunk])
+        #expect(image.normals != nil)
+        func copiedPixel() throws -> UInt32? {
+            let copy = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil },
+                size: size, scale: 1, colorScheme: .light, locale: .init(identifier: "en_US")))
+            return try #require(ItemTexture(png: copy.data)).rgb(at: .init(1, 1))
+        }
+        let day = try copiedPixel()
+        map.setSavedLighting(try lighting(night: true))
+        #expect(!map.isLoading && map.detailImages[chunk] === image)
+        #expect(try copiedPixel() != day)
+        map.setLightingMode(.daylight)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(map.detailImages[chunk]?.normals == nil)
+        #expect(try copiedPixel() == 0xff0000)
+        map.setDarkSpots(true)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        let unknown = try #require(map.detailImages[chunk])
+        let color = DarkSpots.color(MapColor(0xff0000), status: .unknown, x: 0, z: 0)
+        #expect(try copiedPixel() == UInt32(color.red) << 16 | UInt32(color.green) << 8 | UInt32(color.blue))
+        map.setLightingMode(.savedTime)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(map.detailImages[chunk]?.normals != nil && map.detailImages[chunk] !== unknown)
+        let nightWithSpots = try copiedPixel()
+        map.setDarkSpots(false)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(try copiedPixel() != nightWithSpots)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func changingLightingRejectsAnOldCloseUpPicture() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let gate = AsyncReadGate<MapTileImage?>()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+            renderDetail: { _, _, _, _, saved in await gate.read(saved ? "saved" : "daylight") })
+        defer { map.close() }
+        map.setGameAssets(try fixture.library())
+        map.setSavedLighting(try lighting(night: true))
+        map.viewport.scale = 8
+        map.requestTiles(visibleIn: CGSize(width: 64, height: 64))
+        await gate.waitForRequest("saved")
+        map.setLightingMode(.daylight)
+        await gate.waitForCancellation("saved"); await gate.waitForRequest("daylight")
+        let old = MapTileImage(try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1)))
+        let current = MapTileImage(try #require(CGImage.rgba([0, 255, 0, 255], width: 1, height: 1)))
+        await gate.finish("daylight", with: current)
+        await map.waitUntilIdle()
+        await gate.finish("saved", with: old)
+        await map.waitForRenders()
+        #expect(map.detailImages[.init(x: -1, z: -1)] === current)
+    }
+
+    private func lighting(night: Bool) throws -> MapLighting {
+        let time = try JSONDecoder().decode(DimensionTime.self, from: Data(#"{"has_skylight":true}"#.utf8))
+        let saved = try #require(SkyLighting(sunAngle: night ? 180 : 0, moonAngle: 0,
+            skyLightFactor: night ? 0.24 : 1, skyLightColor: night ? SIMD3(0.48, 0.48, 1) : SIMD3(repeating: 1),
+            moonPhase: .fullMoon))
+        return try #require(MapLighting(saved: saved, time: time))
     }
 
     private func world(twoChunks: Bool = false) throws -> URL {

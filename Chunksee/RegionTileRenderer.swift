@@ -27,6 +27,9 @@ nonisolated struct RegionTileRenderer: Sendable {
     var blockFilter = MapBlockFilter()
     var gameAssets: GameAssetLibrary?
     var biomeColors: MapBiomeColors?
+    var darkSpots: DarkSpots?
+    /// Only preparation changes with this flag; saved clock values are drawing uniforms.
+    var usesSavedLighting = false
 
     private var currentBiomeColors: MapBiomeColors? {
         biomeColors?.assetSourceKey == gameAssets?.sourceKey ? biomeColors : nil
@@ -62,7 +65,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             return try await sampledSurface(in: file, region: region, origin: origin)
         }
         let coordinates = file.chunkCoordinates
-        var canvas = Canvas()
+        var canvas = Canvas(nightLight: darkSpots == nil ? nil : Array(repeating: DarkSpots.Status.unknown.rawValue, count: Self.side * Self.side))
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
@@ -163,7 +166,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var queued: Set<ChunkPosition> = []
         var ready: [ChunkPosition] = []
         var nextReady = 0, nextSource = 0
-        var canvas = Canvas()
+        var canvas = Canvas(nightLight: darkSpots == nil ? nil : Array(repeating: DarkSpots.Status.unknown.rawValue, count: Self.side * Self.side))
 
         func advance() {
             while firstUnfinished < 32, remaining[firstUnfinished] == 0 { firstUnfinished += 1 }
@@ -195,7 +198,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         group.addTask {
                             try Task.checkCancellation()
                             let scanned = Self.scan(file, localX: position.x, localZ: position.z, context: surfaceContext,
-                                                    cutawayY: cutawayY, blockFilter: blockFilter)
+                                                    cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots)
                             return .decoded(position, scanned.map { Self.colorInput($0.sections, columns: $0.columns) })
                         }
                     }
@@ -253,7 +256,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private func displayPixels(_ surface: Canvas) -> [UInt8] {
-        style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
+        let pixels = style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
+        return surface.nightLight.map { DarkSpots.applying($0, to: pixels, side: Self.side) } ?? pixels
     }
 
     @concurrent
@@ -262,11 +266,19 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     /// A region's full-resolution image and a half-resolution preview for zoomed-out views.
-    struct RenderedTile: @unchecked Sendable {  // CGImage is immutable.
-        var full: CGImage
-        var preview: CGImage
-        var cacheWrite: CacheWrite? = nil
-        var detail: MapSurfaceDetail.Surface? = nil
+    struct RenderedTile: Sendable {
+        var full: MapTileImage
+        var preview: MapTileImage
+        var cacheWrite: CacheWrite?
+        var detail: MapSurfaceDetail.Surface?
+
+        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil, detail: MapSurfaceDetail.Surface? = nil) {
+            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite; self.detail = detail
+        }
+
+        init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil, detail: MapSurfaceDetail.Surface? = nil) {
+            self.init(full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite, detail: detail)
+        }
     }
 
     /// Immutable data for an accepted tile's save. The map owns scheduling/draining it; canceled
@@ -310,12 +322,23 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         guard let surface else { return nil }
-        let pixels = displayPixels(surface)
-        guard let full = Self.makeImage(pixels, side: Self.side),
-              let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
-        return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite,
-                            detail: scanned && gameAssets != nil && style != .height
-                                ? .init(detail: surface.detail, heights: surface.heights) : nil)
+        var drawing = style == .height ? (pixels: surface.pixels, normals: nil as [UInt8]?)
+            : surface.drawingPixels(heightScale: heightScale, includesNormals: usesSavedLighting)
+        if let nightLight = surface.nightLight {
+            drawing.pixels = DarkSpots.applying(nightLight, to: drawing.pixels, side: Self.side)
+        }
+        guard let full = Self.makeImage(drawing.pixels),
+              let preview = Self.makeImage(Self.halfSize(drawing.pixels), side: Self.previewSide) else { return nil }
+        var normals: CGImage?, previewNormals: CGImage?
+        if let bytes = drawing.normals {
+            normals = CGImage.rgba(bytes, width: Self.side, height: Self.side, colorSpace: CGColorSpace.linearSRGB)
+            previewNormals = CGImage.rgba(Self.halfSizeNormals(bytes, colors: drawing.pixels),
+                                         width: Self.previewSide, height: Self.previewSide, colorSpace: CGColorSpace.linearSRGB)
+            guard normals != nil, previewNormals != nil else { return nil }
+        }
+        return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
+                            cacheWrite: cacheWrite,
+                            detail: scanned && gameAssets != nil && style != .height ? surface.detailSurface : nil)
     }
 
     /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
@@ -329,14 +352,14 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let surface = try await surface(for: region) else { return nil }
         try Task.checkCancellation()
         if let cache, let key { cache.storeDetail(surface, for: key) }
-        return .init(detail: surface.detail, heights: surface.heights)
+        return surface.detailSurface
     }
 
     private func cacheKey(for region: RegionPosition) -> TileCache.Key? {
         guard cache != nil else { return nil }
         return TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
             context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter,
-            colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region))
+            colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
@@ -354,6 +377,33 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         return out
+    }
+
+    /// Ignore missing columns when combining normals. A preview pixel containing any water
+    /// keeps the water marker, preserving the depth palette along partially covered shores.
+    static func halfSizeNormals(_ normals: [UInt8], colors: [UInt8]) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: previewSide * previewSide * 4)
+        for z in 0..<previewSide {
+            for x in 0..<previewSide {
+                let a = (2 * z * side + 2 * x) * 4, b = a + side * 4
+                var sum = SIMD3<Double>.zero
+                var water = false
+                for i in [a, a + 4, b, b + 4] where colors[i + 3] != 0 {
+                    if normals[i] == 0 && normals[i + 1] == 0 && normals[i + 2] == 0 { water = true }
+                    else { sum += SIMD3(Double(normals[i]), Double(normals[i + 1]), Double(normals[i + 2])) / 127.5 - SIMD3(repeating: 1) }
+                }
+                let i = (z * previewSide + x) * 4
+                if !water { encodeNormal(sum, into: &out, at: i) }
+                out[i + 3] = 255
+            }
+        }
+        return out
+    }
+
+    static func encodeNormal(_ vector: SIMD3<Double>, into pixels: inout [UInt8], at i: Int) {
+        let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
+        let normal = length > 0 ? vector / length : SIMD3(0, 1, 0)
+        for c in 0..<3 { pixels[i + c] = UInt8(min(255, max(0, ((normal[c] + 1) * 127.5).rounded()))) }
     }
 
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
@@ -396,7 +446,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
-                                      cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
+                                      cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
         guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
@@ -586,25 +636,33 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
     /// readout: the same scan the map is drawn with, naming what it found.
-    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter()) -> [TopBlock?]? {
-        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
+    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), darkSpots: DarkSpots? = nil) -> [TopBlock?]? {
+        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
         return columns.map { column in
-            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth) }
+            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth, nightLight: $0.nightLight) }
         }
     }
 
-    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter) -> (sections: ColorSections, columns: [Column?])? {
-        // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
-        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
+    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter, darkSpots: DarkSpots? = nil) -> (sections: ColorSections, columns: [Column?])? {
+        // Keep the ordinary read profile unchanged. The optional layer samples light from this
+        // same decode and surface walk, without retaining a Chunk or adding another scan.
+        let skipping = darkSpots?.rule == nil ? Chunk.keysNotNeededForTerrain : Chunk.keysNotNeededForTerrainAndLight
+        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: skipping),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk, filter: blockFilter)
-        let columns: [Column?]
+        var columns: [Column?]
         if let cutawayY {
             columns = sections.topColumns(from: .height(cutawayY))
         } else if let ceilingY = context.ceilingY {
             columns = sections.topColumns(from: .height(ceilingY), underCeiling: true)
         } else {
             columns = sections.topColumns(from: .surface(height: context.buildHeight))
+        }
+        if let darkSpots {
+            for index in columns.indices {
+                guard let column = columns[index] else { continue }
+                columns[index]?.nightLight = darkSpots.status(in: chunk, x: index % 16, surfaceY: column.y, z: index / 16)
+            }
         }
         return (sections, columns)
     }
@@ -628,6 +686,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var waterFloorColor: MapColor?
         var waterFloor: PaletteEntry?
         var colorShade = 1.0
+        var nightLight: DarkSpots.Status?
     }
 
     /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
@@ -639,6 +698,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var id: String
         var y: Int
         var waterDepth: Int
+        var nightLight: DarkSpots.Status?
     }
 
     /// Presentation resolved once per reached palette entry. Kit owns the saved-block traversal;
@@ -817,6 +877,12 @@ nonisolated struct RegionTileRenderer: Sendable {
             set(chunk.columns, chunkX: chunkX, chunkZ: chunkZ, style: style, heightScale: heightScale)
             if let materials = chunk.detail { detail.insert(materials, at: chunkZ * 32 + chunkX) }
         }
+        /// Allocated only while Dark Spots is on; ordinary tiles retain their existing layout.
+        var nightLight: [UInt8]?
+
+        var detailSurface: MapSurfaceDetail.Surface {
+            .init(detail: detail, heights: heights, nightLight: nightLight)
+        }
 
         mutating func set(x: Int, z: Int, column: Column) {
             set(x: x, z: z, column: column, color: baseColor(for: column))
@@ -832,6 +898,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             pixels[i * 4 + 3] = 255
             heights[i] = height
             isWater[i] = column.waterDepth > 0
+            if nightLight != nil { nightLight?[i] = (column.nightLight ?? .unknown).rawValue }
         }
 
         mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int) {
@@ -864,14 +931,26 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// Lighting is applied to a copy, so a cached surface can be lit again without reading chunks.
         /// Top/left differences extrapolate from the next row/column to avoid an unshaded region edge.
         func litPixels(heightScale: MapHeightScale?) -> [UInt8] {
-            let lighting = MapRelief(heightScale: heightScale)
+            drawingPixels(heightScale: heightScale, includesNormals: false).pixels
+        }
+
+        /// Build drawing inputs in the same surface walk as fixed relief, never another chunk scan.
+        func drawingPixels(heightScale: MapHeightScale?, includesNormals: Bool) -> (pixels: [UInt8], normals: [UInt8]?) {
+            let lighting = MapRelief(heightScale: heightScale, directionalStrength: includesNormals ? 0.25 : 1)
+            var normals = includesNormals ? [UInt8](repeating: 0, count: pixels.count) : nil
             var lit = pixels
             for z in 0..<side {
                 for x in 0..<side {
                     let i = z * side + x
                     let height = heights[i]
-                    guard height != Self.noHeight, !isWater[i] else { continue }
-                    let factor = lighting.factor(at: i, heights: heights, side: side)
+                    guard height != Self.noHeight else { continue }
+                    if includesNormals { normals![i * 4 + 3] = 255 }
+                    guard !isWater[i] else { continue }
+                    let slope = MapRelief.slope(at: i, heights: heights, side: side)
+                    if includesNormals {
+                        RegionTileRenderer.encodeNormal(slope.normal, into: &normals!, at: i * 4)
+                    }
+                    let factor = lighting.factor(height: height, north: slope.north, west: slope.west)
                     guard factor != 1 else { continue }
                     let shaded = MapColor(UInt32(pixels[i * 4]) << 16 | UInt32(pixels[i * 4 + 1]) << 8
                                           | UInt32(pixels[i * 4 + 2])).shaded(factor)
@@ -880,7 +959,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     lit[i * 4 + 2] = shaded.blue
                 }
             }
-            return lit
+            return (lit, normals)
         }
     }
 

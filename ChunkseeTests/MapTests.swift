@@ -391,7 +391,7 @@ import Testing
         // All four regions are visible, so none is evicted despite the limit of one.
         #expect(Set(map.tiles.keys) == Set(regions))
         #expect(Set(map.previews.keys) == Set(regions))
-        #expect(map.previews[RegionPosition(x: 0, z: 0)]?.width == RegionTileRenderer.previewSide)
+        #expect(map.previews[RegionPosition(x: 0, z: 0)]?.image.width == RegionTileRenderer.previewSide)
     }
 
     @Test func zoomedOutRequestsNeedOnlyPreviews() async throws {
@@ -401,7 +401,7 @@ import Testing
         map.viewport.scale = 1.0 / 16
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
         await map.waitUntilIdle()
-        #expect(map.image(for: RegionPosition(x: 0, z: 0), fullResolution: false)?.width == RegionTileRenderer.previewSide)
+        #expect(map.image(for: RegionPosition(x: 0, z: 0), fullResolution: false)?.image.width == RegionTileRenderer.previewSide)
         #expect(map.tiles.isEmpty)  // full tiles aren't kept when only previews are needed
         // A second request at the same zoom has nothing left to do.
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
@@ -660,11 +660,11 @@ import Testing
         map.loadTopBlocks(at: CGPoint(x: 16.5, y: 0.5))      // chunk 1 replaces it, cancelling chunk 0's read
         await gate.waitForRequest("1")
         await gate.waitForCancellation("0")
-        #expect(map.unfinishedHoverReads == 2)               // the cancelled read is still kept
+        #expect(map.unfinishedTopBlockReads == 2)               // the cancelled read is still kept
         map.close()
         await gate.finish("1", with: nil)
         await gate.finish("0", with: nil)
         await map.waitForRenders()
-        #expect(map.unfinishedHoverReads == 0)
+        #expect(map.unfinishedTopBlockReads == 0)
     }
 }

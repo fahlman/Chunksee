@@ -132,6 +132,12 @@ Height uses that dimension’s saved build limits and sea level; it is unavailab
 can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
 Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses
 its cached tiles.
+**Dark Spots** in View and the sidebar marks low light in red and unknown light with stripes.
+It checks the space one block above the displayed surface at night, including in Cutaway; a torch
+can therefore remove the red highlight. This is only a light check, not a guarantee that monsters
+can spawn: terrain, room, difficulty and other spawning conditions are not checked. Missing or stale
+saved lighting stays unknown. The layer starts off and remembers each dimension's choice. Hover
+over the map for the light result, or read its legend; exported images include the same treatment.
 **World Border** in View and the sidebar shows or hides a saved border smaller than Minecraft's
 default limit. It starts shown, remembers each dimension's choice, and applies to exported images
 too. The controls are disabled when the dimension has no limited border.
@@ -143,6 +149,14 @@ map there without changing zoom, or **Navigate ▸ Go to Spawn** (**⇧⌘H**) t
 the individual visible map locations and center the map on them. Every location jump keeps that
 dimension's current zoom, including player locations, portal links and in-game maps. Use the zoom
 control or **Fit World** when you want to change the scale.
+
+**View ▸ Lighting** offers Saved Time and Daylight, remembered for each dimension. Saved Time
+uses the world’s last saved sun direction and night color, with a moon-phase label. It updates
+when Minecraft saves, without scanning terrain again. Choose Daylight for constant lighting.
+Increase Contrast keeps nights brighter. Height maps and Water Depth’s water colors keep their
+original palettes. Saved lighting needs readable dimension definitions and timelines, usually
+from a matching Minecraft version selected in Settings; unsupported or no-skylight dimensions
+keep Daylight. This does not simulate time between saves.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
 previous location and zoom within the current dimension. A jump to another dimension happens in
@@ -169,7 +183,7 @@ shows its pixel dimensions and estimated file size before starting, and offers *
 and **Share Image** when it finishes. **Fit Image** chooses the most detailed scale within the
 size limit; rendering uses the current map style and Surface or cutaway height and can be canceled.
 The map and exported images share a legend for shown overlays:
-the active map style’s scale, Time Spent color scale, Slime Chunks color key and World Border line key.
+the active map style’s scale, Dark Spots light key, Time Spent color scale, Slime Chunks color key and World Border line key.
 To measure a distance, turn on the toolbar's ruler or **View ▸ Measure Distance** (**⇧⌘M**), then
 click two map points. The line and distance remain attached to those blocks as you pan and zoom.
 A third click starts a new measurement; **Clear** or **Escape** clears it, and another **Escape**

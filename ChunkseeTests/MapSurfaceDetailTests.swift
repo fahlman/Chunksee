@@ -129,4 +129,35 @@ import Testing
         #expect(cache.load(key) == nil && cache.loadDetail(key) == nil)
         #expect(cache.load(changed) != nil && cache.loadDetail(changed) == nil)
     }
+
+    @Test func nighttimeDetailRoundTripsAndDoesNotReplaceOrdinaryTilesOrSidecars() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NightDetailCache-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TileCache(directory: directory)
+        let ordinary = TileCache.Key(region: .init(x: -1, z: -1), fileSize: 1, modified: 2, colorSource: "test-assets")
+        var night = ordinary
+        night.nightLight = "unknown"
+        var surface = RegionTileRenderer.Canvas()
+        surface.detail.insert(try chunk(), at: 0)
+        surface.heights[0] = 12
+        cache.store(surface, for: ordinary)
+        cache.storeDetail(surface, for: ordinary)
+        let day = try #require(cache.loadDetail(ordinary))
+        let count = surface.heights.count
+        surface.nightLight = (0..<count).map { UInt8($0 % 3) }
+        cache.store(surface, for: night)
+        cache.storeDetail(surface, for: night)
+        let restored = try #require(cache.loadDetail(night))
+        #expect(restored.detail == day.detail && restored.heights == day.heights)
+        #expect(restored.nightLight == surface.nightLight && restored.estimatedBytes == day.estimatedBytes + count)
+        #expect(cache.load(ordinary)?.nightLight == nil && cache.loadDetail(ordinary)?.nightLight == nil)
+        #expect(cache.load(night)?.nightLight == restored.nightLight)
+        let file = directory.appendingPathComponent(night.detailFileName)
+        var bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
+        bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
+        try ((bytes as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        #expect(cache.loadDetail(night) == nil)
+        #expect(cache.load(night)?.nightLight == restored.nightLight)
+        #expect(cache.loadDetail(ordinary)?.detail == day.detail)
+    }
 }

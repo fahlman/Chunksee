@@ -7,22 +7,34 @@ import Observation
 @Observable
 final class MapModel {
     let dimension: ChunkseeKit.Dimension
-    var viewport: MapViewport
+    var viewport: MapViewport {
+        didSet {
+            if showsDarkSpots, Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
+                updateTopBlockReads()
+            }
+        }
+    }
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
+    private(set) var lightingMode = MapLightingMode.savedTime
+    private(set) var savedLighting: MapLighting?
+    var lighting: MapLighting? { style != .height && lightingMode == .savedTime ? savedLighting : nil }
     private(set) var blockFilter = MapBlockFilter()
+    private(set) var showsDarkSpots = false
+    private(set) var nightLighting: MonsterSpawnLight?
+    var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
     let heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
-    private(set) var tiles: [RegionPosition: CGImage] = [:]
+    private(set) var tiles: [RegionPosition: MapTileImage] = [:]
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
-    private(set) var previews: [RegionPosition: CGImage] = [:]
+    private(set) var previews: [RegionPosition: MapTileImage] = [:]
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionPosition>
     private(set) var isLoading = false
     /// Only visible close-up chunks are drawn at texture resolution; ordinary tiles stay underneath.
-    private(set) var detailImages: [ChunkPosition: CGImage] = [:]
+    private(set) var detailImages: [ChunkPosition: MapTileImage] = [:]
     @ObservationIgnored private var detailSurfaces: [RegionPosition: MapSurfaceDetail.Surface] = [:]
     @ObservationIgnored private var detailAttempted: Set<ChunkPosition> = []
     @ObservationIgnored private var detailQueue: [ChunkPosition] = []
@@ -30,7 +42,7 @@ final class MapModel {
     @ObservationIgnored private var detailRegionsWanted: Set<RegionPosition> = []
     @ObservationIgnored private var detailLoadsAttempted: Set<RegionPosition> = []
     @ObservationIgnored private var detailLoadJob: (region: RegionPosition, id: UUID, task: Task<Void, Never>)?
-    typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameAssetLibrary, MapHeightScale?) async throws -> CGImage?
+    typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameAssetLibrary, MapHeightScale?, Bool) async throws -> MapTileImage?
     typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> MapSurfaceDetail.Surface?
     @ObservationIgnored private let renderDetail: DetailRenderer
     @ObservationIgnored private let readDetail: DetailReader
@@ -44,18 +56,20 @@ final class MapModel {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
+        current.usesSavedLighting = lighting != nil
         current.blockFilter = blockFilter
+        current.darkSpots = darkSpots
         current.gameAssets = style == .height ? nil : gameAssets
         current.biomeColors = style == .height ? nil : biomeColors
         return current
     }
     private let work: BackgroundWork
-    private let renderWork, cacheWork, hoverWork, coordinateWork, detailWork: BackgroundWork.Scope
+    private let renderWork, cacheWork, readoutWork, coordinateWork, detailWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
     @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
-    /// Full tiles plus retained materials share the existing roughly 200 MB budget. Previews
-    /// keep their separate 200 MB budget. Visible tiles are never evicted,
+    /// Full color/normal images plus retained materials share the existing roughly 200 MB
+    /// budget. Previews keep their separate 200 MB budget. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int
     private let maxPreviews: Int
@@ -73,14 +87,14 @@ final class MapModel {
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
-         renderDetail: @escaping DetailRenderer = { try await MapDetailRenderer.render($0, surface: $1, assets: $2, heightScale: $3) },
+         renderDetail: @escaping DetailRenderer = { try await MapDetailRenderer.render($0, surface: $1, assets: $2, heightScale: $3, usesSavedLighting: $4) },
          readDetail: @escaping DetailReader = { try await $0.detail(for: $1) },
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
         renderWork = work.makeScope()
         cacheWork = work.makeScope()
-        hoverWork = work.makeScope()
+        readoutWork = work.makeScope()
         coordinateWork = work.makeScope()
         detailWork = work.makeScope()
         self.renderDetail = renderDetail
@@ -107,7 +121,7 @@ final class MapModel {
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
-    func image(for region: RegionPosition, fullResolution: Bool) -> CGImage? {
+    func image(for region: RegionPosition, fullResolution: Bool) -> MapTileImage? {
         fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
     }
 
@@ -278,30 +292,38 @@ final class MapModel {
             detailSurfaces[region] = nil
         }
         previews[region] = tile.preview
-        let tileBytes = RegionTileRenderer.side * RegionTileRenderer.side * 4
-        var retained = tiles.count * tileBytes + detailSurfaces.values.reduce(0) { $0 + $1.estimatedBytes }
-        let candidates = Set(tiles.keys).subtracting(visibleRegions)
-            .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
-        for region in candidates {
-            guard tiles.count > maxTiles || Double(retained) > Double(maxTiles) * Double(tileBytes) else { break }
-            retained -= tileBytes + (detailSurfaces[region]?.estimatedBytes ?? 0)
-            tiles[region] = nil
-            detailSurfaces[region] = nil
-            invalidateDetail(in: [region], keepingImages: false)
-        }
-        for region in Self.regionsToEvict(from: Set(previews.keys), keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
+        evictFullTiles()
+        for region in Self.regionsToEvict(from: previews, keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
             previews[region] = nil
         }
         if let lastView { requestDetail(visibleIn: lastView.size) }
     }
 
+    private func evictFullTiles() {
+        let tileBytes = RegionTileRenderer.side * RegionTileRenderer.side * 4
+        let evicted = Self.regionsToEvict(from: tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport,
+            additionalUnits: { Double(detailSurfaces[$0]?.estimatedBytes ?? 0) / Double(tileBytes) })
+        for region in evicted {
+            tiles[region] = nil
+            detailSurfaces[region] = nil
+            invalidateDetail(in: [region], keepingImages: false)
+        }
+    }
+
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
-    private static func regionsToEvict(from cached: Set<RegionPosition>, keeping limit: Int,
-                                       visible: Set<RegionPosition>, viewport: MapViewport) -> [RegionPosition] {
-        guard cached.count > limit else { return [] }
-        let candidates = cached.subtracting(visible)
+    private static func regionsToEvict(from cached: [RegionPosition: MapTileImage], keeping limit: Int,
+                                       visible: Set<RegionPosition>, viewport: MapViewport,
+                                       additionalUnits: (RegionPosition) -> Double = { _ in 0 }) -> [RegionPosition] {
+        var units = cached.reduce(0.0) { $0 + Double($1.value.storageUnits) + additionalUnits($1.key) }
+        guard units > Double(limit) else { return [] }
+        let candidates = Set(cached.keys).subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
-        return Array(candidates.prefix(cached.count - limit))
+        var evicted: [RegionPosition] = []
+        for region in candidates where units > Double(limit) {
+            units -= Double(cached[region]?.storageUnits ?? 0) + additionalUnits(region)
+            evicted.append(region)
+        }
+        return evicted
     }
 
     func cancel() {
@@ -318,12 +340,14 @@ final class MapModel {
     }
 
     func waitForRenders() async {
-        await work.waitUntilFinished(in: [renderWork, cacheWork, hoverWork, coordinateWork, detailWork])
+        await work.waitUntilFinished(in: [renderWork, cacheWork, readoutWork, coordinateWork, detailWork])
     }
 
     func close() {
         renderWork.close()
-        hoverWork.close()
+        readoutWork.close()
+        activeTopBlockReads = [:]
+        hoveredChunk = nil
         coordinateWork.close()
         cacheWork.close()
         detailWork.close()
@@ -334,6 +358,7 @@ final class MapModel {
         detailLoadsAttempted = []
         gameAssets = nil
         biomeColors = nil
+        nightLighting = nil
     }
 
     // MARK: Close-up terrain
@@ -399,6 +424,7 @@ final class MapModel {
             if !Task.isCancelled {
                 self.detailSurfaces[region] = surface
                 self.detailLoadsAttempted.insert(region)
+                self.evictFullTiles()
             }
             if let view = self.lastView { self.requestDetail(visibleIn: view.size) }
         }) else { return }
@@ -426,10 +452,10 @@ final class MapModel {
         guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameAssets else { return }
         let chunk = detailQueue.removeFirst()
         guard let surface = detailSurfaces[chunk.region] else { return }
-        let id = UUID(), render = renderDetail, heightScale = heightScale
+        let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
         guard let task = detailWork.start(priority: nil, operation: { [weak self] in
-            let image: CGImage?
-            do { image = try await render(chunk, surface, assets, heightScale) }
+            let image: MapTileImage?
+            do { image = try await render(chunk, surface, assets, heightScale, usesSavedLighting) }
             catch { image = nil }
             guard let self, self.detailJob?.id == id, !self.isClosed else { return }
             self.detailJob = nil
@@ -460,29 +486,27 @@ final class MapModel {
         if !keepingImages { detailImages = detailImages.filter { !regions.contains($0.key.region) } }
     }
 
-    // MARK: The hover readout's block
+    // MARK: Blocks for the pointer and centered accessibility readout
 
     typealias TopBlockRead = (file: RegionFile, blocks: [RegionTileRenderer.TopBlock?])
 
-    /// The top block of each column (index `z * 16 + x`) in recently hovered chunks, read on demand.
-    /// Tiles keep only colors, and naming every column of every region would cost far more than
-    /// reading the one chunk under the pointer.
+    /// The top block of each column (index `z * 16 + x`) in recently requested chunks. The pointer
+    /// and centered accessibility readout share these columns rather than decoding them twice.
     private(set) var topBlocks: [ChunkPosition: [RegionTileRenderer.TopBlock?]] = [:]
     @ObservationIgnored private var topBlockOrder: [ChunkPosition] = []
     /// The chunk under the pointer, so a save of its region can be read again without the pointer moving.
     @ObservationIgnored private var hoveredChunk: ChunkPosition?
-    /// The read for the hovered chunk, if one is under way.
-    @ObservationIgnored private var activeHoverRead: (chunk: ChunkPosition, id: UUID, task: Task<Void, Never>)?
+    @ObservationIgnored private var activeTopBlockReads: [ChunkPosition: (id: UUID, task: Task<Void, Never>)] = [:]
     /// Bumped when the game saves a region, so a read of the old file doesn't publish after it.
     @ObservationIgnored private var regionGenerations: [RegionPosition: Int] = [:]
-    /// The region file last read for the readout, reused while the pointer stays in its region.
-    @ObservationIgnored private var hoverRegion: RegionFile?
+    /// The region file last read for either readout, reused for another chunk in that region.
+    @ObservationIgnored private var readoutRegion: RegionFile?
     typealias TopBlockReader = @Sendable (ChunkPosition, RegionTileRenderer, RegionFile?) async -> TopBlockRead?
     @ObservationIgnored private let readTopBlocksFor: TopBlockReader
-    private static let maxHoverChunks = 64
+    private static let maxReadoutChunks = 64
 
-    /// Hover reads not yet finished, cancelled or not.
-    var unfinishedHoverReads: Int { hoverWork.unfinishedCount }
+    /// Readout reads not yet finished, cancelled or not.
+    var unfinishedTopBlockReads: Int { readoutWork.unfinishedCount }
     var unfinishedCoordinateReads: Int { coordinateWork.unfinishedCount }
 
     /// The block the map shows at a world block, once its chunk has been read.
@@ -500,7 +524,7 @@ final class MapModel {
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
         let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
-        let renderer = currentRenderer, cached = hoverRegion, read = readTopBlocksFor
+        let renderer = currentRenderer, cached = readoutRegion, read = readTopBlocksFor
         coordinateWork.start(priority: nil) { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self else { return }
@@ -513,40 +537,66 @@ final class MapModel {
         await coordinateWork.waitUntilFinished()
     }
 
-    /// Reads the chunk under the pointer off the main actor, unless it's read or being read. Only
-    /// that chunk matters, so a read for one the pointer has left is cancelled.
-    func loadTopBlocks(at block: CGPoint) {
-        guard !isClosed, let coordinates = MapCoordinates(point: block) else { return }
-        let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
-        hoveredChunk = chunk
-        guard topBlocks[chunk] == nil, activeHoverRead?.chunk != chunk else { return }
-        startHoverRead(of: chunk)
+    private static func chunk(at point: CGPoint) -> ChunkPosition? {
+        guard let coordinates = MapCoordinates(point: point) else { return nil }
+        return ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
     }
 
-    /// The pointer left the map: nothing needs reading again after a save.
-    func endHover() { hoveredChunk = nil }
+    private var readoutChunks: Set<ChunkPosition> {
+        var chunks = Set<ChunkPosition>()
+        if let hoveredChunk { chunks.insert(hoveredChunk) }
+        if showsDarkSpots, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
+        return chunks
+    }
 
-    private func startHoverRead(of chunk: ChunkPosition) {
-        activeHoverRead?.task.cancel()
+    /// Reads the pointer's chunk off the main actor, sharing a pending/cached center read.
+    func loadTopBlocks(at block: CGPoint) {
+        guard !isClosed, let chunk = Self.chunk(at: block) else { return }
+        hoveredChunk = chunk
+        updateTopBlockReads()
+    }
+
+    func endHover() {
+        hoveredChunk = nil
+        updateTopBlockReads()
+    }
+
+    /// At most two chunks are wanted. Moving either readout cancels only work neither needs.
+    private func updateTopBlockReads() {
+        guard !isClosed else { return }
+        let wanted = readoutChunks
+        for (chunk, active) in activeTopBlockReads where !wanted.contains(chunk) {
+            active.task.cancel()
+            activeTopBlockReads[chunk] = nil
+        }
+        for chunk in wanted where topBlocks[chunk] == nil && activeTopBlockReads[chunk] == nil {
+            startTopBlockRead(of: chunk)
+        }
+    }
+
+    private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        let renderer = currentRenderer, cached = hoverRegion, read = readTopBlocksFor
-        guard let task = hoverWork.start(priority: nil, operation: { [weak self] in
+        let renderer = currentRenderer, cached = readoutRegion, read = readTopBlocksFor
+        guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
-            guard let self else { return }
-            if self.activeHoverRead?.id == id { self.activeHoverRead = nil }
+            guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }
+            self.activeTopBlockReads[chunk] = nil
             // A read cancelled for another chunk, or of a file the game has since saved, isn't kept.
             guard let result, !Task.isCancelled, !self.isClosed, self.regionGenerations[region, default: 0] == generation else { return }
-            self.hoverRegion = result.file
+            self.readoutRegion = result.file
             self.topBlocks[chunk] = result.blocks
             self.topBlockOrder.append(chunk)
-            if self.topBlockOrder.count > Self.maxHoverChunks { self.topBlocks[self.topBlockOrder.removeFirst()] = nil }
+            if self.topBlockOrder.count > Self.maxReadoutChunks,
+               let index = self.topBlockOrder.firstIndex(where: { !self.readoutChunks.contains($0) }) {
+                self.topBlocks[self.topBlockOrder.remove(at: index)] = nil
+            }
         }) else { return }
-        activeHoverRead = (chunk, id, task)
+        activeTopBlockReads[chunk] = (id, task)
     }
 
-    /// Waits for every hover read, including cancelled ones still finishing.
+    /// Waits for every readout read, including cancelled ones still finishing.
     func waitForTopBlocks() async {
-        await hoverWork.waitUntilFinished()
+        await readoutWork.waitUntilFinished()
     }
 
     @concurrent
@@ -558,25 +608,25 @@ final class MapModel {
                 ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
               let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
-                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter)
+                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter,
+                                                       darkSpots: renderer.darkSpots)
         else { return nil }
         return (file, blocks)
     }
 
     /// The game saved these regions, so what was read from them may be out of date. A read elsewhere
-    /// carries on; the hovered chunk, if it's in one of them, is read again without waiting for the
-    /// pointer to move.
+    /// carries on; the pointer and center are read again without waiting for either to move.
     private func forgetTopBlocks(in regions: Set<RegionPosition>) {
         func changed(_ chunk: ChunkPosition) -> Bool { regions.contains(chunk.region) }
         for region in regions { regionGenerations[region, default: 0] += 1 }
         topBlocks = topBlocks.filter { !changed($0.key) }
         topBlockOrder.removeAll(where: changed)
-        if let file = hoverRegion, regions.contains(RegionPosition(x: file.x, z: file.z)) { hoverRegion = nil }
-        if let active = activeHoverRead, changed(active.chunk) {
+        if let file = readoutRegion, regions.contains(RegionPosition(x: file.x, z: file.z)) { readoutRegion = nil }
+        for (chunk, active) in activeTopBlockReads where changed(chunk) {
             active.task.cancel()
-            activeHoverRead = nil
+            activeTopBlockReads[chunk] = nil
         }
-        if !isClosed, let chunk = hoveredChunk, changed(chunk) { startHoverRead(of: chunk) }
+        updateTopBlockReads()
     }
 
     /// A selected location supplies a height without switching Surface/Cutaway mode.
@@ -605,15 +655,27 @@ final class MapModel {
         else { reloadTiles() }
     }
 
-    private func surfaceChanged() {
-        hoverWork.cancel()
-        coordinateWork.cancel()
-        activeHoverRead = nil
+    func setDarkSpots(_ shown: Bool) {
+        guard !isClosed, showsDarkSpots != shown else { return }
+        showsDarkSpots = shown
+        surfaceChanged(coordinatesChanged: false)
+    }
+
+    func setNightLighting(_ value: MonsterSpawnLight?) {
+        guard !isClosed, nightLighting != value else { return }
+        nightLighting = value
+        if showsDarkSpots { surfaceChanged(coordinatesChanged: false) }
+    }
+
+    private func surfaceChanged(coordinatesChanged: Bool = true) {
+        readoutWork.cancel()
+        if coordinatesChanged { coordinateWork.cancel() }
+        activeTopBlockReads = [:]
         topBlocks = [:]
         topBlockOrder = []
-        hoverRegion = nil
+        readoutRegion = nil
         reloadTiles()
-        if let hoveredChunk { startHoverRead(of: hoveredChunk) }
+        updateTopBlockReads()
     }
 
     /// A style changes colours, never the selected block or a pending coordinate/hover read.
@@ -621,6 +683,22 @@ final class MapModel {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
         reloadTiles()
+    }
+
+    /// Time changes only the drawing snapshot. Rebuild image inputs from the unlit disk cache
+    /// when availability or the chosen mode changes; clock ticks never invalidate terrain.
+    func setSavedLighting(_ value: MapLighting?) {
+        guard !isClosed, value != savedLighting else { return }
+        let prepared = lighting != nil
+        savedLighting = value
+        if prepared != (lighting != nil) { reloadTiles() }
+    }
+
+    func setLightingMode(_ value: MapLightingMode) {
+        guard !isClosed, value != lightingMode else { return }
+        let prepared = lighting != nil
+        lightingMode = value
+        if prepared != (lighting != nil) { reloadTiles() }
     }
 
     /// The source owner shares this exact library with pictures. Swapping it cancels old

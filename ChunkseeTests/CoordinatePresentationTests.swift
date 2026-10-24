@@ -168,7 +168,7 @@ import Testing
         let invalidPoint = CGPoint(x: invalid, y: 0)
         #expect(session.map?.topBlock(at: invalidPoint) == nil)
         session.map?.loadTopBlocks(at: invalidPoint)
-        #expect(session.map?.unfinishedHoverReads == 0)
+        #expect(session.map?.unfinishedTopBlockReads == 0)
         session.close()
         await session.waitUntilClosed()
     }

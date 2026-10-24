@@ -8,7 +8,7 @@ final class WorldSettings {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
-        case showsWorldBorder
+        case showsWorldBorder, darkSpots = "showsDarkSpots"
 
         fileprivate static let legacy: [Layer] = [.structures, .places, .creatures, .biomes, .hiddenPlayers, .showsGrid]
     }
@@ -67,6 +67,11 @@ final class WorldSettings {
         return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
     }
 
+    func lightingMode(for dimension: String) -> MapLightingMode {
+        let value = (stored["lightingModes"] as? [String: String])?[dimension]
+        return value.flatMap(MapLightingMode.init(rawValue:)) ?? .savedTime
+    }
+
     func blockFilter(for dimension: String) -> MapBlockFilter {
         guard let value = (stored["blockFilters"] as? [String: [String: Any]])?[dimension] else { return MapBlockFilter() }
         return MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? true,
@@ -75,7 +80,7 @@ final class WorldSettings {
     }
 
     func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
-              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil) {
+              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, lightingMode: MapLightingMode? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -90,6 +95,11 @@ final class WorldSettings {
             var styles = saved["styles"] as? [String: String] ?? [:]
             styles[dimension] = style.rawValue
             saved["styles"] = styles
+        }
+        if let lightingMode {
+            var modes = saved["lightingModes"] as? [String: String] ?? [:]
+            modes[dimension] = lightingMode.rawValue
+            saved["lightingModes"] = modes
         }
         if let blockFilter {
             var filters = saved["blockFilters"] as? [String: [String: Any]] ?? [:]

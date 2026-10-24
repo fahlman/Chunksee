@@ -5,8 +5,10 @@ import SwiftUI
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
     var mapStyle = MapStyle.normal
+    var lighting: MapLighting?
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
+    var showsDarkSpots = false
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -117,8 +119,10 @@ extension MapContent {
         self.init()
         guard session.map != nil, let id = session.selectedDimensionID else { return }
         mapStyle = session.map?.style ?? .normal
+        lighting = session.map?.lighting
         heightScale = session.map?.heightScale
         blockFilter = session.map?.blockFilter ?? MapBlockFilter()
+        showsDarkSpots = session.map?.showsDarkSpots == true
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown

@@ -1,6 +1,66 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Dark Spots" : {
+      "comment" : "Opt-in map layer showing clear-night light eligibility; not a complete monster spawnability test."
+    },
+    "Dark Spots at Night" : {
+      "comment" : "Map legend key for red tinted columns whose light can pass the ordinary monster check at night."
+    },
+    "Light Unknown" : {
+      "comment" : "Map legend key for striped columns with missing, stale or unsupported light facts."
+    },
+    "Nighttime light unknown" : {
+      "comment" : "Hover readout when the saved light or dimension rules cannot be resolved."
+    },
+    "Too bright for ordinary monsters at night" : {
+      "comment" : "Hover readout for light that rules out the ordinary monster check; other mob rules differ."
+    },
+    "Light low enough for ordinary monsters at night" : {
+      "comment" : "Hover readout for possible light eligibility; this does not check terrain or other spawning conditions."
+    },
+    "Light above the displayed surface at night. Other spawning conditions are not checked." : {
+      "comment" : "Explanation shared by the map layer tooltip, legend and accessibility description."
+    },
+    "Dark Spots shown. %@" : {
+      "comment" : "Map accessibility value; the placeholder is the localized Dark Spots explanation."
+    },
+    "Lighting" : {
+      "comment" : "View menu containing the saved-world lighting and constant Daylight choices."
+    },
+    "Saved Time" : {
+      "comment" : "Light the map using the world's most recently saved sun and moon attributes. This does not simulate a clock."
+    },
+    "Daylight" : {
+      "comment" : "Map lighting preference with constant, readable daytime colors."
+    },
+    "Lighting follows the world's last save. Choose Daylight in the View menu for constant lighting." : {
+      "comment" : "Help for the saved-time map legend."
+    },
+    "Full Moon" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "Waning Gibbous" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "Third Quarter" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "Waning Crescent" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "New Moon" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "Waxing Crescent" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "First Quarter" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
+    "Waxing Gibbous" : {
+      "comment" : "The saved moon phase, shown with the map lighting legend."
+    },
     "Durability" : {
       "comment" : "Equipment gauge label. Its value is the remaining durability out of the maximum."
     },

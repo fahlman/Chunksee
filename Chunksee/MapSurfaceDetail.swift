@@ -82,7 +82,15 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
     struct Surface: Sendable {
         let detail: MapSurfaceDetail
         let heights: [Int32]
-        var estimatedBytes: Int { detail.estimatedBytes + heights.count * 4 }
+        let nightLight: [UInt8]?
+
+        init(detail: MapSurfaceDetail, heights: [Int32], nightLight: [UInt8]? = nil) {
+            self.detail = detail
+            self.heights = heights
+            self.nightLight = nightLight
+        }
+
+        var estimatedBytes: Int { detail.estimatedBytes + heights.count * 4 + (nightLight?.count ?? 0) }
     }
 
     private struct StoredChunk: Codable {

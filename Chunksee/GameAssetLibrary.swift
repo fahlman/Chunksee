@@ -309,6 +309,11 @@ actor GameAssetLibrary {
         }
     }
 
+    func lighting(in world: World) throws -> [String: MapLighting] {
+        try checkAvailable()
+        return try MapLighting.read(in: world, assets: assets)
+    }
+
     /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels
     /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
     func biomeColors(in world: World) throws -> MapBiomeColors {
@@ -320,6 +325,11 @@ actor GameAssetLibrary {
             if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
         }
         return try MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
+    }
+
+    func nightLighting(in world: World) throws -> [String: MonsterSpawnLight] {
+        try checkAvailable()
+        return try world.nightMonsterLighting(assets: assets)
     }
 
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.

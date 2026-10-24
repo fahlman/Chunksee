@@ -24,10 +24,12 @@ nonisolated enum MapDetailRenderer {
 
     @concurrent
     static func render(_ chunk: ChunkPosition, surface: MapSurfaceDetail.Surface,
-                       assets: GameAssetLibrary, heightScale: MapHeightScale?) async throws -> CGImage? {
+                       assets: GameAssetLibrary, heightScale: MapHeightScale?, usesSavedLighting: Bool) async throws -> MapTileImage? {
         try Task.checkCancellation()
         let side = RegionTileRenderer.side
-        guard surface.heights.count == side * side, let origin = chunk.blockOrigin,
+        guard surface.heights.count == side * side,
+              surface.nightLight == nil || surface.nightLight?.count == side * side,
+              let origin = chunk.blockOrigin,
               let materials = surface.detail.chunks[chunk.localZ * 32 + chunk.localX] else { return nil }
         let startX = chunk.localX * 16, startZ = chunk.localZ * 16
         let positions: [BlockPosition?] = (0..<256).map { i in
@@ -39,14 +41,23 @@ nonisolated enum MapDetailRenderer {
                                                      indices: materials.indices, positions: positions)
         let texels = GameModelRenderer.blockTextureSide, imageSide = 16 * texels
         var pixels = [UInt8](repeating: 0, count: imageSide * imageSide * 4), hasPixels = false
-        let lighting = MapRelief(heightScale: heightScale)
+        // Normals still have one pixel per block; the shared shader samples them by location,
+        // so sixteen-times larger texture pictures do not need sixteen-times larger normals.
+        var normals = usesSavedLighting ? [UInt8](repeating: 0, count: 16 * 16 * 4) : nil
+        let lighting = MapRelief(heightScale: heightScale, directionalStrength: usesSavedLighting ? 0.25 : 1)
         for (i, texture) in textures.enumerated() {
             try Task.checkCancellation()
             guard let texture, texture.width == texels, texture.height == texels,
                   texture.pixels.count == texels * texels * 4 else { continue }
             let material = materials.materials[Int(materials.indices[i])]
             let index = (startZ + i / 16) * side + startX + i % 16
-            let light = lighting.factor(at: index, heights: surface.heights, side: side)
+            let slope = MapRelief.slope(at: index, heights: surface.heights, side: side)
+            let light = lighting.factor(height: surface.heights[index], north: slope.north, west: slope.west)
+            if usesSavedLighting {
+                RegionTileRenderer.encodeNormal(slope.normal, into: &normals!, at: i * 4)
+                normals![i * 4 + 3] = 255
+            }
+            let night = surface.nightLight.flatMap { DarkSpots.Status(rawValue: $0[index]) }
             for y in 0..<texels {
                 for x in 0..<texels {
                     let source = (y * texels + x) * 4, alpha = UInt32(texture.pixels[source + 3])
@@ -55,7 +66,10 @@ nonisolated enum MapDetailRenderer {
                     // produce RGB greater than alpha around partially transparent plant edges.
                     func straight(_ channel: Int) -> UInt32 { min(255, (UInt32(texture.pixels[source + channel]) * 255 + alpha / 2) / alpha) }
                     let color = MapColor(straight(0) << 16 | straight(1) << 8 | straight(2)).shaded(material.colorShade)
-                    let shaded = material.emphasis.applying(to: color).shaded(light)
+                    var shaded = material.emphasis.applying(to: color).shaded(light)
+                    if let night {
+                        shaded = DarkSpots.color(shaded, status: night, x: index % side, z: index / side)
+                    }
                     let target = ((i / 16 * texels + y) * imageSide + i % 16 * texels + x) * 4
                     pixels[target] = UInt8((UInt32(shaded.red) * alpha + 127) / 255)
                     pixels[target + 1] = UInt8((UInt32(shaded.green) * alpha + 127) / 255)
@@ -66,6 +80,9 @@ nonisolated enum MapDetailRenderer {
             }
         }
         try Task.checkCancellation()
-        return hasPixels ? CGImage.rgba(pixels, width: imageSide, height: imageSide) : nil
+        guard hasPixels, let image = CGImage.rgba(pixels, width: imageSide, height: imageSide) else { return nil }
+        let normalImage = normals.flatMap { CGImage.rgba($0, width: 16, height: 16, colorSpace: CGColorSpace.linearSRGB) }
+        guard !usesSavedLighting || normalImage != nil else { return nil }
+        return MapTileImage(image, normals: normalImage)
     }
 }

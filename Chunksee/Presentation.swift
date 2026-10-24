@@ -153,10 +153,10 @@ extension Color {
 }
 
 extension CGImage {
-    /// An sRGB image from premultiplied RGBA pixels, row by row from the top left.
-    nonisolated static func rgba(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+    /// Premultiplied RGBA pixels, row by row from the top left; ordinary colors default to sRGB.
+    nonisolated static func rgba(_ pixels: [UInt8], width: Int, height: Int, colorSpace: CFString = CGColorSpace.sRGB) -> CGImage? {
         guard pixels.count == width * height * 4, let provider = CGDataProvider(data: Data(pixels) as CFData),
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+              let space = CGColorSpace(name: colorSpace) else { return nil }
         return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
                        space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)

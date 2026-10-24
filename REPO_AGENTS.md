@@ -65,6 +65,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.66.1 supplies verified omitted 26.3 block properties to model and tint resolution.
+    TileCache version 25 combines saved-time lighting, optional nighttime status and deferred
+    close-up texture data, and invalidates colors drawn before the compact-default fix.
 
 ## Modules
 
@@ -324,8 +327,28 @@ The cached Canvas contains unlit RGBA bytes, signed little-endian Int32 heights 
 Lighting forms the displayed/exported full image and its preview after rendering or loading that
 surface, so changed height-scale metadata can relight a cache hit without rereading chunks. Normal
 and Water Depth keys therefore do not include the lighting scale; Height's baked palette still does.
-Cache writes retain the existing map-owned cancellation/draining lifecycle. This does not implement
-dynamic time-of-day lighting or cross-region cast shadows (#357/#359).
+Cache writes retain the existing map-owned cancellation/draining lifecycle. Cast shadows remain
+separate (#359).
+
+MapLighting projects Kit 0.62.0's savedSkyLighting and dimension time metadata into drawing inputs.
+WorldResources shares one cancellable lighting read across dimensions, reopening metadata on
+saved-clock, level, generation-settings or pack changes. A failed read retains its last good
+snapshot; a successful missing definition clears it. Asset replacement and world close reject
+late reads. No app-side timeline tables or clock simulation exist. No-skylight or unsupported
+dimensions retain Daylight; a custom skylit fixed-time type uses its own saved attributes.
+Each MapModel owns its remembered Saved Time / Daylight choice, exposed by the native View >
+Lighting menu. Height bypasses lighting; Water Depth preserves its water palette; markers and
+overlays are never tinted. Increase Contrast uses a brighter ambient floor and milder color tint.
+The map legend identifies Saved Time and its moon phase.
+
+Saved Time prepares compact linear-sRGB normal images from the cached signed heights during the
+existing relief walk, then applies direction and tint with a SwiftUI color shader at drawing time.
+A quarter of fixed directional relief plus the existing elevation curve keeps noon readable.
+Clock-only updates replace uniforms without rendering tiles or invalidating terrain/hover/index
+caches. Mode/availability changes rebuild drawing inputs from the existing unlit cache; they do
+not change its format or key. Color and normal images share one MapTileImage and count against
+the same full/preview eviction budgets; visible regions keep the existing retention exception.
+Preview normals ignore missing columns and preserve water when any contributing column is water.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
@@ -921,9 +944,12 @@ scales and a Fit Image action. MapExportModel captures the map's renderer, style
 when Create is pressed, without changing the live viewport, layers or selection. Reading and PNG
 encoding run off-main; one production region tile at a time is drawn through MapView's shared
 terrain path into a checked RGBA destination, then the shared overlays and legend are drawn once.
-Current-view Copy/Share and area images use the same CGContext-backed ImageRenderer rasterizer
-and ImageIO encoder. This replaces ImageRenderer.cgImage for current-view images so antialiased
-edges match between the two image paths; the live map's Canvas drawing is unchanged.
+Current-view Copy/Share and area images share the same terrain/overlay rasterizers and ImageIO
+encoder. Nonshader terrain and overlays retain the CGContext-backed ImageRenderer path. SwiftUI's
+CGContext callback ignores custom shaders, so Saved Time terrain uses ImageRenderer.cgImage in
+clipped, pixel-aligned pieces of at most 1024 pixels per side. Both exports capture lighting and
+contrast; the live map uses the same shader and terrain commands. Tests compare cropped native
+Canvas pixels with the bounded path and compare area/current-view output in both appearances.
 The completed PNG stays in bounded app memory and leaves through native Copy/Share. No export
 file or partial file is written and user-selected file access remains read-only. One document's
 BackgroundWork scope cancels and drains reads, cache writes and encoding before world access ends;
@@ -971,6 +997,23 @@ TileCache keeps the unfiltered image and one latest filtered variant in each exi
 Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
 filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
 highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
+
+Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag and optional
+resolved nighttime rule; WorldSession persists only the flag through LayerVisibility. WorldResources
+shares one cancellable metadata read across interested tabs, using ChunkseeKit's published
+World.nightMonsterLighting. Hidden layers start no read; the last hidden/closed tab cancels pending
+metadata, and generation/asset identities reject stale results. No game light rule is repeated here.
+RegionTileRenderer keeps the ordinary terrain profile while the layer is off; when enabled and a rule
+is available, it uses the shared terrain/light profile and samples the block above each displayed
+surface during the same decode. The layer indicates only whether ordinary monsters can pass the
+clear-night light check, not full spawnability. Missing, stale or unsupported facts remain unknown.
+TileCache version 24 stores optional status bytes, with separate on/off slots and rule identities.
+The map, legend and exports use red dots for dark areas and stripes for unknown light, so colour
+is not the only distinction. The pointer and centered accessibility readout share MapModel's
+top-block cache and pending reads. Only Dark Spots requests a center read; moving, hiding, saving
+and closing cancel obsolete reads without cancelling another readout's interest in the same chunk.
+The accessibility value reports the center's dark/bright/unknown result as its column changes.
+Appearance-only changes preserve pending coordinate reads because the displayed height is unchanged.
 
 ## Interface wording
 
@@ -1133,7 +1176,7 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Kit 0.65.0 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
+APIs. Kit 0.66.1 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
 ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
 that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
 a partial string identity. Custom conditions, strings, numeric ranges and colors stay in Kit;
@@ -1186,7 +1229,7 @@ Kit supplies the verified 26.3 shield geometry, translations used to separate co
 parts and, in 0.57.1, the half-turns used by the straw bed. They use the same item renderer, skin
 decoding and memory caches, with no app-side model table. Synthetic pixel tests exercise both
 bed layouts and their texture orientation, plus the shield's front plate/back handle through
-GameAssetLibrary and native bed icons in both appearances. Kit 0.65.0 resolves saved shield designs
+GameAssetLibrary and native bed icons in both appearances. Kit 0.66.1 resolves saved shield designs
 into ordered dyed material overlays on the same plate/handle geometry. ItemTexture composites
 the premultiplied pixels before projection, so the shared depth test still protects the nearer
 handle. Every face reuses one immutable composed skin. Base, layer sources and composed results
@@ -1302,10 +1345,11 @@ a reload that remains pending across overlapping autosaves. Read errors retain t
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.
 
 Close-up texture detail retains selected states, tints, roof shade and filter emphasis from the
-existing terrain scan in chunk-local palettes. TileCache version 23 stores one shared material
+existing terrain scan in chunk-local palettes. TileCache version 25 stores one shared material
 palette per region, with bounded references preserving each chunk's local palette addresses.
 Repeated states and tints are encoded and decoded once per region; immutable chunk memory costs
-are computed once. The ordinary tile retains its original pixel/height/water payload. Close-up
+are computed once. The ordinary tile retains its pixel/height/water payload plus optional
+nighttime status while Dark Spots is on. Close-up
 data lives in a separately compressed sidecar under the same complete key and is decoded only
 for visible regions at 800% or above. A missing or corrupt sidecar never invalidates the ordinary
 tile; a close-up request regenerates it through the existing renderer when needed. Accepted cold
@@ -1322,11 +1366,14 @@ retained only for visible close-up regions; zooming out releases them and their 
 MapModel's existing BackgroundWork owner tracks one sidecar load and one close-up chunk job at a time, keeping work
 still needed during panning and rejecting results after source/style/depth/filter/region changes
 or close. Only visible chunks are requested above the 800% threshold; completed chunk pictures
-have a 256-entry (64 MiB) budget, retaining visible chunks in larger windows. GameAssetLibrary
+have a 256-entry (about 65 MiB with normals) budget, retaining visible chunks in larger windows. GameAssetLibrary
 reuses selected-model pictures by state, tint and chosen model/transform, rather than by world
 position, in a shared 16 MiB cache. It uses the same decoded textures and clears pictures on source
 retirement. MapDetailRenderer applies the same MapRelief column calculation and filter shading;
-partial pixels remain premultiplied. Water and highlighted blocks keep the ordinary presentation,
+partial pixels remain premultiplied. Its normals remain one pixel per block and its sidecar keeps
+optional nighttime status. Ordinary tiles and close-up pictures use the same saved-time shader
+and Dark Spots color treatment; clock-only changes reuse both pictures. Full tile budgets count
+color, normals and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail
 threshold. No new controls, localization keys, file access, asset copy or world modification.

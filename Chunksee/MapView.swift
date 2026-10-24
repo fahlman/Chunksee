@@ -40,15 +40,16 @@ struct MapView: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.locale) private var locale
 
-    private var zoomPercentage: String {
-        ZoomPercentage.text(map.viewport.scale)
-    }
-
-    private var accessibilityReadout: String {
+    static func accessibilityReadout(map: MapModel, content: MapContent) -> String {
+        let zoomPercentage = ZoomPercentage.text(map.viewport.scale)
         let position = String(localized: "Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)")
-        guard let seed = content.slimeSeed,
-              let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) else { return position }
-        return [position, slime].joined(separator: "; ")
+        var descriptions = [position]
+        if let seed = content.slimeSeed, let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) { descriptions.append(slime) }
+        if map.showsDarkSpots {
+            descriptions.append(String(localized: "Dark Spots shown. \(DarkSpots.explanation)"))
+            descriptions.append((map.topBlock(at: map.viewport.center)?.nightLight ?? .unknown).description)
+        }
+        return descriptions.joined(separator: "; ")
     }
 
     private func activate(_ position: CGPoint?, target: MapTarget?, y: Double?) {
@@ -118,11 +119,12 @@ struct MapView: View {
             magnifyStart = nil
             map.requestTiles(visibleIn: size, displayScale: displayScale)
         }
+        .onChange(of: map.showsDarkSpots) { loadHoveredBlock() }
         .onChange(of: size) { map.requestTiles(visibleIn: size, displayScale: displayScale) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(session.presentation.mapTitle(in: map.dimension.id, locale: locale))
         .accessibilityIdentifier("world-map")
-        .accessibilityValue(Text(accessibilityReadout))
+        .accessibilityValue(Text(Self.accessibilityReadout(map: map, content: content)))
         .accessibilityHint(Text("Use the arrow keys or scroll to move the map, and Command-scroll to zoom."))
         .accessibilityChildren {
             ZStack(alignment: .topLeading) {
@@ -166,26 +168,29 @@ struct MapView: View {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
-                    image: { map.image(for: $0, fullResolution: fullResolution) }, in: context, size: size)
-        drawDetail(viewport: map.viewport, images: map.detailImages, in: context, size: size)
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    protectsWater: map.style == .waterDepth, in: context, size: size)
+        drawDetail(viewport: map.viewport, images: map.detailImages, lighting: map.lighting, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
-    static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> CGImage?,
-                            in context: GraphicsContext, size: CGSize) {
+    static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
+                            lighting: MapLighting? = nil, protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
-            guard let image = image(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
+            guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't expose seams.
-            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect.insetBy(dx: -0.5, dy: -0.5))
+            let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
+            drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: lighting,
+                             protectsWater: protectsWater, increasedContrast: increasedContrast, in: context)
         }
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
-    static func drawDetail(viewport: MapViewport, images: [ChunkPosition: CGImage],
+    static func drawDetail(viewport: MapViewport, images: [ChunkPosition: MapTileImage], lighting: MapLighting? = nil,
                            in context: GraphicsContext, size: CGSize) {
         guard viewport.scale >= MapDetailRenderer.minimumScale else { return }
         let bounds = CGRect(origin: .zero, size: size)
@@ -194,8 +199,21 @@ struct MapView: View {
             let rect = CGRect(x: origin.x, y: origin.z, width: 16, height: 16)
                 .applying(viewport.transform(in: size))
             guard rect.intersects(bounds) else { continue }
-            context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
+            drawTerrainImage(image, rect: rect, interpolation: .none, lighting: lighting,
+                             protectsWater: false, increasedContrast: nil, in: context)
         }
+    }
+
+    /// Both terrain resolutions use one lighting treatment, including exported pictures.
+    private static func drawTerrainImage(_ image: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
+                                         lighting: MapLighting?, protectsWater: Bool, increasedContrast: Bool?,
+                                         in context: GraphicsContext) {
+        var layer = context
+        if let lighting, let normals = image.normals {
+            layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
+                increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
+        }
+        layer.draw(Image(decorative: image.image, scale: 1).interpolation(interpolation), in: rect)
     }
 
     static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent,
@@ -300,8 +318,9 @@ struct MapView: View {
             }
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
-                let block = Self.namesBlocks(at: map.viewport.scale) ? map.topBlock(at: hoverBlock) : nil
+                let block = Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots ? map.topBlock(at: hoverBlock) : nil
                 CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
+                if let light = block?.nightLight { Text(light.description) }
                 if let seed = content.slimeSeed, let description = SlimeChunks.description(at: hoverBlock, seed: seed) {
                     Text(description)
                 }
@@ -348,7 +367,7 @@ struct MapView: View {
 
     /// Reads the block under the pointer, also when the map moves beneath a still pointer.
     private func loadHoveredBlock() {
-        guard let hoverPoint, Self.namesBlocks(at: map.viewport.scale) else { return }
+        guard let hoverPoint, Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots else { return }
         map.loadTopBlocks(at: map.viewport.blockPoint(at: hoverPoint, in: size))
     }
 
