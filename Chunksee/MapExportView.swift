@@ -6,6 +6,7 @@ struct MapExportView: View {
     @Bindable var model: MapExportModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.locale) private var locale
 
     init(session: WorldSession) {
@@ -87,7 +88,7 @@ struct MapExportView: View {
                         Label("Share Image", systemImage: "square.and.arrow.up")
                     }
                 } else {
-                    Button("Create Image") { model.create(colorScheme: colorScheme, locale: locale) }
+                    Button("Create Image") { model.create(colorScheme: colorScheme, locale: locale, contrast: contrast) }
                         .keyboardShortcut(.defaultAction)
                         .disabled(!model.canCreate)
                         .accessibilityIdentifier("map-export-create")

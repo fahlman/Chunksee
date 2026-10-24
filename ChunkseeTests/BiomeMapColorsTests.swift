@@ -227,13 +227,13 @@ import Testing
         let blueKey = renderer.colorSourceKey
         let blue = try #require(try await renderer.tile(for: position))
         #expect(firstKey != blueKey)
-        #expect(try ItemPictureFixture.pixels(red.full).color(4, 4) == [255, 0, 0, 255])
-        #expect(try ItemPictureFixture.pixels(blue.full).color(4, 4) == [0, 0, 255, 255])
+        #expect(try ItemPictureFixture.pixels(red.full.image).color(4, 4) == [255, 0, 0, 255])
+        #expect(try ItemPictureFixture.pixels(blue.full.image).color(4, 4) == [0, 0, 255, 255])
         try pack(at: url, grass: 0x0000ff)
         renderer.biomeColors = try await library.biomeColors(in: World(contentsOf: url))
         #expect(renderer.colorSourceKey == blueKey)
         let hit = try #require(try await renderer.tile(for: position))
-        #expect(try ItemPictureFixture.pixels(hit.full).bytes == ItemPictureFixture.pixels(blue.full).bytes)
+        #expect(try ItemPictureFixture.pixels(hit.full.image).bytes == ItemPictureFixture.pixels(blue.full.image).bytes)
         let file = dimension.regionURL(at: position)
         #expect(TileCache.key(for: position, regionFile: file, style: .height, colorSource: blueKey)
             == TileCache.key(for: position, regionFile: file, style: .height, colorSource: firstKey))
@@ -458,7 +458,7 @@ import Testing
         let own = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
         let neighbor = dimension.regionURL(at: .init(x: -1, z: 0))
         func color() async throws -> [UInt8] {
-            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).color(point.x, point.z)
+            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).color(point.x, point.z)
         }
         let missing = try await color()
         #expect(missing == [124, 189, 107, 255])
@@ -493,6 +493,9 @@ import Testing
         let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
         let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
             renderTile: { renderer, region in
+                // Only hold the visible tile under test. Shadow-height neighbors can finish
+                // normally without taking a gate intended for this tile's replacement.
+                guard region == RegionPosition(x: 0, z: 0) else { return try await renderer.tile(for: region) }
                 let name = String(await reads.next())
                 let tile = try await renderer.tile(for: region)
                 _ = await gate.read(name)
@@ -511,7 +514,7 @@ import Testing
         await map.waitUntilIdle()
         await gate.finish("0", with: true)
         await work.waitUntilFinished()
-        let point = blending ? (x: 0, z: 8) : try westSample(), image = try #require(map.tiles[.init(x: 0, z: 0)])
+        let point = blending ? (x: 0, z: 8) : try westSample(), image = try #require(map.tiles[.init(x: 0, z: 0)]?.image)
         #expect(try ItemPictureFixture.pixels(image).color(point.x, point.z) == (blending ? [153, 0, 102, 255] : [0, 0, 255, 255]))
         map.close(); await work.waitUntilFinished(); await library.close()
     }
@@ -584,9 +587,9 @@ import Testing
         renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
         renderer.surfaceContext = try context(height: 32)
         #expect(renderer.surfaceContext.dimensionType?.maxY == 31)
-        let tall = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full)
+        let tall = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full.image)
         renderer.surfaceContext = try context(height: 16)
-        let short = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full)
+        let short = try ItemPictureFixture.pixels(#require(try await renderer.tile(for: .init(x: 0, z: 0))).full.image)
         var crossed = 0
         for z in 2..<14 { for x in 2..<14 {
             let cell = try #require(BiomeSampler(seed: 0).cellOrigin(at: .init(blockX: x, blockY: 15, blockZ: z)))

@@ -115,6 +115,21 @@ struct WorldCommands: Commands {
                 .disabled(session?.map?.style == .height)
             }
             .disabled(session?.map == nil)
+            Menu("Lighting") {
+                ForEach(MapLightingMode.allCases, id: \.self) { mode in
+                    Toggle(isOn: Binding {
+                        (session?.map?.lighting == nil ? MapLightingMode.daylight : .savedTime) == mode
+                    } set: { if $0 { session?.map?.setLightingMode(mode) } }) {
+                        Text(mode.title)
+                    }
+                    .disabled(mode == .savedTime && session?.map?.savedLighting == nil)
+                }
+                Divider()
+                Toggle("Cast Shadows", isOn: Binding {
+                    session?.map?.castsShadows ?? true
+                } set: { session?.map?.setCastsShadows($0) })
+            }
+            .disabled(session?.map == nil || session?.map?.style == .height)
             Button("Show/Hide Blocks…") { showsBlockFilter = true }
                 .disabled(session?.map == nil || showsBlockFilter == nil)
             Button("Map Height…") { showsMapHeight = true }
@@ -142,6 +157,10 @@ struct WorldCommands: Commands {
                 session?.slimeChunks.isShown ?? false
             } set: { session?.slimeChunks.isShown = $0 })
             .disabled(session?.slimeChunks.isAvailable != true)
+            Toggle("Dark Spots", isOn: Binding {
+                session?.map?.showsDarkSpots ?? false
+            } set: { session?.setDarkSpots($0) })
+            .disabled(session?.map == nil)
             Toggle("Grid", isOn: Binding {
                 session?.visibility.showsGrid ?? false
             } set: { session?.visibility.showsGrid = $0 })

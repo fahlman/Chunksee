@@ -133,7 +133,7 @@ import Testing
         #expect(cache.load(roofKey) != nil && cache.load(openKey) == nil)
         let openTile = try #require(try await RegionTileRenderer(dimension: dimension, surfaceContext: open,
             cache: cache, savesInBackground: false).tile(for: region))
-        #expect(roofTile.full.dataProvider?.data as Data? != openTile.full.dataProvider?.data as Data?)
+        #expect(roofTile.full.image.dataProvider?.data as Data? != openTile.full.image.dataProvider?.data as Data?)
         #expect(cache.load(roofKey) == nil && cache.load(openKey) != nil)
     }
 
@@ -198,7 +198,7 @@ import Testing
                 map.viewport.center = CGPoint(x: 8, y: 8)
                 map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
                 await map.waitUntilIdle()
-                let pixels = try #require(map.tiles[.init(x: 0, z: 0)]?.dataProvider?.data as Data?)
+                let pixels = try #require(map.tiles[.init(x: 0, z: 0)]?.image.dataProvider?.data as Data?)
                 let color = try #require(BlockColors.color(for: block)), offset = (8 * 512 + 8) * 4
                 #expect(Array(pixels[offset ..< offset + 4]) == [color.red, color.green, color.blue, 255])
 

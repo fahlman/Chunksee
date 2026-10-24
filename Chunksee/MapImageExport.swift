@@ -4,12 +4,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MapImage {
-    /// Streams one production tile at a time into one size-checked destination. The window's
-    /// tile cache and viewport are untouched; cancellation discards the unpublished destination.
+    /// Streams production tiles into one size-checked destination. Shadows retain at most nine
+    /// recent tiles for their neighboring heights; the window's tile memory and viewport stay untouched.
     @MainActor
     static func export(plan: MapExportPlan, regions: Set<RegionPosition>, renderer: RegionTileRenderer,
                        content: MapContent, portalStatus: @escaping (NetherPortal) -> PortalLinkStatus?,
-                       colorScheme: ColorScheme, locale: Locale,
+                       colorScheme: ColorScheme, locale: Locale, contrast: ColorSchemeContrast = .standard,
                        progress: (Int, Int) -> Void,
                        readTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
                            = { try await $0.tile(for: $1) }) async throws -> MapImage {
@@ -18,19 +18,40 @@ extension MapImage {
             throw ExportFailure.cannotRender
         }
         let visible = plan.viewport.visibleRegions(in: plan.size, among: regions)
+        var retained: [RegionPosition: RegionTileRenderer.RenderedTile] = [:]
+        var order: [RegionPosition] = []
+        func read(_ region: RegionPosition) async throws -> RegionTileRenderer.RenderedTile? {
+            if let tile = retained[region] {
+                order.removeAll { $0 == region }; order.append(region)
+                return tile
+            }
+            guard var tile = try await readTile(renderer, region) else { return nil }
+            try Task.checkCancellation()
+            if let write = tile.cacheWrite { await write.store(); tile.cacheWrite = nil }
+            retained[region] = tile
+            order.append(region)
+            while order.count > (content.shadowLight == nil ? 1 : 9) { retained[order.removeFirst()] = nil }
+            return tile
+        }
         progress(0, visible.count)
         for (index, region) in visible.enumerated() {
             try Task.checkCancellation()
-            if let tile = try await readTile(renderer, region) {
+            if let tile = try await read(region) {
                 try Task.checkCancellation()
+                var shadow: CGImage?
+                if let light = content.shadowLight {
+                    let sources = MapShadow.sources(for: region, light: light).intersection(regions)
+                    for neighbor in sources where neighbor != region {
+                        try Task.checkCancellation()
+                        _ = try await read(neighbor)
+                    }
+                    shadow = try await MapShadow.image(for: region, heights: retained.compactMapValues(\.heights), light: light)
+                }
                 let image = plan.viewport.scale * CGFloat(RegionTileRenderer.side) > CGFloat(RegionTileRenderer.previewSide)
                     ? tile.full : tile.preview
-                let terrain = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                    MapView.drawTerrain(viewport: plan.viewport, regions: [region], image: { _ in image },
-                                        in: context, size: size)
-                }
-                guard drawImageLayer(terrain, size: plan.size, scale: 1, into: destination) else { throw ExportFailure.cannotRender }
-                if let write = tile.cacheWrite { await write.store() }
+                guard drawTerrainLayer(image, region: region, viewport: plan.viewport, size: plan.size, scale: 1,
+                                       lighting: content.lighting, protectsWater: content.mapStyle == .waterDepth,
+                                       contrast: contrast, shadow: shadow, into: destination) else { throw ExportFailure.cannotRender }
             }
             try Task.checkCancellation()
             progress(index + 1, visible.count)

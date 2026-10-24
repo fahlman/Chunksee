@@ -24,7 +24,11 @@ nonisolated struct TileCache: Sendable {
     /// 16: per-column biome tints keyed by the resolved world color definitions.
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
-    static let rendererVersion = 18
+    /// 19: optional nighttime light bytes and separate on/off cache slots.
+    /// 20–21 and 23 belong to the close-up texture branch under review.
+    /// 22: Kit 0.66.1 supplies omitted default block properties to model and tint resolution.
+    /// 24: combine saved-time lighting and optional nighttime-light cache data.
+    static let rendererVersion = 24
 
     let directory: URL
 
@@ -40,6 +44,7 @@ nonisolated struct TileCache: Sendable {
         var filterKey: String? = nil
         var colorSource: String? = nil
         var biomeSource: String? = nil
+        var nightLight: String? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
@@ -47,11 +52,12 @@ nonisolated struct TileCache: Sendable {
             let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
             let biomes = biomeSource.map { "biomes\($0)." } ?? ""
             let colors = colorSource.map { "assets\($0)." } ?? "fallback."
-            return "\(prefix)\(colors)\(biomes)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            let light = nightLight.map { "light\($0)." } ?? ""
+            return "\(prefix)\(light)\(colors)\(biomes)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
-        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered")." }
+        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered").\(nightLight == nil ? "ordinary" : "night")." }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -101,28 +107,30 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, biomeSource: String? = nil) -> Key? {
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, biomeSource: String? = nil, darkSpots: DarkSpots? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
                    style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource,
-                   biomeSource: style == .height ? nil : biomeSource)
+                   biomeSource: style == .height ? nil : biomeSource, nightLight: darkSpots?.cacheKey)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.fileName)),
               let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              bytes.count == count * 9 else { return nil }
-        let water = bytes[(count * 8)...]
+              bytes.count == count * (key.nightLight == nil ? 9 : 10) else { return nil }
+        let water = bytes[(count * 8)..<(count * 9)]
+        let light = key.nightLight == nil ? nil : Array(bytes[(count * 9)...])
+        if let light, !light.allSatisfy({ DarkSpots.Status(rawValue: $0) != nil }) { return nil }
         guard water.allSatisfy({ $0 <= 1 }) else { return nil }
         let heights = bytes.withUnsafeBytes { buffer in
             (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: count * 4 + $0 * 4, as: Int32.self)) }
         }
         return RegionTileRenderer.Canvas(pixels: Array(bytes[..<(count * 4)]), heights: heights,
-                                         isWater: water.map { $0 == 1 })
+                                         isWater: water.map { $0 == 1 }, nightLight: light)
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
@@ -131,11 +139,13 @@ nonisolated struct TileCache: Sendable {
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard surface.pixels.count == count * 4, surface.heights.count == count,
-              surface.isWater.count == count else { return }
-        var bytes = Data(capacity: count * 9)
+              surface.isWater.count == count,
+              (key.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count) else { return }
+        var bytes = Data(capacity: count * (key.nightLight == nil ? 9 : 10))
         bytes.append(contentsOf: surface.pixels)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
+        if let light = surface.nightLight { bytes.append(contentsOf: light) }
         guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

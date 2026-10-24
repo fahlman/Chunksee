@@ -95,13 +95,13 @@ import Testing
             let renderer = RegionTileRenderer(dimension: dimension, cache: cache, style: style, heightScale: scale)
             let tile = try #require(try await renderer.tile(for: region))
             await (try #require(tile.cacheWrite)).store()
-            saved[style] = try #require(tile.full.dataProvider?.data as Data?)
+            saved[style] = try #require(tile.full.image.dataProvider?.data as Data?)
         }
         for style in MapStyle.allCases {
             let renderer = RegionTileRenderer(dimension: dimension, cache: cache, style: style, heightScale: scale)
             let tile = try #require(try await renderer.tile(for: region))
             #expect(tile.cacheWrite == nil)
-            #expect(tile.full.dataProvider?.data as Data? == saved[style])
+            #expect(tile.full.image.dataProvider?.data as Data? == saved[style])
         }
         let changedScale = try heightScale(sea: 80), file = dimension.regionURL(at: region)
         for y in [Int?.none, 30] {
@@ -142,7 +142,7 @@ import Testing
         await columns.finish("0", with: (file, Array(repeating: block, count: 256)))
         await columns.finish("1", with: (file, Array(repeating: block, count: 256)))
         await map.waitForRenders()
-        #expect(map.tiles[.init(x: 0, z: 0)] === heightImage && map.style == .height)
+        #expect(map.tiles[.init(x: 0, z: 0)]?.image === heightImage && map.style == .height)
         #expect(map.topBlock(at: CGPoint(x: 1, y: 1)) == block && copiedY == 40)
         map.close()
         map.setStyle(.waterDepth)
