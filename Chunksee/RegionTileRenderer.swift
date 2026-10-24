@@ -314,13 +314,15 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
         return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite,
-                            detail: scanned ? .init(detail: surface.detail, heights: surface.heights) : nil)
+                            detail: scanned && gameAssets != nil && style != .height
+                                ? .init(detail: surface.detail, heights: surface.heights) : nil)
     }
 
     /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
     /// sidecar (including disabled caching) uses the same renderer, never another block parser.
     @concurrent
     func detail(for region: RegionPosition) async throws -> MapSurfaceDetail.Surface? {
+        guard gameAssets != nil, style != .height else { return nil }
         try await gameAssets?.checkAvailable()
         let key = cacheKey(for: region)
         if let cache, let key, let detail = cache.loadDetail(key) { return detail }

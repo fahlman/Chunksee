@@ -98,7 +98,7 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
-        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2)
+        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2, colorSource: "test-assets")
         var surface = RegionTileRenderer.Canvas()
         surface.detail.insert(try chunk(), at: 0)
         surface.heights[0] = 12

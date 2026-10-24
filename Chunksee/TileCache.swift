@@ -146,7 +146,8 @@ nonisolated struct TileCache: Sendable {
 
     func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard surface.heights.count == count, let detail = surface.detail.encoded() else { return }
+        guard key.colorSource != nil, key.style != .height,
+              surface.heights.count == count, let detail = surface.detail.encoded() else { return }
         var bytes = Data(capacity: count * 4 + detail.count)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(detail)

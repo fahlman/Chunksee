@@ -459,7 +459,9 @@ import Testing
         #expect(try await color() == missing)
         let after = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
         #expect(after.size == own.size && after.modified == own.modified)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        let cachedFiles = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
+        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse") }.count == 1)
+        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
         await library.close()
     }
 
