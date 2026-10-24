@@ -44,6 +44,13 @@ struct WorldView: View {
                         }
                         .disabled(!slimeChunks.isAvailable)
                         .help("Mark Overworld chunks where slimes can spawn below Y 40")
+                        MapVisibilityRow(isShown: Binding {
+                            session.map?.showsDarkSpots ?? false
+                        } set: { session.setDarkSpots($0) }) {
+                            Label("Dark Spots", systemImage: DarkSpots.symbol)
+                        }
+                        .disabled(session.map == nil)
+                        .help(DarkSpots.explanation)
                         MapVisibilityRow(isShown: $visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }

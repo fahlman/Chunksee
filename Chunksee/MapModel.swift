@@ -11,6 +11,9 @@ final class MapModel {
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
     private(set) var blockFilter = MapBlockFilter()
+    private(set) var showsDarkSpots = false
+    private(set) var nightLighting: MonsterSpawnLight?
+    var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
     let heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
@@ -32,6 +35,7 @@ final class MapModel {
         current.cutawayY = depth.cutawayY
         current.style = style
         current.blockFilter = blockFilter
+        current.darkSpots = darkSpots
         current.gameAssets = style == .height ? nil : gameAssets
         current.biomeColors = style == .height ? nil : biomeColors
         return current
@@ -285,6 +289,7 @@ final class MapModel {
         cancel()
         gameAssets = nil
         biomeColors = nil
+        nightLighting = nil
     }
 
     // MARK: The hover readout's block
@@ -385,7 +390,8 @@ final class MapModel {
                 ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
               let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
-                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter)
+                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter,
+                                                       darkSpots: renderer.darkSpots)
         else { return nil }
         return (file, blocks)
     }
@@ -432,9 +438,21 @@ final class MapModel {
         else { reloadTiles() }
     }
 
-    private func surfaceChanged() {
+    func setDarkSpots(_ shown: Bool) {
+        guard !isClosed, showsDarkSpots != shown else { return }
+        showsDarkSpots = shown
+        surfaceChanged(coordinatesChanged: false)
+    }
+
+    func setNightLighting(_ value: MonsterSpawnLight?) {
+        guard !isClosed, nightLighting != value else { return }
+        nightLighting = value
+        if showsDarkSpots { surfaceChanged(coordinatesChanged: false) }
+    }
+
+    private func surfaceChanged(coordinatesChanged: Bool = true) {
         hoverWork.cancel()
-        coordinateWork.cancel()
+        if coordinatesChanged { coordinateWork.cancel() }
         activeHoverRead = nil
         topBlocks = [:]
         topBlockOrder = []

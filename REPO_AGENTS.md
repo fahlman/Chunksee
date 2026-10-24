@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.63.0`, resolved to `0.63.0` (`1bc63ec186188c6a57ea07cc9a1a7a3d25f2d9e9`).
+  minor" from `0.64.0`, resolved to `0.64.0` (`edeff7064e7264c858026c6e1834c491477bda13`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -971,6 +971,19 @@ TileCache keeps the unfiltered image and one latest filtered variant in each exi
 Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
 filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
 highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
+
+Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag and optional
+resolved nighttime rule; WorldSession persists only the flag through LayerVisibility. WorldResources
+shares one cancellable metadata read across interested tabs, using ChunkseeKit's published
+World.nightMonsterLighting. Hidden layers start no read; the last hidden/closed tab cancels pending
+metadata, and generation/asset identities reject stale results. No game light rule is repeated here.
+RegionTileRenderer keeps the ordinary terrain profile while the layer is off; when enabled and a rule
+is available, it uses the shared terrain/light profile and samples the block above each displayed
+surface during the same decode. The layer indicates only whether ordinary monsters can pass the
+clear-night light check, not full spawnability. Missing, stale or unsupported facts remain unknown.
+TileCache version 19 stores optional status bytes, with separate on/off slots and rule identities.
+The on-screen map, hover readout and exports use the same red/striped presentation and legend.
+Appearance-only changes preserve pending coordinate reads because the displayed height is unchanged.
 
 ## Interface wording
 

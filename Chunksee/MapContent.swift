@@ -7,6 +7,7 @@ struct MapContent {
     var mapStyle = MapStyle.normal
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
+    var showsDarkSpots = false
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -119,6 +120,7 @@ extension MapContent {
         mapStyle = session.map?.style ?? .normal
         heightScale = session.map?.heightScale
         blockFilter = session.map?.blockFilter ?? MapBlockFilter()
+        showsDarkSpots = session.map?.showsDarkSpots == true
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown

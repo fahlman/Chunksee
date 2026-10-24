@@ -27,6 +27,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     var blockFilter = MapBlockFilter()
     var gameAssets: GameAssetLibrary?
     var biomeColors: MapBiomeColors?
+    var darkSpots: DarkSpots?
 
     private var currentBiomeColors: MapBiomeColors? {
         biomeColors?.assetSourceKey == gameAssets?.sourceKey ? biomeColors : nil
@@ -62,7 +63,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             return try await sampledSurface(in: file, region: region, origin: origin)
         }
         let coordinates = file.chunkCoordinates
-        var canvas = Canvas()
+        var canvas = Canvas(nightLight: darkSpots == nil ? nil : Array(repeating: DarkSpots.Status.unknown.rawValue, count: Self.side * Self.side))
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
@@ -163,7 +164,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var queued: Set<ChunkPosition> = []
         var ready: [ChunkPosition] = []
         var nextReady = 0, nextSource = 0
-        var canvas = Canvas()
+        var canvas = Canvas(nightLight: darkSpots == nil ? nil : Array(repeating: DarkSpots.Status.unknown.rawValue, count: Self.side * Self.side))
 
         func advance() {
             while firstUnfinished < 32, remaining[firstUnfinished] == 0 { firstUnfinished += 1 }
@@ -195,7 +196,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         group.addTask {
                             try Task.checkCancellation()
                             let scanned = Self.scan(file, localX: position.x, localZ: position.z, context: surfaceContext,
-                                                    cutawayY: cutawayY, blockFilter: blockFilter)
+                                                    cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots)
                             return .decoded(position, scanned.map { Self.colorInput($0.sections, columns: $0.columns) })
                         }
                     }
@@ -253,7 +254,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private func displayPixels(_ surface: Canvas) -> [UInt8] {
-        style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
+        let pixels = style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
+        return surface.nightLight.map { DarkSpots.applying($0, to: pixels, side: Self.side) } ?? pixels
     }
 
     @concurrent
@@ -288,7 +290,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if style != .height { try await gameAssets?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region))
+        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
         var surface: Canvas?
         var cacheWrite: CacheWrite?
         if let cache, let key, let cached = cache.load(key) {
@@ -362,7 +364,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> [Column?]? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
-                                      cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
+                                      cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
         guard style != .height, gameAssets != nil else { return scanned.columns }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
@@ -550,25 +552,33 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
     /// readout: the same scan the map is drawn with, naming what it found.
-    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter()) -> [TopBlock?]? {
-        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
+    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), darkSpots: DarkSpots? = nil) -> [TopBlock?]? {
+        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
         return columns.map { column in
-            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth) }
+            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth, nightLight: $0.nightLight) }
         }
     }
 
-    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter) -> (sections: ColorSections, columns: [Column?])? {
-        // The map needs only blocks and heightmaps; skipping ticks, light and the like is faster.
-        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: Chunk.keysNotNeededForTerrain),
+    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter, darkSpots: DarkSpots? = nil) -> (sections: ColorSections, columns: [Column?])? {
+        // Keep the ordinary read profile unchanged. The optional layer samples light from this
+        // same decode and surface walk, without retaining a Chunk or adding another scan.
+        let skipping = darkSpots?.rule == nil ? Chunk.keysNotNeededForTerrain : Chunk.keysNotNeededForTerrainAndLight
+        guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: skipping),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
         var sections = ColorSections(chunk, filter: blockFilter)
-        let columns: [Column?]
+        var columns: [Column?]
         if let cutawayY {
             columns = sections.topColumns(from: .height(cutawayY))
         } else if let ceilingY = context.ceilingY {
             columns = sections.topColumns(from: .height(ceilingY), underCeiling: true)
         } else {
             columns = sections.topColumns(from: .surface(height: context.buildHeight))
+        }
+        if let darkSpots {
+            for index in columns.indices {
+                guard let column = columns[index] else { continue }
+                columns[index]?.nightLight = darkSpots.status(in: chunk, x: index % 16, surfaceY: column.y, z: index / 16)
+            }
         }
         return (sections, columns)
     }
@@ -592,6 +602,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var waterFloorColor: MapColor?
         var waterFloor: PaletteEntry?
         var colorShade = 1.0
+        var nightLight: DarkSpots.Status?
     }
 
     /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
@@ -603,6 +614,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var id: String
         var y: Int
         var waterDepth: Int
+        var nightLight: DarkSpots.Status?
     }
 
     /// Presentation resolved once per reached palette entry. Kit owns the saved-block traversal;
@@ -775,6 +787,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         var heights = [Int32](repeating: noHeight, count: side * side)
         var isWater = [Bool](repeating: false, count: side * side)
+        /// Allocated only while Dark Spots is on; ordinary tiles retain their existing layout.
+        var nightLight: [UInt8]?
 
         mutating func set(x: Int, z: Int, column: Column) {
             set(x: x, z: z, column: column, color: baseColor(for: column))
@@ -790,6 +804,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             pixels[i * 4 + 3] = 255
             heights[i] = height
             isWater[i] = column.waterDepth > 0
+            if nightLight != nil { nightLight?[i] = (column.nightLight ?? .unknown).rawValue }
         }
 
         mutating func set(_ columns: [Column?], chunkX: Int, chunkZ: Int) {
