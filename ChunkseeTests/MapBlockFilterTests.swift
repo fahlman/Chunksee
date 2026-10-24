@@ -88,7 +88,7 @@ import Testing
         let original = try #require(try await normal.tile(for: region))
         let first = try #require(try await RegionTileRenderer(dimension: dimension, cache: cache,
             savesInBackground: false, blockFilter: hiddenLeaves).tile(for: region))
-        #expect(first.full.dataProvider?.data as Data? != original.full.dataProvider?.data as Data?)
+        #expect(first.full.image.dataProvider?.data as Data? != original.full.image.dataProvider?.data as Data?)
         let secondFilter = MapBlockFilter(highlightedIDs: ["minecraft:water"])
         _ = try await RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false, blockFilter: secondFilter).tile(for: region)
         let firstKey = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), blockFilter: hiddenLeaves))
@@ -96,7 +96,7 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 2)
         let restored = try #require(try await RegionTileRenderer(dimension: dimension, cache: cache,
             blockFilter: secondFilter.enabled(false)).tile(for: region))
-        #expect(restored.cacheWrite == nil && restored.full.dataProvider?.data as Data? == original.full.dataProvider?.data as Data?)
+        #expect(restored.cacheWrite == nil && restored.full.image.dataProvider?.data as Data? == original.full.image.dataProvider?.data as Data?)
     }
 
     @Test(.timeLimit(.minutes(1))) func applyingChoicesRejectsLateTilesAndCoordinatesAndRereadsHover() async throws {

@@ -22,9 +22,9 @@ import Testing
         // Prime Foundation's URL metadata before changing this same URL's file.
         _ = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let original = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(original.fileName == "r.-1.2.normal.surface.all.fallback.hunknown.cnone.3.1790000000500000.v18.lzfse")
+        #expect(original.fileName == "r.-1.2.normal.surface.all.fallback.hunknown.cnone.3.1790000000500000.v22.lzfse")
         #expect(TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName
-                == "r.-1.2.normal.cutaway.all.fallback.y-16.3.1790000000500000.v18.lzfse")
+                == "r.-1.2.normal.cutaway.all.fallback.y-16.3.1790000000500000.v22.lzfse")
         #expect(ScanCache.fingerprint([file, missing]) == "573ac917b6c1e815")
         #expect(ScanCache.fingerprint([missing, file]) != ScanCache.fingerprint([file, missing]))
 
@@ -68,7 +68,7 @@ import Testing
 
         let renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
         let tile = try #require(try await renderer.tile(for: region))
-        let pixels = try #require(tile.full.dataProvider?.data as Data?)
+        let pixels = try #require(tile.full.image.dataProvider?.data as Data?)
         let offset = (RegionTileRenderer.side + 1) * 4
         let grass = try #require(BlockColors.color(for: "minecraft:grass_block"))
         #expect(Array(pixels[offset..<offset + 4]) == [grass.red, grass.green, grass.blue, 255])
@@ -94,7 +94,7 @@ import Testing
         let key = try #require(TileCache.key(for: region, regionFile: regionFile))
         #expect(TileCache(directory: cacheDir).load(key) != nil)
         let second = try #require(try await renderer.tile(for: region))
-        #expect(second.full.dataProvider?.data as Data? == first.full.dataProvider?.data as Data?)
+        #expect(second.full.image.dataProvider?.data as Data? == first.full.image.dataProvider?.data as Data?)
 
         // Touching the region file (as the game does on save) makes a new key; the old entry is replaced.
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: regionFile.path)
@@ -334,7 +334,7 @@ import Testing
             await closing.value
             #expect(finished && map.unfinishedCacheWrites == 0)
             let key = try #require(TileCache.key(for: RegionPosition(x: 0, z: 0), regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
-            let bytes = try #require(map.tiles[RegionPosition(x: 0, z: 0)]?.dataProvider?.data as Data?)
+            let bytes = try #require(map.tiles[RegionPosition(x: 0, z: 0)]?.image.dataProvider?.data as Data?)
             #expect(TileCache(directory: f.cache).load(key)?.pixels == Array(bytes))
             try FileManager.default.removeItem(at: f.cache)
             #expect(!FileManager.default.fileExists(atPath: f.cache.path))

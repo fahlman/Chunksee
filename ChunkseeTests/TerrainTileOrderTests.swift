@@ -32,12 +32,12 @@ import Testing
         let colors: [CGColor] = [CGColor(red: 1, green: 0, blue: 0, alpha: 1),
             CGColor(red: 0, green: 1, blue: 0, alpha: 1), CGColor(red: 0, green: 0, blue: 1, alpha: 1),
             CGColor(red: 1, green: 1, blue: 0, alpha: 1)]
-        var images: [RegionPosition: CGImage] = [:]
+        var images: [RegionPosition: MapTileImage] = [:]
         for (region, color) in zip(neighbors, colors) {
             let context = try #require(MapImage.imageContext(width: 8, height: 8))
             context.setFillColor(color); context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
             let image = try #require(context.makeImage())
-            images[region] = image
+            images[region] = MapTileImage(image)
         }
         func pixels(_ order: [RegionPosition]) throws -> Data {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in

@@ -9,7 +9,7 @@ extension MapImage {
     @MainActor
     static func export(plan: MapExportPlan, regions: Set<RegionPosition>, renderer: RegionTileRenderer,
                        content: MapContent, portalStatus: @escaping (NetherPortal) -> PortalLinkStatus?,
-                       colorScheme: ColorScheme, locale: Locale,
+                       colorScheme: ColorScheme, locale: Locale, contrast: ColorSchemeContrast = .standard,
                        progress: (Int, Int) -> Void,
                        readTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
                            = { try await $0.tile(for: $1) }) async throws -> MapImage {
@@ -25,11 +25,9 @@ extension MapImage {
                 try Task.checkCancellation()
                 let image = plan.viewport.scale * CGFloat(RegionTileRenderer.side) > CGFloat(RegionTileRenderer.previewSide)
                     ? tile.full : tile.preview
-                let terrain = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                    MapView.drawTerrain(viewport: plan.viewport, regions: [region], image: { _ in image },
-                                        in: context, size: size)
-                }
-                guard drawImageLayer(terrain, size: plan.size, scale: 1, into: destination) else { throw ExportFailure.cannotRender }
+                guard drawTerrainLayer(image, region: region, viewport: plan.viewport, size: plan.size, scale: 1,
+                                       lighting: content.lighting, protectsWater: content.mapStyle == .waterDepth,
+                                       contrast: contrast, into: destination) else { throw ExportFailure.cannotRender }
                 if let write = tile.cacheWrite { await write.store() }
             }
             try Task.checkCancellation()

@@ -166,20 +166,27 @@ struct MapView: View {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
-                    image: { map.image(for: $0, fullResolution: fullResolution) }, in: context, size: size)
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    protectsWater: map.style == .waterDepth, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
-    static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> CGImage?,
-                            in context: GraphicsContext, size: CGSize) {
+    static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
+                            lighting: MapLighting? = nil, protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
-            guard let image = image(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
+            guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't expose seams.
-            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect.insetBy(dx: -0.5, dy: -0.5))
+            let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
+            var layer = context
+            if let lighting, let normals = image.normals {
+                layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
+                    increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
+            }
+            layer.draw(Image(decorative: image.image, scale: 1).interpolation(interpolation), in: rect)
         }
     }
 
