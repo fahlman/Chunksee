@@ -687,15 +687,26 @@ import Testing
         renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
         renderer.blendsBiomeColors = true
         let image = try await pixels(renderer)
+        var unavailableCenters = 0
         for z in [0, 7, 15] { for x in [0, 7, 15] {
-            var count = 0
+            var count = 0, complete = true
             for dz in -2...2 { for dx in -2...2 {
                 let point = BlockPosition(blockX: x + dx, blockY: 15, blockZ: z + dz)
                 let selected = point.chunk == center ? point : try #require(sampler.cellOrigin(at: point))
+                // A neighbor's displaced cell can point back into the center's missing
+                // upper section. The fixture must not invent that absent palette.
+                if selected.chunk == center && !(0..<16).contains(selected.y) { complete = false }
                 if blue(selected.x, selected.y, selected.z) { count += 1 }
             } }
-            #expect(image.color(x, z) == [UInt8((25 - count) * 255 / 25), 0, UInt8(count * 255 / 25), 255])
+            let expected: [UInt8]
+            if complete { expected = [UInt8((25 - count) * 255 / 25), 0, UInt8(count * 255 / 25), 255] }
+            else {
+                unavailableCenters += 1
+                expected = blue(x, 15, z) ? [0, 0, 255, 255] : [255, 0, 0, 255]
+            }
+            #expect(image.color(x, z) == expected)
         } }
+        #expect(unavailableCenters > 0)
         await library.close()
     }
 

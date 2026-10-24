@@ -1256,10 +1256,11 @@ every color, including position-dependent modifiers at each neighboring block. T
 deduplicates the requested color samples within each chunk task and reuses its bounded biome
 snapshot window, without another terrain traversal. A missing sample keeps the exact unblended
 center; no partial average or guessed seed is used. Neighbor file changes invalidate blended
-tiles even for per-block palettes without a seed. Renderer version 20 and the blend-specific
-color source key separate these pixels; the cache retains its existing bounded latest-source
-policy. Height ignores the choice. Toggling rejects old tile results while preserving pending
-hover/coordinate reads, and document rereads carry the choice with the existing navigation state.
+tiles even for per-block palettes without a seed. A blend-specific color source key separates
+these pixels; the unchanged cache format/version preserves existing unblended tiles. The cache
+retains its bounded latest-source policy. Height ignores the choice. Toggling rejects old tile
+results while preserving pending hover/coordinate reads, and document rereads carry the choice
+with the existing navigation state.
 
 The renderer pipelines in-region decoding and coloring under one shared worker limit. A chunk
 colors as soon as its neighboring reads finish, including missing or damaged chunks; decoding
