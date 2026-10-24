@@ -36,7 +36,8 @@ import Testing
         for (region, color) in zip(neighbors, colors) {
             let context = try #require(MapImage.imageContext(width: 8, height: 8))
             context.setFillColor(color); context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
-            images[region] = try #require(context.makeImage())
+            let image = try #require(context.makeImage())
+            images[region] = image
         }
         func pixels(_ order: [RegionPosition]) throws -> Data {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
