@@ -45,7 +45,7 @@ nonisolated struct MapBlockFilter: Equatable, Sendable {
         Set(catalog.filter { $0.hasSuffix("_leaves") })
     }
 
-    enum Emphasis: Equatable, Sendable {
+    enum Emphasis: UInt8, Hashable, Sendable, Codable {
         case ordinary, dimmed, highlighted
 
         static let accent = MapColor(0xFFD60A)

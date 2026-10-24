@@ -80,7 +80,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         } else {
-            try await withThrowingTaskGroup(of: (Int, Int, [Column?])?.self) { group in
+            try await withThrowingTaskGroup(of: (Int, Int, ColoredChunk)?.self) { group in
                 var next = coordinates.startIndex
                 func startNext() {
                     guard next < coordinates.endIndex else { return }
@@ -107,7 +107,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     private enum BiomeWork: Sendable {
         case decoded(ChunkPosition, ColorInput?)
-        case colored(ChunkPosition, [Column?])
+        case colored(ChunkPosition, ColoredChunk)
     }
 
     /// A RegionFile owns its entire byte buffer. Read the surrounding ring one file at a time
@@ -276,14 +276,17 @@ nonisolated struct RegionTileRenderer: Sendable {
         var full: MapTileImage
         var preview: MapTileImage
         var cacheWrite: CacheWrite?
+        var detail: MapSurfaceDetail.Surface?
         var heights: [Int32]?
 
-        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil, heights: [Int32]? = nil) {
-            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite; self.heights = heights
+        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil,
+             detail: MapSurfaceDetail.Surface? = nil, heights: [Int32]? = nil) {
+            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite
+            self.detail = detail; self.heights = heights
         }
 
-        init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil) {
-            self.init(full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite)
+        init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil, detail: MapSurfaceDetail.Surface? = nil) {
+            self.init(full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite, detail: detail)
         }
     }
 
@@ -295,7 +298,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         let surface: Canvas
 
         @concurrent
-        func store() async { cache.store(surface, for: key) }
+        func store() async {
+            cache.store(surface, for: key)
+            if !Task.isCancelled { cache.storeDetail(surface, for: key) }
+        }
     }
 
     static let previewSide = side / 2
@@ -306,19 +312,21 @@ nonisolated struct RegionTileRenderer: Sendable {
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
         if style != .height { try await gameAssets?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
-        let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
+        let key = cacheKey(for: region)
         var surface: Canvas?
         var cacheWrite: CacheWrite?
+        var scanned = false
         if let cache, let key, let cached = cache.load(key) {
             surface = cached
         } else {
             surface = try await self.surface(for: region)
+            scanned = true
             if let cache, let key, let surface {
                 if savesInBackground {
                     cacheWrite = CacheWrite(cache: cache, key: key, surface: surface)
                 } else {
                     cache.store(surface, for: key)
+                    cache.storeDetail(surface, for: key)
                 }
             }
         }
@@ -338,7 +346,30 @@ nonisolated struct RegionTileRenderer: Sendable {
             guard normals != nil, previewNormals != nil else { return nil }
         }
         return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
-                            cacheWrite: cacheWrite, heights: style == .height ? nil : surface.heights)
+                            cacheWrite: cacheWrite,
+                            detail: scanned && gameAssets != nil && style != .height ? surface.detailSurface : nil,
+                            heights: style == .height ? nil : surface.heights)
+    }
+
+    /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
+    /// sidecar (including disabled caching) uses the same renderer, never another block parser.
+    @concurrent
+    func detail(for region: RegionPosition) async throws -> MapSurfaceDetail.Surface? {
+        guard gameAssets != nil, style != .height else { return nil }
+        try await gameAssets?.checkAvailable()
+        let key = cacheKey(for: region)
+        if let cache, let key, let detail = cache.loadDetail(key) { return detail }
+        guard let surface = try await surface(for: region) else { return nil }
+        try Task.checkCancellation()
+        if let cache, let key { cache.storeDetail(surface, for: key) }
+        return surface.detailSurface
+    }
+
+    private func cacheKey(for region: RegionPosition) -> TileCache.Key? {
+        guard cache != nil else { return nil }
+        return TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
+            context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter,
+            colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
@@ -379,7 +410,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         return out
     }
 
-    private static func encodeNormal(_ vector: SIMD3<Double>, into pixels: inout [UInt8], at i: Int) {
+    static func encodeNormal(_ vector: SIMD3<Double>, into pixels: inout [UInt8], at i: Int) {
         let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
         let normal = length > 0 ? vector / length : SIMD3(0, 1, 0)
         for c in 0..<3 { pixels[i + c] = UInt8(min(255, max(0, ((normal[c] + 1) * 127.5).rounded()))) }
@@ -418,10 +449,15 @@ nonisolated struct RegionTileRenderer: Sendable {
         return ColorInput(columns: columns, biomes: sections.biomeSnapshot, states: states, positions: positions)
     }
 
-    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> [Column?]? {
+    struct ColoredChunk: Sendable {
+        let columns: [Column?]
+        var detail: MapSurfaceDetail.Chunk? = nil
+    }
+
+    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
-        guard style != .height, gameAssets != nil else { return scanned.columns }
+        guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
     }
@@ -429,8 +465,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Color the selected blocks without another decode or traversal. Neighbor keys are local
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
-                                neighbors: BiomeRows) async throws -> [Column?] {
-        guard let gameAssets else { return scanned.columns }
+                                neighbors: BiomeRows) async throws -> ColoredChunk {
+        guard let gameAssets else { return ColoredChunk(columns: scanned.columns) }
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
         let states = scanned.states
@@ -536,7 +572,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         let colors: [MapColor?]
         if let cached = gameAssets.cachedMapColors(requests: requests) { colors = cached }
         else { colors = try await gameAssets.mapColors(requests: requests) }
-        return zip(scanned.columns, positions).enumerated().map { index, pair in
+        let columns: [Column?] = zip(scanned.columns, positions).enumerated().map { index, pair in
             let (value, position) = pair
             guard var column = value else { return nil }
             if let index = position.surface, let color = colors[index] {
@@ -550,6 +586,8 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
             return column
         }
+        return ColoredChunk(columns: columns,
+                            detail: MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface)))
     }
 
     /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
@@ -861,8 +899,18 @@ nonisolated struct RegionTileRenderer: Sendable {
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         var heights = [Int32](repeating: noHeight, count: side * side)
         var isWater = [Bool](repeating: false, count: side * side)
+        var detail = MapSurfaceDetail()
+
+        mutating func set(_ chunk: ColoredChunk, chunkX: Int, chunkZ: Int, style: MapStyle, heightScale: MapHeightScale?) {
+            set(chunk.columns, chunkX: chunkX, chunkZ: chunkZ, style: style, heightScale: heightScale)
+            if let materials = chunk.detail { detail.insert(materials, at: chunkZ * 32 + chunkX) }
+        }
         /// Allocated only while Dark Spots is on; ordinary tiles retain their existing layout.
         var nightLight: [UInt8]?
+
+        var detailSurface: MapSurfaceDetail.Surface {
+            .init(detail: detail, heights: heights, nightLight: nightLight)
+        }
 
         mutating func set(x: Int, z: Int, column: Column) {
             set(x: x, z: z, column: column, color: baseColor(for: column))
@@ -926,16 +974,11 @@ nonisolated struct RegionTileRenderer: Sendable {
                     guard height != Self.noHeight else { continue }
                     if includesNormals { normals![i * 4 + 3] = 255 }
                     guard !isWater[i] else { continue }
-                    let north = heights[z > 0 ? i - side : i + side]
-                    let west = heights[x > 0 ? i - 1 : i + 1]
-                    let northDifference = north == Self.noHeight ? 0
-                        : (Int64(height) - Int64(north)) * (z > 0 ? 1 : -1)
-                    let westDifference = west == Self.noHeight ? 0
-                        : (Int64(height) - Int64(west)) * (x > 0 ? 1 : -1)
+                    let slope = MapRelief.slope(at: i, heights: heights, side: side)
                     if includesNormals {
-                        RegionTileRenderer.encodeNormal(SIMD3(-Double(westDifference), 1, -Double(northDifference)), into: &normals!, at: i * 4)
+                        RegionTileRenderer.encodeNormal(slope.normal, into: &normals!, at: i * 4)
                     }
-                    let factor = lighting.factor(height: height, north: northDifference, west: westDifference)
+                    let factor = lighting.factor(height: height, north: slope.north, west: slope.west)
                     guard factor != 1 else { continue }
                     let shaded = MapColor(UInt32(pixels[i * 4]) << 16 | UInt32(pixels[i * 4 + 1]) << 8
                                           | UInt32(pixels[i * 4 + 2])).shaded(factor)

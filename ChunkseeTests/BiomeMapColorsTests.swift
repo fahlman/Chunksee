@@ -472,7 +472,9 @@ import Testing
         #expect(try await color() == missing)
         let after = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
         #expect(after.size == own.size && after.modified == own.modified)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        let cachedFiles = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
+        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse") }.count == 1)
+        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
         await library.close()
     }
 
@@ -750,8 +752,47 @@ import Testing
         renderer.blendsBiomeColors = false
         #expect(renderer.colorSourceKey == sharpKey)
         #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).bytes == ItemPictureFixture.pixels(sharp.full.image).bytes)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        let files = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
+        #expect(files.count == 2) // The latest ordinary tile and its matching deferred detail.
+        #expect(files.filter { $0.hasSuffix(".lzfse") }.count == 1)
+        #expect(files.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
         await library.close()
+    }
+
+    @Test func closeUpTexturesFollowBlendingChangesAndDeferredCacheReads() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [chunk(palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 },
+                                          biomes: { x, _, _ in x < 8 ? 0 : 1 })])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+                           cacheDirectory: url.appendingPathComponent("tiles"))
+        map.setCastsShadows(false)
+        map.setGameAssets(library, biomeColors: try await library.biomeColors(in: world))
+        map.viewport.scale = 8
+        map.requestTiles(visibleIn: CGSize(width: 64, height: 64), displayScale: 1)
+        await map.waitUntilIdle()
+        let chunk = ChunkPosition(x: 0, z: 0), region = chunk.region
+        func shownColor() throws -> [UInt8] {
+            try ItemPictureFixture.pixels(#require(map.detailImages[chunk]?.image)).color(7 * 16 + 8, 8 * 16 + 8)
+        }
+        #expect(try shownColor() == [255, 0, 0, 255])
+        for blends in [true, false, true] {
+            map.setBiomeBlending(blends)
+            await map.waitUntilIdle()
+            await map.waitForRenders()
+            let expected: [UInt8] = blends ? [153, 0, 102, 255] : [255, 0, 0, 255]
+            #expect(try shownColor() == expected)
+            let renderer = map.currentRenderer
+            let hit = try #require(try await renderer.tile(for: region))
+            #expect(hit.cacheWrite == nil && hit.detail == nil)
+            let surface = try #require(try await renderer.detail(for: region))
+            let detail = try #require(try await MapDetailRenderer.render(chunk, surface: surface, assets: library,
+                                                                         heightScale: nil, usesSavedLighting: false))
+            #expect(try ItemPictureFixture.pixels(detail.image).color(7 * 16 + 8, 8 * 16 + 8) == expected)
+        }
+        map.close(); await map.waitForRenders(); await library.close()
     }
 
     @Test func blendedCurrentViewAndAreaExportsHaveIdenticalPixelsInBothAppearances() async throws {

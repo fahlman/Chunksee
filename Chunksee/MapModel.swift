@@ -46,6 +46,19 @@ final class MapModel {
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionPosition>
     private(set) var isLoading = false
+    /// Only visible close-up chunks are drawn at texture resolution; ordinary tiles stay underneath.
+    private(set) var detailImages: [ChunkPosition: MapTileImage] = [:]
+    @ObservationIgnored private var detailSurfaces: [RegionPosition: MapSurfaceDetail.Surface] = [:]
+    @ObservationIgnored private var detailAttempted: Set<ChunkPosition> = []
+    @ObservationIgnored private var detailQueue: [ChunkPosition] = []
+    @ObservationIgnored private var detailJob: (chunk: ChunkPosition, id: UUID, task: Task<Void, Never>)?
+    @ObservationIgnored private var detailRegionsWanted: Set<RegionPosition> = []
+    @ObservationIgnored private var detailLoadsAttempted: Set<RegionPosition> = []
+    @ObservationIgnored private var detailLoadJob: (region: RegionPosition, id: UUID, task: Task<Void, Never>)?
+    typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameAssetLibrary, MapHeightScale?, Bool) async throws -> MapTileImage?
+    typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> MapSurfaceDetail.Surface?
+    @ObservationIgnored private let renderDetail: DetailRenderer
+    @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
@@ -65,13 +78,13 @@ final class MapModel {
         return current
     }
     private let work: BackgroundWork
-    private let renderWork, cacheWork, readoutWork, coordinateWork, shadowWork: BackgroundWork.Scope
+    private let renderWork, cacheWork, readoutWork, coordinateWork, detailWork, shadowWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
     @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
-    /// About 200 MB each: 1 MB full-image slots and 256 KB preview slots. Saved lighting
-    /// uses two slots per region (color and normal). Visible tiles are never evicted, so a
-    /// very large window can exceed these budgets rather than show blanks.
+    /// Full color/normal images plus retained materials share the existing roughly 200 MB
+    /// budget. Previews keep their separate 200 MB budget. Visible tiles are never evicted,
+    /// so a very large window can exceed these rather than show blanks.
     private let maxTiles: Int
     private let maxPreviews: Int
     private let regionConcurrency: Int
@@ -88,6 +101,8 @@ final class MapModel {
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
+         renderDetail: @escaping DetailRenderer = { try await MapDetailRenderer.render($0, surface: $1, assets: $2, heightScale: $3, usesSavedLighting: $4) },
+         readDetail: @escaping DetailReader = { try await $0.detail(for: $1) },
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
@@ -95,6 +110,9 @@ final class MapModel {
         cacheWork = work.makeScope()
         readoutWork = work.makeScope()
         coordinateWork = work.makeScope()
+        detailWork = work.makeScope()
+        self.renderDetail = renderDetail
+        self.readDetail = readDetail
         shadowWork = work.makeScope()
         self.dimension = dimension
         self.heightScale = heightScale
@@ -128,6 +146,7 @@ final class MapModel {
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
         guard !isClosed, size.width > 0, size.height > 0 else { return }
         lastView = (size, displayScale)
+        requestDetail(visibleIn: size)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
         // runs on every frame of a pan.
@@ -232,7 +251,7 @@ final class MapModel {
 
     private func updateLoadingState() {
         if inFlight.isEmpty, queue.isEmpty { startShadowsIfNeeded() }
-        isLoading = !inFlight.isEmpty || !queue.isEmpty || shadowJob != nil
+        isLoading = !inFlight.isEmpty || !queue.isEmpty || detailJob != nil || !detailQueue.isEmpty || detailLoadJob != nil || shadowJob != nil
         guard !isLoading else { return }
         let waiters = idleWaiters
         idleWaiters = []
@@ -266,6 +285,10 @@ final class MapModel {
             inFlight[region] = nil
             shadowHeights[region] = nil
         }
+        invalidateDetail(in: affected, keepingImages: true)
+        let removed = affected.subtracting(availableRegions)
+        invalidateDetail(in: removed, keepingImages: false)
+        for region in removed { detailSurfaces[region] = nil }
         if !affected.isDisjoint(with: shadowSources) { invalidateShadows() }
         failed.subtract(affected)
         forgetTopBlocks(in: regions)
@@ -294,40 +317,50 @@ final class MapModel {
             shadowsNeedUpdate = true
         }
         if wantsFullResolution {
+            invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = tile.full
+            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameAssets != nil, style != .height {
+                detailSurfaces[region] = tile.detail
+            }
         } else if wasStale {
             tiles[region] = nil   // drawn from the old file; zooming in will draw it again
+            invalidateDetail(in: [region], keepingImages: false)
+            detailSurfaces[region] = nil
         }
         previews[region] = tile.preview
         evictFullTiles()
         for region in Self.regionsToEvict(from: previews, keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
             previews[region] = nil
         }
+        if let lastView { requestDetail(visibleIn: lastView.size) }
     }
 
     private func evictFullTiles() {
         let tileBytes = RegionTileRenderer.side * RegionTileRenderer.side * 4
         let shadowBytes = shadowHeights.values.reduce(0) { $0 + $1.count * MemoryLayout<Int32>.stride }
             + shadowImages.values.reduce(0) { $0 + $1.bytesPerRow * $1.height }
-        var units = Double(shadowBytes) / Double(tileBytes) + tiles.values.reduce(0.0) { $0 + Double($1.storageUnits) }
-        let candidates = Set(tiles.keys).subtracting(visibleRegions)
-            .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
-        for region in candidates where units > Double(maxTiles) {
-            units -= Double(tiles[region]?.storageUnits ?? 0)
+        let evicted = Self.regionsToEvict(from: tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport,
+            reservedUnits: Double(shadowBytes) / Double(tileBytes),
+            additionalUnits: { Double(detailSurfaces[$0]?.estimatedBytes ?? 0) / Double(tileBytes) })
+        for region in evicted {
             tiles[region] = nil
+            detailSurfaces[region] = nil
+            invalidateDetail(in: [region], keepingImages: false)
         }
     }
 
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
     private static func regionsToEvict(from cached: [RegionPosition: MapTileImage], keeping limit: Int,
-                                       visible: Set<RegionPosition>, viewport: MapViewport) -> [RegionPosition] {
-        var units = cached.values.reduce(0) { $0 + $1.storageUnits }
-        guard units > limit else { return [] }
+                                       visible: Set<RegionPosition>, viewport: MapViewport,
+                                       reservedUnits: Double = 0,
+                                       additionalUnits: (RegionPosition) -> Double = { _ in 0 }) -> [RegionPosition] {
+        var units = reservedUnits + cached.reduce(0.0) { $0 + Double($1.value.storageUnits) + additionalUnits($1.key) }
+        guard units > Double(limit) else { return [] }
         let candidates = Set(cached.keys).subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
         var evicted: [RegionPosition] = []
-        for region in candidates where units > limit {
-            units -= cached[region]?.storageUnits ?? 0
+        for region in candidates where units > Double(limit) {
+            units -= Double(cached[region]?.storageUnits ?? 0) + additionalUnits(region)
             evicted.append(region)
         }
         return evicted
@@ -338,13 +371,18 @@ final class MapModel {
         renderWork.cancel()
         inFlight = [:]
         queue = []
+        detailWork.cancel()
+        detailJob = nil
+        detailQueue = []
+        detailLoadJob = nil
+        detailRegionsWanted = []
         invalidateShadows()
         shadowsNeedUpdate = false
         updateLoadingState()
     }
 
     func waitForRenders() async {
-        await work.waitUntilFinished(in: [renderWork, cacheWork, readoutWork, coordinateWork, shadowWork])
+        await work.waitUntilFinished(in: [renderWork, cacheWork, readoutWork, coordinateWork, detailWork, shadowWork])
     }
 
     func close() {
@@ -354,6 +392,11 @@ final class MapModel {
         hoveredChunk = nil
         coordinateWork.close()
         cacheWork.close()
+        detailWork.close()
+        detailSurfaces = [:]
+        detailImages = [:]
+        detailAttempted = []
+        detailLoadsAttempted = []
         shadowWork.close()
         cancel()
         shadowHeights = [:]
@@ -361,6 +404,131 @@ final class MapModel {
         gameAssets = nil
         biomeColors = nil
         nightLighting = nil
+    }
+
+    // MARK: Close-up terrain
+
+    private func requestDetail(visibleIn size: CGSize) {
+        guard !isClosed else { return }
+        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameAssets != nil && style != .height
+        detailRegionsWanted = enabled
+            ? Set(viewport.visibleRegions(in: size, among: availableRegions).filter { tiles[$0] != nil && !stale.contains($0) }) : []
+        detailSurfaces = detailSurfaces.filter { detailRegionsWanted.contains($0.key) }
+        detailLoadsAttempted.formIntersection(detailRegionsWanted)
+        if let job = detailLoadJob, !detailRegionsWanted.contains(job.region) {
+            job.task.cancel()
+            detailLoadJob = nil
+        }
+        if !enabled {
+            detailImages = [:]
+            detailAttempted = []
+        }
+        let visible = Set(detailSurfaces.flatMap { region, surface in
+            MapDetailRenderer.visibleChunks(in: surface, region: region, viewport: viewport, size: size)
+        })
+        let needed = gameAssets == nil ? [] : visible.filter {
+            !stale.contains($0.region) && !detailAttempted.contains($0)
+        }
+        if let job = detailJob, !needed.contains(job.chunk) {
+            job.task.cancel()
+            detailJob = nil
+        }
+        let center = viewport.center
+        detailQueue = needed.filter { $0 != detailJob?.chunk }.sorted {
+            func distance(_ chunk: ChunkPosition) -> CGFloat {
+                guard let origin = chunk.blockOrigin else { return .greatestFiniteMagnitude }
+                return hypot(CGFloat(origin.x) + 8 - center.x, CGFloat(origin.z) + 8 - center.y)
+            }
+            let first = distance($0), second = distance($1)
+            if first != second { return first < second }
+            return $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x
+        }
+        trimDetailCache()
+        startDetailLoad()
+        startDetail()
+        updateLoadingState()
+    }
+
+    private func startDetailLoad() {
+        guard !isClosed, detailLoadJob == nil, let lastView,
+              let region = viewport.visibleRegions(in: lastView.size, among: detailRegionsWanted).first(where: {
+                  detailSurfaces[$0] == nil && !detailLoadsAttempted.contains($0)
+              }) else { return }
+        let id = UUID(), reader = readDetail, renderer = currentRenderer, work = work, cacheWork = cacheWork
+        guard let task = detailWork.start(priority: nil, operation: { [weak self] in
+            // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
+            // writes before loading, so zooming cannot cause a redundant world read.
+            await work.waitUntilFinished(in: [cacheWork])
+            let surface: MapSurfaceDetail.Surface?
+            do {
+                try Task.checkCancellation()
+                surface = try await reader(renderer, region)
+            } catch { surface = nil }
+            guard let self, self.detailLoadJob?.id == id, !self.isClosed else { return }
+            self.detailLoadJob = nil
+            if !Task.isCancelled {
+                self.detailSurfaces[region] = surface
+                self.detailLoadsAttempted.insert(region)
+                self.evictFullTiles()
+            }
+            if let view = self.lastView { self.requestDetail(visibleIn: view.size) }
+        }) else { return }
+        detailLoadJob = (region: region, id: id, task: task)
+    }
+
+    private func trimDetailCache() {
+        // Count unavailable results as well as pictures, including old pictures retained during
+        // a live save. Check after publication too, so the budget does not rely on another pan.
+        let retained = detailAttempted.union(detailImages.keys)
+        guard retained.count > 256 else { return }
+        let range = viewport.scale >= MapDetailRenderer.minimumScale
+            ? lastView.flatMap { viewport.visibleChunkRange(in: $0.size) } : nil
+        let removable = retained.filter { chunk in
+            guard let range else { return true }
+            return !range.xs.contains(chunk.x) || !range.zs.contains(chunk.z)
+        }.sorted { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }
+        for chunk in removable.prefix(retained.count - 256) {
+            detailAttempted.remove(chunk)
+            detailImages[chunk] = nil
+        }
+    }
+
+    private func startDetail() {
+        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameAssets else { return }
+        let chunk = detailQueue.removeFirst()
+        guard let surface = detailSurfaces[chunk.region] else { return }
+        let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
+        guard let task = detailWork.start(priority: nil, operation: { [weak self] in
+            let image: MapTileImage?
+            do { image = try await render(chunk, surface, assets, heightScale, usesSavedLighting) }
+            catch { image = nil }
+            guard let self, self.detailJob?.id == id, !self.isClosed else { return }
+            self.detailJob = nil
+            if !Task.isCancelled {
+                self.detailImages[chunk] = image
+                self.detailAttempted.insert(chunk)
+                self.trimDetailCache()
+            }
+            self.startDetail()
+            self.updateLoadingState()
+        }) else { return }
+        detailJob = (chunk, id, task)
+    }
+
+    private func invalidateDetail(in regions: Set<RegionPosition>, keepingImages: Bool) {
+        if let job = detailLoadJob, regions.contains(job.region) {
+            job.task.cancel()
+            detailLoadJob = nil
+        }
+        detailLoadsAttempted.subtract(regions)
+        detailSurfaces = detailSurfaces.filter { !regions.contains($0.key) }
+        if let job = detailJob, regions.contains(job.chunk.region) {
+            job.task.cancel()
+            detailJob = nil
+        }
+        detailQueue.removeAll { regions.contains($0.region) }
+        detailAttempted = detailAttempted.filter { !regions.contains($0.region) }
+        if !keepingImages { detailImages = detailImages.filter { !regions.contains($0.key.region) } }
     }
 
     // MARK: Blocks for the pointer and centered accessibility readout
@@ -647,6 +815,10 @@ final class MapModel {
     private func clearRenderedTiles() {
         cancel()
         tiles = [:]
+        detailSurfaces = [:]
+        detailImages = [:]
+        detailAttempted = []
+        detailLoadsAttempted = []
         previews = [:]
         shadowHeights = [:]
         shadowImages = [:]

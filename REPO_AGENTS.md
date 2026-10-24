@@ -66,9 +66,8 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
   - Kit 0.66.1 supplies verified omitted 26.3 block properties to model and tint resolution.
-    TileCache version 24 combines saved-time lighting and optional nighttime status data and
-    invalidates colors drawn before the compact-default fix. Versions 20–21 and 23 belong to
-    the separate close-up texture branch under review.
+    TileCache version 25 combines saved-time lighting, optional nighttime status and deferred
+    close-up texture data, and invalidates colors drawn before the compact-default fix.
 
 ## Modules
 
@@ -407,7 +406,7 @@ The renderer returns immutable pending cache writes with its tiles. MapModel sta
 for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
 writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
 cache writer survives that drain.
-MapModel registers render jobs, accepted cache writes, hover reads, coordinate copies and shadows in five
+MapModel registers render jobs, accepted cache writes, hover reads, coordinate copies, close-up work and shadows in six
 scopes of the world's BackgroundWork owner. Separate scopes preserve depth-change cancellation
 without canceling an already accepted cache write. Their combined drain includes work added
 while another map task finishes, and never waits for a sibling tab. Per-region render IDs, hover
@@ -1325,8 +1324,11 @@ all caches on retirement. A retired reader cancels map work instead of caching f
 under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
 includes a stable URL/size/modification/version
 source key; changing or removing the source cancels old map jobs and redraws through MapModel's
-existing invalidator. No archive or installed artwork is bundled. High-zoom texture detail remains
-follow-up work in #363.
+existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
+selected block models through this same projection, UV, tint and rasterization path. Kit owns the
+position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
+Kit 0.66.1 supplies verified omitted 26.3 default properties to those same model and tint readers;
+the app neither edits saved states nor keeps a second registry of default properties.
 
 Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
 dimension documents. The existing GameAssetLibrary actor loads Kit's complete registered-biome
@@ -1391,3 +1393,41 @@ check enabled pack/version/seed metadata before rereading definitions; world-gen
 notifications refresh the shared snapshot too. Data-pack notifications force
 a reload that remains pending across overlapping autosaves. Read errors retain the last good
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.
+
+Close-up texture detail retains selected states, tints, roof shade and filter emphasis from the
+existing terrain scan in chunk-local palettes. TileCache version 25 stores one shared material
+palette per region, with bounded references preserving each chunk's local palette addresses.
+Repeated states and tints are encoded and decoded once per region; immutable chunk memory costs
+are computed once. The ordinary tile retains its pixel/height/water payload plus optional
+nighttime status while Dark Spots is on. Close-up
+data lives in a separately compressed sidecar under the same complete key and is decoded only
+for visible regions at 800% or above. A missing or corrupt sidecar never invalidates the ordinary
+tile; a close-up request regenerates it through the existing renderer when needed. Accepted cold
+renders write both files in the existing background cache job, preserving their one scan. Detail
+loads wait for those writes before a possible cache-miss render. The version also invalidates
+pre-0.66.1 default-state fallback pixels. Each chunk is bounded to 256 KiB estimated
+material cost. A region retains at most 8 MiB, keeping a deterministic coordinate prefix if an
+unusually varied region exceeds that budget; other columns keep their normal pixels. The binary
+cache payload is bounded at 16 MiB and validates palette references, dimensions and shade values.
+Full tiles and retained surface data share the previous roughly 200 MiB budget, with visible
+regions protected as before. Previews retain their separate budget. Decoded detail surfaces are
+retained only for visible close-up regions; zooming out releases them and their chunk pictures.
+
+MapModel's existing BackgroundWork owner tracks one sidecar load and one close-up chunk job at a time, keeping work
+still needed during panning and rejecting results after source/style/depth/filter/region changes
+or close. Only visible chunks are requested above the 800% threshold; completed chunk pictures
+have a 256-entry (about 65 MiB with normals) budget, retaining visible chunks in larger windows. GameAssetLibrary
+reuses selected-model pictures by state, tint and chosen model/transform, rather than by world
+position, in a shared 16 MiB cache. It uses the same decoded textures and clears pictures on source
+retirement. MapDetailRenderer applies the same MapRelief column calculation and filter shading;
+partial pixels remain premultiplied. Its normals remain one pixel per block and its sidecar keeps
+optional nighttime status. Ordinary tiles and close-up pictures use the same saved-time shader
+and Dark Spots color treatment; clock-only changes reuse both pictures. The shared shadow mask is
+composited once after coarse terrain and close-up images in each region, before the other overlays,
+on screen and in current-view Copy/Share. Each region finishes before the next overlapping edge,
+matching streamed area exports. Transparent close-up pixels therefore cannot double-darken the
+fallback. Full tile budgets count
+color, normals, shadow heights/masks and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
+and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
+Area export still offers its existing scales of at most one pixel per block, below the detail
+threshold. No new controls, localization keys, file access, asset copy or world modification.

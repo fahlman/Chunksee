@@ -9,7 +9,7 @@ nonisolated struct MapViewport: Equatable, Sendable {
     var scale: CGFloat
 
     /// Fit World can go below the smallest 1/16× preset for widely separated terrain. The most is 32×
-    /// (3,200%): each block's one-pixel tile color is drawn unsmoothed, so closer zoom adds no detail.
+    /// (3,200%): close-up textures remain crisp at two view points per texture pixel.
     static let scaleRange: ClosedRange<CGFloat> = 0.00000001 ... 32
     static let minimumManualScale: CGFloat = 1.0 / 16
     /// Continuous map geometry needs a divisor; tested against Kit's checked region origin.
@@ -53,6 +53,12 @@ nonisolated struct MapViewport: Equatable, Sendable {
             .applying(transform(in: size))
     }
 
+    func viewRect(for chunk: ChunkPosition, in size: CGSize) -> CGRect? {
+        guard let origin = chunk.blockOrigin else { return nil }
+        return CGRect(x: CGFloat(origin.x), y: CGFloat(origin.z), width: 16, height: 16)
+            .applying(transform(in: size))
+    }
+
     /// The block of region coordinates that intersects the view.
     struct RegionRange: Equatable, Sendable {
         var xs: ClosedRange<Int>
@@ -60,11 +66,18 @@ nonisolated struct MapViewport: Equatable, Sendable {
     }
 
     func visibleRegionRange(in size: CGSize) -> RegionRange? {
+        visibleRange(in: size, side: Self.regionSideInBlocks)
+    }
+
+    func visibleChunkRange(in size: CGSize) -> RegionRange? {
+        visibleRange(in: size, side: 16)
+    }
+
+    private func visibleRange(in size: CGSize, side: CGFloat) -> RegionRange? {
         guard isValid, size.width.isFinite, size.height.isFinite,
               size.width >= 0, size.height >= 0 else { return nil }
         let topLeft = blockPoint(at: .zero, in: size)
         let bottomRight = blockPoint(at: CGPoint(x: size.width, y: size.height), in: size)
-        let side = Self.regionSideInBlocks
         guard let minX = Coordinates.block(topLeft.x / side), let maxX = Coordinates.block(bottomRight.x / side),
               let minZ = Coordinates.block(topLeft.y / side), let maxZ = Coordinates.block(bottomRight.y / side),
               minX <= maxX, minZ <= maxZ else { return nil }

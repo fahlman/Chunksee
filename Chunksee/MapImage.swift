@@ -25,7 +25,7 @@ nonisolated struct MapImage: Sendable {
             if let tile = map.image(for: region, fullResolution: full),
                !drawTerrainLayer(tile, region: region, viewport: map.viewport, size: size, scale: scale,
                                  lighting: map.lighting, protectsWater: map.style == .waterDepth,
-                                 contrast: contrast, shadow: map.shadowImages[region], into: destination) { return nil }
+                                 contrast: contrast, shadow: map.shadowImages[region], detail: map.detailImages, into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
@@ -41,15 +41,19 @@ nonisolated struct MapImage: Sendable {
 
     /// Custom SwiftUI shaders require ImageRenderer.cgImage; its CGContext callback ignores
     /// them. Rasterize only the visible part of this region, in at most 1024-pixel squares,
-    /// before compositing. A large area export never allocates a second full-size terrain image.
+    /// before compositing. Each region includes ordinary terrain, close-up detail, then one shadow.
+    /// A large area export never allocates a second full-size terrain image.
     @MainActor
     static func drawTerrainLayer(_ tile: MapTileImage, region: RegionPosition, viewport: MapViewport,
                                  size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
-                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil, into destination: CGContext) -> Bool {
-        guard lighting != nil, tile.normals != nil else {
+                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil,
+                                 detail: [ChunkPosition: MapTileImage] = [:], into destination: CGContext) -> Bool {
+        let needsShader = lighting != nil && (tile.normals != nil ||
+            (viewport.scale >= MapDetailRenderer.minimumScale && detail.contains { $0.key.region == region && $0.value.normals != nil }))
+        guard needsShader else {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                    shadow: { _ in shadow }, increasedContrast: contrast == .increased, in: context, size: size)
+                                    shadow: { _ in shadow }, detail: detail, increasedContrast: contrast == .increased, in: context, size: size)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
         }
@@ -66,7 +70,7 @@ nonisolated struct MapImage: Sendable {
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
                     MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                        lighting: lighting, shadow: { _ in shadow }, protectsWater: protectsWater,
+                                        lighting: lighting, shadow: { _ in shadow }, detail: detail, protectsWater: protectsWater,
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)

@@ -25,10 +25,12 @@ nonisolated struct TileCache: Sendable {
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
     /// 19: optional nighttime light bytes and separate on/off cache slots.
-    /// 20–21 and 23 belong to the close-up texture branch under review.
+    /// 20–21: bounded close-up materials with one shared palette per region.
     /// 22: Kit 0.66.1 supplies omitted default block properties to model and tint resolution.
+    /// 23: separate on-demand texture data, preserving ordinary tile load costs.
     /// 24: combine saved-time lighting and optional nighttime-light cache data.
-    static let rendererVersion = 24
+    /// 25: close-up data preserves nighttime status and shares saved-time drawing inputs.
+    static let rendererVersion = 25
 
     let directory: URL
 
@@ -58,6 +60,7 @@ nonisolated struct TileCache: Sendable {
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
         var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered").\(nightLight == nil ? "ordinary" : "night")." }
+        var detailFileName: String { fileName + ".detail" }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -133,6 +136,37 @@ nonisolated struct TileCache: Sendable {
                                          isWater: water.map { $0 == 1 }, nightLight: light)
     }
 
+    /// Close-up data is independent of the ordinary tile. Missing or corrupt detail never
+    /// forces a world scan just to display the ordinary map.
+    func loadDetail(_ key: Key) -> MapSurfaceDetail.Surface? {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
+        let offset = count * (key.nightLight == nil ? 4 : 5)
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.detailFileName)),
+              let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              bytes.count >= offset, bytes.count <= offset + MapSurfaceDetail.maximumEncodedBytes,
+              let detail = MapSurfaceDetail.decoded(Data(bytes[offset...])) else { return nil }
+        let light = key.nightLight == nil ? nil : Array(bytes[(count * 4)..<offset])
+        if let light, !light.allSatisfy({ DarkSpots.Status(rawValue: $0) != nil }) { return nil }
+        let heights = bytes.withUnsafeBytes { buffer in
+            (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: $0 * 4, as: Int32.self)) }
+        }
+        return .init(detail: detail, heights: heights, nightLight: light)
+    }
+
+    func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
+        guard key.colorSource != nil, key.style != .height,
+              (key.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
+              surface.heights.count == count, let detail = surface.detail.encoded() else { return }
+        var bytes = Data(capacity: count * (key.nightLight == nil ? 4 : 5) + detail.count)
+        surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
+        if let light = surface.nightLight { bytes.append(contentsOf: light) }
+        bytes.append(detail)
+        guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? compressed.write(to: directory.appendingPathComponent(key.detailFileName), options: .atomic)
+    }
+
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
     /// the latest filtered variant. Many heights/filter combinations cannot grow the cache unboundedly;
     /// disabling a filter preserves the ordinary tile. Failures only cost a re-render.
@@ -150,8 +184,9 @@ nonisolated struct TileCache: Sendable {
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        where (name.hasPrefix(key.prefix) && name != key.fileName)
-            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")) {
+        where (name.hasPrefix(key.prefix) && name != key.fileName && name != key.detailFileName)
+            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")
+                && !name.hasSuffix(".v\(Self.rendererVersion).lzfse.detail")) {
             try? fileManager.removeItem(at: directory.appendingPathComponent(name))
         }
         try? compressed.write(to: directory.appendingPathComponent(key.fileName), options: .atomic)

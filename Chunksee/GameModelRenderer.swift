@@ -7,6 +7,7 @@ import simd
 /// Kit resolves the format. This client projects its geometry, samples textures and lights faces.
 nonisolated enum GameModelRenderer {
     static let size = 64
+    static let blockTextureSide = 16
 
     private struct Face {
         let points: [SIMD3<Float>]
@@ -105,11 +106,11 @@ nonisolated enum GameModelRenderer {
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
-    private static func draw(_ faces: [Face], into pixels: inout [UInt8]) throws {
-        var depths = [Float](repeating: -.infinity, count: size * size)
+    private static func draw(_ faces: [Face], into pixels: inout [UInt8], side: Int = size) throws {
+        var depths = [Float](repeating: -.infinity, count: side * side)
         for face in faces.enumerated().sorted(by: { $0.element.depth == $1.element.depth ? $0.offset < $1.offset : $0.element.depth < $1.element.depth }) {
             try Task.checkCancellation()
-            rasterize(face.element, pixels: &pixels, depths: &depths)
+            rasterize(face.element, pixels: &pixels, depths: &depths, side: side)
         }
     }
 
@@ -130,44 +131,8 @@ nonisolated enum GameModelRenderer {
             var options: [(faces: [Face], weight: Double)] = []
             for alternative in part.alternatives {
                 try Task.checkCancellation()
-                guard case .elements(let elements) = alternative.model.geometry else { return nil }
-                let r = SIMD3<Float>(alternative.rotation) * (-Float.pi / 180)
-                let rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
-                    * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0))
-                    * simd_quatf(angle: r.x, axis: SIMD3(1, 0, 0))
-                var faces: [Face] = []
-                for element in elements {
-                    for direction in AssetModel.Direction.allCases {
-                        guard let face = element.faces[direction] else { continue }
-                        let points = vertices(for: direction, from: element.from, to: element.to).map {
-                            let p = rotation.act(rotate($0, by: element.rotation) / 16 - 0.5)
-                            return SIMD3<Float>(p.x, -p.z, p.y)
-                        }
-                        guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else { return nil }
-                        let normal = simd_cross(points[1] - points[0], points[3] - points[0])
-                        guard normal.z > 0.000001 else { continue }
-                        let image: ItemTexture
-                        if let cached = retained[face.material.texture] { image = cached }
-                        else {
-                            guard let loaded = texture(face.material.texture), loaded.height >= loaded.width,
-                                  loaded.height % loaded.width == 0,
-                                  textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
-                            // Block animations are vertical strips; use their first image frame.
-                            image = ItemTexture(width: loaded.width, height: loaded.width,
-                                                pixels: Array(loaded.pixels.prefix(loaded.width * loaded.width * 4)))
-                            textureBytes += loaded.pixels.count
-                            retained[face.material.texture] = image
-                        }
-                        let rgb: UInt32
-                        if let index = face.tintIndex {
-                            guard let value = tint(index) else { return nil }
-                            rgb = value
-                        } else { rgb = 0xffffff }
-                        let color = SIMD3<Float>(Float((rgb >> 16) & 255), Float((rgb >> 8) & 255), Float(rgb & 255)) / 255
-                        faces.append(Face(points: points, uv: alternative.textureCoordinates(for: face, facing: direction),
-                                          texture: image, color: color))
-                    }
-                }
+                guard let faces = try topFaces(alternative, tint: tint, texture: texture,
+                                               retained: &retained, textureBytes: &textureBytes) else { return nil }
                 options.append((faces, Double(alternative.weight) / total))
             }
             choices.append(options)
@@ -193,22 +158,86 @@ nonisolated enum GameModelRenderer {
             | UInt32(UInt8(clamping: Int(rgb.y.rounded()))) << 8 | UInt32(UInt8(clamping: Int(rgb.z.rounded()))))
     }
 
-    private static func rasterize(_ face: Face, pixels: inout [UInt8], depths: inout [Float]) {
-        let points = face.points.map { SIMD2<Float>(($0.x + 0.5) * Float(size), (0.5 - $0.y) * Float(size)) }
+    /// Actual chosen models share the top-color geometry/UV path, but preserve individual
+    /// pixels instead of averaging them. Sixteen pixels per block matches the supplied jar art.
+    static func topTexture(_ alternatives: [AssetBlock.Alternative], tint: (Int) -> UInt32?,
+                           texture: (Identifier) -> ItemTexture?) throws -> ItemTexture? {
+        var retained: [Identifier: ItemTexture] = [:], textureBytes = 0
+        var faces: [Face] = []
+        for alternative in alternatives {
+            try Task.checkCancellation()
+            guard let prepared = try topFaces(alternative, tint: tint, texture: texture,
+                                               retained: &retained, textureBytes: &textureBytes),
+                  prepared.count <= 4096 - faces.count else { return nil }
+            faces.append(contentsOf: prepared)
+        }
+        let side = blockTextureSide
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        try draw(faces, into: &pixels, side: side)
+        return ItemTexture(width: side, height: side, pixels: pixels)
+    }
+
+    private static func topFaces(_ alternative: AssetBlock.Alternative, tint: (Int) -> UInt32?,
+                                 texture: (Identifier) -> ItemTexture?, retained: inout [Identifier: ItemTexture],
+                                 textureBytes: inout Int) throws -> [Face]? {
+        guard case .elements(let elements) = alternative.model.geometry else { return nil }
+        let r = SIMD3<Float>(alternative.rotation) * (-Float.pi / 180)
+        let rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
+            * simd_quatf(angle: r.y, axis: SIMD3(0, 1, 0))
+            * simd_quatf(angle: r.x, axis: SIMD3(1, 0, 0))
+        var faces: [Face] = []
+        for element in elements {
+            try Task.checkCancellation()
+            for direction in AssetModel.Direction.allCases {
+                guard let face = element.faces[direction] else { continue }
+                let points = vertices(for: direction, from: element.from, to: element.to).map {
+                    let p = rotation.act(rotate($0, by: element.rotation) / 16 - 0.5)
+                    return SIMD3<Float>(p.x, -p.z, p.y)
+                }
+                guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else { return nil }
+                let normal = simd_cross(points[1] - points[0], points[3] - points[0])
+                guard normal.z > 0.000001 else { continue }
+                let image: ItemTexture
+                if let cached = retained[face.material.texture] { image = cached }
+                else {
+                    guard let loaded = texture(face.material.texture), loaded.height >= loaded.width,
+                          loaded.height % loaded.width == 0,
+                          textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
+                    // Block animations are vertical strips; use their first image frame.
+                    image = ItemTexture(width: loaded.width, height: loaded.width,
+                                        pixels: Array(loaded.pixels.prefix(loaded.width * loaded.width * 4)))
+                    textureBytes += loaded.pixels.count
+                    retained[face.material.texture] = image
+                }
+                let rgb: UInt32
+                if let index = face.tintIndex {
+                    guard let value = tint(index) else { return nil }
+                    rgb = value
+                } else { rgb = 0xffffff }
+                let color = SIMD3<Float>(Float((rgb >> 16) & 255), Float((rgb >> 8) & 255), Float(rgb & 255)) / 255
+                faces.append(Face(points: points, uv: alternative.textureCoordinates(for: face, facing: direction),
+                                  texture: image, color: color))
+            }
+        }
+        return faces
+    }
+
+    private static func rasterize(_ face: Face, pixels: inout [UInt8], depths: inout [Float], side: Int) {
+        let points = face.points.map { SIMD2<Float>(($0.x + 0.5) * Float(side), (0.5 - $0.y) * Float(side)) }
         let a = points[3] - points[0], b = points[1] - points[0]
         let determinant = a.x * b.y - a.y * b.x
         guard determinant.isFinite, abs(determinant) > 0.000001 else { return }
-        let minX = Int(max(0, min(Float(size), floor(points.map(\.x).min()!))))
-        let maxX = Int(max(0, min(Float(size), ceil(points.map(\.x).max()!))))
-        let minY = Int(max(0, min(Float(size), floor(points.map(\.y).min()!))))
-        let maxY = Int(max(0, min(Float(size), ceil(points.map(\.y).max()!))))
+        let minX = Int(max(0, min(Float(side), floor(points.map(\.x).min()!))))
+        let maxX = Int(max(0, min(Float(side), ceil(points.map(\.x).max()!))))
+        let minY = Int(max(0, min(Float(side), floor(points.map(\.y).min()!))))
+        let maxY = Int(max(0, min(Float(side), ceil(points.map(\.y).max()!))))
         for y in minY..<maxY {
             for x in minX..<maxX {
                 let offset = SIMD2<Float>(Float(x) + 0.5, Float(y) + 0.5) - points[0]
                 let u = (offset.x * b.y - offset.y * b.x) / determinant
                 let v = (a.x * offset.y - a.y * offset.x) / determinant
                 guard u >= 0, u < 1, v >= 0, v < 1 else { continue }
-                let index = y * size + x
+                let index = y * side + x
                 let z = face.points[0].z + u * (face.points[3].z - face.points[0].z) + v * (face.points[1].z - face.points[0].z)
                 guard z.isFinite, z >= depths[index] else { continue }
                 let uv = face.uv[0] + u * (face.uv[3] - face.uv[0]) + v * (face.uv[1] - face.uv[0])
