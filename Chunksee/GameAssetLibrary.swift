@@ -133,11 +133,15 @@ actor GameAssetLibrary {
                 }
                 return total + 96 + decoration.itemID.description.utf8.count + patternBytes
             }
+            let headBytes = switch selection.headSkin {
+            case .defaultSkin, .unresolved: 0
+            case .resource(let id): 64 + id.description.utf8.count
+            }
             return 128 + selection.modelID.description.utf8.count + (selection.trimMaterialID?.description.utf8.count ?? 0)
                 + data.floats.count * MemoryLayout<Float>.stride + data.flags.count * MemoryLayout<Bool>.stride
                 + data.colors.count * MemoryLayout<UInt32>.stride
                 + data.strings.reduce(0) { $0 + 32 + $1.utf8.count }
-                + patternBytes + potBytes
+                + patternBytes + potBytes + headBytes
                 + colors.reduce(0) { $0 + 32 + $1.count * MemoryLayout<UInt32>.stride }
         }
     }
