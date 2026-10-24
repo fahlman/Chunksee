@@ -34,10 +34,11 @@ import Testing
             #expect(color == nil && requested == 0)
         }
         for y in [Int.min, Int.max] {
-            #expect(BiomeBlending.color(at: .init(blockX: Int(Int32.min) + 2, blockY: y, blockZ: Int(Int32.max) - 2)) {
+            let color = BiomeBlending.color(at: .init(blockX: Int(Int32.min) + 2, blockY: y, blockZ: Int(Int32.max) - 2)) {
                 #expect($0.y == y)
                 return 0x123456
-            } == 0x123456)
+            }
+            #expect(color == 0x123456)
         }
     }
 
