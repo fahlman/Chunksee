@@ -53,6 +53,12 @@ nonisolated struct MapViewport: Equatable, Sendable {
             .applying(transform(in: size))
     }
 
+    func viewRect(for chunk: ChunkPosition, in size: CGSize) -> CGRect? {
+        guard let origin = chunk.blockOrigin else { return nil }
+        return CGRect(x: CGFloat(origin.x), y: CGFloat(origin.z), width: 16, height: 16)
+            .applying(transform(in: size))
+    }
+
     /// The block of region coordinates that intersects the view.
     struct RegionRange: Equatable, Sendable {
         var xs: ClosedRange<Int>

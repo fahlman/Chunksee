@@ -27,6 +27,13 @@ nonisolated struct MapImage: Sendable {
                                  lighting: map.lighting, protectsWater: map.style == .waterDepth,
                                  contrast: contrast, into: destination) { return nil }
         }
+        if map.viewport.scale >= MapDetailRenderer.minimumScale {
+            for chunk in map.detailImages.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
+                guard let image = map.detailImages[chunk], let rect = map.viewport.viewRect(for: chunk, in: size) else { continue }
+                guard drawTerrainImageLayer(image, rect: rect, interpolation: .none, size: size, scale: scale,
+                    lighting: map.lighting, protectsWater: false, contrast: contrast, into: destination) else { return nil }
+            }
+        }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
                                  portalStatus: portalStatus, in: context, size: size)
@@ -46,15 +53,26 @@ nonisolated struct MapImage: Sendable {
     static func drawTerrainLayer(_ tile: MapTileImage, region: RegionPosition, viewport: MapViewport,
                                  size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
                                  contrast: ColorSchemeContrast, into destination: CGContext) -> Bool {
+        guard let rect = viewport.viewRect(for: region, in: size) else { return true }
+        return drawTerrainImageLayer(tile, rect: rect.insetBy(dx: -0.5, dy: -0.5),
+            interpolation: viewport.scale >= 1 ? .none : .medium, size: size, scale: scale,
+            lighting: lighting, protectsWater: protectsWater, contrast: contrast, into: destination)
+    }
+
+    /// Region and close-up chunk images use the same bounded shader rasterizer.
+    @MainActor
+    private static func drawTerrainImageLayer(_ tile: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
+                                              size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
+                                              contrast: ColorSchemeContrast, into destination: CGContext) -> Bool {
+        let visible = rect.intersection(CGRect(origin: .zero, size: size))
+        guard !visible.isNull, !visible.isEmpty else { return true }
         guard lighting != nil, tile.normals != nil else {
-            let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, in: context, size: size)
+            let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
+                MapView.drawTerrainImage(tile, rect: rect, interpolation: interpolation,
+                    lighting: nil, protectsWater: protectsWater, increasedContrast: contrast == .increased, in: context)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
         }
-        guard let regionRect = viewport.viewRect(for: region, in: size) else { return true }
-        let visible = regionRect.insetBy(dx: -0.5, dy: -0.5).intersection(CGRect(origin: .zero, size: size))
-        guard !visible.isNull, !visible.isEmpty else { return true }
         let pixels = CGRect(x: visible.minX * scale, y: visible.minY * scale,
                             width: visible.width * scale, height: visible.height * scale).integral
         for y in stride(from: pixels.minY, to: pixels.maxY, by: 1024) {
@@ -64,9 +82,9 @@ nonisolated struct MapImage: Sendable {
                 let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
-                    MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                        lighting: lighting, protectsWater: protectsWater,
-                                        increasedContrast: contrast == .increased, in: translated, size: size)
+                    MapView.drawTerrainImage(tile, rect: rect, interpolation: interpolation,
+                        lighting: lighting, protectsWater: protectsWater,
+                        increasedContrast: contrast == .increased, in: translated)
                 }
                 .frame(width: crop.width, height: crop.height)
                 let renderer = ImageRenderer(content: canvas)

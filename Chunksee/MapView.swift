@@ -195,9 +195,7 @@ struct MapView: View {
         guard viewport.scale >= MapDetailRenderer.minimumScale else { return }
         let bounds = CGRect(origin: .zero, size: size)
         for chunk in images.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
-            guard let image = images[chunk], let origin = chunk.blockOrigin else { continue }
-            let rect = CGRect(x: origin.x, y: origin.z, width: 16, height: 16)
-                .applying(viewport.transform(in: size))
+            guard let image = images[chunk], let rect = viewport.viewRect(for: chunk, in: size) else { continue }
             guard rect.intersects(bounds) else { continue }
             drawTerrainImage(image, rect: rect, interpolation: .none, lighting: lighting,
                              protectsWater: false, increasedContrast: nil, in: context)
@@ -205,9 +203,9 @@ struct MapView: View {
     }
 
     /// Both terrain resolutions use one lighting treatment, including exported pictures.
-    private static func drawTerrainImage(_ image: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
-                                         lighting: MapLighting?, protectsWater: Bool, increasedContrast: Bool?,
-                                         in context: GraphicsContext) {
+    static func drawTerrainImage(_ image: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
+                                 lighting: MapLighting?, protectsWater: Bool, increasedContrast: Bool?,
+                                 in context: GraphicsContext) {
         var layer = context
         if let lighting, let normals = image.normals {
             layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
