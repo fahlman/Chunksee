@@ -44,6 +44,55 @@ import Testing
         #expect(library.cachedPicture(for: first) === image)
     }
 
+    @Test func playerProfilesHaveDistinctPicturesAndUnresolvedSkinsKeepTheFallback() async throws {
+        let fixture = try Self.fixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let plain = ItemStack(id: "test:player_head")
+        let defaultImage = try #require(try await library.picture(for: plain))
+        func head(_ profile: NBT) -> ItemStack {
+            ItemStack(id: plain.id, components: .compound(["minecraft:profile": profile]))
+        }
+        let red = head(.compound(["texture": .string("test:heads/red")])),
+            blue = head(.compound(["texture": .string("test:heads/blue")]))
+        let redImage = try #require(try await library.picture(for: red)),
+            blueImage = try #require(try await library.picture(for: blue))
+        #expect(Self.count([255, 0, 0, 255], in: try ItemPictureFixture.pixels(redImage)) > 0)
+        #expect(Self.count([0, 0, 255, 255], in: try ItemPictureFixture.pixels(blueImage)) > 0)
+        #expect(library.cachedPicture(for: red) === redImage && library.cachedPicture(for: blue) === blueImage)
+        let same = head(.compound(["texture": .string("test:heads/red"), "name": .string("Other name"),
+                                  "cape": .string("test:other"), "model": .string("wide")]))
+        #expect(try await library.picture(for: same) === redImage)
+        for profile: NBT in [.string("Someone"), .compound(["id": .intArray([1, 2, 3, 4])]),
+                             .compound(["texture": .int(1)]), .compound(["texture": .string("test:missing")])] {
+            let item = head(profile)
+            #expect(try await library.picture(for: item) == nil && library.cachedPicture(for: item) == nil)
+        }
+        let removed = ItemStack(id: plain.id, components: .compound([
+            "minecraft:profile": .string("Someone"), "!minecraft:profile": .compound([:])
+        ]))
+        #expect(try await library.picture(for: removed) === defaultImage)
+        #expect(library.cachedPicture(for: plain) === defaultImage)
+        await library.close()
+        #expect(library.cachedPicture(for: red) == nil)
+    }
+
+    @Test func oversizedLocalSkinIdentityIsChargedEvenWhenTheSelectedModelDoesNotUseIt() async throws {
+        let fixture = try Self.fixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        // Components may remain after an item_model override. A valid but unused skin ID
+        // still belongs to the cache key, and must not escape its 8 MiB image budget.
+        let item = ItemStack(id: "test:player_head", components: .compound([
+            "minecraft:item_model": .string("test:plain_picture"),
+            "minecraft:profile": .compound(["texture": .string("test:" + String(repeating: "a", count: 9 * 1024 * 1024))])
+        ]))
+        let image = try #require(try await library.picture(for: item))
+        #expect(Self.count(Self.skinColor, in: try ItemPictureFixture.pixels(image)) > 0)
+        #expect(library.cachedPicture(for: item) == nil)
+        await library.close()
+    }
+
     @Test func rectangularStaticSkinsAcceptMatchingResolutionButRejectUnknownStrips() async throws {
         let ordinary = try Self.fixture()
         defer { ordinary.remove() }
@@ -84,19 +133,26 @@ import Testing
         let fixture = try Self.fixture()
         defer { fixture.remove() }
         let library = try fixture.library()
-        for stack in [ItemStack(id: "test:conduit"), ItemStack(id: "test:skeleton"),
-                      ItemStack(id: "test:dragon"), Self.pot(front: "red", left: "blue")] {
+        let redHead = ItemStack(id: "test:player_head", components: .compound([
+            "minecraft:profile": .compound(["texture": .string("test:heads/red")])
+        ]))
+        let red: [UInt8] = [255, 0, 0, 255]
+        for (stack, color) in [(ItemStack(id: "test:conduit"), Self.skinColor),
+                               (ItemStack(id: "test:skeleton"), Self.skinColor),
+                               (ItemStack(id: "test:dragon"), Self.skinColor),
+                               (ItemStack(id: "test:player_head"), Self.skinColor), (redHead, red),
+                               (Self.pot(front: "red", left: "blue"), red)] {
             _ = try #require(try await library.picture(for: stack))
             let renderer = ImageRenderer(content: ItemIcon(item: stack)
                 .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
             renderer.scale = 4
             let pixels = try ItemPictureFixture.pixels(#require(renderer.cgImage))
-            #expect(Self.count(stack.id == "test:pot" ? [255, 0, 0, 255] : Self.skinColor, in: pixels) > 0)
+            #expect(Self.count(color, in: pixels) > 0)
         }
     }
 
     private static let skinColor: [UInt8] = [70, 170, 110, 255]
-    private static let staticItems = ["conduit", "skeleton", "wither_skeleton", "zombie", "creeper", "dragon", "piglin", "standing", "sitting"]
+    private static let staticItems = ["conduit", "skeleton", "wither_skeleton", "zombie", "creeper", "dragon", "piglin", "player_head", "standing", "sitting"]
 
     private static func count(_ color: [UInt8], in pixels: ItemPictureFixture.Pixels) -> Int {
         stride(from: 0, to: pixels.bytes.count, by: 4).reduce(0) { total, offset in
@@ -143,6 +199,11 @@ import Testing
         }
         try item("missing_head", definition: ["type": "head", "kind": "skeleton", "texture": "test:missing"], transform: head)
         try item("animated_head", definition: ["type": "head", "kind": "skeleton", "animation": 1], transform: head)
+        try item("player_head", definition: ["type": "player_head"], transform: head)
+        files["assets/minecraft/textures/entity/player/slim/steve.png"] = try png(skinColor, width: 64, height: 64)
+        for (name, color) in [("red", [UInt8(255), 0, 0, 255]), ("blue", [UInt8(0), 0, 255, 255])] {
+            files["assets/test/textures/heads/\(name).png"] = try png(color, width: 64, height: 64)
+        }
         var statue = identity; statue["scale"] = [1, -1, -1]; statue["translation"] = [0.5, 1.5, 0.5]
         for pose in ["standing", "sitting"] {
             try item(pose, definition: ["type": "copper_golem_statue", "pose": pose, "texture": "test:textures/statue.png"],
@@ -161,6 +222,11 @@ import Testing
             "parent": "builtin/generated", "textures": ["layer0": "test:ordinary_strip"]
         ])
         files["assets/test/textures/ordinary_strip.png"] = try png(skinColor, width: 16, height: 32)
+        files["assets/test/items/plain_picture.json"] = try ItemPictureFixture.json(["model": ["type": "model", "model": "test:item/plain_picture"]])
+        files["assets/test/models/item/plain_picture.json"] = try ItemPictureFixture.json([
+            "parent": "builtin/generated", "textures": ["layer0": "test:plain_picture"]
+        ])
+        files["assets/test/textures/plain_picture.png"] = try png(skinColor, width: 16, height: 16)
         files.merge(overrides) { _, replacement in replacement }
         return try ItemPictureFixture(extraFiles: files)
     }

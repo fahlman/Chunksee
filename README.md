@@ -90,8 +90,9 @@ with a link to this guide. Help opens only when requested.
    and colors are respected when the chosen game archive supplies their definitions.
    Shields also show their saved base color and patterns, and banners show their cloth color
    and saved patterns from Minecraft 26.3 when the chosen archive supplies the resources. Decorated
-   pots show the patterns saved on each side. Mob heads use their still pose; player heads and
-   animated models retain their category symbols. Items also keep those symbols when a picture's
+   pots show the patterns saved on each side. Mob heads use their still pose. Player heads show
+   the default skin or a skin supplied by local game resources; skins requiring an online lookup
+   and animated models retain their category symbols. Items also keep those symbols when a picture's
    resources are unavailable.
    The Normal map also averages the visible top textures of supported block models. Missing or
    unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,

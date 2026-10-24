@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.68.0`, resolved to `0.68.0` (`65154c5696e048248f9db86645256daa969a935c`).
+  minor" from `0.69.0`, resolved to `0.69.0` (`659b7a261ef9a5eae965013dc8565a4e8c626dbd`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1274,6 +1274,13 @@ selection, and their cost estimates include its retained strings. An entry large
 cache's budget may draw but is not retained there. No app-side shape, item-ID or pattern table is
 added. Public-path tests cover rectangular skins, higher-resolution ratios, unavailable-resource
 fallbacks, distinct pot sides, warm cache identity, oversized keys and native ItemIcon pixels.
+Kit 0.69.0 supplies the unprofiled default and explicit local-resource player-head skins through
+that same renderer. ItemModelSelection.headSkin keeps their cache identities distinct; model and
+image insertion costs include any retained skin identifier, even when an item-model override
+does not use it. Unresolved accounts and missing local resources retain the existing symbol.
+Tests cover default/local/removal precedence, warm image reuse, unresolved fallback, large keys
+and native icons in both appearances. There is no app profile decoder, skin download, second
+head renderer or persistent image cache. Online account skins remain on #390.
 Resource-pack layering and world registry overrides remain outside
 the supplied-jar reader. The published library also exposes saved
 light validity and dimension spawn-light limits; #86's app overlay is still separate work.
