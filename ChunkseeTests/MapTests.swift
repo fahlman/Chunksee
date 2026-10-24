@@ -192,6 +192,34 @@ import Testing
         #expect(first != nil)
         #expect(first == BlockColors.color(for: "mymod:strange_block"))
     }
+
+    @Test func exactColorsAndOrderedFamiliesKeepTheirPrecedence() {
+        let cases: [(String, UInt32)] = [
+            ("dark_oak_leaves", 0x4A7A2F), ("dark_oak_planks", 0x4A311A),
+            ("light_gray_wool", 0x8E8E86), ("light_blue_wool", 0x3AAFD9),
+            ("red_sandstone", 0xB5621F), ("red_sandstone_stairs", 0xA12722),
+        ]
+        for prefix in ["minecraft:", "", ":"] {
+            for (name, hex) in cases { #expect(BlockColors.color(for: prefix + name) == MapColor(hex)) }
+        }
+    }
+
+    @Test func customAndMalformedASCIINamesKeepTheirColors() {
+        let cases: [(String, UInt32)] = [
+            ("leaves:stone", 0x4A7A2F), ("mod:stone", 0x7D7D7D),
+            ("mod:stone\u{0000}brick", 0x7D7D7D), ("mod:\r\nstone", 0x7D7D7D),
+            ("mod:STONE", 0x78847C), ("mod:unknown", 0x7B6370),
+        ]
+        for (name, hex) in cases { #expect(BlockColors.color(for: name) == MapColor(hex)) }
+    }
+
+    @Test func unicodeNamesKeepGraphemeBoundariesAndFallbackColors() {
+        let cases: [(String, UInt32)] = [
+            ("mod:stone\u{0301}", 0x876D7D), ("mod:stóne", 0x938869),
+            ("mod:stone🪨", 0x7D7D7D), ("mod:é_red_wool", 0xA12722),
+        ]
+        for (name, hex) in cases { #expect(BlockColors.color(for: name) == MapColor(hex)) }
+    }
 }
 
 @Suite(.isolatedStores) struct RegionTileRendererTests {

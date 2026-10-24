@@ -1,3 +1,5 @@
+import Foundation
+
 /// An opaque sRGB color for one map pixel.
 nonisolated struct MapColor: Equatable, Sendable {
     var red: UInt8
@@ -33,7 +35,18 @@ nonisolated enum BlockColors {
         let name = ReadableName.vanillaPath(id) ?? id
         if transparent.contains(name) { return nil }
         if let exact = exact[name] { return MapColor(exact) }
-        for (fragment, hex) in fragments where name.contains(fragment) { return MapColor(hex) }
+        // Literal search avoids rebuilding Swift's grapheme search state for each family.
+        // Keep grapheme matching for unfamiliar Unicode names; the rules themselves are ASCII.
+        let literalName = name.utf8.allSatisfy { $0 < 128 } ? name as NSString : nil
+        for (fragment, hex) in fragments {
+            let matches: Bool
+            if let literalName {
+                matches = literalName.range(of: fragment, options: .literal).location != NSNotFound
+            } else {
+                matches = name.contains(fragment)
+            }
+            if matches { return MapColor(hex) }
+        }
         return fallback(for: name)
     }
 
