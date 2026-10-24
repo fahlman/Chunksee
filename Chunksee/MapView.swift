@@ -169,6 +169,7 @@ struct MapView: View {
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    shadow: { map.shadowImages[$0] },
                     protectsWater: map.style == .waterDepth, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
@@ -176,7 +177,8 @@ struct MapView: View {
 
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
-                            lighting: MapLighting? = nil, protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
+                            lighting: MapLighting? = nil, shadow: (RegionPosition) -> CGImage? = { _ in nil },
+                            protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
@@ -189,6 +191,12 @@ struct MapView: View {
                     increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
             }
             layer.draw(Image(decorative: image.image, scale: 1).interpolation(interpolation), in: rect)
+            if let mask = shadow(region) {
+                var shading = context
+                let contrast = increasedContrast ?? (context.environment.colorSchemeContrast == .increased)
+                shading.opacity = contrast ? 0.12 : 0.22
+                shading.draw(Image(decorative: mask, scale: 1).interpolation(interpolation), in: rect)
+            }
         }
     }
 

@@ -118,6 +118,10 @@ struct WorldCommands: Commands {
                     }
                     .disabled(mode == .savedTime && session?.map?.savedLighting == nil)
                 }
+                Divider()
+                Toggle("Cast Shadows", isOn: Binding {
+                    session?.map?.castsShadows ?? true
+                } set: { session?.map?.setCastsShadows($0) })
             }
             .disabled(session?.map == nil || session?.map?.style == .height)
             Button("Show/Hide Blocks…") { showsBlockFilter = true }

@@ -25,7 +25,7 @@ nonisolated struct MapImage: Sendable {
             if let tile = map.image(for: region, fullResolution: full),
                !drawTerrainLayer(tile, region: region, viewport: map.viewport, size: size, scale: scale,
                                  lighting: map.lighting, protectsWater: map.style == .waterDepth,
-                                 contrast: contrast, into: destination) { return nil }
+                                 contrast: contrast, shadow: map.shadowImages[region], into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
@@ -45,10 +45,11 @@ nonisolated struct MapImage: Sendable {
     @MainActor
     static func drawTerrainLayer(_ tile: MapTileImage, region: RegionPosition, viewport: MapViewport,
                                  size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
-                                 contrast: ColorSchemeContrast, into destination: CGContext) -> Bool {
+                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil, into destination: CGContext) -> Bool {
         guard lighting != nil, tile.normals != nil else {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, in: context, size: size)
+                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
+                                    shadow: { _ in shadow }, increasedContrast: contrast == .increased, in: context, size: size)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
         }
@@ -65,7 +66,7 @@ nonisolated struct MapImage: Sendable {
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
                     MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                        lighting: lighting, protectsWater: protectsWater,
+                                        lighting: lighting, shadow: { _ in shadow }, protectsWater: protectsWater,
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)

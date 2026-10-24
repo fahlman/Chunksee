@@ -72,6 +72,10 @@ final class WorldSettings {
         return value.flatMap(MapLightingMode.init(rawValue:)) ?? .savedTime
     }
 
+    func castsShadows(for dimension: String) -> Bool {
+        (stored["castsShadows"] as? [String: Bool])?[dimension] ?? true
+    }
+
     func blockFilter(for dimension: String) -> MapBlockFilter {
         guard let value = (stored["blockFilters"] as? [String: [String: Any]])?[dimension] else { return MapBlockFilter() }
         return MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? true,
@@ -80,7 +84,8 @@ final class WorldSettings {
     }
 
     func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
-              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, lightingMode: MapLightingMode? = nil) {
+              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, lightingMode: MapLightingMode? = nil,
+              castsShadows: Bool? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -100,6 +105,11 @@ final class WorldSettings {
             var modes = saved["lightingModes"] as? [String: String] ?? [:]
             modes[dimension] = lightingMode.rawValue
             saved["lightingModes"] = modes
+        }
+        if let castsShadows {
+            var values = saved["castsShadows"] as? [String: Bool] ?? [:]
+            values[dimension] = castsShadows
+            saved["castsShadows"] = values
         }
         if let blockFilter {
             var filters = saved["blockFilters"] as? [String: [String: Any]] ?? [:]
