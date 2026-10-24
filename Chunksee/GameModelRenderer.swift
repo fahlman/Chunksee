@@ -20,7 +20,34 @@ nonisolated enum GameModelRenderer {
                        texture: (Identifier) -> ItemTexture?) throws -> CGImage? {
         var pixels = [UInt8](repeating: 0, count: size * size * 4)
         var retainedTextures: [Identifier: ItemTexture] = [:]
+        var retainedMaterials: [AssetModel.Material: ItemTexture] = [:]
         var textureBytes = 0
+        func load(_ id: Identifier) -> ItemTexture? {
+            if let retained = retainedTextures[id] { return retained }
+            guard let loaded = texture(id), loaded.width == loaded.height,
+                  textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return nil }
+            textureBytes += loaded.pixels.count
+            retainedTextures[id] = loaded
+            return loaded
+        }
+        func resolve(_ material: AssetModel.Material) throws -> ItemTexture? {
+            // The ordinary path keeps its identifier cache and does not hash overlay recipes.
+            guard !material.overlays.isEmpty else { return load(material.texture) }
+            if let retained = retainedMaterials[material] { return retained }
+            guard var image = load(material.texture),
+                  textureBytes + image.pixels.count <= 16 * 1024 * 1024 else { return nil }
+            // Charge the composed skin while its source textures are loaded, so all retained
+            // images share the existing budget. Faces reuse one immutable composed result.
+            textureBytes += image.pixels.count
+            for overlay in material.overlays {
+                try Task.checkCancellation()
+                guard let layer = load(overlay.texture),
+                      let composed = try image.compositing(layer, color: overlay.color) else { return nil }
+                image = composed
+            }
+            retainedMaterials[material] = image
+            return image
+        }
         // Composite parts are intentionally ordered. A generated item's layers share its
         // plane; separate depth buffers prevent the first layer from hiding later overlays.
         for (partIndex, part) in item.parts.enumerated() {
@@ -28,16 +55,8 @@ nonisolated enum GameModelRenderer {
             var faces: [Face] = []
             let model = part.model
             func append(_ vertices: [SIMD3<Float>], material: AssetModel.Material, uv: [SIMD2<Float>],
-                        tintIndex: Int?, element: AssetModel.Element?) -> Bool {
-                let image: ItemTexture
-                if let retained = retainedTextures[material.texture] { image = retained }
-                else {
-                    guard let loaded = texture(material.texture), loaded.width == loaded.height,
-                          textureBytes + loaded.pixels.count <= 16 * 1024 * 1024 else { return false }
-                    image = loaded
-                    textureBytes += loaded.pixels.count
-                    retainedTextures[material.texture] = loaded
-                }
+                        tintIndex: Int?, element: AssetModel.Element?) throws -> Bool {
+                guard let image = try resolve(material) else { return false }
                 let points = vertices.map { project($0, element: element?.rotation, transform: model.guiTransform) }
                 guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else { return false }
                 let normal = simd_cross(points[1] - points[0], points[3] - points[0])
@@ -57,7 +76,7 @@ nonisolated enum GameModelRenderer {
                     // A tiny depth offset lets later generated layers win depth tests,
                     // preserving the game's draw-order behavior for coplanar overlays.
                     let z = Float(8.5) + Float(layer.tintIndex) * 0.001
-                    guard append([SIMD3(0, 16, z), SIMD3(0, 0, z), SIMD3(16, 0, z), SIMD3(16, 16, z)],
+                    guard try append([SIMD3(0, 16, z), SIMD3(0, 0, z), SIMD3(16, 0, z), SIMD3(16, 16, z)],
                                  material: layer.material, uv: [SIMD2(0, 0), SIMD2(0, 1), SIMD2(1, 1), SIMD2(1, 0)],
                                  tintIndex: layer.tintIndex, element: nil) else { return nil }
                 }
@@ -66,7 +85,7 @@ nonisolated enum GameModelRenderer {
                     try Task.checkCancellation()
                     for direction in AssetModel.Direction.allCases {
                         guard let face = element.faces[direction] else { continue }
-                        guard append(vertices(for: direction, from: element.from, to: element.to), material: face.material,
+                        guard try append(vertices(for: direction, from: element.from, to: element.to), material: face.material,
                                      uv: face.textureCoordinates, tintIndex: face.tintIndex, element: element) else { return nil }
                     }
                 }
