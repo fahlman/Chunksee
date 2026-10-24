@@ -231,7 +231,9 @@ import Testing
         let assets = try fixture.library(), region = RegionPosition(x: -1, z: -1), chunk = ChunkPosition(x: -1, z: -1)
         var renderer = RegionTileRenderer(dimension: dimension)
         renderer.gameAssets = assets
-        var surface = try #require(try await renderer.surface(for: region))
+        let tile = try #require(try await renderer.tile(for: region))
+        let retained = try #require(tile.detail)
+        var surface = RegionTileRenderer.Canvas(heights: retained.heights, detail: retained.detail)
         for z in 496..<512 { for x in 496..<512 { surface.heights[z * 512 + x] = Int32(x - 496) } }
         for status in [DarkSpots.Status.bright, .dark, .unknown] {
             surface.nightLight = Array(repeating: status.rawValue, count: 512 * 512)
