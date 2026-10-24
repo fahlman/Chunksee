@@ -113,10 +113,19 @@ actor GameAssetLibrary {
         /// their storage. Only insertions need this accounting; warm lookups do not repeat it.
         var cost: Int {
             let data = selection.customModelData
+            let design = selection.bannerDesign
+            let patternBytes = design.layers.reduce(0) { total, layer in
+                let strings = switch layer.pattern {
+                case .reference(let id): id.description.utf8.count
+                case .inline(let asset, let key): asset.description.utf8.count + key.utf8.count
+                }
+                return total + 64 + strings
+            }
             return 128 + selection.modelID.description.utf8.count + (selection.trimMaterialID?.description.utf8.count ?? 0)
                 + data.floats.count * MemoryLayout<Float>.stride + data.flags.count * MemoryLayout<Bool>.stride
                 + data.colors.count * MemoryLayout<UInt32>.stride
                 + data.strings.reduce(0) { $0 + 32 + $1.utf8.count }
+                + patternBytes
                 + colors.reduce(0) { $0 + 32 + $1.count * MemoryLayout<UInt32>.stride }
         }
     }
@@ -235,10 +244,14 @@ actor GameAssetLibrary {
     }
 
     private nonisolated static func modelCost(_ model: AssetModel) -> Int {
+        func materialCost(_ material: AssetModel.Material) -> Int {
+            128 + material.texture.description.utf8.count
+                + material.overlays.reduce(0) { $0 + 64 + $1.texture.description.utf8.count }
+        }
         switch model.geometry {
-        case .layers(let layers): layers.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count }
+        case .layers(let layers): return layers.reduce(0) { $0 + materialCost($1.material) }
         case .elements(let elements):
-            elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + 128 + $1.material.texture.description.utf8.count } }
+            return elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + materialCost($1.material) } }
         }
     }
 

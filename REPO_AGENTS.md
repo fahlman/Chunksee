@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.63.0`, resolved to `0.63.0` (`1bc63ec186188c6a57ea07cc9a1a7a3d25f2d9e9`).
+  minor" from `0.65.0`, resolved to `0.65.0` (`da5868548fd3d64e5b65fc055614972e2638cb19`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1133,12 +1133,12 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Kit 0.63.0 owns saved model-reference, trim-material and custom-model-data selection through
+APIs. Kit 0.65.0 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
 ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
 that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
 a partial string identity. Custom conditions, strings, numeric ranges and colors stay in Kit;
 custom colors resolve to the existing constant tint. Other saved tints are evaluated separately
-from the original stack. Pattern, name and count
+from the original stack. Trim pattern, name and count
 do not split otherwise identical pictures. Missing/removed/inline trim materials keep the generic
 fallback, including older jars; non-nil trim selection requires verified 26.3 semantics. Removed, malformed and unresolved references keep
 the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
@@ -1146,7 +1146,7 @@ rejects stale results when a reference changes; item names and counts retain the
 Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
 prepared once off-main. Retained selection strings/arrays are conservatively charged to the model
-and image budgets at insertion, including custom-data keys. Public production-path tests keep
+and image budgets at insertion, including custom-data and ordered banner-design keys. Public production-path tests keep
 otherwise identical stacks' numeric, flag, exact Unicode string and color choices distinct in
 cold and warm caches; native ItemIcon pixels are checked in Light and Dark. There is no app-side
 component parser, model selector, resource-pack loader or game artwork.
@@ -1182,12 +1182,20 @@ Synthetic 64x64 atlas tests distinguish chest top/lid/body/latch regions and the
 turned top and upper/lower sides, including normal shared caching. #395's native and bounded
 rendering checks remain required; no installed artwork is included in the app or test fixtures.
 
-Kit supplies the verified 26.3 plain-shield geometry, translations used to separate colored-bed
+Kit supplies the verified 26.3 shield geometry, translations used to separate colored-bed
 parts and, in 0.57.1, the half-turns used by the straw bed. They use the same item renderer, skin
 decoding and memory caches, with no app-side model table. Synthetic pixel tests exercise both
 bed layouts and their texture orientation, plus the shield's front plate/back handle through
-GameAssetLibrary and native bed icons in both appearances. Shields use the default unpatterned
-skin; saved banner patterns/base colors remain on #390. The published library also exposes saved
+GameAssetLibrary and native bed icons in both appearances. Kit 0.65.0 resolves saved shield designs
+into ordered dyed material overlays on the same plate/handle geometry. ItemTexture composites
+the premultiplied pixels before projection, so the shared depth test still protects the nearer
+handle. Every face reuses one immutable composed skin. Base, layer sources and composed results
+share the existing per-picture 16 MiB retention limit; source dimensions must match. Model-cache
+cost includes the overlay recipes. No app dye palette, pattern parser or shield renderer is added.
+Tests cover cold/warm identity, layer order, cancellation, source retirement, unavailable layers,
+the common budget, handle occlusion and native ItemIcon pixels in both appearances. Plain shields
+keep their original picture. Resource-pack layering and world registry overrides remain outside
+the supplied-jar reader. The published library also exposes saved
 light validity and dimension spawn-light limits; #86's app overlay is still separate work.
 
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
