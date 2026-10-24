@@ -2,6 +2,8 @@ import ChunkseeKit
 import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
+import ImageIO
+import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
@@ -95,6 +97,8 @@ import Testing
         #expect(image.color(2, 2) == [255, 0, 0, 255])
         #expect(image.color(6, 2) == [0, 255, 0, 255] && image.color(10, 2) == [0, 255, 0, 255])
         #expect(image.color(14, 2) == [97, 153, 97, 255])
+        renderer.blendsBiomeColors = true
+        #expect(try await pixels(renderer).bytes == image.bytes) // Uniform biomes and fixed spruce tint stay unchanged.
         await library.close()
     }
 
@@ -123,6 +127,14 @@ import Testing
         // The official 26.3 probe gives 0x4c763c at (-100, -100). In region (-1, -1)
         // that is pixel (412, 412), inside chunk (-7, -7).
         #expect(image.color(412, 412) == [76, 118, 60, 255])
+        renderer.blendsBiomeColors = true
+        let blended = try ItemPictureFixture.pixels(#require(try await renderer.image(for: .init(x: -1, z: -1))))
+        var red = 0, green = 0, blue = 0
+        for z in -102 ... -98 { for x in -102 ... -98 {
+            let value = try #require(retained.color(.grass, x: Int32(x), z: Int32(z)))
+            red += Int((value >> 16) & 255); green += Int((value >> 8) & 255); blue += Int(value & 255)
+        } }
+        #expect(blended.color(412, 412) == [UInt8(red / 25), UInt8(green / 25), UInt8(blue / 25), 255])
         await library.close()
     }
 
@@ -423,11 +435,12 @@ import Testing
             return value
         }
         var sampled = try await renderer(sampledURL), explicit = try await renderer(explicitURL)
-        for style in [MapStyle.normal, .waterDepth] {
+        for blend in [false, true] { for style in [MapStyle.normal, .waterDepth] {
+            sampled.blendsBiomeColors = blend; explicit.blendsBiomeColors = blend
             sampled.style = style; explicit.style = style
             let actual = try await pixels(sampled), expected = try await pixels(explicit)
             #expect(actual.bytes == expected.bytes)
-        }
+        } }
         await library.close()
     }
 
@@ -463,11 +476,18 @@ import Testing
         await library.close()
     }
 
-    @Test(.timeLimit(.minutes(1))) func neighborSaveCancelsTheOlderRenderAndOnlyTheReplacementPublishes() async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func neighborSaveCancelsTheOlderRenderAndOnlyTheReplacementPublishes(blending: Bool) async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
-        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, _, _ in false }),
-                                     sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in false })], seed: 0)
+        func terrain(_ x: Int, blue: Bool) -> TestWorld.ChunkSpec {
+            if blending {
+                return chunk(x: x, palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 },
+                             biomes: { _, _, _ in blue ? 1 : 0 })
+            }
+            return sampledChunk(.init(x: x, z: 0), blue: { _, _, _ in blue })
+        }
+        let url = try world(chunks: [terrain(0, blue: false), terrain(-1, blue: false)], seed: blending ? nil : 0)
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
@@ -478,10 +498,11 @@ import Testing
                 _ = await gate.read(name)
                 return tile
             })
+        map.setBiomeBlending(blending)
         map.setGameAssets(library, biomeColors: try await library.biomeColors(in: world))
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await gate.waitForRequest("0")
-        try Data(TestWorld.regionFile([sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in true })]))
+        try Data(TestWorld.regionFile([terrain(-1, blue: true)]))
             .write(to: dimension.regionURL(at: .init(x: -1, z: 0)))
         map.regionsChanged([.init(x: -1, z: 0)])
         await gate.waitForCancellation("0")
@@ -490,8 +511,8 @@ import Testing
         await map.waitUntilIdle()
         await gate.finish("0", with: true)
         await work.waitUntilFinished()
-        let point = try westSample(), image = try #require(map.tiles[.init(x: 0, z: 0)])
-        #expect(try ItemPictureFixture.pixels(image).color(point.x, point.z) == [0, 0, 255, 255])
+        let point = blending ? (x: 0, z: 8) : try westSample(), image = try #require(map.tiles[.init(x: 0, z: 0)])
+        #expect(try ItemPictureFixture.pixels(image).color(point.x, point.z) == (blending ? [153, 0, 102, 255] : [0, 0, 255, 255]))
         map.close(); await work.waitUntilFinished(); await library.close()
     }
 
@@ -575,6 +596,181 @@ import Testing
             }
         } }
         #expect(crossed > 0)
+        await library.close()
+    }
+
+    @Test func optionalBlendingSmoothsKnownBordersAndKeepsTheCenterWhenAnySampleIsMissing() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let spec = chunk(palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 },
+                         biomes: { x, _, _ in x < 8 ? 0 : 1 })
+        let url = try world(chunks: [spec])
+        let missing = try world(chunks: [chunk(palette: [.string("minecraft:grass_block")],
+            blocks: { _, _, _ in 0 }, biomes: { x, _, _ in x < 8 ? 0 : 1 }, biomeIDs: ["test:a", "test:missing"])])
+        defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: missing) }
+        let library = try fixture.library(), world = try World(contentsOf: url)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        let sharp = try await pixels(renderer)
+        #expect(sharp.color(7, 8) == [255, 0, 0, 255] && sharp.color(8, 8) == [0, 0, 255, 255])
+        renderer.blendsBiomeColors = true
+        let blended = try await pixels(renderer)
+        for (x, red, blue) in [(5, 255, 0), (6, 204, 51), (7, 153, 102), (8, 102, 153), (9, 51, 204), (10, 0, 255)] {
+            #expect(blended.color(x, 8) == [UInt8(red), 0, UInt8(blue), 255])
+        }
+        #expect(blended.color(0, 8) == sharp.color(0, 8)) // The absent western chunk isn't invented.
+        #expect(blended.color(7, 0) == sharp.color(7, 0)) // A partial north neighborhood keeps the center.
+        var unavailable = RegionTileRenderer(dimension: try #require(try World(contentsOf: missing).dimension("overworld")))
+        unavailable.gameAssets = library; unavailable.biomeColors = renderer.biomeColors
+        unavailable.blendsBiomeColors = true
+        let unknown = try await pixels(unavailable)
+        #expect(unknown.color(7, 8) == [255, 0, 0, 255] && unknown.color(8, 8) == [124, 189, 107, 255])
+        renderer.gameAssets = nil
+        renderer.biomeColors = nil
+        #expect(!renderer.samplesNeighborBiomes)
+        let fallback = try await pixels(renderer)
+        renderer.blendsBiomeColors = false
+        #expect(try await pixels(renderer).bytes == fallback.bytes)
+        await library.close()
+    }
+
+    @Test func blendedDisplacedCellsCrossNegativeChunkAndRegionBordersInSerialAndParallel() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let centers = [ChunkPosition(x: -32, z: -32), .init(x: 31, z: 31)]
+        let positions = Set(centers.flatMap { center in (-1...1).flatMap { z in (-1...1).map { x in
+            ChunkPosition(x: center.x + x, z: center.z + z)
+        } } })
+        func blue(_ x: Int, _ y: Int, _ z: Int) -> Bool { ((x >> 2) ^ (y >> 2) ^ (z >> 2)) & 1 == 1 }
+        let url = try world(chunks: positions.map { sampledChunk($0, blue: blue) }, seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url), sampler = BiomeSampler(seed: 0)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")))
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        renderer.blendsBiomeColors = true
+        for center in centers {
+            renderer.chunkConcurrency = 1
+            let serial = try ItemPictureFixture.pixels(#require(try await renderer.image(for: center.region)))
+            renderer.chunkConcurrency = 14
+            let parallel = try ItemPictureFixture.pixels(#require(try await renderer.image(for: center.region)))
+            #expect(serial.bytes == parallel.bytes)
+            let origin = try #require(center.blockOrigin)
+            for z in 0..<16 { for x in 0..<16 {
+                var blueCount = 0
+                for dz in -2...2 { for dx in -2...2 {
+                    let cell = try #require(sampler.cellOrigin(at: .init(blockX: origin.x + x + dx, blockY: 15, blockZ: origin.z + z + dz)))
+                    if blue(cell.x, cell.y, cell.z) { blueCount += 1 }
+                } }
+                #expect(parallel.color(center.localX * 16 + x, center.localZ * 16 + z)
+                    == [UInt8((25 - blueCount) * 255 / 25), 0, UInt8(blueCount * 255 / 25), 255])
+            } }
+        }
+        await library.close()
+    }
+
+    @Test func blendingUsesEachNeighborsOwnPaletteLayout() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        func blue(_ x: Int, _ y: Int, _ z: Int) -> Bool { ((x >> 2) ^ (y >> 2) ^ (z >> 2)) & 1 == 1 }
+        let center = ChunkPosition(x: 0, z: 0)
+        let chunks = (-1...1).flatMap { z in (-1...1).map { x -> TestWorld.ChunkSpec in
+            if x == 0 && z == 0 {
+                return chunk(palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 },
+                             biomes: { x, y, z in blue(x, y, z) ? 1 : 0 })
+            }
+            return sampledChunk(.init(x: x, z: z), blue: blue)
+        } }
+        let url = try world(chunks: chunks, seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let library = try fixture.library(), world = try World(contentsOf: url), sampler = BiomeSampler(seed: 0)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), chunkConcurrency: 14)
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        renderer.blendsBiomeColors = true
+        let image = try await pixels(renderer)
+        for z in [0, 7, 15] { for x in [0, 7, 15] {
+            var count = 0
+            for dz in -2...2 { for dx in -2...2 {
+                let point = BlockPosition(blockX: x + dx, blockY: 15, blockZ: z + dz)
+                let selected = point.chunk == center ? point : try #require(sampler.cellOrigin(at: point))
+                if blue(selected.x, selected.y, selected.z) { count += 1 }
+            } }
+            #expect(image.color(x, z) == [UInt8((25 - count) * 255 / 25), 0, UInt8(count * 255 / 25), 255])
+        } }
+        await library.close()
+    }
+
+    @Test func blendedPerBlockNeighborsWithoutASeedInvalidateDiskTilesAndKeepSharpCacheKeysSeparate() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        func solid(_ x: Int, blue: Bool) -> TestWorld.ChunkSpec {
+            chunk(x: x, palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 }, biomes: { _, _, _ in blue ? 1 : 0 })
+        }
+        let url = try world(chunks: [solid(0, blue: false)])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
+        let cache = TileCache(directory: url.appendingPathComponent("tiles")), region = RegionPosition(x: 0, z: 0)
+        var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        let sharpKey = renderer.colorSourceKey
+        let sharp = try #require(try await renderer.tile(for: region))
+        renderer.blendsBiomeColors = true
+        #expect(renderer.colorSourceKey != sharpKey && renderer.samplesNeighborBiomes)
+        let own = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
+        let neighbor = dimension.regionURL(at: .init(x: -1, z: 0))
+        func color() async throws -> [UInt8] {
+            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).color(0, 8)
+        }
+        #expect(try await color() == [255, 0, 0, 255])
+        for (blue, expected, stamp) in [(true, [153, 0, 102, 255], 1000.0), (false, [255, 0, 0, 255], 2000.0)] {
+            try Data(TestWorld.regionFile([solid(-1, blue: blue)])).write(to: neighbor)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: stamp)], ofItemAtPath: neighbor.path)
+            #expect(try await color() == expected.map(UInt8.init))
+            let hit = try #require(try await renderer.tile(for: region))
+            #expect(hit.cacheWrite == nil)
+            #expect(try ItemPictureFixture.pixels(hit.full).color(0, 8) == expected.map(UInt8.init))
+        }
+        try FileManager.default.removeItem(at: neighbor)
+        #expect(try await color() == [255, 0, 0, 255])
+        let after = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
+        #expect(after.size == own.size && after.modified == own.modified)
+        renderer.blendsBiomeColors = false
+        #expect(renderer.colorSourceKey == sharpKey)
+        #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).bytes == ItemPictureFixture.pixels(sharp.full).bytes)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        await library.close()
+    }
+
+    @Test func blendedCurrentViewAndAreaExportsHaveIdenticalPixelsInBothAppearances() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [chunk(palette: [.string("minecraft:grass_block")], blocks: { _, _, _ in 0 },
+                                          biomes: { x, _, _ in x < 8 ? 0 : 1 })])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero)
+        map.setGameAssets(library, biomeColors: try await library.biomeColors(in: world))
+        map.setBiomeBlending(true)
+        let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 16, height: 16), blocksPerPixel: 1)
+        map.viewport = plan.viewport
+        map.requestTiles(visibleIn: plan.size, displayScale: 1)
+        await map.waitUntilIdle()
+        let tile = try ItemPictureFixture.pixels(#require(map.tiles[.init(x: 0, z: 0)]))
+        #expect(tile.color(7, 8) == [153, 0, 102, 255])
+        func bytes(_ image: MapImage) throws -> Data {
+            let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
+            let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            return try #require(decoded.dataProvider?.data as Data?)
+        }
+        for appearance in [ColorScheme.light, .dark] {
+            let area = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+                content: MapContent(), portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),
+                progress: { _, _ in })
+            let view = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: plan.size,
+                scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+            #expect(try bytes(area) == bytes(view))
+        }
+        map.close()
+        await map.waitForRenders()
         await library.close()
     }
 

@@ -151,6 +151,7 @@ struct WorldView: View {
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
+                    .onChange(of: map.blendsBiomeColors) { session.saveView() }
                     .onChange(of: map.blockFilter) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) }])

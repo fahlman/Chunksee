@@ -128,6 +128,10 @@ Height uses that dimension’s saved build limits and sea level; it is unavailab
 can’t be read. Water Depth colors water from shallow to **32 or deeper**, leaving land recognizable.
 Both styles also work in Cutaway. Their legend explains the colors, and switching to Normal reuses
 its cached tiles.
+**View ▸ Map Style ▸ Blend Biome Colors** smooths grass, foliage and water colors across biome
+boundaries using Minecraft's default five-by-five neighborhood. It starts off and is remembered
+separately by each dimension tab. Where neighboring data is missing, the center's original color
+is kept. Height colors are unaffected.
 **World Border** in View and the sidebar shows or hides a saved border smaller than Minecraft's
 default limit. It starts shown, remembers each dimension's choice, and applies to exported images
 too. The controls are disabled when the dimension has no limited border.

@@ -67,6 +67,10 @@ final class WorldSettings {
         return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
     }
 
+    func blendsBiomeColors(for dimension: String) -> Bool {
+        (stored["biomeBlending"] as? [String: Bool])?[dimension] ?? false
+    }
+
     func blockFilter(for dimension: String) -> MapBlockFilter {
         guard let value = (stored["blockFilters"] as? [String: [String: Any]])?[dimension] else { return MapBlockFilter() }
         return MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? true,
@@ -75,7 +79,7 @@ final class WorldSettings {
     }
 
     func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
-              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil) {
+              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, blendsBiomeColors: Bool? = nil) {
         guard viewport.isValid else { return }
         var saved = stored
         var views = saved["views"] as? [String: [Double]] ?? [:]
@@ -90,6 +94,11 @@ final class WorldSettings {
             var styles = saved["styles"] as? [String: String] ?? [:]
             styles[dimension] = style.rawValue
             saved["styles"] = styles
+        }
+        if let blendsBiomeColors {
+            var choices = saved["biomeBlending"] as? [String: Bool] ?? [:]
+            choices[dimension] = blendsBiomeColors
+            saved["biomeBlending"] = choices
         }
         if let blockFilter {
             var filters = saved["blockFilters"] as? [String: [String: Any]] ?? [:]

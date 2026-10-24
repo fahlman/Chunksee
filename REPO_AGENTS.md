@@ -1248,8 +1248,18 @@ passes checked absolute X/Z to the swamp rule. With a saved 26.3 seed, Kit's Bio
 seed-displaced cells across chunk/section/region boundaries. The saved DimensionType clamps
 source Y to its build limits when known; missing interior sections and neighboring chunks stay
 unavailable. Per-block palettes retain direct lookup; an unknown seed never becomes seed zero.
-Unavailable facts retain BlockColors. Height remains independent of game/biome colors. Optional
-color blending remains on #361.
+Unavailable facts retain BlockColors. Height remains independent of game/biome colors.
+View > Map Style > Blend Biome Colors is an initially-off, per-dimension display choice, owned
+by MapModel and persisted by WorldSettings. BiomeBlending averages the client's default 5-by-5
+square at the same Y, using integer RGB channels. Kit still selects every biome and resolves
+every color, including position-dependent modifiers at each neighboring block. The renderer
+deduplicates the requested color samples within each chunk task and reuses its bounded biome
+snapshot window, without another terrain traversal. A missing sample keeps the exact unblended
+center; no partial average or guessed seed is used. Neighbor file changes invalidate blended
+tiles even for per-block palettes without a seed. Renderer version 20 and the blend-specific
+color source key separate these pixels; the cache retains its existing bounded latest-source
+policy. Height ignores the choice. Toggling rejects old tile results while preserving pending
+hover/coordinate reads, and document rereads carry the choice with the existing navigation state.
 
 The renderer pipelines in-region decoding and coloring under one shared worker limit. A chunk
 colors as soon as its neighboring reads finish, including missing or damaged chunks; decoding

@@ -10,6 +10,7 @@ final class MapModel {
     var viewport: MapViewport
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
+    private(set) var blendsBiomeColors = false
     private(set) var blockFilter = MapBlockFilter()
     let heightScale: MapHeightScale?
 
@@ -31,6 +32,7 @@ final class MapModel {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
+        current.blendsBiomeColors = blendsBiomeColors
         current.blockFilter = blockFilter
         current.gameAssets = style == .height ? nil : gameAssets
         current.biomeColors = style == .height ? nil : biomeColors
@@ -448,6 +450,12 @@ final class MapModel {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
         reloadTiles()
+    }
+
+    func setBiomeBlending(_ enabled: Bool) {
+        guard !isClosed, enabled != blendsBiomeColors else { return }
+        blendsBiomeColors = enabled
+        if style != .height { reloadTiles() }
     }
 
     /// The source owner shares this exact library with pictures. Swapping it cancels old
