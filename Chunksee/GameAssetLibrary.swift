@@ -15,9 +15,9 @@ actor GameAssetLibrary {
     /// Values are immutable, and limits are configured
     /// before publication; only the actor inserts entries. Synchronous readers never decode.
     nonisolated private final class Caches: @unchecked Sendable {
-        let models = NSCache<NSString, ModelEntry>()
+        let models = NSCache<ItemKey, ModelEntry>()
         let textures = NSCache<NSString, TextureEntry>()
-        let images = NSCache<NSString, CGImage>()
+        let images = NSCache<ItemKey, CGImage>()
         let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
 
@@ -84,6 +84,41 @@ actor GameAssetLibrary {
     nonisolated private final class TextureEntry {
         let texture: ItemTexture?
         init(_ texture: ItemTexture?) { self.texture = texture }
+    }
+
+    /// Kit owns every saved fact that can choose a model. Keep that complete value in both
+    /// caches instead of rebuilding a partial identity from selected fields in the app.
+    nonisolated private final class ItemKey: NSObject {
+        let selection: ItemModelSelection
+        let colors: [[UInt32]]
+
+        init(_ selection: ItemModelSelection, colors: [[UInt32]] = []) {
+            self.selection = selection
+            self.colors = colors
+        }
+
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(selection)
+            hasher.combine(colors)
+            return hasher.finalize()
+        }
+
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? ItemKey else { return false }
+            return selection == other.selection && colors == other.colors
+        }
+
+        /// Conservatively charge retained strings/arrays to each cache, even when Swift shares
+        /// their storage. Only insertions need this accounting; warm lookups do not repeat it.
+        var cost: Int {
+            let data = selection.customModelData
+            return 128 + selection.modelID.description.utf8.count + (selection.trimMaterialID?.description.utf8.count ?? 0)
+                + data.floats.count * MemoryLayout<Float>.stride + data.flags.count * MemoryLayout<Bool>.stride
+                + data.colors.count * MemoryLayout<UInt32>.stride
+                + data.strings.reduce(0) { $0 + 32 + $1.utf8.count }
+                + colors.reduce(0) { $0 + 32 + $1.count * MemoryLayout<UInt32>.stride }
+        }
     }
 
     init(assets: GameAssets, sourceKey: String) {
@@ -224,41 +259,32 @@ actor GameAssetLibrary {
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {
         guard let selection = stack.itemModelSelection,
-              let entry = caches.models.object(forKey: Self.modelKey(for: selection) as NSString), entry.item != nil,
+              let entry = caches.models.object(forKey: ItemKey(selection)), entry.item != nil,
               let colors = entry.colors(for: stack, version: version, texture: {
                   caches.textures.object(forKey: $0.description as NSString)?.texture
               }) else { return nil }
-        return caches.images.object(forKey: Self.imageKey(for: selection, colors: colors))
+        return caches.images.object(forKey: ItemKey(selection, colors: colors))
     }
 
     func picture(for stack: ItemStack) throws -> CGImage? {
         try Task.checkCancellation()
         guard let assets, let selection = stack.itemModelSelection else { return nil }
-        let key = Self.modelKey(for: selection) as NSString
+        let key = ItemKey(selection)
         let entry: ModelEntry
         if let cached = caches.models.object(forKey: key) { entry = cached }
         else {
             entry = ModelEntry(assets.itemModel(for: selection))
-            caches.models.setObject(entry, forKey: key, cost: entry.cost)
+            caches.models.setObject(entry, forKey: key, cost: entry.cost + key.cost)
         }
         guard let item = entry.item else { return nil }
         guard let colors = entry.colors(for: stack, version: version, texture: texture) else { return nil }
         try Task.checkCancellation()
-        let imageKey = Self.imageKey(for: selection, colors: colors)
+        let imageKey = ItemKey(selection, colors: colors)
         if let image = caches.images.object(forKey: imageKey) { return image }
         guard let image = try GameModelRenderer.render(item, colors: colors, texture: itemTexture) else { return nil }
         try Task.checkCancellation()
-        caches.images.setObject(image, forKey: imageKey, cost: image.bytesPerRow * image.height)
+        caches.images.setObject(image, forKey: imageKey, cost: image.bytesPerRow * image.height + imageKey.cost)
         return image
-    }
-
-    private nonisolated static func modelKey(for selection: ItemModelSelection) -> String {
-        // Identifier excludes separators, so nil and every valid material have distinct keys.
-        selection.modelID.description + "|" + (selection.trimMaterialID?.description ?? "")
-    }
-
-    private nonisolated static func imageKey(for selection: ItemModelSelection, colors: [[UInt32]]) -> NSString {
-        (modelKey(for: selection) + "|" + colors.map { $0.map(String.init).joined(separator: ",") }.joined(separator: ";")) as NSString
     }
 
     /// Atlas sprites have their own identity: a generated item sprite must neither replace

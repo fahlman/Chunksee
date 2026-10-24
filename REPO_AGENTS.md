@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.61.0`, resolved to `0.61.0` (`d3020d78a4786c8bb86002ede0e9e567b87b5c48`).
+  minor" from `0.63.0`, resolved to `0.63.0` (`1bc63ec186188c6a57ea07cc9a1a7a3d25f2d9e9`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1133,16 +1133,24 @@ covers a hidden document tab while Settings is active, then rechooses the folder
 pictures in the still-open documents.
 
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
-APIs. Kit 0.61.0 owns saved model-reference and trim-material selection through
-ItemStack.itemModelSelection. Both cold and warm lookups key models and thumbnails by that
-selection, with saved tints evaluated separately from the original stack. Pattern, name and count
+APIs. Kit 0.63.0 owns saved model-reference, trim-material and custom-model-data selection through
+ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
+that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
+a partial string identity. Custom conditions, strings, numeric ranges and colors stay in Kit;
+custom colors resolve to the existing constant tint. Other saved tints are evaluated separately
+from the original stack. Pattern, name and count
 do not split otherwise identical pictures. Missing/removed/inline trim materials keep the generic
 fallback, including older jars; non-nil trim selection requires verified 26.3 semantics. Removed, malformed and unresolved references keep
 the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
 rejects stale results when a reference changes; item names and counts retain their original owner.
 Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
-prepared once off-main. A synchronous NSCache hit reads only immutable cached
+prepared once off-main. Retained selection strings/arrays are conservatively charged to the model
+and image budgets at insertion, including custom-data keys. Public production-path tests keep
+otherwise identical stacks' numeric, flag, exact Unicode string and color choices distinct in
+cold and warm caches; native ItemIcon pixels are checked in Light and Dark. There is no app-side
+component parser, model selector, resource-pack loader or game artwork.
+A synchronous NSCache hit reads only immutable cached
 models, textures and images; it performs no I/O, decoding or drawing. NSCache's documented thread
 safety permits this narrow unchecked-Sendable holder: limits are set before publication and only
 the actor inserts immutable values. Warm ItemIcon views show the picture immediately and retain
@@ -1154,7 +1162,7 @@ pixels per side). GameModelRenderer projects resolved element geometry and GUI t
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
 Missing jars/resources, unsupported special models and non-square animation strips use the existing
-symbols. Static fallback variants omit custom-model-data/live predicates; firework tint uses the
+symbols. Static fallback variants omit live predicates; firework tint uses the
 definition default. These limits remain on #390; the initial mixed-picture PR does not close it.
 
 Kit 0.61.0 also owns item-atlas palette-source precedence and AssetPaletteMapping. ItemTexture
