@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.66.2`, resolved to `0.66.2` (`d557c1f7a563212196d1acdeebe219208e9310d9`).
+  minor" from `0.68.0`, resolved to `0.68.0` (`65154c5696e048248f9db86645256daa969a935c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1200,8 +1200,8 @@ safety permits this narrow unchecked-Sendable holder: limits are set before publ
 the actor inserts immutable values. Warm ItemIcon views show the picture immediately and retain
 it while visible, avoiding a fallback-to-picture layout change or actor hop on repeat visits.
 Per-picture retained
-textures are limited to 16 MiB; ImageIO dimensions are checked before decoding (at most 1024 square
-pixels per side). GameModelRenderer projects resolved element geometry and GUI transforms into
+textures are limited to 16 MiB; ImageIO dimensions are checked before decoding (at most 1024
+pixels on either side). GameModelRenderer projects resolved element geometry and GUI transforms into
 64-pixel thumbnails, uses face UVs and nearest samples, and retains ordered generated layers and
 composites. Depth tests prevent hidden cuboid faces from drawing over nearer surfaces. Fixed
 thumbnail lighting is app presentation, not a claim of identical live game shading/animation.
@@ -1242,7 +1242,21 @@ keep their original picture. Kit 0.66.2 supplies standing and wall banner geomet
 inventory cloth pose, definition base dye and saved patterns through these same shared owners.
 The app has no banner-specific drawing or pattern rules. Synthetic banner tests verify cloth
 colors and layer order, uncolored wooden supports, cold/warm picture identity, missing-pattern
-fallback and native ItemIcon pixels in both appearances. Resource-pack layering and world registry overrides remain outside
+fallback and native ItemIcon pixels in both appearances.
+
+The same renderer also consumes Kit's static conduit, decorated-pot, copper-golem-statue and
+mob-head geometry through the published 0.68.0 pin. Material.staticTextureAspectRatio identifies
+verified whole skins, allowing
+rectangular conduit and skull images at their matching resolution ratio. Ordinary materials
+retain the square-image policy, so an unknown animation strip never becomes a stretched skin.
+The decoder validates this ratio even when another face already retained the image; the common
+16 MiB picture budget still covers every source and composed skin. ItemModelSelection owns each
+pot side's saved template/pattern identity. The existing model/image keys include that typed
+selection, and their cost estimates include its retained strings. An entry larger than its
+cache's budget may draw but is not retained there. No app-side shape, item-ID or pattern table is
+added. Public-path tests cover rectangular skins, higher-resolution ratios, unavailable-resource
+fallbacks, distinct pot sides, warm cache identity, oversized keys and native ItemIcon pixels.
+Resource-pack layering and world registry overrides remain outside
 the supplied-jar reader. The published library also exposes saved
 light validity and dimension spawn-light limits; #86's app overlay is still separate work.
 

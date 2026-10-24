@@ -121,11 +121,20 @@ actor GameAssetLibrary {
                 }
                 return total + 64 + strings
             }
+            let pot = selection.potDecorations
+            let potBytes = [pot.back, pot.left, pot.right, pot.front].reduce(0) { total, decoration in
+                guard let decoration else { return total }
+                let patternBytes = switch decoration.pattern {
+                case .itemDefault, .removed: 0
+                case .reference(let id), .inline(let id): id.description.utf8.count
+                }
+                return total + 96 + decoration.itemID.description.utf8.count + patternBytes
+            }
             return 128 + selection.modelID.description.utf8.count + (selection.trimMaterialID?.description.utf8.count ?? 0)
                 + data.floats.count * MemoryLayout<Float>.stride + data.flags.count * MemoryLayout<Bool>.stride
                 + data.colors.count * MemoryLayout<UInt32>.stride
                 + data.strings.reduce(0) { $0 + 32 + $1.utf8.count }
-                + patternBytes
+                + patternBytes + potBytes
                 + colors.reduce(0) { $0 + 32 + $1.count * MemoryLayout<UInt32>.stride }
         }
     }
@@ -297,7 +306,10 @@ actor GameAssetLibrary {
         if let cached = caches.models.object(forKey: key) { entry = cached }
         else {
             entry = ModelEntry(assets.itemModel(for: selection))
-            caches.models.setObject(entry, forKey: key, cost: entry.cost + key.cost)
+            let cost = entry.cost + key.cost
+            if cost <= caches.models.totalCostLimit {
+                caches.models.setObject(entry, forKey: key, cost: cost)
+            }
         }
         guard let item = entry.item else { return nil }
         guard let colors = entry.colors(for: stack, version: version, texture: texture) else { return nil }
@@ -306,7 +318,10 @@ actor GameAssetLibrary {
         if let image = caches.images.object(forKey: imageKey) { return image }
         guard let image = try GameModelRenderer.render(item, colors: colors, texture: itemTexture) else { return nil }
         try Task.checkCancellation()
-        caches.images.setObject(image, forKey: imageKey, cost: image.bytesPerRow * image.height + imageKey.cost)
+        let cost = image.bytesPerRow * image.height + imageKey.cost
+        if cost <= caches.images.totalCostLimit {
+            caches.images.setObject(image, forKey: imageKey, cost: cost)
+        }
         return image
     }
 

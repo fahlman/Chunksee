@@ -82,14 +82,17 @@ with a link to this guide. Help opens only when requested.
    **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
    can read the names Minecraft remembers, item pictures and map colors from the installed version matching
    each world. Inventory slots, equipment, trades, Storage and matching items in search details
-   share those pictures, including three-sided blocks, closed chests, shulker boxes, shields, banners
-   and colored or straw beds in Minecraft 26.3, saved leather and potion colors, and saved
+   share those pictures, including three-sided blocks, closed chests, shulker boxes, shields, banners,
+   decorated pots, conduits, copper golem statues, mob heads, and colored or straw beds in Minecraft 26.3,
+   saved leather and potion colors, and saved
    item-model overrides when the selected model is available. Armor pictures also show saved
    trim materials from Minecraft 26.3, while preserving any leather dye. Saved custom-model choices
    and colors are respected when the chosen game archive supplies their definitions.
    Shields also show their saved base color and patterns, and banners show their cloth color
-   and saved patterns from Minecraft 26.3 when the chosen archive supplies the resources. Items keep their category symbols when
-   pictures are unavailable. Other unsupported special models and animated textures are not drawn yet.
+   and saved patterns from Minecraft 26.3 when the chosen archive supplies the resources. Decorated
+   pots show the patterns saved on each side. Mob heads use their still pose; player heads and
+   animated models retain their category symbols. Items also keep those symbols when a picture's
+   resources are unavailable.
    The Normal map also averages the visible top textures of supported block models. Missing or
    unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
    leaves, vines and water use each block column's biome colors, including enabled data-pack
