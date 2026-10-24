@@ -42,7 +42,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Sampled Y also depends on the saved build range even for an explicit cutaway.
     private func biomeDependencyKey(for region: RegionPosition) -> String? {
         guard samplesNeighborBiomes else { return nil }
-        let files = Self.biomeRegions(around: region).sorted { ($0.x, $0.z) < ($1.x, $1.z) }.map { neighbor in
+        let files = Self.neighboringRegions(around: region).sorted { ($0.x, $0.z) < ($1.x, $1.z) }.map { neighbor in
             let stamp = CacheKey.fileStamp(for: dimension.regionURL(.terrain, x: neighbor.x, z: neighbor.z))
             return "\(neighbor.x),\(neighbor.z):" + (stamp.map { "\($0.size),\($0.modified)" } ?? "missing")
         }
@@ -243,8 +243,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         return canvas
     }
 
-    /// A displaced cell can use any adjacent region, including diagonal corners.
-    static func biomeRegions(around region: RegionPosition) -> Set<RegionPosition> {
+    /// Biome sampling and terrain shadows can use adjacent regions, including diagonal corners.
+    static func neighboringRegions(around region: RegionPosition) -> Set<RegionPosition> {
         var regions: Set<RegionPosition> = []
         for dx in -1...1 {
             for dz in -1...1 {
@@ -270,9 +270,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         var full: MapTileImage
         var preview: MapTileImage
         var cacheWrite: CacheWrite?
+        var heights: [Int32]?
 
-        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil) {
-            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite
+        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil, heights: [Int32]? = nil) {
+            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite; self.heights = heights
         }
 
         init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil) {
@@ -331,7 +332,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             guard normals != nil, previewNormals != nil else { return nil }
         }
         return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
-                            cacheWrite: cacheWrite)
+                            cacheWrite: cacheWrite, heights: style == .height ? nil : surface.heights)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade

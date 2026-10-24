@@ -6,6 +6,7 @@ import SwiftUI
 struct MapContent {
     var mapStyle = MapStyle.normal
     var lighting: MapLighting?
+    var shadowLight: MapShadow.Light?
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
     var showsDarkSpots = false
@@ -120,6 +121,7 @@ extension MapContent {
         guard session.map != nil, let id = session.selectedDimensionID else { return }
         mapStyle = session.map?.style ?? .normal
         lighting = session.map?.lighting
+        shadowLight = session.map?.shadowLight
         heightScale = session.map?.heightScale
         blockFilter = session.map?.blockFilter ?? MapBlockFilter()
         showsDarkSpots = session.map?.showsDarkSpots == true
