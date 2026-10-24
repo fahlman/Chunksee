@@ -155,7 +155,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
 | `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
-| `MapModel.swift` | Full and preview tile caches and the per-region render scheduler for one dimension; rendering for regions that leave the view is cancelled |
+| `MapModel.swift`, `MapShadow.swift` | Full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate values and their shared Foundation format style using ChunkseeKit’s checked block conversion, common CoordinateText digit styling, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
@@ -327,8 +327,7 @@ The cached Canvas contains unlit RGBA bytes, signed little-endian Int32 heights 
 Lighting forms the displayed/exported full image and its preview after rendering or loading that
 surface, so changed height-scale metadata can relight a cache hit without rereading chunks. Normal
 and Water Depth keys therefore do not include the lighting scale; Height's baked palette still does.
-Cache writes retain the existing map-owned cancellation/draining lifecycle. Cast shadows remain
-separate (#359).
+Cache writes retain the existing map-owned cancellation/draining lifecycle.
 
 MapLighting projects Kit 0.62.0's savedSkyLighting and dimension time metadata into drawing inputs.
 WorldResources shares one cancellable lighting read across dimensions, reopening metadata on
@@ -344,11 +343,29 @@ The map legend identifies Saved Time and its moon phase.
 Saved Time prepares compact linear-sRGB normal images from the cached signed heights during the
 existing relief walk, then applies direction and tint with a SwiftUI color shader at drawing time.
 A quarter of fixed directional relief plus the existing elevation curve keeps noon readable.
-Clock-only updates replace uniforms without rendering tiles or invalidating terrain/hover/index
-caches. Mode/availability changes rebuild drawing inputs from the existing unlit cache; they do
+Clock-only updates replace uniforms and, when direction changes, shadow masks without rendering
+tiles or invalidating terrain/hover/index caches. Mode/availability changes rebuild drawing inputs from the existing unlit cache; they do
 not change its format or key. Color and normal images share one MapTileImage and count against
 the same full/preview eviction budgets; visible regions keep the existing retention exception.
 Preview normals ignore missing columns and preserve water when any contributing column is water.
+
+MapShadow owns one heightmap-shadow calculation for screen, Copy/Share and area export. A monotone
+horizon sweep visits each column once, considering 512 steps along the light ray. Saved Time uses
+MapLighting's east/west sun or moon direction; overhead and below-horizon lights cast no shadow.
+Daylight uses the fixed northwest presentation direction. Adjacent cached heights carry shadows
+across region edges, including negative coordinates and corners; missing heights never occlude.
+This is a surface effect, without voxel/overhang ray tracing or ambient occlusion.
+MapModel owns the Cast Shadows toggle (initially on, remembered per dimension), active height
+neighbors, shadow images and revision checks. The existing terrain reader supplies immutable heights;
+there is no extra scan of a requested tile or disk format change. Saved Time retains east/west
+neighbors even at noon, so clock changes read no terrain; fixed Daylight retains only northwest
+neighbors. No southern row is requested. Panning drops heights outside the new neighborhood. Active
+heights and masks count against the full-image budget, evicting distant color images first;
+visible images and their required neighboring heights keep the existing retention exception. Height style
+bypasses shadows. Region edits, depth/filter/source changes, hide and close invalidate work through
+one additional BackgroundWork scope, drained with the map. Old jobs cannot publish after a new
+revision or closure. Terrain alone is darkened, including water; normal opacity is 22 percent and
+Increase Contrast uses 12 percent. Markers, overlays and labels retain their normal drawing.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
@@ -389,7 +406,7 @@ The renderer returns immutable pending cache writes with its tiles. MapModel sta
 for accepted render jobs, publishes pixels without waiting for compression/I/O, tracks low-priority
 writes and cancels/drains them on close before cache-root cleanup. No renderer-owned detached
 cache writer survives that drain.
-MapModel registers render jobs, accepted cache writes, hover reads and coordinate copies in four
+MapModel registers render jobs, accepted cache writes, hover reads, coordinate copies, close-up work and shadows in six
 scopes of the world's BackgroundWork owner. Separate scopes preserve depth-change cancellation
 without canceling an already accepted cache write. Their combined drain includes work added
 while another map task finishes, and never waits for a sibling tab. Per-region render IDs, hover
@@ -942,8 +959,10 @@ measurement areas preserve their origin and include both measured blocks. It ref
 16,777,216 pixels or 16,384 pixels on either side before allocation, with smaller power-of-two
 scales and a Fit Image action. MapExportModel captures the map's renderer, style, depth and overlay values
 when Create is pressed, without changing the live viewport, layers or selection. Reading and PNG
-encoding run off-main; one production region tile at a time is drawn through MapView's shared
+encoding run off-main; production region tiles are drawn through MapView's shared
 terrain path into a checked RGBA destination, then the shared overlays and legend are drawn once.
+An export retains at most nine recent tiles when shadows need neighboring heights, otherwise one;
+it uses the same MapShadow calculation without changing the live window's tiles or viewport.
 Current-view Copy/Share and area images share the same terrain/overlay rasterizers and ImageIO
 encoder. Nonshader terrain and overlays retain the CGContext-backed ImageRenderer path. SwiftUI's
 CGContext callback ignores custom shaders, so Saved Time terrain uses ImageRenderer.cgImage in
@@ -1372,8 +1391,10 @@ position, in a shared 16 MiB cache. It uses the same decoded textures and clears
 retirement. MapDetailRenderer applies the same MapRelief column calculation and filter shading;
 partial pixels remain premultiplied. Its normals remain one pixel per block and its sidecar keeps
 optional nighttime status. Ordinary tiles and close-up pictures use the same saved-time shader
-and Dark Spots color treatment; clock-only changes reuse both pictures. Full tile budgets count
-color, normals and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
+and Dark Spots color treatment; clock-only changes reuse both pictures. The shared shadow mask is
+composited once after coarse terrain and close-up images, before the other overlays, on screen and
+in current-view Copy/Share. Transparent close-up pixels therefore cannot double-darken the fallback. Full tile budgets count
+color, normals, shadow heights/masks and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail
 threshold. No new controls, localization keys, file access, asset copy or world modification.

@@ -19,6 +19,18 @@ final class MapModel {
     private(set) var lightingMode = MapLightingMode.savedTime
     private(set) var savedLighting: MapLighting?
     var lighting: MapLighting? { style != .height && lightingMode == .savedTime ? savedLighting : nil }
+    private(set) var castsShadows = true
+    var shadowLight: MapShadow.Light? {
+        guard castsShadows, style != .height else { return nil }
+        if let lighting { return MapShadow.Light.saved(lighting.direction) }
+        return .daylight
+    }
+    private(set) var shadowImages: [RegionPosition: CGImage] = [:]
+    @ObservationIgnored private var shadowHeights: [RegionPosition: [Int32]] = [:]
+    private var shadowSources: Set<RegionPosition> = []
+    private var shadowJob: Task<Void, Never>?
+    private var shadowRevision = 0
+    private var shadowsNeedUpdate = false
     private(set) var blockFilter = MapBlockFilter()
     private(set) var showsDarkSpots = false
     private(set) var nightLighting: MonsterSpawnLight?
@@ -64,7 +76,7 @@ final class MapModel {
         return current
     }
     private let work: BackgroundWork
-    private let renderWork, cacheWork, readoutWork, coordinateWork, detailWork: BackgroundWork.Scope
+    private let renderWork, cacheWork, readoutWork, coordinateWork, detailWork, shadowWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
     @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
@@ -99,6 +111,7 @@ final class MapModel {
         detailWork = work.makeScope()
         self.renderDetail = renderDetail
         self.readDetail = readDetail
+        shadowWork = work.makeScope()
         self.dimension = dimension
         self.heightScale = heightScale
         self.readTopBlocksFor = readTopBlocks
@@ -139,10 +152,24 @@ final class MapModel {
         guard range != lastRequest?.range || full != lastRequest?.full else { return }
         lastRequest = (range, full)
         let visible = viewport.visibleRegions(in: size, among: availableRegions)
+        let previousVisible = visibleRegions, previousSources = shadowSources
         visibleRegions = Set(visible)
         wantsFullResolution = full
-        let needed = visible.filter {
-            availableRegions.contains($0) && !failed.contains($0) && ((full ? tiles[$0] == nil : previews[$0] == nil) || stale.contains($0))
+        // Keep both sides for the light's changing east/west direction. A clock update then
+        // uses these immutable heights without starting any terrain read.
+        shadowSources = !castsShadows || style == .height ? [] : visible.reduce(into: Set<RegionPosition>()) {
+            $0.formUnion(MapShadow.retainedSources(for: $1, savedTime: lighting != nil).intersection(availableRegions))
+        }
+        shadowHeights = shadowHeights.filter { shadowSources.contains($0.key) }
+        shadowImages = shadowImages.filter { visibleRegions.contains($0.key) }
+        if previousVisible != visibleRegions || previousSources != shadowSources { invalidateShadows() }
+        let requested = visible + shadowSources.subtracting(visibleRegions).sorted {
+            viewport.distanceToCenter($0) < viewport.distanceToCenter($1)
+        }
+        let needed = requested.filter { region in
+            guard availableRegions.contains(region), !failed.contains(region) else { return false }
+            if stale.contains(region) || (shadowSources.contains(region) && shadowHeights[region] == nil) { return true }
+            return visibleRegions.contains(region) && (full ? tiles[region] == nil : previews[region] == nil)
         }
         // Keep rendering regions that are still needed; cancel only those that left the view, so a
         // pan doesn't throw away half-decoded regions and start them again.
@@ -221,7 +248,8 @@ final class MapModel {
     }
 
     private func updateLoadingState() {
-        isLoading = !inFlight.isEmpty || !queue.isEmpty || detailJob != nil || !detailQueue.isEmpty || detailLoadJob != nil
+        if inFlight.isEmpty, queue.isEmpty { startShadowsIfNeeded() }
+        isLoading = !inFlight.isEmpty || !queue.isEmpty || detailJob != nil || !detailQueue.isEmpty || detailLoadJob != nil || shadowJob != nil
         guard !isLoading else { return }
         let waiters = idleWaiters
         idleWaiters = []
@@ -247,17 +275,19 @@ final class MapModel {
             if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
         }
         let affected = currentRenderer.samplesNeighborBiomes
-            ? regions.reduce(into: Set<RegionPosition>()) { $0.formUnion(RegionTileRenderer.biomeRegions(around: $1)) }
+            ? regions.reduce(into: Set<RegionPosition>()) { $0.formUnion(RegionTileRenderer.neighboringRegions(around: $1)) }
             : regions
         for region in affected {
             // Border colors may have read the changed file even when this tile's own file did not change.
             inFlight[region]?.task.cancel()
             inFlight[region] = nil
+            shadowHeights[region] = nil
         }
         invalidateDetail(in: affected, keepingImages: true)
         let removed = affected.subtracting(availableRegions)
         invalidateDetail(in: removed, keepingImages: false)
         for region in removed { detailSurfaces[region] = nil }
+        if !affected.isDisjoint(with: shadowSources) { invalidateShadows() }
         failed.subtract(affected)
         forgetTopBlocks(in: regions)
         stale.formUnion(affected.filter { tiles[$0] != nil || previews[$0] != nil })
@@ -280,6 +310,10 @@ final class MapModel {
 
     private func store(_ tile: RegionTileRenderer.RenderedTile, for region: RegionPosition) {
         let wasStale = stale.remove(region) != nil
+        if shadowSources.contains(region), let heights = tile.heights {
+            shadowHeights[region] = heights
+            shadowsNeedUpdate = true
+        }
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = tile.full
@@ -301,7 +335,10 @@ final class MapModel {
 
     private func evictFullTiles() {
         let tileBytes = RegionTileRenderer.side * RegionTileRenderer.side * 4
+        let shadowBytes = shadowHeights.values.reduce(0) { $0 + $1.count * MemoryLayout<Int32>.stride }
+            + shadowImages.values.reduce(0) { $0 + $1.bytesPerRow * $1.height }
         let evicted = Self.regionsToEvict(from: tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport,
+            reservedUnits: Double(shadowBytes) / Double(tileBytes),
             additionalUnits: { Double(detailSurfaces[$0]?.estimatedBytes ?? 0) / Double(tileBytes) })
         for region in evicted {
             tiles[region] = nil
@@ -313,8 +350,9 @@ final class MapModel {
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
     private static func regionsToEvict(from cached: [RegionPosition: MapTileImage], keeping limit: Int,
                                        visible: Set<RegionPosition>, viewport: MapViewport,
+                                       reservedUnits: Double = 0,
                                        additionalUnits: (RegionPosition) -> Double = { _ in 0 }) -> [RegionPosition] {
-        var units = cached.reduce(0.0) { $0 + Double($1.value.storageUnits) + additionalUnits($1.key) }
+        var units = reservedUnits + cached.reduce(0.0) { $0 + Double($1.value.storageUnits) + additionalUnits($1.key) }
         guard units > Double(limit) else { return [] }
         let candidates = Set(cached.keys).subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
@@ -336,11 +374,13 @@ final class MapModel {
         detailQueue = []
         detailLoadJob = nil
         detailRegionsWanted = []
+        invalidateShadows()
+        shadowsNeedUpdate = false
         updateLoadingState()
     }
 
     func waitForRenders() async {
-        await work.waitUntilFinished(in: [renderWork, cacheWork, readoutWork, coordinateWork, detailWork])
+        await work.waitUntilFinished(in: [renderWork, cacheWork, readoutWork, coordinateWork, detailWork, shadowWork])
     }
 
     func close() {
@@ -351,11 +391,14 @@ final class MapModel {
         coordinateWork.close()
         cacheWork.close()
         detailWork.close()
-        cancel()
         detailSurfaces = [:]
         detailImages = [:]
         detailAttempted = []
         detailLoadsAttempted = []
+        shadowWork.close()
+        cancel()
+        shadowHeights = [:]
+        shadowImages = [:]
         gameAssets = nil
         biomeColors = nil
         nightLighting = nil
@@ -689,16 +732,62 @@ final class MapModel {
     /// when availability or the chosen mode changes; clock ticks never invalidate terrain.
     func setSavedLighting(_ value: MapLighting?) {
         guard !isClosed, value != savedLighting else { return }
-        let prepared = lighting != nil
+        let prepared = lighting != nil, previousLight = shadowLight
         savedLighting = value
         if prepared != (lighting != nil) { reloadTiles() }
+        else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
     }
 
     func setLightingMode(_ value: MapLightingMode) {
         guard !isClosed, value != lightingMode else { return }
-        let prepared = lighting != nil
+        let prepared = lighting != nil, previousLight = shadowLight
         lightingMode = value
         if prepared != (lighting != nil) { reloadTiles() }
+        else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
+    }
+
+    func setCastsShadows(_ value: Bool) {
+        guard !isClosed, value != castsShadows else { return }
+        castsShadows = value
+        invalidateShadows()
+        if !value { shadowImages = [:]; shadowHeights = [:]; shadowSources = [] }
+        lastRequest = nil
+        if let lastView { requestTiles(visibleIn: lastView.size, displayScale: lastView.displayScale) }
+        updateLoadingState()
+    }
+
+    private func invalidateShadows() {
+        shadowRevision += 1
+        shadowJob?.cancel()
+        shadowJob = nil
+        shadowsNeedUpdate = true
+    }
+
+    private func startShadowsIfNeeded() {
+        guard !isClosed, shadowJob == nil, shadowsNeedUpdate else { return }
+        shadowsNeedUpdate = false
+        guard let light = shadowLight, !visibleRegions.isEmpty else { shadowImages = [:]; return }
+        let sources = shadowHeights, regions = visibleRegions, revision = shadowRevision
+        shadowJob = shadowWork.start(priority: .utility) { [weak self] in
+            defer {
+                if let self, self.shadowRevision == revision {
+                    self.shadowJob = nil
+                    self.updateLoadingState()
+                }
+            }
+            var images: [RegionPosition: CGImage] = [:]
+            do {
+                for region in regions {
+                    try Task.checkCancellation()
+                    if let image = try await MapShadow.image(for: region, heights: sources, light: light) {
+                        images[region] = image
+                    }
+                }
+                guard let self, !self.isClosed, !Task.isCancelled, self.shadowRevision == revision else { return }
+                self.shadowImages = images
+                self.evictFullTiles()
+            } catch { /* Cancellation leaves the last complete drawing until its replacement is ready. */ }
+        }
     }
 
     /// The source owner shares this exact library with pictures. Swapping it cancels old
@@ -723,6 +812,8 @@ final class MapModel {
         detailAttempted = []
         detailLoadsAttempted = []
         previews = [:]
+        shadowHeights = [:]
+        shadowImages = [:]
         failed = []
         stale = []
     }

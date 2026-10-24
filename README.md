@@ -153,10 +153,17 @@ control or **Fit World** when you want to change the scale.
 **View ▸ Lighting** offers Saved Time and Daylight, remembered for each dimension. Saved Time
 uses the world’s last saved sun direction and night color, with a moon-phase label. It updates
 when Minecraft saves, without scanning terrain again. Choose Daylight for constant lighting.
-Increase Contrast keeps nights brighter. Height maps and Water Depth’s water colors keep their
-original palettes. Saved lighting needs readable dimension definitions and timelines, usually
+Increase Contrast keeps nights brighter. Height maps keep their original palette.
+Saved lighting needs readable dimension definitions and timelines, usually
 from a matching Minecraft version selected in Settings; unsupported or no-skylight dimensions
 keep Daylight. This does not simulate time between saves.
+
+**View ▸ Lighting ▸ Cast Shadows** lets trees, cliffs and other terrain cast shadows onto
+land and water. It starts on and remembers each dimension’s choice. Shadows follow Saved Time’s
+sun or moon; Daylight uses a fixed northwest light. Increase Contrast makes them lighter.
+Shadows use the displayed surface, including a cutaway, and appear in copied and shared images.
+They consider nearby terrain up to one region along the light ray; unseen overhangs and caves
+are outside this top-down view.
 
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
 previous location and zoom within the current dimension. A jump to another dimension happens in

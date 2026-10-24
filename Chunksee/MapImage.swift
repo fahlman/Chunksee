@@ -35,6 +35,8 @@ nonisolated struct MapImage: Sendable {
             }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+            MapView.drawShadows(viewport: map.viewport, regions: visible, shadow: { map.shadowImages[$0] },
+                                increasedContrast: contrast == .increased, in: context, size: size)
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
                                  portalStatus: portalStatus, in: context, size: size)
         }
@@ -52,11 +54,17 @@ nonisolated struct MapImage: Sendable {
     @MainActor
     static func drawTerrainLayer(_ tile: MapTileImage, region: RegionPosition, viewport: MapViewport,
                                  size: CGSize, scale: CGFloat, lighting: MapLighting?, protectsWater: Bool,
-                                 contrast: ColorSchemeContrast, into destination: CGContext) -> Bool {
+                                 contrast: ColorSchemeContrast, shadow: CGImage? = nil, into destination: CGContext) -> Bool {
         guard let rect = viewport.viewRect(for: region, in: size) else { return true }
-        return drawTerrainImageLayer(tile, rect: rect.insetBy(dx: -0.5, dy: -0.5),
+        guard drawTerrainImageLayer(tile, rect: rect.insetBy(dx: -0.5, dy: -0.5),
             interpolation: viewport.scale >= 1 ? .none : .medium, size: size, scale: scale,
-            lighting: lighting, protectsWater: protectsWater, contrast: contrast, into: destination)
+            lighting: lighting, protectsWater: protectsWater, contrast: contrast, into: destination) else { return false }
+        guard let shadow else { return true }
+        let shading = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+            MapView.drawShadows(viewport: viewport, regions: [region], shadow: { _ in shadow },
+                                increasedContrast: contrast == .increased, in: context, size: size)
+        }
+        return drawImageLayer(shading, size: size, scale: scale, into: destination)
     }
 
     /// Region and close-up chunk images use the same bounded shader rasterizer.

@@ -171,13 +171,15 @@ struct MapView: View {
                     image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
                     protectsWater: map.style == .waterDepth, in: context, size: size)
         drawDetail(viewport: map.viewport, images: map.detailImages, lighting: map.lighting, in: context, size: size)
+        drawShadows(viewport: map.viewport, regions: visible, shadow: { map.shadowImages[$0] }, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
-                            lighting: MapLighting? = nil, protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
+                            lighting: MapLighting? = nil, shadow: (RegionPosition) -> CGImage? = { _ in nil },
+                            protectsWater: Bool = false, increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
@@ -186,7 +188,30 @@ struct MapView: View {
             let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
             drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: lighting,
                              protectsWater: protectsWater, increasedContrast: increasedContrast, in: context)
+            if let mask = shadow(region) {
+                drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
+            }
         }
+    }
+
+    /// Composite the mask once after both terrain resolutions. Transparent texture pixels must
+    /// not darken the ordinary fallback beneath them a second time.
+    static func drawShadows(viewport: MapViewport, regions: [RegionPosition], shadow: (RegionPosition) -> CGImage?,
+                            increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
+        let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
+        for region in regions {
+            guard let mask = shadow(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
+            drawShadow(mask, rect: rect.insetBy(dx: -0.5, dy: -0.5), interpolation: interpolation,
+                       increasedContrast: increasedContrast, in: context)
+        }
+    }
+
+    static func drawShadow(_ mask: CGImage, rect: CGRect, interpolation: Image.Interpolation,
+                           increasedContrast: Bool?, in context: GraphicsContext) {
+        var shading = context
+        let contrast = increasedContrast ?? (context.environment.colorSchemeContrast == .increased)
+        shading.opacity = contrast ? 0.12 : 0.22
+        shading.draw(Image(decorative: mask, scale: 1).interpolation(interpolation), in: rect)
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.

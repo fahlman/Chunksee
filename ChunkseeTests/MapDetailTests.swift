@@ -300,6 +300,71 @@ import Testing
         #expect(try copiedPixel() != nightWithSpots)
     }
 
+    @Test(.timeLimit(.minutes(1))) func shadowsCoverBothResolutionsOnceIncludingTransparentDetailAndCopiedImages() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let region = RegionPosition(x: -1, z: -1), chunk = ChunkPosition(x: -1, z: -1)
+        let white = try #require(CGImage.rgba(Array(repeating: 255, count: 512 * 512 * 4), width: 512, height: 512))
+        var heights = Array(repeating: Int32(0), count: 512 * 512)
+        for x in 496..<512 { heights[503 * 512 + x] = 8 }
+        let shadowHeights = heights
+        var pixels: [UInt8] = []
+        for _ in 0..<256 {
+            for x in 0..<256 {
+                let alpha: UInt8 = x < 64 ? 0 : x < 128 ? 128 : 255
+                pixels.append(contentsOf: [alpha, alpha, alpha, alpha])
+            }
+        }
+        let detail = MapTileImage(try #require(CGImage.rgba(pixels, width: 256, height: 256)))
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+            renderTile: { renderer, position in
+                guard var tile = try await renderer.tile(for: position) else { return nil }
+                tile.full = MapTileImage(white); tile.preview = MapTileImage(white)
+                tile.heights = shadowHeights
+                return tile
+            }, renderDetail: { _, _, _, _, _ in detail })
+        defer { map.close() }
+        map.viewport.scale = 8
+        let size = CGSize(width: 128, height: 128)
+        map.requestTiles(visibleIn: size)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(map.shadowImages[region] != nil && map.detailImages.isEmpty)
+        func screen(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
+            let view = Canvas { context, size in
+                MapView.drawMap(map, content: MapContent(), portalStatus: { _ in nil }, displayScale: 1, in: context, size: size)
+            }.frame(width: size.width, height: size.height).environment(\.colorSchemeContrast, contrast)
+            return try ItemPictureFixture.pixels(#require(ImageRenderer(content: view).cgImage)).bytes
+        }
+        func copy(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
+            let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil },
+                size: size, scale: 1, colorScheme: .light, locale: .init(identifier: "en_US"), contrast: contrast))
+            return try #require(ItemTexture(png: image.data)).pixels
+        }
+        let ordinary = try screen(.standard), ordinaryContrast = try screen(.increased)
+        let ordinaryCopy = try copy(.standard), ordinaryContrastCopy = try copy(.increased)
+        for x in [17, 49, 81] { #expect(ordinary[(65 * 128 + x) * 4] < 255) }
+        #expect(ordinary != ordinaryContrast)
+        let assets = try fixture.library()
+        map.setGameAssets(assets)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(map.detailImages[chunk] === detail)
+        // White detail over white terrain is unchanged before the shadow. Applying a mask to
+        // both resolutions would double-darken transparent or partially transparent areas.
+        #expect(try screen(.standard) == ordinary)
+        #expect(try screen(.increased) == ordinaryContrast)
+        #expect(try copy(.standard) == ordinaryCopy)
+        #expect(try copy(.increased) == ordinaryContrastCopy)
+        map.setCastsShadows(false)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        #expect(map.detailImages[chunk] === detail)
+        let unshadowed = try copy(.standard)
+        for x in [17, 49, 81] { #expect(unshadowed[(65 * 128 + x) * 4] == 255) }
+        map.close(); await map.waitForRenders(); await assets.close()
+    }
+
     @Test(.timeLimit(.minutes(1))) func changingLightingRejectsAnOldCloseUpPicture() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
