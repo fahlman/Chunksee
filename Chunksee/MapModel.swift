@@ -679,6 +679,13 @@ final class MapModel {
         setDepth(MapDepth(y: y, isSurface: depth.isSurface))
     }
 
+    /// A height command enters Cutaway so each step changes the displayed map, even from Surface.
+    func stepHeight(by step: Int) {
+        let (y, overflow) = depth.y.addingReportingOverflow(step)
+        guard !overflow else { return }
+        setDepth(MapDepth(y: y, isSurface: false))
+    }
+
     /// A depth change invalidates pixels and named columns together. Cancelled tasks remain
     /// tracked for close/drain, but their old job IDs and cancellation prevent publication.
     func setDepth(_ value: MapDepth) {

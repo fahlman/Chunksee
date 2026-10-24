@@ -371,7 +371,11 @@ Increase Contrast uses 12 percent. Markers, overlays and labels retain their nor
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
 slider, bordered number field and minus/plus buttons share that owner; height controls are disabled on Surface.
 Height edits use MapModel.setHeight, preserving the chosen mode when the formatted field writes
-back during a focus or enabled-state change. Only the mode controls switch Surface/Cutaway.
+back during a focus or enabled-state change. The mode controls switch Surface/Cutaway explicitly.
+View's Increase/Decrease Y Level commands (Option-Command-Up/Down) call MapModel.stepHeight to
+step the remembered Y by one and enter Cutaway, including from Surface. They repeat while held,
+target only the focused document and stop at Int endpoints without limiting custom heights.
+Modified arrows pass through the map's panning handler to native commands.
 The native Done button and Escape shortcut dismiss the popover with SwiftUI’s dismiss action.
 MapAdjustmentPopover owns both adjustment popovers' heading, spacing and 340-point width;
 their native step and Done buttons share presentation too. Map Height names the feature, Mode

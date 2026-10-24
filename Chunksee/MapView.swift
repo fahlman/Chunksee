@@ -101,6 +101,7 @@ struct MapView: View {
             return .handled
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard press.modifiers.intersection([.command, .option, .control]).isEmpty else { return .ignored }
             switch press.key {
             case .leftArrow: map.viewport.pan(.west, in: size)
             case .rightArrow: map.viewport.pan(.east, in: size)

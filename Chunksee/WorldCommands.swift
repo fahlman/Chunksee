@@ -135,6 +135,14 @@ struct WorldCommands: Commands {
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)
+            Button("Increase Y Level") { session?.map?.stepHeight(by: 1) }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                .buttonRepeatBehavior(.enabled)
+                .disabled(session?.map == nil || session?.map?.depth.y == Int.max)
+            Button("Decrease Y Level") { session?.map?.stepHeight(by: -1) }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                .buttonRepeatBehavior(.enabled)
+                .disabled(session?.map == nil || session?.map?.depth.y == Int.min)
             Button("Create Map Image…") { showsImageExport = true }
                 .disabled(session?.map == nil || showsImageExport == nil)
             Toggle("Surface", isOn: Binding {
