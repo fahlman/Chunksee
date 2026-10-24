@@ -752,7 +752,10 @@ import Testing
         renderer.blendsBiomeColors = false
         #expect(renderer.colorSourceKey == sharpKey)
         #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).bytes == ItemPictureFixture.pixels(sharp.full.image).bytes)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
+        let files = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
+        #expect(files.count == 2) // The latest ordinary tile and its matching deferred detail.
+        #expect(files.filter { $0.hasSuffix(".lzfse") }.count == 1)
+        #expect(files.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
         await library.close()
     }
 
