@@ -10,14 +10,17 @@ final class MapModel {
     var viewport: MapViewport
     private(set) var depth = MapDepth()
     private(set) var style = MapStyle.normal
+    private(set) var lightingMode = MapLightingMode.savedTime
+    private(set) var savedLighting: MapLighting?
+    var lighting: MapLighting? { style != .height && lightingMode == .savedTime ? savedLighting : nil }
     private(set) var blockFilter = MapBlockFilter()
     let heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
-    private(set) var tiles: [RegionPosition: CGImage] = [:]
+    private(set) var tiles: [RegionPosition: MapTileImage] = [:]
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
-    private(set) var previews: [RegionPosition: CGImage] = [:]
+    private(set) var previews: [RegionPosition: MapTileImage] = [:]
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionPosition>
     private(set) var isLoading = false
@@ -31,6 +34,7 @@ final class MapModel {
         var current = renderer
         current.cutawayY = depth.cutawayY
         current.style = style
+        current.usesSavedLighting = lighting != nil
         current.blockFilter = blockFilter
         current.gameAssets = style == .height ? nil : gameAssets
         current.biomeColors = style == .height ? nil : biomeColors
@@ -41,8 +45,9 @@ final class MapModel {
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
     @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
-    /// At 1 MB per tile and 256 KB per preview, about 200 MB each. Visible tiles are never evicted,
-    /// so a very large window can exceed these rather than show blanks.
+    /// About 200 MB each: 1 MB full-image slots and 256 KB preview slots. Saved lighting
+    /// uses two slots per region (color and normal). Visible tiles are never evicted, so a
+    /// very large window can exceed these budgets rather than show blanks.
     private let maxTiles: Int
     private let maxPreviews: Int
     private let regionConcurrency: Int
@@ -88,7 +93,7 @@ final class MapModel {
     }
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
-    func image(for region: RegionPosition, fullResolution: Bool) -> CGImage? {
+    func image(for region: RegionPosition, fullResolution: Bool) -> MapTileImage? {
         fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
     }
 
@@ -248,21 +253,27 @@ final class MapModel {
             tiles[region] = nil   // drawn from the old file; zooming in will draw it again
         }
         previews[region] = tile.preview
-        for region in Self.regionsToEvict(from: Set(tiles.keys), keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
+        for region in Self.regionsToEvict(from: tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport) {
             tiles[region] = nil
         }
-        for region in Self.regionsToEvict(from: Set(previews.keys), keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
+        for region in Self.regionsToEvict(from: previews, keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
             previews[region] = nil
         }
     }
 
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
-    private static func regionsToEvict(from cached: Set<RegionPosition>, keeping limit: Int,
+    private static func regionsToEvict(from cached: [RegionPosition: MapTileImage], keeping limit: Int,
                                        visible: Set<RegionPosition>, viewport: MapViewport) -> [RegionPosition] {
-        guard cached.count > limit else { return [] }
-        let candidates = cached.subtracting(visible)
+        var units = cached.values.reduce(0) { $0 + $1.storageUnits }
+        guard units > limit else { return [] }
+        let candidates = Set(cached.keys).subtracting(visible)
             .sorted { viewport.distanceToCenter($0) > viewport.distanceToCenter($1) }
-        return Array(candidates.prefix(cached.count - limit))
+        var evicted: [RegionPosition] = []
+        for region in candidates where units > limit {
+            units -= cached[region]?.storageUnits ?? 0
+            evicted.append(region)
+        }
+        return evicted
     }
 
     func cancel() {
@@ -448,6 +459,22 @@ final class MapModel {
         guard !isClosed, value != style, value != .height || heightScale != nil else { return }
         style = value
         reloadTiles()
+    }
+
+    /// Time changes only the drawing snapshot. Rebuild image inputs from the unlit disk cache
+    /// when availability or the chosen mode changes; clock ticks never invalidate terrain.
+    func setSavedLighting(_ value: MapLighting?) {
+        guard !isClosed, value != savedLighting else { return }
+        let prepared = lighting != nil
+        savedLighting = value
+        if prepared != (lighting != nil) { reloadTiles() }
+    }
+
+    func setLightingMode(_ value: MapLightingMode) {
+        guard !isClosed, value != lightingMode else { return }
+        let prepared = lighting != nil
+        lightingMode = value
+        if prepared != (lighting != nil) { reloadTiles() }
     }
 
     /// The source owner shares this exact library with pictures. Swapping it cancels old

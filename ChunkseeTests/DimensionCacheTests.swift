@@ -39,7 +39,7 @@ import Testing
             let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: directory), savesInBackground: false)
             for _ in 0..<2 {
                 let tile = try #require(try await renderer.tile(for: region))
-                #expect(tile.full.dataProvider?.data as Data? == Data(expectedPixels))
+                #expect(tile.full.image.dataProvider?.data as Data? == Data(expectedPixels))
                 let reader = RegionReader(dimension: dimension,
                                           cache: ScanCache(forWorldAt: worldURL, dimensionID: dimension.id, root: root))
                 let times = await reader.inhabitedTimes(region)

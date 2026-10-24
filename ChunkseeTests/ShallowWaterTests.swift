@@ -99,14 +99,14 @@ import Testing
         #expect(cache.load(key) == nil)
         let renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
         let first = try #require(try await renderer.tile(for: region))
-        let pixels = Array(try #require(first.full.dataProvider?.data as Data?))
+        let pixels = Array(try #require(first.full.image.dataProvider?.data as Data?))
         #expect(pixel(pixels, x: 5, z: 5) == [182, 192, 184, 255])
         #expect(!FileManager.default.fileExists(atPath: old.path))
         let stored = try #require(cache.load(key))
         #expect(stored.litPixels(heightScale: nil) == pixels)
         let second = try #require(try await renderer.tile(for: region))
         #expect(second.cacheWrite == nil)
-        #expect(second.full.dataProvider?.data as Data? == first.full.dataProvider?.data as Data?)
+        #expect(second.full.image.dataProvider?.data as Data? == first.full.image.dataProvider?.data as Data?)
     }
 
     private func waterWorld(depths: [Int], floor: String = "minecraft:sand") throws -> URL {

@@ -85,7 +85,7 @@ final class MapExportModel {
         options.blocksPerPixel = scale
     }
 
-    func create(colorScheme: ColorScheme, locale: Locale) {
+    func create(colorScheme: ColorScheme, locale: Locale, contrast: ColorSchemeContrast = .standard) {
         guard canCreate, let source, let map = source.map, case .success(let plan) = plan else { return }
         cancel()
         let id = UUID()
@@ -102,7 +102,7 @@ final class MapExportModel {
             defer { self?.activeRuns -= 1 }
             do {
                 let image = try await MapImage.export(plan: plan, regions: regions, renderer: renderer, content: contentSnapshot,
-                    portalStatus: { PortalLinkStatus.status(of: $0, portals: portals) }, colorScheme: colorScheme, locale: locale,
+                    portalStatus: { PortalLinkStatus.status(of: $0, portals: portals) }, colorScheme: colorScheme, locale: locale, contrast: contrast,
                     progress: { [weak self] finished, count in
                         guard self?.request == id else { return }
                         self?.completed = finished

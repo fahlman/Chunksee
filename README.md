@@ -139,6 +139,14 @@ the individual visible map locations and center the map on them. Every location 
 dimension's current zoom, including player locations, portal links and in-game maps. Use the zoom
 control or **Fit World** when you want to change the scale.
 
+**View ▸ Lighting** offers Saved Time and Daylight, remembered for each dimension. Saved Time
+uses the world’s last saved sun direction and night color, with a moon-phase label. It updates
+when Minecraft saves, without scanning terrain again. Choose Daylight for constant lighting.
+Increase Contrast keeps nights brighter. Height maps and Water Depth’s water colors keep their
+original palettes. Saved lighting needs readable dimension definitions and timelines, usually
+from a matching Minecraft version selected in Settings; unsupported or no-skylight dimensions
+keep Daylight. This does not simulate time between saves.
+
 **Back** and **Forward** in the toolbar or **Navigate** menu (**⌘[** and **⌘]**) restore the
 previous location and zoom within the current dimension. A jump to another dimension happens in
 that dimension's own window. Panning and zooming adjust the current view; a new jump after going back

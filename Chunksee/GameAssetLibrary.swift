@@ -207,6 +207,11 @@ actor GameAssetLibrary {
         }
     }
 
+    func lighting(in world: World) throws -> [String: MapLighting] {
+        try checkAvailable()
+        return try MapLighting.read(in: world, assets: assets)
+    }
+
     /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels
     /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
     func biomeColors(in world: World) throws -> MapBiomeColors {

@@ -122,7 +122,7 @@ import Testing
         var renderer = RegionTileRenderer(dimension: dimension, cache: cache, heightScale: try scale(sea: 0))
         let first = try #require(try await renderer.tile(for: region))
         await (try #require(first.cacheWrite)).store()
-        let original = try #require(first.full.dataProvider?.data as Data?)
+        let original = try #require(first.full.image.dataProvider?.data as Data?)
         #expect(Array(original.prefix(4)) == [125, 125, 125, 255])
         #expect(try await renderer.pixels(for: region) == Array(original))
         let cacheFile = cache.directory.appendingPathComponent(key.fileName), cachedBytes = try Data(contentsOf: cacheFile)
@@ -133,13 +133,13 @@ import Testing
         #expect(TileCache.key(for: region, regionFile: file) == key)
         renderer.heightScale = try scale(sea: 319)
         let relit = try #require(try await renderer.tile(for: region))
-        let changed = try #require(relit.full.dataProvider?.data as Data?)
+        let changed = try #require(relit.full.image.dataProvider?.data as Data?)
         #expect(relit.cacheWrite == nil && changed != original)
         #expect(changed[0] > 0 && changed[0] < original[0] && changed[3] == 255)
         #expect(try Data(contentsOf: cacheFile) == cachedBytes)
         renderer.heightScale = nil
         let restored = try #require(try await renderer.tile(for: region))
-        #expect(restored.full.dataProvider?.data as Data? == original)
+        #expect(restored.full.image.dataProvider?.data as Data? == original)
     }
 
     private func column(y: Int, water: Int = 0) -> RegionTileRenderer.Column {

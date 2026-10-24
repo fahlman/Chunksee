@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.61.0`, resolved to `0.61.0` (`d3020d78a4786c8bb86002ede0e9e567b87b5c48`).
+  minor" from `0.62.0`, resolved to `0.62.0` (`9c82b53d6c16a3d2d32fa20035b83fe6e011a8ec`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -324,8 +324,28 @@ The cached Canvas contains unlit RGBA bytes, signed little-endian Int32 heights 
 Lighting forms the displayed/exported full image and its preview after rendering or loading that
 surface, so changed height-scale metadata can relight a cache hit without rereading chunks. Normal
 and Water Depth keys therefore do not include the lighting scale; Height's baked palette still does.
-Cache writes retain the existing map-owned cancellation/draining lifecycle. This does not implement
-dynamic time-of-day lighting or cross-region cast shadows (#357/#359).
+Cache writes retain the existing map-owned cancellation/draining lifecycle. Cast shadows remain
+separate (#359).
+
+MapLighting projects Kit 0.62.0's savedSkyLighting and dimension time metadata into drawing inputs.
+WorldResources shares one cancellable lighting read across dimensions, reopening metadata on
+saved-clock, level, generation-settings or pack changes. A failed read retains its last good
+snapshot; a successful missing definition clears it. Asset replacement and world close reject
+late reads. No app-side timeline tables or clock simulation exist. No-skylight or unsupported
+dimensions retain Daylight; a custom skylit fixed-time type uses its own saved attributes.
+Each MapModel owns its remembered Saved Time / Daylight choice, exposed by the native View >
+Lighting menu. Height bypasses lighting; Water Depth preserves its water palette; markers and
+overlays are never tinted. Increase Contrast uses a brighter ambient floor and milder color tint.
+The map legend identifies Saved Time and its moon phase.
+
+Saved Time prepares compact linear-sRGB normal images from the cached signed heights during the
+existing relief walk, then applies direction and tint with a SwiftUI color shader at drawing time.
+A quarter of fixed directional relief plus the existing elevation curve keeps noon readable.
+Clock-only updates replace uniforms without rendering tiles or invalidating terrain/hover/index
+caches. Mode/availability changes rebuild drawing inputs from the existing unlit cache; they do
+not change its format or key. Color and normal images share one MapTileImage and count against
+the same full/preview eviction budgets; visible regions keep the existing retention exception.
+Preview normals ignore missing columns and preserve water when any contributing column is water.
 
 `MapDepth` is the map-owned selected Y and Surface/cutaway mode. A native SwiftUI toolbar button
 shows Surface or the current Y and opens a standard popover. Its segmented mode picker, labeled
@@ -921,9 +941,12 @@ scales and a Fit Image action. MapExportModel captures the map's renderer, style
 when Create is pressed, without changing the live viewport, layers or selection. Reading and PNG
 encoding run off-main; one production region tile at a time is drawn through MapView's shared
 terrain path into a checked RGBA destination, then the shared overlays and legend are drawn once.
-Current-view Copy/Share and area images use the same CGContext-backed ImageRenderer rasterizer
-and ImageIO encoder. This replaces ImageRenderer.cgImage for current-view images so antialiased
-edges match between the two image paths; the live map's Canvas drawing is unchanged.
+Current-view Copy/Share and area images share the same terrain/overlay rasterizers and ImageIO
+encoder. Nonshader terrain and overlays retain the CGContext-backed ImageRenderer path. SwiftUI's
+CGContext callback ignores custom shaders, so Saved Time terrain uses ImageRenderer.cgImage in
+clipped, pixel-aligned pieces of at most 1024 pixels per side. Both exports capture lighting and
+contrast; the live map uses the same shader and terrain commands. Tests compare cropped native
+Canvas pixels with the bounded path and compare area/current-view output in both appearances.
 The completed PNG stays in bounded app memory and leaves through native Copy/Share. No export
 file or partial file is written and user-selected file access remains read-only. One document's
 BackgroundWork scope cancels and drains reads, cache writes and encoding before world access ends;
