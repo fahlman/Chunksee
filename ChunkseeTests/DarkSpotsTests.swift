@@ -219,7 +219,7 @@ import Testing
             let time = try JSONDecoder().decode(DimensionTime.self, from: Data(#"{"has_skylight":true}"#.utf8))
             let saved = try #require(SkyLighting(sunAngle: 180, moonAngle: 0, skyLightFactor: 0.24,
                 skyLightColor: SIMD3(0.48, 0.48, 1), moonPhase: .fullMoon))
-            map.setSavedLighting(try #require(MapLighting(saved: saved, time: time)))
+            map.setSavedLighting(MapLighting(saved: saved, time: time))
         }
         map.setNightLighting(overlay.rule)
         map.setDarkSpots(true)
