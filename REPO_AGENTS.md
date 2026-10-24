@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.69.0`, resolved to `0.69.0` (`659b7a261ef9a5eae965013dc8565a4e8c626dbd`).
+  minor" from `0.70.0`, resolved to `0.70.0` (`a56b202432ef225a546465aec7ee34bf73a2e638`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1371,6 +1371,10 @@ from the surrounding one-chunk ring are read first, one region file at a time: R
 its entire byte buffer, so retaining all eight neighbors would retain their complete files.
 Ring reads use the same chunk limit, without terrain traversal or retained blocks/NBT. Both
 phases retain cancellation; there is no world-wide biome cache or task owner.
+Those ring reads use Kit's `Chunk.keysNotNeededForBiomes` profile, so unrelated block palettes
+and heightmaps are not decoded. The shared Chunk/biomeSnapshot reader still validates the
+retained biome data. Valid biomes remain usable when a neighbor's block palette is malformed;
+TileCache renderer version 26 rebuilds older tiles that may have cached fallback colors there.
 Before coloring columns, each chunk task gathers the tint, floor and water sample positions,
 selects their cells through Kit, and reads each distinct cell once grouped by source chunk.
 It interns the resulting names into task-local color values and integer position indices. The

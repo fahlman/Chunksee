@@ -30,7 +30,8 @@ nonisolated struct TileCache: Sendable {
     /// 23: separate on-demand texture data, preserving ordinary tile load costs.
     /// 24: combine saved-time lighting and optional nighttime-light cache data.
     /// 25: close-up data preserves nighttime status and shares saved-time drawing inputs.
-    static let rendererVersion = 25
+    /// 26: neighboring biomes remain available when unrelated block palettes are malformed.
+    static let rendererVersion = 26
 
     let directory: URL
 

@@ -444,6 +444,42 @@ import Testing
         await library.close()
     }
 
+    @Test func malformedNeighborBlocksKeepValidBiomesAndRebuildOlderTiles() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let url = try world(chunks: [sampledChunk(.init(x: 0, z: 0), blue: { _, _, _ in false })], seed: 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld"))
+        var neighbor = sampledChunk(.init(x: -1, z: 0), blue: { _, _, _ in true })
+        var root = try #require(neighbor.nbt.compound)
+        let sections = try #require(root["sections"]?.list).map { section in
+            var fields = try #require(section.compound)
+            fields["block_states"] = .compound(["palette": .list([.int(42)])])
+            return NBT.compound(fields)
+        }
+        root["sections"] = .list(sections); neighbor.nbt = .compound(root)
+        #expect(throws: ChunkError.self) { try Chunk(nbt: neighbor.nbt) }
+        try Data(TestWorld.regionFile([neighbor])).write(to: dimension.regionURL(at: .init(x: -1, z: 0)))
+        let library = try fixture.library(), region = RegionPosition(x: 0, z: 0)
+        let cache = TileCache(directory: url.appendingPathComponent("tiles"))
+        var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
+        renderer.gameAssets = library; renderer.biomeColors = try await library.biomeColors(in: world)
+        let point = try westSample()
+        func color() async throws -> [UInt8] {
+            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).color(point.x, point.z)
+        }
+        #expect(try await color() == [0, 0, 255, 255])
+        let files = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
+        let name = try #require(files.first { $0.hasSuffix(".lzfse") })
+        let olderName = name.replacingOccurrences(of: ".v\(TileCache.rendererVersion).lzfse", with: ".v25.lzfse")
+        let olderFile = cache.directory.appendingPathComponent(olderName)
+        try FileManager.default.moveItem(at: cache.directory.appendingPathComponent(name), to: olderFile)
+        #expect(try await color() == [0, 0, 255, 255])
+        #expect(!FileManager.default.fileExists(atPath: olderFile.path))
+        #expect(FileManager.default.fileExists(atPath: cache.directory.appendingPathComponent(name).path))
+        await library.close()
+    }
+
     @Test func creatingChangingAndDeletingANeighborInvalidatesDiskTiles() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
