@@ -59,7 +59,7 @@ import Testing
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let tile = try #require(try await RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false).tile(for: region))
-        let pixels = try #require(tile.full.dataProvider?.data as Data?)
+        let pixels = try #require(tile.full.image.dataProvider?.data as Data?)
         let offset = (RegionTileRenderer.side + 1) * 4
         let gold = try #require(BlockColors.color(for: "minecraft:gold_block"))
         #expect(Array(pixels[offset..<offset + 4]) == [gold.red, gold.green, gold.blue, 255])

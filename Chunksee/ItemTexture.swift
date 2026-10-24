@@ -42,6 +42,31 @@ nonisolated struct ItemTexture: Sendable {
         self.init(image: image)
     }
 
+    /// Apply a resolved material layer in premultiplied RGBA, before model projection/lighting.
+    /// The verified skins share their dimensions; incompatible resources keep the usual fallback.
+    func compositing(_ layer: ItemTexture, color: UInt32) throws -> ItemTexture? {
+        try Task.checkCancellation()
+        guard (1...1024).contains(width), (1...1024).contains(height),
+              layer.width == width, layer.height == height,
+              pixels.count == width * height * 4, layer.pixels.count == pixels.count else { return nil }
+        let tint = SIMD3<Float>(Float((color >> 16) & 255), Float((color >> 8) & 255), Float(color & 255)) / 255
+        var output = pixels
+        for y in 0..<height {
+            try Task.checkCancellation()
+            for index in stride(from: y * width * 4, to: (y + 1) * width * 4, by: 4) {
+                let remaining = 1 - Float(layer.pixels[index + 3]) / 255
+                for channel in 0..<3 {
+                    let value = Float(layer.pixels[index + channel]) * tint[channel]
+                        + Float(output[index + channel]) * remaining
+                    output[index + channel] = UInt8(clamping: Int(value.rounded()))
+                }
+                let alpha = Float(layer.pixels[index + 3]) + Float(output[index + 3]) * remaining
+                output[index + 3] = UInt8(clamping: Int(alpha.rounded()))
+            }
+        }
+        return ItemTexture(width: width, height: height, pixels: output)
+    }
+
     private init?(image: CGImage) {
         let width = image.width, height = image.height
         var pixels = [UInt8](repeating: 0, count: width * height * 4)

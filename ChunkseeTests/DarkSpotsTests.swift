@@ -89,12 +89,12 @@ import Testing
         let litKey = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), darkSpots: overlay))
         #expect(litKey != key && litKey.prefix != key.prefix)
         #expect(cache.load(litKey)?.nightLight?.count == 512 * 512)
-        #expect(try ItemPictureFixture.pixels(tinted.full).bytes != ItemPictureFixture.pixels(ordinary.full).bytes)
+        #expect(try ItemPictureFixture.pixels(tinted.full.image).bytes != ItemPictureFixture.pixels(ordinary.full.image).bytes)
         let cached = try #require(try await renderer.tile(for: region))
-        #expect(try ItemPictureFixture.pixels(tinted.full).bytes == ItemPictureFixture.pixels(cached.full).bytes)
+        #expect(try ItemPictureFixture.pixels(tinted.full.image).bytes == ItemPictureFixture.pixels(cached.full.image).bytes)
         renderer.darkSpots = nil
         let restored = try #require(try await renderer.tile(for: region))
-        #expect(try ItemPictureFixture.pixels(restored.full).bytes == ItemPictureFixture.pixels(ordinary.full).bytes)
+        #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == ItemPictureFixture.pixels(ordinary.full.image).bytes)
         var bad = try (Data(contentsOf: cache.directory.appendingPathComponent(litKey.fileName)) as NSData).decompressed(using: .lzfse) as Data
         bad[512 * 512 * 9] = 3
         try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: cache.directory.appendingPathComponent(litKey.fileName))
@@ -206,7 +206,8 @@ import Testing
         #expect(saved.rememberedDarkSpots && !another.rememberedDarkSpots)
     }
 
-    @Test func mapAndAreaExportsUseTheSameLightPixelsAndLegendInBothAppearances() async throws {
+    @Test(arguments: [false, true])
+    func mapAndAreaExportsUseTheSameLightPixelsAndLegendInBothAppearances(savedTime: Bool) async throws {
         let root = try world([chunk { x, _, _ in x }])
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
@@ -214,12 +215,23 @@ import Testing
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
         map.viewport = plan.viewport
+        if savedTime {
+            let time = try JSONDecoder().decode(DimensionTime.self, from: Data(#"{"has_skylight":true}"#.utf8))
+            let saved = try #require(SkyLighting(sunAngle: 180, moonAngle: 0, skyLightFactor: 0.24,
+                skyLightColor: SIMD3(0.48, 0.48, 1), moonPhase: .fullMoon))
+            map.setSavedLighting(try #require(MapLighting(saved: saved, time: time)))
+        }
         map.setNightLighting(overlay.rule)
         map.setDarkSpots(true)
         map.requestTiles(visibleIn: plan.size, displayScale: 1)
         await map.waitUntilIdle()
+        let tile = try #require(map.tiles[region])
+        #expect((tile.normals != nil) == savedTime)
+        let color = try ItemPictureFixture.pixels(tile.image).color(0, 0)
+        #expect(color[0] > color[1]) // The dark-column tint survives preparation of lighting inputs.
         var content = MapContent()
         content.showsDarkSpots = true
+        content.lighting = map.lighting
         for scheme in [ColorScheme.light, .dark] {
             let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
                 content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: Locale(identifier: "en_US"), progress: { _, _ in })

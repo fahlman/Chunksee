@@ -6,7 +6,7 @@ struct MapLegendOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottomTrailing) {
-            if layers.mapStyle != .normal || layers.showsDarkSpots || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil || layers.blockFilter.cacheKey != nil {
+            if layers.lighting != nil || layers.mapStyle != .normal || layers.showsDarkSpots || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil || layers.blockFilter.cacheKey != nil {
                 VStack(alignment: .leading, spacing: 8) {
                     if layers.blockFilter.isEnabled, !layers.blockFilter.highlightedIDs.isEmpty {
                         key("Highlighted Blocks") {
@@ -27,6 +27,12 @@ struct MapLegendOverlay: ViewModifier {
                         Text(DarkSpots.explanation)
                             .font(.caption).foregroundStyle(.secondary)
                             .frame(maxWidth: 240, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let lighting = layers.lighting {
+                        Label("Saved Time", systemImage: "sun.horizon")
+                            .font(.caption)
+                            .help("Lighting follows the world's last save. Choose Daylight in the View menu for constant lighting.")
+                        Text(lighting.moonPhase).font(.caption).foregroundStyle(.secondary)
                     }
                     if layers.showsHeatMap { HeatMapLegend() }
                     if layers.slimeSeed != nil {

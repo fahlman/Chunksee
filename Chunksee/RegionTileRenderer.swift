@@ -28,6 +28,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     var gameAssets: GameAssetLibrary?
     var biomeColors: MapBiomeColors?
     var darkSpots: DarkSpots?
+    /// Only preparation changes with this flag; saved clock values are drawing uniforms.
+    var usesSavedLighting = false
 
     private var currentBiomeColors: MapBiomeColors? {
         biomeColors?.assetSourceKey == gameAssets?.sourceKey ? biomeColors : nil
@@ -264,10 +266,18 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     /// A region's full-resolution image and a half-resolution preview for zoomed-out views.
-    struct RenderedTile: @unchecked Sendable {  // CGImage is immutable.
-        var full: CGImage
-        var preview: CGImage
-        var cacheWrite: CacheWrite? = nil
+    struct RenderedTile: Sendable {
+        var full: MapTileImage
+        var preview: MapTileImage
+        var cacheWrite: CacheWrite?
+
+        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil) {
+            self.full = full; self.preview = preview; self.cacheWrite = cacheWrite
+        }
+
+        init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil) {
+            self.init(full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite)
+        }
     }
 
     /// Immutable data for an accepted tile's save. The map owns scheduling/draining it; canceled
@@ -306,10 +316,22 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         guard let surface else { return nil }
-        let pixels = displayPixels(surface)
-        guard let full = Self.makeImage(pixels, side: Self.side),
-              let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
-        return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite)
+        var drawing = style == .height ? (pixels: surface.pixels, normals: nil as [UInt8]?)
+            : surface.drawingPixels(heightScale: heightScale, includesNormals: usesSavedLighting)
+        if let nightLight = surface.nightLight {
+            drawing.pixels = DarkSpots.applying(nightLight, to: drawing.pixels, side: Self.side)
+        }
+        guard let full = Self.makeImage(drawing.pixels),
+              let preview = Self.makeImage(Self.halfSize(drawing.pixels), side: Self.previewSide) else { return nil }
+        var normals: CGImage?, previewNormals: CGImage?
+        if let bytes = drawing.normals {
+            normals = CGImage.rgba(bytes, width: Self.side, height: Self.side, colorSpace: CGColorSpace.linearSRGB)
+            previewNormals = CGImage.rgba(Self.halfSizeNormals(bytes, colors: drawing.pixels),
+                                         width: Self.previewSide, height: Self.previewSide, colorSpace: CGColorSpace.linearSRGB)
+            guard normals != nil, previewNormals != nil else { return nil }
+        }
+        return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
+                            cacheWrite: cacheWrite)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
@@ -327,6 +349,33 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         return out
+    }
+
+    /// Ignore missing columns when combining normals. A preview pixel containing any water
+    /// keeps the water marker, preserving the depth palette along partially covered shores.
+    static func halfSizeNormals(_ normals: [UInt8], colors: [UInt8]) -> [UInt8] {
+        var out = [UInt8](repeating: 0, count: previewSide * previewSide * 4)
+        for z in 0..<previewSide {
+            for x in 0..<previewSide {
+                let a = (2 * z * side + 2 * x) * 4, b = a + side * 4
+                var sum = SIMD3<Double>.zero
+                var water = false
+                for i in [a, a + 4, b, b + 4] where colors[i + 3] != 0 {
+                    if normals[i] == 0 && normals[i + 1] == 0 && normals[i + 2] == 0 { water = true }
+                    else { sum += SIMD3(Double(normals[i]), Double(normals[i + 1]), Double(normals[i + 2])) / 127.5 - SIMD3(repeating: 1) }
+                }
+                let i = (z * previewSide + x) * 4
+                if !water { encodeNormal(sum, into: &out, at: i) }
+                out[i + 3] = 255
+            }
+        }
+        return out
+    }
+
+    private static func encodeNormal(_ vector: SIMD3<Double>, into pixels: inout [UInt8], at i: Int) {
+        let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
+        let normal = length > 0 ? vector / length : SIMD3(0, 1, 0)
+        for c in 0..<3 { pixels[i + c] = UInt8(min(255, max(0, ((normal[c] + 1) * 127.5).rounded()))) }
     }
 
     /// The 256 top columns of one chunk (index `z * 16 + x`), or `nil` when it can't be decoded.
@@ -837,19 +886,30 @@ nonisolated struct RegionTileRenderer: Sendable {
         /// Lighting is applied to a copy, so a cached surface can be lit again without reading chunks.
         /// Top/left differences extrapolate from the next row/column to avoid an unshaded region edge.
         func litPixels(heightScale: MapHeightScale?) -> [UInt8] {
-            let lighting = MapRelief(heightScale: heightScale)
+            drawingPixels(heightScale: heightScale, includesNormals: false).pixels
+        }
+
+        /// Build drawing inputs in the same surface walk as fixed relief, never another chunk scan.
+        func drawingPixels(heightScale: MapHeightScale?, includesNormals: Bool) -> (pixels: [UInt8], normals: [UInt8]?) {
+            let lighting = MapRelief(heightScale: heightScale, directionalStrength: includesNormals ? 0.25 : 1)
+            var normals = includesNormals ? [UInt8](repeating: 0, count: pixels.count) : nil
             var lit = pixels
             for z in 0..<side {
                 for x in 0..<side {
                     let i = z * side + x
                     let height = heights[i]
-                    guard height != Self.noHeight, !isWater[i] else { continue }
+                    guard height != Self.noHeight else { continue }
+                    if includesNormals { normals![i * 4 + 3] = 255 }
+                    guard !isWater[i] else { continue }
                     let north = heights[z > 0 ? i - side : i + side]
                     let west = heights[x > 0 ? i - 1 : i + 1]
                     let northDifference = north == Self.noHeight ? 0
                         : (Int64(height) - Int64(north)) * (z > 0 ? 1 : -1)
                     let westDifference = west == Self.noHeight ? 0
                         : (Int64(height) - Int64(west)) * (x > 0 ? 1 : -1)
+                    if includesNormals {
+                        RegionTileRenderer.encodeNormal(SIMD3(-Double(westDifference), 1, -Double(northDifference)), into: &normals!, at: i * 4)
+                    }
                     let factor = lighting.factor(height: height, north: northDifference, west: westDifference)
                     guard factor != 1 else { continue }
                     let shaded = MapColor(UInt32(pixels[i * 4]) << 16 | UInt32(pixels[i * 4 + 1]) << 8
@@ -859,7 +919,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     lit[i * 4 + 2] = shaded.blue
                 }
             }
-            return lit
+            return (lit, normals)
         }
     }
 

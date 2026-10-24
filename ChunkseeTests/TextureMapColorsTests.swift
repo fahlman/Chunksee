@@ -102,10 +102,10 @@ import Testing
         let original = try #require(try await baseline.tile(for: position))
         let image = try #require(try await colored.tile(for: position))
         let hit = try #require(try await colored.tile(for: position))
-        let pixels = try ItemPictureFixture.pixels(image.full)
+        let pixels = try ItemPictureFixture.pixels(image.full.image)
         #expect(pixels.color(8, 8) == [0, 255, 0, 255])
-        #expect(try ItemPictureFixture.pixels(hit.full).bytes == pixels.bytes)
-        #expect(try ItemPictureFixture.pixels(original.full).bytes != pixels.bytes)
+        #expect(try ItemPictureFixture.pixels(hit.full.image).bytes == pixels.bytes)
+        #expect(try ItemPictureFixture.pixels(original.full.image).bytes != pixels.bytes)
         let file = try #require(try dimension.region(x: 0, z: 0))
         #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
         let regionFile = dimension.regionURL(.terrain, x: 0, z: 0)
@@ -138,7 +138,7 @@ import Testing
         let old = try #require(CGImage.rgba([0, 255, 0, 255], width: 1, height: 1))
         await gate.finish("fallback", with: .init(full: old, preview: old))
         await map.waitForRenders()
-        #expect(map.tiles[.init(x: 0, z: 0)] === good && map.viewport.center == CGPoint(x: 8, y: 8))
+        #expect(map.tiles[.init(x: 0, z: 0)]?.image === good && map.viewport.center == CGPoint(x: 8, y: 8))
         map.close()
     }
 

@@ -56,6 +56,7 @@ final class WorldResources {
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
     @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
     @ObservationIgnored private var pendingPlayers = false
+    @ObservationIgnored private var pendingLighting = false
     @ObservationIgnored private var pendingBiomeMetadata = false
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
@@ -67,6 +68,12 @@ final class WorldResources {
     @ObservationIgnored private var isNightReadPending = false
     @ObservationIgnored var readNightLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
+    }
+    private let lightingWork: BackgroundWork.Scope
+    @ObservationIgnored private var lightingReadGeneration = 0
+    @ObservationIgnored private var lighting: [String: MapLighting] = [:]
+    @ObservationIgnored var readLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MapLighting] = {
+        try await WorldResources.readLighting($0, library: $1)
     }
     @ObservationIgnored private var gameAssetSource: WorldGameAssetSource?
     @ObservationIgnored private var gameAssets: GameAssetLibrary?
@@ -106,6 +113,7 @@ final class WorldResources {
         refreshWork = backgroundWork.makeScope()
         biomeWork = backgroundWork.makeScope()
         nightLightWork = backgroundWork.makeScope()
+        lightingWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
@@ -128,6 +136,7 @@ final class WorldResources {
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
+        refreshLighting()
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             backgroundWork.start(priority: .background) {
                 await Self.runCacheMaintenance(maintainCache, root: root, folder: folder)
@@ -152,6 +161,7 @@ final class WorldResources {
                          read: readRegion)
         }, firstDimension: activeDimensionID)
         refreshNightLighting()
+        refreshLighting()
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
@@ -172,6 +182,7 @@ final class WorldResources {
         sessions[session.viewID] = WeakSession(session)
         session.map?.setGameAssets(gameAssets, biomeColors: biomeColors)
         darkSpotsVisibilityChanged()
+        session.map?.setSavedLighting(session.selectedDimensionID.flatMap { lighting[$0] })
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
 
@@ -184,7 +195,12 @@ final class WorldResources {
         biomeWork.cancel()
         gameAssets = nil
         biomeColors = nil
-        for session in sessions.values.compactMap(\.value) { session.map?.setGameAssets(nil) }
+        lighting = [:]
+        for session in sessions.values.compactMap(\.value) {
+            session.map?.setGameAssets(nil)
+            session.map?.setSavedLighting(nil)
+        }
+        refreshLighting()
         clearNightLighting()
         refreshNightLighting()
     }
@@ -200,6 +216,7 @@ final class WorldResources {
         refreshBiomeColors(reload: true)
         clearNightLighting()
         refreshNightLighting()
+        refreshLighting()
     }
 
     private func refreshBiomeColors(reload: Bool) {
@@ -280,11 +297,36 @@ final class WorldResources {
         }
     }
 
+    private func refreshLighting() {
+        guard !isClosed else { return }
+        lightingReadGeneration += 1
+        let generation = lightingReadGeneration, library = gameAssets, read = readLighting, world = world
+        lightingWork.cancel()
+        lightingWork.start(priority: nil) { [weak self] in
+            let updated = try? await read(world, library)
+            guard !Task.isCancelled, let self, !self.isClosed, generation == self.lightingReadGeneration,
+                  self.gameAssets?.identity == library?.identity, let updated else { return }
+            // A failed metadata read retains the last good clock. Successful unavailable data
+            // clears it, so deleted packs or definitions cannot leave stale lighting behind.
+            self.lighting = updated
+            for session in self.sessions.values.compactMap(\.value) {
+                session.map?.setSavedLighting(session.selectedDimensionID.flatMap { updated[$0] })
+            }
+        }
+    }
+
     @concurrent nonisolated static func readNightLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         if let library { return try await library.nightLighting(in: current) }
         return try current.nightMonsterLighting(assets: nil)
+    }
+
+    @concurrent nonisolated static func readLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MapLighting] {
+        try Task.checkCancellation()
+        let current = try World(contentsOf: world.url)
+        if let library { return try await library.lighting(in: current) }
+        return try MapLighting.read(in: current, assets: nil)
     }
 
     func saveViews() {
@@ -361,6 +403,7 @@ final class WorldResources {
         gameAssets = nil
         biomeColors = nil
         nightLighting = nil
+        lighting = [:]
         let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
@@ -387,17 +430,24 @@ final class WorldResources {
                     pendingTerrain[dimension.id] = .all
                 }
                 pendingPlayers = true
+                pendingLighting = true
                 pendingBiomeMetadata = true
                 pendingBiomePacks = true
             } else if path == url.appendingPathComponent("level.dat").standardizedFileURL.path {
                 pendingPlayers = true
+                pendingLighting = true
                 pendingBiomeMetadata = true
             } else if ["data", "data/minecraft", "data/world_gen_settings.dat", "data/minecraft/world_gen_settings.dat"]
                 .contains(where: { path == url.appendingPathComponent($0).standardizedFileURL.path }) {
                 pendingBiomeMetadata = true
+                pendingLighting = true
+            } else if ["data/world_clocks.dat", "data/minecraft/world_clocks.dat"]
+                .contains(where: { path == url.appendingPathComponent($0).standardizedFileURL.path }) {
+                pendingLighting = true
             } else if path == url.appendingPathComponent("datapacks").standardizedFileURL.path ||
                         path.hasPrefix(url.appendingPathComponent("datapacks").standardizedFileURL.path + "/") {
                 pendingBiomePacks = true
+                pendingLighting = true
             } else if path == world.playerDataDirectory.standardizedFileURL.path || path.hasPrefix(world.playerDataDirectory.standardizedFileURL.path + "/") {
                 pendingPlayers = true
             } else if let dimension = dimensions.filter({ path == $0.url.standardizedFileURL.path || path.hasPrefix($0.url.standardizedFileURL.path + "/") })
@@ -422,7 +472,7 @@ final class WorldResources {
                 }
             }
         }
-        guard !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks else { return }
+        guard !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks || pendingLighting else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -441,12 +491,14 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork])
     }
 
     private func refresh() async {
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
         let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
+        let lightingChanged = pendingLighting
+        pendingLighting = false
         pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
         pendingBiomeMetadata = false; pendingBiomePacks = false
         for session in sessions.values.compactMap(\.value) {
@@ -461,6 +513,7 @@ final class WorldResources {
             refreshBiomeColors(reload: reloadBiomes)
             refreshNightLighting()
         }
+        if lightingChanged { refreshLighting() }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
             // an older, slower read finishing later must not put old positions back.

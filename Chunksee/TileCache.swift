@@ -25,7 +25,10 @@ nonisolated struct TileCache: Sendable {
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
     /// 19: optional nighttime light bytes and separate on/off cache slots.
-    static let rendererVersion = 19
+    /// 20–21 and 23 belong to the close-up texture branch under review.
+    /// 22: Kit 0.66.1 supplies omitted default block properties to model and tint resolution.
+    /// 24: combine saved-time lighting and optional nighttime-light cache data.
+    static let rendererVersion = 24
 
     let directory: URL
 

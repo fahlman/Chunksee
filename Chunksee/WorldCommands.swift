@@ -109,6 +109,17 @@ struct WorldCommands: Commands {
                 }
             }
             .disabled(session?.map == nil)
+            Menu("Lighting") {
+                ForEach(MapLightingMode.allCases, id: \.self) { mode in
+                    Toggle(isOn: Binding {
+                        (session?.map?.lighting == nil ? MapLightingMode.daylight : .savedTime) == mode
+                    } set: { if $0 { session?.map?.setLightingMode(mode) } }) {
+                        Text(mode.title)
+                    }
+                    .disabled(mode == .savedTime && session?.map?.savedLighting == nil)
+                }
+            }
+            .disabled(session?.map == nil || session?.map?.style == .height)
             Button("Show/Hide Blocks…") { showsBlockFilter = true }
                 .disabled(session?.map == nil || showsBlockFilter == nil)
             Button("Map Height…") { showsMapHeight = true }

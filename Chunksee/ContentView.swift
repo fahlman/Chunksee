@@ -6,6 +6,7 @@ struct WorldView: View {
     @Bindable var session: WorldSession
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
@@ -158,9 +159,10 @@ struct WorldView: View {
                     .id(map.dimension.id)
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
+                    .onChange(of: map.lightingMode) { session.saveView() }
                     .onChange(of: map.blockFilter) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
-                    .copyable([SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) }])
+                    .copyable([SharedMapImage { [session, colorScheme, locale, contrast] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale, contrast: contrast) }])
                     // Remember the position a second after the map stops moving.
                     .task(id: map.viewport) {
                         try? await Task.sleep(for: .seconds(1))
@@ -170,7 +172,7 @@ struct WorldView: View {
                     .toolbar {
                         ToolbarItem {
                             Menu {
-                                ShareLink(item: SharedMapImage { [session, colorScheme, locale] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale) },
+                                ShareLink(item: SharedMapImage { [session, colorScheme, locale, contrast] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale, contrast: contrast) },
                                           preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
                                     Text("Share Current View")
                                 }

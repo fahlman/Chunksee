@@ -2,8 +2,10 @@
 nonisolated struct MapRelief {
     private let bounds: ClosedRange<Int>?
     private let elevation: [Double]
+    private let directionalStrength: Double
 
-    init(heightScale: MapHeightScale?) {
+    init(heightScale: MapHeightScale?, directionalStrength: Double = 1) {
+        self.directionalStrength = directionalStrength
         // Without a saved sea level there is no justified midpoint for an elevation tint.
         guard let heightScale, heightScale.seaLevel != nil else {
             bounds = nil
@@ -20,7 +22,7 @@ nonisolated struct MapRelief {
 
     /// North-west light: shallow slopes have less contrast than cliffs, with bounded extremes.
     func factor(height: Int32, north: Int64, west: Int64) -> Double {
-        let slope = min(1.2, max(0.75, 1 + 0.025 * Double(north + west)))
+        let slope = 1 + directionalStrength * (min(1.2, max(0.75, 1 + 0.025 * Double(north + west))) - 1)
         guard let bounds else { return slope }
         let y = min(bounds.upperBound, max(bounds.lowerBound, Int(height)))
         return slope * elevation[y - bounds.lowerBound]

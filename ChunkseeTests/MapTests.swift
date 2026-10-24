@@ -391,7 +391,7 @@ import Testing
         // All four regions are visible, so none is evicted despite the limit of one.
         #expect(Set(map.tiles.keys) == Set(regions))
         #expect(Set(map.previews.keys) == Set(regions))
-        #expect(map.previews[RegionPosition(x: 0, z: 0)]?.width == RegionTileRenderer.previewSide)
+        #expect(map.previews[RegionPosition(x: 0, z: 0)]?.image.width == RegionTileRenderer.previewSide)
     }
 
     @Test func zoomedOutRequestsNeedOnlyPreviews() async throws {
@@ -401,7 +401,7 @@ import Testing
         map.viewport.scale = 1.0 / 16
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
         await map.waitUntilIdle()
-        #expect(map.image(for: RegionPosition(x: 0, z: 0), fullResolution: false)?.width == RegionTileRenderer.previewSide)
+        #expect(map.image(for: RegionPosition(x: 0, z: 0), fullResolution: false)?.image.width == RegionTileRenderer.previewSide)
         #expect(map.tiles.isEmpty)  // full tiles aren't kept when only previews are needed
         // A second request at the same zoom has nothing left to do.
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)

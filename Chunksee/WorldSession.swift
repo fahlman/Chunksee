@@ -106,6 +106,7 @@ final class WorldSession {
         if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.settings.depth(for: dimension.id))
         map.setStyle(resources.settings.style(for: dimension.id))
+        map.setLightingMode(resources.settings.lightingMode(for: dimension.id))
         map.setBlockFilter(resources.settings.blockFilter(for: dimension.id))
         return map
     }
@@ -127,7 +128,7 @@ final class WorldSession {
     /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.style, blockFilter: map.blockFilter)
+        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.style, blockFilter: map.blockFilter, lightingMode: map.lightingMode)
     }
 }
 
