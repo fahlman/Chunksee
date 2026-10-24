@@ -732,7 +732,7 @@ import Testing
         let own = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
         let neighbor = dimension.regionURL(at: .init(x: -1, z: 0))
         func color() async throws -> [UInt8] {
-            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).color(0, 8)
+            try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).color(0, 8)
         }
         #expect(try await color() == [255, 0, 0, 255])
         for (blue, expected, stamp) in [(true, [153, 0, 102, 255], 1000.0), (false, [255, 0, 0, 255], 2000.0)] {
@@ -741,7 +741,7 @@ import Testing
             #expect(try await color() == expected.map(UInt8.init))
             let hit = try #require(try await renderer.tile(for: region))
             #expect(hit.cacheWrite == nil)
-            #expect(try ItemPictureFixture.pixels(hit.full).color(0, 8) == expected.map(UInt8.init))
+            #expect(try ItemPictureFixture.pixels(hit.full.image).color(0, 8) == expected.map(UInt8.init))
         }
         try FileManager.default.removeItem(at: neighbor)
         #expect(try await color() == [255, 0, 0, 255])
@@ -749,7 +749,7 @@ import Testing
         #expect(after.size == own.size && after.modified == own.modified)
         renderer.blendsBiomeColors = false
         #expect(renderer.colorSourceKey == sharpKey)
-        #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full).bytes == ItemPictureFixture.pixels(sharp.full).bytes)
+        #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).bytes == ItemPictureFixture.pixels(sharp.full.image).bytes)
         #expect(try FileManager.default.contentsOfDirectory(atPath: cache.directory.path).count == 1)
         await library.close()
     }
@@ -768,7 +768,7 @@ import Testing
         map.viewport = plan.viewport
         map.requestTiles(visibleIn: plan.size, displayScale: 1)
         await map.waitUntilIdle()
-        let tile = try ItemPictureFixture.pixels(#require(map.tiles[.init(x: 0, z: 0)]))
+        let tile = try ItemPictureFixture.pixels(#require(map.tiles[.init(x: 0, z: 0)]?.image))
         #expect(tile.color(7, 8) == [153, 0, 102, 255])
         func bytes(_ image: MapImage) throws -> Data {
             let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
