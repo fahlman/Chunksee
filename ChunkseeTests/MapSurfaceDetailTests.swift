@@ -94,7 +94,7 @@ import Testing
         #expect(MapSurfaceDetail.decoded(data) == forward)
     }
 
-    @Test func terrainCacheKeepsMaterialsAndRejectsMissingOrOversizedPayloads() throws {
+    @Test func ordinaryTerrainCacheIsIndependentOfMissingOrMalformedDetail() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
@@ -104,17 +104,29 @@ import Testing
         surface.heights[0] = 12
         cache.store(surface, for: key)
         let loaded = try #require(cache.load(key))
-        #expect(loaded.detail == surface.detail && loaded.heights == surface.heights)
+        #expect(loaded.detail.isEmpty && loaded.heights == surface.heights)
+        #expect(cache.loadDetail(key) == nil)
         let file = directory.appendingPathComponent(key.fileName)
-        let bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
-        for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 9))] {
-            try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: file)
-            #expect(cache.load(key) == nil)
+        let ordinary = try Data(contentsOf: file)
+        cache.storeDetail(surface, for: key)
+        let detail = try #require(cache.loadDetail(key))
+        #expect(detail.detail == surface.detail && detail.heights == surface.heights)
+        #expect(try Data(contentsOf: file) == ordinary)
+        let detailFile = directory.appendingPathComponent(key.detailFileName)
+        let bytes = try (Data(contentsOf: detailFile) as NSData).decompressed(using: .lzfse) as Data
+        for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 4 - 1)),
+                    Data(repeating: 0, count: 512 * 512 * 4 + MapSurfaceDetail.maximumEncodedBytes + 1)] {
+            try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: detailFile)
+            #expect(cache.loadDetail(key) == nil)
+            #expect(cache.load(key)?.heights == surface.heights)
         }
-        var overflow = bytes
-        let offset = 512 * 512 * 9
-        overflow.replaceSubrange(offset..<offset + 4, with: [UInt8](repeating: 255, count: 4))
-        try ((overflow as NSData).compressed(using: .lzfse) as Data).write(to: file)
-        #expect(cache.load(key) == nil)
+        cache.storeDetail(surface, for: key)
+        cache.store(surface, for: key)
+        #expect(cache.loadDetail(key)?.detail == surface.detail) // rewriting the tile keeps its sidecar
+        var changed = key
+        changed.modified += 1
+        cache.store(surface, for: changed)
+        #expect(cache.load(key) == nil && cache.loadDetail(key) == nil)
+        #expect(cache.load(changed) != nil && cache.loadDetail(changed) == nil)
     }
 }

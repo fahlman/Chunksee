@@ -100,7 +100,8 @@ with a link to this guide. Help opens only when requested.
    At **800% zoom** and above, supported land blocks show their top textures, with saved
    orientation, position-based variation, biome tints and the same terrain lighting. Water,
    highlighted blocks and unsupported models keep the usual map colors; Height keeps its scale.
-   Zooming uses the surface already cached by the map, without scanning the blocks again.
+   Close-up textures load only when you zoom in. They reuse the cached surface; missing cache
+   data is rebuilt when needed.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 

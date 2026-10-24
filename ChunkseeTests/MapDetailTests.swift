@@ -49,7 +49,8 @@ import Testing
         renderer.gameAssets = assets
         let cold = try #require(try await renderer.tile(for: region))
         let hit = try #require(try await renderer.tile(for: region))
-        let surface = try #require(hit.detail)
+        #expect(hit.detail == nil) // ordinary cache hits never decode or retain close-up materials
+        let surface = try #require(try await renderer.detail(for: region))
         #expect(cold.detail?.detail == surface.detail && cold.detail?.heights == surface.heights)
         #expect(surface.heights[511 * 512 + 511] == 14)
         // This compositor receives only retained materials and heights. Removing the synthetic
@@ -68,6 +69,56 @@ import Testing
             viewport: .init(center: close.center, scale: 4), size: size).isEmpty)
         #expect(MapDetailRenderer.visibleChunks(in: surface, region: region,
             viewport: .init(center: CGPoint(x: CGFloat.nan, y: 0), scale: 8), size: size).isEmpty)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func ordinaryZoomSkipsDetailReadsAndLateLoadsCannotReturnAfterZoomOutOrClose() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let gate = AsyncReadGate<MapSurfaceDetail.Surface?>(), numbers = ReadNumbers()
+        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+                          cacheDirectory: root.appendingPathComponent("tiles"),
+                          readDetail: { _, _ in await gate.read(String(await numbers.next())) })
+        defer { map.close() }
+        map.setGameAssets(try fixture.library())
+        let size = CGSize(width: 64, height: 64)
+        map.viewport.scale = 4
+        map.requestTiles(visibleIn: size)
+        await map.waitUntilIdle()
+        await map.waitForRenders()
+        #expect(await gate.requested.isEmpty)
+        #expect(map.detailImages.isEmpty)
+        let surface = try #require(try await map.currentRenderer.detail(for: .init(x: -1, z: -1)))
+
+        map.viewport.scale = 8
+        map.requestTiles(visibleIn: size)
+        await gate.waitForRequest("0")
+        map.viewport.scale = 4
+        map.requestTiles(visibleIn: size)
+        await gate.waitForCancellation("0")
+        await gate.finish("0", with: surface)
+        await map.waitForRenders()
+        #expect(map.detailImages.isEmpty && !map.isLoading)
+
+        map.viewport.scale = 8
+        map.requestTiles(visibleIn: size)
+        await gate.waitForRequest("1")
+        await gate.finish("1", with: surface)
+        await map.waitUntilIdle()
+        #expect(!map.detailImages.isEmpty)
+        map.viewport.scale = 4
+        map.requestTiles(visibleIn: size)
+        #expect(map.detailImages.isEmpty)
+        map.viewport.scale = 8
+        map.requestTiles(visibleIn: size)
+        await gate.waitForRequest("2")
+        map.close()
+        await gate.waitForCancellation("2")
+        await gate.finish("2", with: surface)
+        await map.waitForRenders()
+        #expect(map.detailImages.isEmpty && !map.isLoading)
     }
 
     @Test(.timeLimit(.minutes(1))) func panningInsideARegionKeepsNeededWorkAndClosingRejectsLatePictures() async throws {

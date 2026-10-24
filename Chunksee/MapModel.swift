@@ -27,8 +27,13 @@ final class MapModel {
     @ObservationIgnored private var detailAttempted: Set<ChunkPosition> = []
     @ObservationIgnored private var detailQueue: [ChunkPosition] = []
     @ObservationIgnored private var detailJob: (chunk: ChunkPosition, id: UUID, task: Task<Void, Never>)?
+    @ObservationIgnored private var detailRegionsWanted: Set<RegionPosition> = []
+    @ObservationIgnored private var detailLoadsAttempted: Set<RegionPosition> = []
+    @ObservationIgnored private var detailLoadJob: (region: RegionPosition, id: UUID, task: Task<Void, Never>)?
     typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameAssetLibrary, MapHeightScale?) async throws -> CGImage?
+    typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> MapSurfaceDetail.Surface?
     @ObservationIgnored private let renderDetail: DetailRenderer
+    @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
     private let renderer: RegionTileRenderer
@@ -69,6 +74,7 @@ final class MapModel {
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
          renderDetail: @escaping DetailRenderer = { try await MapDetailRenderer.render($0, surface: $1, assets: $2, heightScale: $3) },
+         readDetail: @escaping DetailReader = { try await $0.detail(for: $1) },
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
@@ -78,6 +84,7 @@ final class MapModel {
         coordinateWork = work.makeScope()
         detailWork = work.makeScope()
         self.renderDetail = renderDetail
+        self.readDetail = readDetail
         self.dimension = dimension
         self.heightScale = heightScale
         self.readTopBlocksFor = readTopBlocks
@@ -200,7 +207,7 @@ final class MapModel {
     }
 
     private func updateLoadingState() {
-        isLoading = !inFlight.isEmpty || !queue.isEmpty || detailJob != nil || !detailQueue.isEmpty
+        isLoading = !inFlight.isEmpty || !queue.isEmpty || detailJob != nil || !detailQueue.isEmpty || detailLoadJob != nil
         guard !isLoading else { return }
         let waiters = idleWaiters
         idleWaiters = []
@@ -262,7 +269,9 @@ final class MapModel {
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = tile.full
-            detailSurfaces[region] = tile.detail
+            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameAssets != nil, style != .height {
+                detailSurfaces[region] = tile.detail
+            }
         } else if wasStale {
             tiles[region] = nil   // drawn from the old file; zooming in will draw it again
             invalidateDetail(in: [region], keepingImages: false)
@@ -303,6 +312,8 @@ final class MapModel {
         detailWork.cancel()
         detailJob = nil
         detailQueue = []
+        detailLoadJob = nil
+        detailRegionsWanted = []
         updateLoadingState()
     }
 
@@ -320,6 +331,7 @@ final class MapModel {
         detailSurfaces = [:]
         detailImages = [:]
         detailAttempted = []
+        detailLoadsAttempted = []
         gameAssets = nil
         biomeColors = nil
     }
@@ -328,6 +340,19 @@ final class MapModel {
 
     private func requestDetail(visibleIn size: CGSize) {
         guard !isClosed else { return }
+        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameAssets != nil && style != .height
+        detailRegionsWanted = enabled
+            ? Set(viewport.visibleRegions(in: size, among: availableRegions).filter { tiles[$0] != nil && !stale.contains($0) }) : []
+        detailSurfaces = detailSurfaces.filter { detailRegionsWanted.contains($0.key) }
+        detailLoadsAttempted.formIntersection(detailRegionsWanted)
+        if let job = detailLoadJob, !detailRegionsWanted.contains(job.region) {
+            job.task.cancel()
+            detailLoadJob = nil
+        }
+        if !enabled {
+            detailImages = [:]
+            detailAttempted = []
+        }
         let visible = Set(detailSurfaces.flatMap { region, surface in
             MapDetailRenderer.visibleChunks(in: surface, region: region, viewport: viewport, size: size)
         })
@@ -349,8 +374,35 @@ final class MapModel {
             return $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x
         }
         trimDetailCache()
+        startDetailLoad()
         startDetail()
         updateLoadingState()
+    }
+
+    private func startDetailLoad() {
+        guard !isClosed, detailLoadJob == nil, let lastView,
+              let region = viewport.visibleRegions(in: lastView.size, among: detailRegionsWanted).first(where: {
+                  detailSurfaces[$0] == nil && !detailLoadsAttempted.contains($0)
+              }) else { return }
+        let id = UUID(), reader = readDetail, renderer = currentRenderer, work = work, cacheWork = cacheWork
+        guard let task = detailWork.start(priority: nil, operation: { [weak self] in
+            // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
+            // writes before loading, so zooming cannot cause a redundant world read.
+            await work.waitUntilFinished(in: [cacheWork])
+            let surface: MapSurfaceDetail.Surface?
+            do {
+                try Task.checkCancellation()
+                surface = try await reader(renderer, region)
+            } catch { surface = nil }
+            guard let self, self.detailLoadJob?.id == id, !self.isClosed else { return }
+            self.detailLoadJob = nil
+            if !Task.isCancelled {
+                self.detailSurfaces[region] = surface
+                self.detailLoadsAttempted.insert(region)
+            }
+            if let view = self.lastView { self.requestDetail(visibleIn: view.size) }
+        }) else { return }
+        detailLoadJob = (region: region, id: id, task: task)
     }
 
     private func trimDetailCache() {
@@ -393,6 +445,12 @@ final class MapModel {
     }
 
     private func invalidateDetail(in regions: Set<RegionPosition>, keepingImages: Bool) {
+        if let job = detailLoadJob, regions.contains(job.region) {
+            job.task.cancel()
+            detailLoadJob = nil
+        }
+        detailLoadsAttempted.subtract(regions)
+        detailSurfaces = detailSurfaces.filter { !regions.contains($0.key) }
         if let job = detailJob, regions.contains(job.chunk.region) {
             job.task.cancel()
             detailJob = nil
@@ -585,6 +643,7 @@ final class MapModel {
         detailSurfaces = [:]
         detailImages = [:]
         detailAttempted = []
+        detailLoadsAttempted = []
         previews = [:]
         failed = []
         stale = []

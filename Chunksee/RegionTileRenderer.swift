@@ -277,7 +277,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         let surface: Canvas
 
         @concurrent
-        func store() async { cache.store(surface, for: key) }
+        func store() async {
+            cache.store(surface, for: key)
+            if !Task.isCancelled { cache.storeDetail(surface, for: key) }
+        }
     }
 
     static let previewSide = side / 2
@@ -288,19 +291,21 @@ nonisolated struct RegionTileRenderer: Sendable {
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
         if style != .height { try await gameAssets?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
-        let regionFile = dimension.regionURL(.terrain, x: region.x, z: region.z)
-        let key = cache == nil ? nil : TileCache.key(for: region, regionFile: regionFile, context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter, colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region))
+        let key = cacheKey(for: region)
         var surface: Canvas?
         var cacheWrite: CacheWrite?
+        var scanned = false
         if let cache, let key, let cached = cache.load(key) {
             surface = cached
         } else {
             surface = try await self.surface(for: region)
+            scanned = true
             if let cache, let key, let surface {
                 if savesInBackground {
                     cacheWrite = CacheWrite(cache: cache, key: key, surface: surface)
                 } else {
                     cache.store(surface, for: key)
+                    cache.storeDetail(surface, for: key)
                 }
             }
         }
@@ -309,7 +314,27 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
         return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite,
-                            detail: surface.detail.isEmpty ? nil : .init(detail: surface.detail, heights: surface.heights))
+                            detail: scanned ? .init(detail: surface.detail, heights: surface.heights) : nil)
+    }
+
+    /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
+    /// sidecar (including disabled caching) uses the same renderer, never another block parser.
+    @concurrent
+    func detail(for region: RegionPosition) async throws -> MapSurfaceDetail.Surface? {
+        try await gameAssets?.checkAvailable()
+        let key = cacheKey(for: region)
+        if let cache, let key, let detail = cache.loadDetail(key) { return detail }
+        guard let surface = try await surface(for: region) else { return nil }
+        try Task.checkCancellation()
+        if let cache, let key { cache.storeDetail(surface, for: key) }
+        return .init(detail: surface.detail, heights: surface.heights)
+    }
+
+    private func cacheKey(for region: RegionPosition) -> TileCache.Key? {
+        guard cache != nil else { return nil }
+        return TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
+            context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter,
+            colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region))
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade

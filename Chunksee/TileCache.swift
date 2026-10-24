@@ -27,7 +27,8 @@ nonisolated struct TileCache: Sendable {
     /// 20: retain bounded selected materials for close-zoom detail without another chunk scan.
     /// 19 belongs to the separate Dark Spots work under review.
     /// 21: one stored material palette per region and Kit 0.66.1 compact-state defaults.
-    static let rendererVersion = 21
+    /// 22 belongs to saved-time lighting's integration. 23 separates on-demand texture data.
+    static let rendererVersion = 23
 
     let directory: URL
 
@@ -55,6 +56,7 @@ nonisolated struct TileCache: Sendable {
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
         var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered")." }
+        var detailFileName: String { fileName + ".detail" }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -118,17 +120,39 @@ nonisolated struct TileCache: Sendable {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.fileName)),
               let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              bytes.count >= count * 9 + 4 else { return nil }
-        let detailCount = bytes.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: count * 9, as: UInt32.self))) }
-        guard detailCount <= MapSurfaceDetail.maximumEncodedBytes, bytes.count == count * 9 + 4 + detailCount,
-              let detail = MapSurfaceDetail.decoded(Data(bytes[(count * 9 + 4)...])) else { return nil }
+              bytes.count == count * 9 else { return nil }
         let water = bytes[(count * 8)..<(count * 9)]
         guard water.allSatisfy({ $0 <= 1 }) else { return nil }
         let heights = bytes.withUnsafeBytes { buffer in
             (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: count * 4 + $0 * 4, as: Int32.self)) }
         }
         return RegionTileRenderer.Canvas(pixels: Array(bytes[..<(count * 4)]), heights: heights,
-                                         isWater: water.map { $0 == 1 }, detail: detail)
+                                         isWater: water.map { $0 == 1 })
+    }
+
+    /// Close-up data is independent of the ordinary tile. Missing or corrupt detail never
+    /// forces a world scan just to display the ordinary map.
+    func loadDetail(_ key: Key) -> MapSurfaceDetail.Surface? {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.detailFileName)),
+              let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              bytes.count >= count * 4, bytes.count <= count * 4 + MapSurfaceDetail.maximumEncodedBytes,
+              let detail = MapSurfaceDetail.decoded(Data(bytes[(count * 4)...])) else { return nil }
+        let heights = bytes.withUnsafeBytes { buffer in
+            (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: $0 * 4, as: Int32.self)) }
+        }
+        return .init(detail: detail, heights: heights)
+    }
+
+    func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
+        let count = RegionTileRenderer.side * RegionTileRenderer.side
+        guard surface.heights.count == count, let detail = surface.detail.encoded() else { return }
+        var bytes = Data(capacity: count * 4 + detail.count)
+        surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
+        bytes.append(detail)
+        guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? compressed.write(to: directory.appendingPathComponent(key.detailFileName), options: .atomic)
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
@@ -137,19 +161,18 @@ nonisolated struct TileCache: Sendable {
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard surface.pixels.count == count * 4, surface.heights.count == count,
-              surface.isWater.count == count, let detail = surface.detail.encoded() else { return }
-        var bytes = Data(capacity: count * 9 + 4 + detail.count)
+              surface.isWater.count == count else { return }
+        var bytes = Data(capacity: count * 9)
         bytes.append(contentsOf: surface.pixels)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
-        withUnsafeBytes(of: UInt32(detail.count).littleEndian) { bytes.append(contentsOf: $0) }
-        bytes.append(detail)
         guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        where (name.hasPrefix(key.prefix) && name != key.fileName)
-            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")) {
+        where (name.hasPrefix(key.prefix) && name != key.fileName && name != key.detailFileName)
+            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")
+                && !name.hasSuffix(".v\(Self.rendererVersion).lzfse.detail")) {
             try? fileManager.removeItem(at: directory.appendingPathComponent(name))
         }
         try? compressed.write(to: directory.appendingPathComponent(key.fileName), options: .atomic)

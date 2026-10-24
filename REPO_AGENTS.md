@@ -1302,18 +1302,24 @@ a reload that remains pending across overlapping autosaves. Read errors retain t
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.
 
 Close-up texture detail retains selected states, tints, roof shade and filter emphasis from the
-existing terrain scan in chunk-local palettes. TileCache version 21 stores one shared material
+existing terrain scan in chunk-local palettes. TileCache version 23 stores one shared material
 palette per region, with bounded references preserving each chunk's local palette addresses.
 Repeated states and tints are encoded and decoded once per region; immutable chunk memory costs
-are computed once. The version also invalidates pre-0.66.1 default-state fallback pixels;
-zooming and Share reuse it without another chunk read. Each chunk is bounded to 256 KiB estimated
+are computed once. The ordinary tile retains its original pixel/height/water payload. Close-up
+data lives in a separately compressed sidecar under the same complete key and is decoded only
+for visible regions at 800% or above. A missing or corrupt sidecar never invalidates the ordinary
+tile; a close-up request regenerates it through the existing renderer when needed. Accepted cold
+renders write both files in the existing background cache job, preserving their one scan. Detail
+loads wait for those writes before a possible cache-miss render. The version also invalidates
+pre-0.66.1 default-state fallback pixels. Each chunk is bounded to 256 KiB estimated
 material cost. A region retains at most 8 MiB, keeping a deterministic coordinate prefix if an
 unusually varied region exceeds that budget; other columns keep their normal pixels. The binary
 cache payload is bounded at 16 MiB and validates palette references, dimensions and shade values.
 Full tiles and retained surface data share the previous roughly 200 MiB budget, with visible
-regions protected as before. Previews retain their separate budget.
+regions protected as before. Previews retain their separate budget. Decoded detail surfaces are
+retained only for visible close-up regions; zooming out releases them and their chunk pictures.
 
-MapModel's existing BackgroundWork owner tracks one close-up chunk job at a time, keeping work
+MapModel's existing BackgroundWork owner tracks one sidecar load and one close-up chunk job at a time, keeping work
 still needed during panning and rejecting results after source/style/depth/filter/region changes
 or close. Only visible chunks are requested above the 800% threshold; completed chunk pictures
 have a 256-entry (64 MiB) budget, retaining visible chunks in larger windows. GameAssetLibrary
