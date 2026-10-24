@@ -372,7 +372,7 @@ shows Surface or the current Y and opens a standard popover. Its segmented mode 
 slider, bordered number field and minus/plus buttons share that owner; height controls are disabled on Surface.
 Height edits use MapModel.setHeight, preserving the chosen mode when the formatted field writes
 back during a focus or enabled-state change. The mode controls switch Surface/Cutaway explicitly.
-View's Increase/Decrease Y Level commands (Option-Command-Plus/Minus) call MapModel.stepHeight to
+View's Increase/Decrease Y Level commands (Control-Command-Plus/Minus) call MapModel.stepHeight to
 step the remembered Y by one and enter Cutaway, including from Surface. They repeat while held,
 target only the focused document and stop at Int endpoints without limiting custom heights.
 WorldKeyboardShortcuts accepts the shifted/unshifted punctuation variants, matching Zoom.

@@ -36,7 +36,7 @@ with a link to this guide. Help opens only when requested.
    you release the slider and shows terrain at or below that height, including cave floors.
    Choose **Surface** to return to the normal map. **View ▸ Map Height…** (**⇧⌘Y**) opens these
    controls from the keyboard; **View ▸ Surface** (**⌥⌘Y**) switches between Surface and Cutaway.
-   **View ▸ Increase Y Level** (**⌥⌘+**) and **Decrease Y Level** (**⌥⌘−**) move one block at a time;
+   **View ▸ Increase Y Level** (**⌃⌘+**) and **Decrease Y Level** (**⌃⌘−**) move one block at a time;
    hold the keys to keep stepping. From Surface, either command steps the remembered Y and enters
    Cutaway. Like Zoom, both commands accept the shifted and unshifted keys. Plain arrow keys still
    move around the map.

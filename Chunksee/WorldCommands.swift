@@ -136,11 +136,11 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)
             Button("Increase Y Level") { session?.map?.stepHeight(by: 1) }
-                .keyboardShortcut("+", modifiers: [.command, .option])
+                .keyboardShortcut("+", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(session?.map == nil || session?.map?.depth.y == Int.max)
             Button("Decrease Y Level") { session?.map?.stepHeight(by: -1) }
-                .keyboardShortcut("-", modifiers: [.command, .option])
+                .keyboardShortcut("-", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(session?.map == nil || session?.map?.depth.y == Int.min)
             Button("Create Map Image…") { showsImageExport = true }
@@ -247,11 +247,11 @@ struct WorldKeyboardShortcuts: View {
                 .disabled(focusedSession !== session ||
                           session.map?.viewport.canZoomOut != true)
             Button("Increase Y Level") { session.map?.stepHeight(by: 1) }
-                .keyboardShortcut("=", modifiers: [.command, .option])
+                .keyboardShortcut("=", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(focusedSession !== session || session.map == nil || session.map?.depth.y == Int.max)
             Button("Decrease Y Level") { session.map?.stepHeight(by: -1) }
-                .keyboardShortcut("_", modifiers: [.command, .option])
+                .keyboardShortcut("_", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(focusedSession !== session || session.map == nil || session.map?.depth.y == Int.min)
         }
