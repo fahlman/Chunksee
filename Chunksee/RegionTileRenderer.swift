@@ -71,7 +71,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         } else {
-            try await withThrowingTaskGroup(of: (Int, Int, [Column?])?.self) { group in
+            try await withThrowingTaskGroup(of: (Int, Int, ColoredChunk)?.self) { group in
                 var next = coordinates.startIndex
                 func startNext() {
                     guard next < coordinates.endIndex else { return }
@@ -98,7 +98,7 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     private enum BiomeWork: Sendable {
         case decoded(ChunkPosition, ColorInput?)
-        case colored(ChunkPosition, [Column?])
+        case colored(ChunkPosition, ColoredChunk)
     }
 
     /// A RegionFile owns its entire byte buffer. Read the surrounding ring one file at a time
@@ -266,6 +266,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var full: CGImage
         var preview: CGImage
         var cacheWrite: CacheWrite? = nil
+        var detail: MapSurfaceDetail.Surface? = nil
     }
 
     /// Immutable data for an accepted tile's save. The map owns scheduling/draining it; canceled
@@ -307,7 +308,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         let pixels = displayPixels(surface)
         guard let full = Self.makeImage(pixels, side: Self.side),
               let preview = Self.makeImage(Self.halfSize(pixels), side: Self.previewSide) else { return nil }
-        return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite)
+        return RenderedTile(full: full, preview: preview, cacheWrite: cacheWrite,
+                            detail: surface.detail.isEmpty ? nil : .init(detail: surface.detail, heights: surface.heights))
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
@@ -360,10 +362,15 @@ nonisolated struct RegionTileRenderer: Sendable {
         return ColorInput(columns: columns, biomes: sections.biomeSnapshot, states: states, positions: positions)
     }
 
-    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> [Column?]? {
+    struct ColoredChunk: Sendable {
+        let columns: [Column?]
+        var detail: MapSurfaceDetail.Chunk? = nil
+    }
+
+    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter) else { return nil }
-        guard style != .height, gameAssets != nil else { return scanned.columns }
+        guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
     }
@@ -371,8 +378,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Color the selected blocks without another decode or traversal. Neighbor keys are local
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
-                                neighbors: BiomeRows) async throws -> [Column?] {
-        guard let gameAssets else { return scanned.columns }
+                                neighbors: BiomeRows) async throws -> ColoredChunk {
+        guard let gameAssets else { return ColoredChunk(columns: scanned.columns) }
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
         let states = scanned.states
@@ -465,7 +472,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         let colors: [MapColor?]
         if let cached = gameAssets.cachedMapColors(requests: requests) { colors = cached }
         else { colors = try await gameAssets.mapColors(requests: requests) }
-        return zip(scanned.columns, positions).enumerated().map { index, pair in
+        let columns: [Column?] = zip(scanned.columns, positions).enumerated().map { index, pair in
             let (value, position) = pair
             guard var column = value else { return nil }
             if let index = position.surface, let color = colors[index] {
@@ -480,6 +487,8 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
             return column
         }
+        return ColoredChunk(columns: columns,
+                            detail: MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface)))
     }
 
     /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
@@ -775,6 +784,12 @@ nonisolated struct RegionTileRenderer: Sendable {
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         var heights = [Int32](repeating: noHeight, count: side * side)
         var isWater = [Bool](repeating: false, count: side * side)
+        var detail = MapSurfaceDetail()
+
+        mutating func set(_ chunk: ColoredChunk, chunkX: Int, chunkZ: Int, style: MapStyle, heightScale: MapHeightScale?) {
+            set(chunk.columns, chunkX: chunkX, chunkZ: chunkZ, style: style, heightScale: heightScale)
+            if let materials = chunk.detail { detail.insert(materials, at: chunkZ * 32 + chunkX) }
+        }
 
         mutating func set(x: Int, z: Int, column: Column) {
             set(x: x, z: z, column: column, color: baseColor(for: column))
@@ -829,13 +844,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     let i = z * side + x
                     let height = heights[i]
                     guard height != Self.noHeight, !isWater[i] else { continue }
-                    let north = heights[z > 0 ? i - side : i + side]
-                    let west = heights[x > 0 ? i - 1 : i + 1]
-                    let northDifference = north == Self.noHeight ? 0
-                        : (Int64(height) - Int64(north)) * (z > 0 ? 1 : -1)
-                    let westDifference = west == Self.noHeight ? 0
-                        : (Int64(height) - Int64(west)) * (x > 0 ? 1 : -1)
-                    let factor = lighting.factor(height: height, north: northDifference, west: westDifference)
+                    let factor = lighting.factor(at: i, heights: heights, side: side)
                     guard factor != 1 else { continue }
                     let shaded = MapColor(UInt32(pixels[i * 4]) << 16 | UInt32(pixels[i * 4 + 1]) << 8
                                           | UInt32(pixels[i * 4 + 2])).shaded(factor)

@@ -167,6 +167,7 @@ struct MapView: View {
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, in: context, size: size)
+        drawDetail(viewport: map.viewport, images: map.detailImages, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
@@ -180,6 +181,20 @@ struct MapView: View {
             guard let image = image(region), let rect = viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't expose seams.
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect.insetBy(dx: -0.5, dy: -0.5))
+        }
+    }
+
+    /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
+    static func drawDetail(viewport: MapViewport, images: [ChunkPosition: CGImage],
+                           in context: GraphicsContext, size: CGSize) {
+        guard viewport.scale >= MapDetailRenderer.minimumScale else { return }
+        let bounds = CGRect(origin: .zero, size: size)
+        for chunk in images.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
+            guard let image = images[chunk], let origin = chunk.blockOrigin else { continue }
+            let rect = CGRect(x: origin.x, y: origin.z, width: 16, height: 16)
+                .applying(viewport.transform(in: size))
+            guard rect.intersects(bounds) else { continue }
+            context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
         }
     }
 

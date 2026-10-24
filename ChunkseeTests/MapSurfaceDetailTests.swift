@@ -1,0 +1,96 @@
+import ChunkseeKit
+import Foundation
+import Testing
+@testable import ChunkseeTestHost
+
+@Suite(.isolatedStores) struct MapSurfaceDetailTests {
+    private func chunk() throws -> MapSurfaceDetail.Chunk {
+        var request = MapBlockColorRequest(state: .init("minecraft:grass_block", properties: ["snowy": "false"]))
+        request.tints.append(.init(index: 0, color: 0x123456))
+        let requests = [request, MapBlockColorRequest(state: .init("minecraft:oak_log", properties: ["axis": "x"]))]
+        var columns = [RegionTileRenderer.Column?](repeating: .init(y: 12, color: MapColor(0x808080), waterDepth: 0), count: 256)
+        columns[1]?.colorShade = 0.6
+        columns[2]?.emphasis = .dimmed
+        columns[3]?.emphasis = .highlighted
+        columns[4]?.waterDepth = 2
+        columns[5] = nil
+        var indices = [Int?](repeating: 0, count: 256)
+        indices[6] = 1
+        indices[7] = nil
+        return try #require(MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: indices))
+    }
+
+    @Test func chunkPaletteKeepsTintStateAndPresentationWithoutDuplicatingEveryColumn() throws {
+        let chunk = try chunk()
+        #expect(chunk.materials.count == 4 && chunk.indices.count == 256)
+        #expect(chunk.indices[0] == chunk.indices[255])
+        #expect(chunk.materials[Int(chunk.indices[0])].request.tints.color(at: 0) == 0x123456)
+        #expect(chunk.materials[Int(chunk.indices[1])].colorShade == 0.6)
+        #expect(chunk.materials[Int(chunk.indices[2])].emphasis == .dimmed)
+        #expect(chunk.materials[Int(chunk.indices[6])].request.state.properties == ["axis": "x"])
+        for index in [3, 4, 5, 7] { #expect(chunk.indices[index] == MapSurfaceDetail.noMaterial) }
+        #expect(chunk.estimatedBytes < 4096)
+    }
+
+    @Test func materialCacheRoundTripPreservesChunkAddressesAndRejectsMalformedIndices() throws {
+        var detail = MapSurfaceDetail()
+        detail.insert(try chunk(), at: 0)
+        detail.insert(try chunk(), at: 1023)
+        let bytes = try #require(detail.encoded())
+        #expect(MapSurfaceDetail.decoded(bytes) == detail)
+        #expect(MapSurfaceDetail.decoded(Data())?.isEmpty == true)
+        #expect(MapSurfaceDetail.decoded(Data([0, 1, 2])) == nil)
+        #expect(MapSurfaceDetail.decoded(Data(repeating: 0, count: MapSurfaceDetail.maximumEncodedBytes + 1)) == nil)
+        let original = try #require(PropertyListSerialization.propertyList(from: bytes, format: nil) as? [[String: Any]])
+        for mutation in 0..<4 {
+            var records = original
+            switch mutation {
+            case 0: records[0]["index"] = -1
+            case 1: records[1]["index"] = records[0]["index"]
+            case 2: records[0]["indices"] = Data([0])
+            default: records[0]["indices"] = Data(repeating: 0x80, count: 512)
+            }
+            let bad = try PropertyListSerialization.data(fromPropertyList: records, format: .binary, options: 0)
+            #expect(MapSurfaceDetail.decoded(bad) == nil)
+        }
+    }
+
+    @Test func retainedMaterialBudgetIsIndependentOfChunkCompletionOrder() throws {
+        let requests = (0..<256).map { MapBlockColorRequest(state: .init("minecraft:material_\($0)_" + String(repeating: "a", count: 100))) }
+        let columns = [RegionTileRenderer.Column?](repeating: .init(y: 1, color: MapColor(0x808080), waterDepth: 0), count: 256)
+        let chunk = try #require(MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: (0..<256).map(Optional.some)))
+        var forward = MapSurfaceDetail(), reverse = MapSurfaceDetail()
+        for index in 0..<1024 { forward.insert(chunk, at: index) }
+        for index in (0..<1024).reversed() { reverse.insert(chunk, at: index) }
+        #expect(forward == reverse)
+        #expect(!forward.isEmpty && forward.chunks.count < 1024)
+        #expect(forward.estimatedBytes <= MapSurfaceDetail.maximumRetainedBytes)
+        let data = try #require(forward.encoded())
+        #expect(data.count <= MapSurfaceDetail.maximumEncodedBytes)
+        #expect(MapSurfaceDetail.decoded(data) == forward)
+    }
+
+    @Test func terrainCacheKeepsMaterialsAndRejectsMissingOrOversizedPayloads() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TileCache(directory: directory)
+        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2)
+        var surface = RegionTileRenderer.Canvas()
+        surface.detail.insert(try chunk(), at: 0)
+        surface.heights[0] = 12
+        cache.store(surface, for: key)
+        let loaded = try #require(cache.load(key))
+        #expect(loaded.detail == surface.detail && loaded.heights == surface.heights)
+        let file = directory.appendingPathComponent(key.fileName)
+        let bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
+        for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 9))] {
+            try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: file)
+            #expect(cache.load(key) == nil)
+        }
+        var overflow = bytes
+        let offset = 512 * 512 * 9
+        overflow.replaceSubrange(offset..<offset + 4, with: [UInt8](repeating: 255, count: 4))
+        try ((overflow as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        #expect(cache.load(key) == nil)
+    }
+}

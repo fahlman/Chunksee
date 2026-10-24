@@ -137,12 +137,12 @@ nonisolated final class MapBlockMaterial: Sendable {
 }
 
 nonisolated struct MapBlockColorRequest: Hashable, Sendable {
-    struct Tint: Hashable, Sendable {
+    struct Tint: Hashable, Sendable, Codable {
         let index: Int
         let color: UInt32
     }
     /// Keep the common zero/one-tint request inline instead of allocating per map column.
-    struct Tints: Hashable, Sendable {
+    struct Tints: Hashable, Sendable, Codable {
         private var first: Tint?
         private var remaining: [Tint] = []
 
@@ -160,4 +160,22 @@ nonisolated struct MapBlockColorRequest: Hashable, Sendable {
     }
     let state: BlockState
     var tints = Tints()
+}
+
+extension MapBlockColorRequest: Codable {
+    private enum CodingKeys: String, CodingKey { case id, properties, tints }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        state = BlockState(try values.decode(String.self, forKey: .id),
+                           properties: try values.decode([String: String].self, forKey: .properties))
+        tints = try values.decode(Tints.self, forKey: .tints)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(state.id, forKey: .id)
+        try values.encode(state.properties, forKey: .properties)
+        try values.encode(tints, forKey: .tints)
+    }
 }

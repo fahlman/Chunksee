@@ -24,7 +24,9 @@ nonisolated struct TileCache: Sendable {
     /// 16: per-column biome tints keyed by the resolved world color definitions.
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
-    static let rendererVersion = 18
+    /// 20: retain bounded selected materials for close-zoom detail without another chunk scan.
+    /// 19 belongs to the separate Dark Spots work under review.
+    static let rendererVersion = 20
 
     let directory: URL
 
@@ -115,14 +117,17 @@ nonisolated struct TileCache: Sendable {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.fileName)),
               let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              bytes.count == count * 9 else { return nil }
-        let water = bytes[(count * 8)...]
+              bytes.count >= count * 9 + 4 else { return nil }
+        let detailCount = bytes.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: count * 9, as: UInt32.self))) }
+        guard detailCount <= MapSurfaceDetail.maximumEncodedBytes, bytes.count == count * 9 + 4 + detailCount,
+              let detail = MapSurfaceDetail.decoded(Data(bytes[(count * 9 + 4)...])) else { return nil }
+        let water = bytes[(count * 8)..<(count * 9)]
         guard water.allSatisfy({ $0 <= 1 }) else { return nil }
         let heights = bytes.withUnsafeBytes { buffer in
             (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: count * 4 + $0 * 4, as: Int32.self)) }
         }
         return RegionTileRenderer.Canvas(pixels: Array(bytes[..<(count * 4)]), heights: heights,
-                                         isWater: water.map { $0 == 1 })
+                                         isWater: water.map { $0 == 1 }, detail: detail)
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
@@ -131,11 +136,13 @@ nonisolated struct TileCache: Sendable {
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard surface.pixels.count == count * 4, surface.heights.count == count,
-              surface.isWater.count == count else { return }
-        var bytes = Data(capacity: count * 9)
+              surface.isWater.count == count, let detail = surface.detail.encoded() else { return }
+        var bytes = Data(capacity: count * 9 + 4 + detail.count)
         bytes.append(contentsOf: surface.pixels)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
+        withUnsafeBytes(of: UInt32(detail.count).littleEndian) { bytes.append(contentsOf: $0) }
+        bytes.append(detail)
         guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

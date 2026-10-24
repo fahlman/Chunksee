@@ -20,12 +20,15 @@ actor GameAssetLibrary {
         let images = NSCache<ItemKey, CGImage>()
         let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
+        let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
 
         init() {
             models.countLimit = 512
             models.totalCostLimit = 16 * 1024 * 1024
             textures.countLimit = 512
             textures.totalCostLimit = 16 * 1024 * 1024
+            blockTextures.countLimit = 4096
+            blockTextures.totalCostLimit = 16 * 1024 * 1024
             blockColors.countLimit = 4096
             blockColors.totalCostLimit = 2 * 1024 * 1024
             blockMaterials.countLimit = 512
@@ -145,6 +148,7 @@ actor GameAssetLibrary {
         caches.images.removeAllObjects()
         caches.blockMaterials.removeAllObjects()
         caches.blockColors.removeAllObjects()
+        caches.blockTextures.removeAllObjects()
     }
 
     nonisolated private final class BlockKey: NSObject {
@@ -157,6 +161,35 @@ actor GameAssetLibrary {
     nonisolated private final class ColorEntry {
         let color: MapColor?
         init(_ color: MapColor?) { self.color = color }
+    }
+
+    /// Position chooses the models, not a new cache entry for every world coordinate. Equal
+    /// chosen geometry/turns and tints share one picture across columns, chunks and windows.
+    nonisolated private final class BlockPictureKey: NSObject {
+        struct Choice: Hashable {
+            let id: Identifier
+            let rotation: SIMD3<Int>
+            let uvLock: Bool
+        }
+        let request: MapBlockColorRequest
+        let choices: [Choice]
+        init(_ request: MapBlockColorRequest, alternatives: [AssetBlock.Alternative]) {
+            self.request = request
+            choices = alternatives.map { Choice(id: $0.modelID, rotation: $0.rotation, uvLock: $0.uvLock) }
+        }
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(request); hasher.combine(choices)
+            return hasher.finalize()
+        }
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? BlockPictureKey else { return false }
+            return request == other.request && choices == other.choices
+        }
+        var cost: Int {
+            256 + request.state.description.utf8.count + request.state.properties.count * 64
+                + request.tints.count * 16 + choices.reduce(0) { $0 + 64 + $1.id.description.utf8.count }
+        }
     }
 
     /// Old renderers must not save fallback pixels under a removed source's disk key.
@@ -200,11 +233,7 @@ actor GameAssetLibrary {
             else {
                 let color: MapColor?
                 if let model = material(for: request.state).model {
-                    color = try GameModelRenderer.topColor(model, tint: { index in
-                        if let value = request.tints.color(at: index) { return value }
-                        if case .constant(let value) = request.state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
-                        return nil
-                    }, texture: texture)
+                    color = try GameModelRenderer.topColor(model, tint: { tint($0, for: request) }, texture: texture)
                 } else { color = nil }
                 entry = ColorEntry(color)
                 caches.blockColors.setObject(entry, forKey: key, cost: 128 + request.state.description.utf8.count + request.tints.count * 16)
@@ -212,6 +241,31 @@ actor GameAssetLibrary {
             result.append(entry.color)
         }
         return result
+    }
+
+    private func tint(_ index: Int, for request: MapBlockColorRequest) -> UInt32? {
+        if let value = request.tints.color(at: index) { return value }
+        if case .constant(let value) = request.state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
+        return nil
+    }
+
+    /// One batch for a chunk's retained palette. Kit chooses each position's actual variants;
+    /// the same source, model, tint, decoded texture and rasterizer owners draw their pixels.
+    func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) throws -> [ItemTexture?] {
+        try checkAvailable()
+        guard requests.count <= 256, indices.count == 256, positions.count == 256 else { return [] }
+        let models = requests.map { material(for: $0.state).model }
+        return try positions.enumerated().map { index, position in
+            try Task.checkCancellation()
+            let paletteIndex = Int(indices[index])
+            guard let position, requests.indices.contains(paletteIndex),
+                  let alternatives = models[paletteIndex]?.selectedAlternatives(at: position) else { return nil }
+            let request = requests[paletteIndex], key = BlockPictureKey(request, alternatives: alternatives)
+            if let cached = caches.blockTextures.object(forKey: key) { return cached.texture }
+            let image = try GameModelRenderer.topTexture(alternatives, tint: { tint($0, for: request) }, texture: texture)
+            caches.blockTextures.setObject(TextureEntry(image), forKey: key, cost: key.cost + (image?.pixels.count ?? 1))
+            return image
+        }
     }
 
     nonisolated func cachedMapMaterials(for states: [BlockState]) -> [MapBlockMaterial]? {

@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.65.0`, resolved to `0.65.0` (`da5868548fd3d64e5b65fc055614972e2638cb19`).
+  minor" from `0.66.0`, resolved to `0.66.0` (`a3dc2e96ec51ff40954e3467f9701b963f1d7e2b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1244,8 +1244,10 @@ all caches on retirement. A retired reader cancels map work instead of caching f
 under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
 includes a stable URL/size/modification/version
 source key; changing or removing the source cancels old map jobs and redraws through MapModel's
-existing invalidator. No archive or installed artwork is bundled. High-zoom texture detail remains
-follow-up work in #363.
+existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
+selected block models through this same projection, UV, tint and rasterization path. Kit owns the
+position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
+Default-state resource gaps remain separate work in #363.
 
 Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
 dimension documents. The existing GameAssetLibrary actor loads Kit's complete registered-biome
@@ -1297,3 +1299,24 @@ check enabled pack/version/seed metadata before rereading definitions; world-gen
 notifications refresh the shared snapshot too. Data-pack notifications force
 a reload that remains pending across overlapping autosaves. Read errors retain the last good
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.
+
+Close-up texture detail retains selected states, tints, roof shade and filter emphasis from the
+existing terrain scan in chunk-local palettes. TileCache version 20 includes that compact data;
+zooming and Share reuse it without another chunk read. Each chunk is bounded to 256 KiB estimated
+material cost. A region retains at most 8 MiB, keeping a deterministic coordinate prefix if an
+unusually varied region exceeds that budget; other columns keep their normal pixels. The binary
+cache payload is bounded at 16 MiB and validates palette references, dimensions and shade values.
+Full tiles and retained surface data share the previous roughly 200 MiB budget, with visible
+regions protected as before. Previews retain their separate budget.
+
+MapModel's existing BackgroundWork owner tracks one close-up chunk job at a time, keeping work
+still needed during panning and rejecting results after source/style/depth/filter/region changes
+or close. Only visible chunks are requested above the 800% threshold; completed chunk pictures
+have a 256-entry (64 MiB) budget, retaining visible chunks in larger windows. GameAssetLibrary
+reuses selected-model pictures by state, tint and chosen model/transform, rather than by world
+position, in a shared 16 MiB cache. It uses the same decoded textures and clears pictures on source
+retirement. MapDetailRenderer applies the same MapRelief column calculation and filter shading;
+partial pixels remain premultiplied. Water and highlighted blocks keep the ordinary presentation,
+and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
+Area export still offers its existing scales of at most one pixel per block, below the detail
+threshold. No new controls, localization keys, file access, asset copy or world modification.

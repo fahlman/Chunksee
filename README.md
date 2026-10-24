@@ -97,7 +97,10 @@ with a link to this guide. Help opens only when requested.
    the standard colors. With a saved seed, biome boundaries follow Minecraft 26.3's irregular
    borders, including neighboring chunks. Missing seed or neighboring biome data keeps the
    standard colors; saved per-block biomes use their direct values. Border colors are not blended.
-   High-zoom texture detail is still in progress.
+   At **800% zoom** and above, supported land blocks show their top textures, with saved
+   orientation, position-based variation, biome tints and the same terrain lighting. Water,
+   highlighted blocks and unsupported models keep the usual map colors; Height keeps its scale.
+   Zooming uses the surface already cached by the map, without scanning the blocks again.
    No Minecraft artwork is included in Chunksee. You can also turn on looking up other players' names
    from Mojang there; it's off until you do. Faded markers belong to players who haven't joined since the world was upgraded.
 
@@ -178,7 +181,7 @@ Land shading shows gentle slopes and steep cliffs with different contrast, inclu
 both directions. Where the save supplies a sea level, land is brightest near it and slightly darker
 far above or below it. Water keeps its depth shading, and the Height view keeps its colour scale.
 
-Map colours and surface heights are kept in Chunksee's cache folder, so reopening a world can
+Map colours, selected block materials and surface heights are kept in Chunksee's cache folder, so reopening a world can
 reuse them; any part of the world that has changed since is drawn again. Lighting is applied after
 loading the cached surface.
 
