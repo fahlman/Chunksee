@@ -85,10 +85,11 @@ with a link to this guide. Help opens only when requested.
    share those pictures, including three-sided blocks, closed chests, shulker boxes, plain shields
    and colored or straw beds in Minecraft 26.3, saved leather and potion colors, and saved
    item-model overrides when the selected model is available. Armor pictures also show saved
-   trim materials from Minecraft 26.3, while preserving any leather dye.
+   trim materials from Minecraft 26.3, while preserving any leather dye. Saved custom-model choices
+   and colors are respected when the chosen game archive supplies their definitions.
    Items keep their category symbols when pictures are unavailable. Shields use their plain skin;
-   saved shield colors and patterns, other unsupported special models, animated textures
-   and saved custom-model-data variants are not drawn yet.
+   saved shield colors and patterns, other unsupported special models and animated textures
+   are not drawn yet.
    The Normal map also averages the visible top textures of supported block models. Missing or
    unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
    leaves, vines and water use each block column's biome colors, including enabled data-pack
