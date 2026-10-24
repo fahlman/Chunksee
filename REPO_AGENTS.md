@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.66.1`, resolved to `0.66.1` (`09ae14770c8f9cf942da61a329b8bdc1313cc51c`).
+  minor" from `0.66.2`, resolved to `0.66.2` (`d557c1f7a563212196d1acdeebe219208e9310d9`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1238,7 +1238,11 @@ share the existing per-picture 16 MiB retention limit; source dimensions must ma
 cost includes the overlay recipes. No app dye palette, pattern parser or shield renderer is added.
 Tests cover cold/warm identity, layer order, cancellation, source retirement, unavailable layers,
 the common budget, handle occlusion and native ItemIcon pixels in both appearances. Plain shields
-keep their original picture. Resource-pack layering and world registry overrides remain outside
+keep their original picture. Kit 0.66.2 supplies standing and wall banner geometry, its fixed
+inventory cloth pose, definition base dye and saved patterns through these same shared owners.
+The app has no banner-specific drawing or pattern rules. Synthetic banner tests verify cloth
+colors and layer order, uncolored wooden supports, cold/warm picture identity, missing-pattern
+fallback and native ItemIcon pixels in both appearances. Resource-pack layering and world registry overrides remain outside
 the supplied-jar reader. The published library also exposes saved
 light validity and dimension spawn-light limits; #86's app overlay is still separate work.
 
