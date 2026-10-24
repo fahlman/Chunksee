@@ -75,7 +75,13 @@ nonisolated struct MapViewport: Equatable, Sendable {
     func visibleRegions(in size: CGSize, among available: Set<RegionPosition>) -> [RegionPosition] {
         guard let range = visibleRegionRange(in: size) else { return [] }
         return available.filter { range.xs.contains($0.x) && range.zs.contains($0.z) && $0.blockOrigin != nil }
-            .sorted { distanceToCenter($0) < distanceToCenter($1) }
+            .sorted {
+                let first = distanceToCenter($0), second = distanceToCenter($1)
+                if first != second { return first < second }
+                // Terrain edges overlap slightly. Set iteration order must not decide which
+                // neighbor paints the overlap when both are equally far from the center.
+                return $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x
+            }
     }
 
     /// Region headers locate all saved terrain without reading individual chunks.
