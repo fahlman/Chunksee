@@ -217,6 +217,10 @@ final class LayerVisibility {
     var rememberedSlimeChunks: Bool { settings.layers(for: dimension)?[.slimeChunks] as? Bool ?? false }
     func rememberSlimeChunks(_ shown: Bool) { saveValue(shown, .slimeChunks) }
 
+    /// MapModel owns the live flag and its optional terrain read; this is its persisted value.
+    var rememberedDarkSpots: Bool { settings.layers(for: dimension)?[.darkSpots] as? Bool ?? false }
+    func rememberDarkSpots(_ shown: Bool) { saveValue(shown, .darkSpots) }
+
     private func save(_ names: [String], _ key: Keys) { saveValue(names.sorted(), key) }
     private func saveValue(_ value: Any, _ key: Keys) { write([key: value]) }
     private func write(_ values: [Keys: Any]) { settings.saveLayers(values, for: dimension) }

@@ -47,6 +47,7 @@ final class WorldSession {
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected, renderTile: renderTile)
         map = initialMap
+        initialMap?.setDarkSpots(visibility.rememberedDarkSpots)
         navigation = MapNavigation(map: initialMap)
         slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
                                      regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
@@ -108,6 +109,13 @@ final class WorldSession {
         map.setLightingMode(resources.settings.lightingMode(for: dimension.id))
         map.setBlockFilter(resources.settings.blockFilter(for: dimension.id))
         return map
+    }
+
+    func setDarkSpots(_ shown: Bool) {
+        guard !isClosed, let map, map.showsDarkSpots != shown else { return }
+        visibility.rememberDarkSpots(shown)
+        map.setDarkSpots(shown)
+        resources.darkSpotsVisibilityChanged()
     }
 
     /// The native front dimension can change without this session switching dimensions.

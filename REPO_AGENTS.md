@@ -66,8 +66,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
   - Kit 0.66.1 supplies verified omitted 26.3 block properties to model and tint resolution.
-    TileCache version 22 invalidates colors previously drawn without those default properties;
-    versions 19–21 belong to the separate Dark Spots and close-up branches under review.
+    TileCache version 24 combines saved-time lighting and optional nighttime status data and
+    invalidates colors drawn before the compact-default fix. Versions 20–21 and 23 belong to
+    the separate close-up texture branch under review.
 
 ## Modules
 
@@ -997,6 +998,23 @@ TileCache keeps the unfiltered image and one latest filtered variant in each exi
 Surface/cutaway bucket. The stable filter hash is computed only when choices change. Disabling
 filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
 highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
+
+Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag and optional
+resolved nighttime rule; WorldSession persists only the flag through LayerVisibility. WorldResources
+shares one cancellable metadata read across interested tabs, using ChunkseeKit's published
+World.nightMonsterLighting. Hidden layers start no read; the last hidden/closed tab cancels pending
+metadata, and generation/asset identities reject stale results. No game light rule is repeated here.
+RegionTileRenderer keeps the ordinary terrain profile while the layer is off; when enabled and a rule
+is available, it uses the shared terrain/light profile and samples the block above each displayed
+surface during the same decode. The layer indicates only whether ordinary monsters can pass the
+clear-night light check, not full spawnability. Missing, stale or unsupported facts remain unknown.
+TileCache version 24 stores optional status bytes, with separate on/off slots and rule identities.
+The map, legend and exports use red dots for dark areas and stripes for unknown light, so colour
+is not the only distinction. The pointer and centered accessibility readout share MapModel's
+top-block cache and pending reads. Only Dark Spots requests a center read; moving, hiding, saving
+and closing cancel obsolete reads without cancelling another readout's interest in the same chunk.
+The accessibility value reports the center's dark/bright/unknown result as its column changes.
+Appearance-only changes preserve pending coordinate reads because the displayed height is unchanged.
 
 ## Interface wording
 

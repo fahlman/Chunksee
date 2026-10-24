@@ -6,7 +6,7 @@ struct MapLegendOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottomTrailing) {
-            if layers.lighting != nil || layers.mapStyle != .normal || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil || layers.blockFilter.cacheKey != nil {
+            if layers.lighting != nil || layers.mapStyle != .normal || layers.showsDarkSpots || layers.showsHeatMap || layers.slimeSeed != nil || layers.border != nil || layers.blockFilter.cacheKey != nil {
                 VStack(alignment: .leading, spacing: 8) {
                     if layers.blockFilter.isEnabled, !layers.blockFilter.highlightedIDs.isEmpty {
                         key("Highlighted Blocks") {
@@ -20,6 +20,13 @@ struct MapLegendOverlay: ViewModifier {
                     if !layers.blockFilter.effectiveHiddenIDs.isEmpty {
                         Label("Some Blocks Hidden", systemImage: "line.3.horizontal.decrease")
                             .font(.caption)
+                    }
+                    if layers.showsDarkSpots {
+                        key("Dark Spots at Night") { sample(.dark) }
+                        key("Light Unknown") { sample(.unknown) }
+                        Text(DarkSpots.explanation)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .frame(maxWidth: 240, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                     }
                     if let lighting = layers.lighting {
                         Label("Saved Time", systemImage: "sun.horizon")
@@ -54,6 +61,12 @@ struct MapLegendOverlay: ViewModifier {
         }
         .font(.caption)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private func sample(_ status: DarkSpots.Status) -> some View {
+        if let image = DarkSpots.sample(status) {
+            Image(decorative: image, scale: 1).resizable().interpolation(.none)
+        }
     }
 
     private var slimeColor: Color {

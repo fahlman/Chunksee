@@ -273,6 +273,11 @@ actor GameAssetLibrary {
         return try MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
     }
 
+    func nightLighting(in world: World) throws -> [String: MonsterSpawnLight] {
+        try checkAvailable()
+        return try world.nightMonsterLighting(assets: assets)
+    }
+
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {

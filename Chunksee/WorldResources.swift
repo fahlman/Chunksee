@@ -61,6 +61,14 @@ final class WorldResources {
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
     private let biomeWork: BackgroundWork.Scope
+    private let nightLightWork: BackgroundWork.Scope
+    @ObservationIgnored private var nightLighting: [String: MonsterSpawnLight]?
+    @ObservationIgnored private var nightReadGeneration = 0
+    @ObservationIgnored private var needsNightReload = true
+    @ObservationIgnored private var isNightReadPending = false
+    @ObservationIgnored var readNightLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] = {
+        try await WorldResources.readNightLighting($0, library: $1)
+    }
     private let lightingWork: BackgroundWork.Scope
     @ObservationIgnored private var lightingReadGeneration = 0
     @ObservationIgnored private var lighting: [String: MapLighting] = [:]
@@ -104,6 +112,7 @@ final class WorldResources {
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
         biomeWork = backgroundWork.makeScope()
+        nightLightWork = backgroundWork.makeScope()
         lightingWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
@@ -151,6 +160,7 @@ final class WorldResources {
                          options: RegionReader.options(context: MapSurfaceContext(dimensionID: dimension.id, settings: details.dimensionSettings[dimension.id])),
                          read: readRegion)
         }, firstDimension: activeDimensionID)
+        refreshNightLighting()
         refreshLighting()
     }
 
@@ -171,6 +181,7 @@ final class WorldResources {
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
         session.map?.setGameAssets(gameAssets, biomeColors: biomeColors)
+        darkSpotsVisibilityChanged()
         session.map?.setSavedLighting(session.selectedDimensionID.flatMap { lighting[$0] })
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
@@ -190,6 +201,8 @@ final class WorldResources {
             session.map?.setSavedLighting(nil)
         }
         refreshLighting()
+        clearNightLighting()
+        refreshNightLighting()
     }
 
     func setGameAssets(_ library: GameAssetLibrary?, source: WorldGameAssetSource) {
@@ -201,6 +214,8 @@ final class WorldResources {
         biomeColors = nil
         for session in sessions.values.compactMap(\.value) { session.map?.setGameAssets(nil) }
         refreshBiomeColors(reload: true)
+        clearNightLighting()
+        refreshNightLighting()
         refreshLighting()
     }
 
@@ -233,6 +248,55 @@ final class WorldResources {
         return try await library.biomeColors(in: current)
     }
 
+    /// Optional gameplay light metadata is shared by all interested dimension tabs. Ordinary
+    /// windows do not start this read, and hiding the last layer cancels its current request.
+    func darkSpotsVisibilityChanged() {
+        guard !isClosed else { return }
+        let documents = sessions.values.compactMap(\.value)
+        guard documents.contains(where: { $0.map?.showsDarkSpots == true }) else {
+            nightReadGeneration += 1
+            nightLightWork.cancel()
+            isNightReadPending = false
+            return
+        }
+        for session in documents {
+            session.map?.setNightLighting(session.selectedDimensionID.flatMap { nightLighting?[$0] })
+        }
+        if needsNightReload, !isNightReadPending { refreshNightLighting() }
+    }
+
+    private func clearNightLighting() {
+        nightReadGeneration += 1
+        nightLightWork.cancel()
+        isNightReadPending = false
+        nightLighting = nil
+        needsNightReload = true
+        for session in sessions.values.compactMap(\.value) { session.map?.setNightLighting(nil) }
+    }
+
+    private func refreshNightLighting() {
+        needsNightReload = true
+        guard !isClosed, sessions.values.contains(where: { $0.value?.map?.showsDarkSpots == true }) else { return }
+        nightReadGeneration += 1
+        let generation = nightReadGeneration, library = gameAssets, read = readNightLighting, world = world
+        nightLightWork.cancel()
+        isNightReadPending = true
+        nightLightWork.start(priority: nil) { [weak self] in
+            let updated = try? await read(world, library)
+            guard !Task.isCancelled, let self, !self.isClosed, self.nightReadGeneration == generation,
+                  self.gameAssets?.identity == library?.identity else { return }
+            self.isNightReadPending = false
+            // Keep the last good value after a transient read error. A successful empty
+            // projection clears removed/unsupported rules, including those from data packs.
+            guard let updated else { return }
+            self.nightLighting = updated
+            self.needsNightReload = false
+            for session in self.sessions.values.compactMap(\.value) {
+                session.map?.setNightLighting(session.selectedDimensionID.flatMap { updated[$0] })
+            }
+        }
+    }
+
     private func refreshLighting() {
         guard !isClosed else { return }
         lightingReadGeneration += 1
@@ -249,6 +313,13 @@ final class WorldResources {
                 session.map?.setSavedLighting(session.selectedDimensionID.flatMap { updated[$0] })
             }
         }
+    }
+
+    @concurrent nonisolated static func readNightLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] {
+        try Task.checkCancellation()
+        let current = try World(contentsOf: world.url)
+        if let library { return try await library.nightLighting(in: current) }
+        return try current.nightMonsterLighting(assets: nil)
     }
 
     @concurrent nonisolated static func readLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MapLighting] {
@@ -316,6 +387,7 @@ final class WorldResources {
 
     func detach(_ session: WorldSession) {
         sessions[session.viewID] = nil
+        darkSpotsVisibilityChanged()
         closeIfUnused()
     }
 
@@ -330,6 +402,7 @@ final class WorldResources {
         for session in sessions.values.compactMap(\.value) { session.close() }
         gameAssets = nil
         biomeColors = nil
+        nightLighting = nil
         lighting = [:]
         let readers = Array(readers.values), index = index
         let access = access
@@ -418,7 +491,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, lightingWork])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork])
     }
 
     private func refresh() async {
@@ -436,7 +509,10 @@ final class WorldResources {
             }
         }
         if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }
-        if biomesChanged { refreshBiomeColors(reload: reloadBiomes) }
+        if biomesChanged {
+            refreshBiomeColors(reload: reloadBiomes)
+            refreshNightLighting()
+        }
         if lightingChanged { refreshLighting() }
         if playersChanged {
             // Refreshes can overlap while one reads players, so only the newest read is published:
