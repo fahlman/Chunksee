@@ -24,7 +24,9 @@ nonisolated struct TileCache: Sendable {
     /// 16: per-column biome tints keyed by the resolved world color definitions.
     /// 17: shared UV-lock coordinates replace fallback colors for rotated locked models.
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
-    static let rendererVersion = 18
+    /// 19–21 belong to the Dark Spots and close-up texture branches under review.
+    /// 22: Kit 0.66.1 supplies omitted default block properties to model and tint resolution.
+    static let rendererVersion = 22
 
     let directory: URL
 

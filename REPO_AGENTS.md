@@ -65,6 +65,9 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.66.1 supplies verified omitted 26.3 block properties to model and tint resolution.
+    TileCache version 22 invalidates colors previously drawn without those default properties;
+    versions 19–21 belong to the separate Dark Spots and close-up branches under review.
 
 ## Modules
 
