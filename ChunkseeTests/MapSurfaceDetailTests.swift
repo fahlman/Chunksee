@@ -41,17 +41,41 @@ import Testing
         #expect(MapSurfaceDetail.decoded(Data())?.isEmpty == true)
         #expect(MapSurfaceDetail.decoded(Data([0, 1, 2])) == nil)
         #expect(MapSurfaceDetail.decoded(Data(repeating: 0, count: MapSurfaceDetail.maximumEncodedBytes + 1)) == nil)
-        let original = try #require(PropertyListSerialization.propertyList(from: bytes, format: nil) as? [[String: Any]])
-        for mutation in 0..<4 {
-            var records = original
+        let original = try #require(PropertyListSerialization.propertyList(from: bytes, format: nil) as? [String: Any])
+        for mutation in 0..<7 {
+            var archive = original
+            var records = try #require(archive["chunks"] as? [[String: Any]])
             switch mutation {
             case 0: records[0]["index"] = -1
             case 1: records[1]["index"] = records[0]["index"]
             case 2: records[0]["indices"] = Data([0])
-            default: records[0]["indices"] = Data(repeating: 0x80, count: 512)
+            case 3: records[0]["indices"] = Data(repeating: 0x80, count: 512)
+            case 4: records[0]["materials"] = Data([0])
+            case 5: records[0]["materials"] = Data([255, 255])
+            default: archive["materials"] = []
             }
-            let bad = try PropertyListSerialization.data(fromPropertyList: records, format: .binary, options: 0)
+            archive["chunks"] = records
+            let bad = try PropertyListSerialization.data(fromPropertyList: archive, format: .binary, options: 0)
             #expect(MapSurfaceDetail.decoded(bad) == nil)
+        }
+    }
+
+    @Test func repeatedMaterialsAcrossAFullRegionKeepTheirLocalColumnAddresses() throws {
+        let chunk = try chunk()
+        let alternate = try #require(MapSurfaceDetail.Chunk(
+            columns: [RegionTileRenderer.Column?](repeating: .init(y: 12, color: MapColor(0x808080), waterDepth: 0), count: 256),
+            requests: chunk.materials.reversed().map(\.request),
+            indices: (0..<256).map { Optional($0 % chunk.materials.count) }))
+        var detail = MapSurfaceDetail()
+        for index in 0..<1024 { detail.insert(index.isMultiple(of: 2) ? chunk : alternate, at: index) }
+        let data = try #require(detail.encoded())
+        let restored = try #require(MapSurfaceDetail.decoded(data))
+        #expect(restored == detail && restored.chunks.count == 1024)
+        #expect(restored.estimatedBytes == detail.estimatedBytes)
+        for index in 0..<1024 {
+            let value = try #require(restored.chunks[index])
+            let expected = index.isMultiple(of: 2) ? chunk : alternate
+            #expect(value.indices == expected.indices && value.materials == expected.materials)
         }
     }
 

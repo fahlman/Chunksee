@@ -21,6 +21,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
     struct Chunk: Sendable, Equatable {
         let materials: [Material]
         let indices: [UInt16]
+        let estimatedBytes: Int
 
         init?(columns: [RegionTileRenderer.Column?], requests: [MapBlockColorRequest], indices source: [Int?]) {
             guard columns.count == 256, source.count == 256 else { return nil }
@@ -45,17 +46,18 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
                     indices[i] = index
                 }
             }
-            guard !palette.isEmpty, palette.reduce(512, { $0 + $1.estimatedBytes }) <= 256 * 1024 else { return nil }
+            let bytes = palette.reduce(512, { $0 + $1.estimatedBytes })
+            guard !palette.isEmpty, bytes <= 256 * 1024 else { return nil }
             materials = palette
             self.indices = indices
+            estimatedBytes = bytes
         }
 
-        fileprivate init(materials: [Material], indices: [UInt16]) {
+        fileprivate init(materials: [Material], indices: [UInt16], materialBytes: Int) {
             self.materials = materials
             self.indices = indices
+            estimatedBytes = indices.count * 2 + materialBytes
         }
-
-        var estimatedBytes: Int { indices.count * 2 + materials.reduce(0) { $0 + $1.estimatedBytes } }
     }
 
     private(set) var chunks: [Int: Chunk] = [:]
@@ -85,39 +87,72 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
 
     private struct StoredChunk: Codable {
         let index: Int
-        let materials: [Material]
+        let materials: Data
         let indices: Data
+    }
+
+    /// Neighboring chunks usually repeat the same few states and tints. Serialize and decode
+    /// those values once per region, while preserving each chunk's local palette addresses.
+    private struct Stored: Codable {
+        let materials: [Material]
+        let chunks: [StoredChunk]
+    }
+
+    private static func encodeIndices(_ values: [UInt16]) -> Data {
+        values.map(\.littleEndian).withUnsafeBytes { Data($0) }
+    }
+
+    private static func decodeIndices(_ data: Data) -> [UInt16] {
+        data.withUnsafeBytes { bytes in
+            (0..<(data.count / 2)).map { UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: UInt16.self)) }
+        }
     }
 
     func encoded() -> Data? {
         guard !isEmpty else { return Data() }
-        let stored = chunks.keys.sorted().map { index in
+        var materials: [Material] = [], known: [Material: UInt16] = [:], stored: [StoredChunk] = []
+        for index in chunks.keys.sorted() {
             let chunk = chunks[index]!
-            let bytes = chunk.indices.map(\.littleEndian).withUnsafeBytes { Data($0) }
-            return StoredChunk(index: index, materials: chunk.materials, indices: bytes)
+            var references: [UInt16] = []
+            for material in chunk.materials {
+                if let reference = known[material] { references.append(reference) }
+                else {
+                    guard materials.count < Int(Self.noMaterial) else { return nil }
+                    let reference = UInt16(materials.count)
+                    materials.append(material)
+                    known[material] = reference
+                    references.append(reference)
+                }
+            }
+            stored.append(StoredChunk(index: index, materials: Self.encodeIndices(references),
+                                      indices: Self.encodeIndices(chunk.indices)))
         }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        guard let data = try? encoder.encode(stored), data.count <= Self.maximumEncodedBytes else { return nil }
+        guard let data = try? encoder.encode(Stored(materials: materials, chunks: stored)),
+              data.count <= Self.maximumEncodedBytes else { return nil }
         return data
     }
 
     static func decoded(_ data: Data) -> Self? {
         guard !data.isEmpty else { return Self() }
         guard data.count <= maximumEncodedBytes,
-              let stored = try? PropertyListDecoder().decode([StoredChunk].self, from: data),
-              stored.count <= 1024 else { return nil }
+              let stored = try? PropertyListDecoder().decode(Stored.self, from: data),
+              stored.chunks.count <= 1024, stored.materials.count < Int(noMaterial),
+              stored.materials.allSatisfy({ $0.colorShade.isFinite && (0...1).contains($0.colorShade)
+                  && $0.request.tints.count <= 4096 }) else { return nil }
+        let costs = stored.materials.map(\.estimatedBytes)
+        guard costs.reduce(0, +) <= maximumRetainedBytes else { return nil }
         var result = Self()
-        for chunk in stored {
+        for chunk in stored.chunks {
             guard (0..<1024).contains(chunk.index), result.chunks[chunk.index] == nil,
-                  !chunk.materials.isEmpty, chunk.materials.count <= 256, chunk.indices.count == 512,
-                  chunk.materials.allSatisfy({ $0.colorShade.isFinite && (0...1).contains($0.colorShade)
-                      && $0.request.tints.count <= 4096 }) else { return nil }
-            let indices = chunk.indices.withUnsafeBytes { bytes in
-                (0..<256).map { UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: UInt16.self)) }
-            }
-            guard indices.allSatisfy({ $0 == noMaterial || Int($0) < chunk.materials.count }) else { return nil }
-            let restored = Chunk(materials: chunk.materials, indices: indices)
+                  !chunk.materials.isEmpty, chunk.materials.count <= 512, chunk.materials.count.isMultiple(of: 2),
+                  chunk.indices.count == 512 else { return nil }
+            let references = decodeIndices(chunk.materials), indices = decodeIndices(chunk.indices)
+            guard references.allSatisfy({ Int($0) < stored.materials.count }),
+                  indices.allSatisfy({ $0 == noMaterial || Int($0) < references.count }) else { return nil }
+            let restored = Chunk(materials: references.map { stored.materials[Int($0)] }, indices: indices,
+                                 materialBytes: references.reduce(0) { $0 + costs[Int($1)] })
             guard restored.estimatedBytes <= 256 * 1024,
                   result.estimatedBytes + 64 + restored.estimatedBytes <= maximumRetainedBytes else { return nil }
             result.insert(restored, at: chunk.index)

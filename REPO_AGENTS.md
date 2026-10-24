@@ -60,7 +60,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.66.0`, resolved to `0.66.0` (`a3dc2e96ec51ff40954e3467f9701b963f1d7e2b`).
+  minor" from `0.66.1`, resolved to `0.66.1` (`09ae14770c8f9cf942da61a329b8bdc1313cc51c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1247,7 +1247,8 @@ source key; changing or removing the source cancels old map jobs and redraws thr
 existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
 selected block models through this same projection, UV, tint and rasterization path. Kit owns the
 position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
-Default-state resource gaps remain separate work in #363.
+Kit 0.66.1 supplies verified omitted 26.3 default properties to those same model and tint readers;
+the app neither edits saved states nor keeps a second registry of default properties.
 
 Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
 dimension documents. The existing GameAssetLibrary actor loads Kit's complete registered-biome
@@ -1301,7 +1302,10 @@ a reload that remains pending across overlapping autosaves. Read errors retain t
 snapshot; successful empty catalogs clear it. Closing releases the world's/maps' color references.
 
 Close-up texture detail retains selected states, tints, roof shade and filter emphasis from the
-existing terrain scan in chunk-local palettes. TileCache version 20 includes that compact data;
+existing terrain scan in chunk-local palettes. TileCache version 21 stores one shared material
+palette per region, with bounded references preserving each chunk's local palette addresses.
+Repeated states and tints are encoded and decoded once per region; immutable chunk memory costs
+are computed once. The version also invalidates pre-0.66.1 default-state fallback pixels;
 zooming and Share reuse it without another chunk read. Each chunk is bounded to 256 KiB estimated
 material cost. A region retains at most 8 MiB, keeping a deterministic coordinate prefix if an
 unusually varied region exceeds that budget; other columns keep their normal pixels. The binary

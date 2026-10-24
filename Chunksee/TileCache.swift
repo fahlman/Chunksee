@@ -26,7 +26,8 @@ nonisolated struct TileCache: Sendable {
     /// 18: seed-displaced neighboring biome cells and their source-file dependencies.
     /// 20: retain bounded selected materials for close-zoom detail without another chunk scan.
     /// 19 belongs to the separate Dark Spots work under review.
-    static let rendererVersion = 20
+    /// 21: one stored material palette per region and Kit 0.66.1 compact-state defaults.
+    static let rendererVersion = 21
 
     let directory: URL
 
