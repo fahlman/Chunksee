@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ChunkseeIndex
 import CoreGraphics
 import Foundation
 import Testing
@@ -14,8 +15,8 @@ import Testing
 
     private func content() throws -> DimensionContent {
         var result = DimensionContent()
-        result.creatures = [try #require(CreatureMarker(#require(Creature(fixtures.parrot(fixtures.bird))),
-                                                       dimension: fixtures.overworld))]
+        let creature = try #require(Creature(fixtures.parrot(fixtures.bird)))
+        result.creatures = [try #require(CreatureMarker(creature, dimension: fixtures.overworld))]
         return result
     }
 
