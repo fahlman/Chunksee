@@ -98,7 +98,8 @@ final class SelectionModel {
         case .savedPlace(let id): return source.annotations.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
         case .structure(let id): return index.structures.first { $0.id == id }.map(ResolvedSidebarItem.structure)
         case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
-        case .creature(let id): return index.creatures.first { $0.id == id }.map(ResolvedSidebarItem.creature)
+        case .creature(let id), .mobCreature(let id): return index.mobTypes.marker(id).map(ResolvedSidebarItem.creature)
+        case .mobType(let id): return index.mobTypes.kind(id).map(ResolvedSidebarItem.mobType)
         case .biome(let id): return index.biomeAreas.first { $0.id == id }.map(ResolvedSidebarItem.biome)
         case .inGameMap(let id): return source.presentation.inGameMaps.first { $0.id == id }.map(ResolvedSidebarItem.inGameMap)
         case .player(let id): return source.players.first { $0.uuid == id }.map(ResolvedSidebarItem.player)
@@ -136,7 +137,7 @@ final class SelectionModel {
         let resolved = item.flatMap(resolve)
         selectedItem = resolved == nil ? nil : item
         switch detailItem(resolved) {
-        case .worldInfo?, .storage?, .player?, .creature?: overlayID = nil
+        case .worldInfo?, .storage?, .player?, .creature?, .mobType?: overlayID = nil
         case .place(let marker)?:
             if marker.portal != nil { overlayID = nil }
         case .inGameMap(let map)?: overlayID = map.id
@@ -153,6 +154,7 @@ final class SelectionModel {
         guard let item, let resolved = resolve(item) else { select(nil); return }
         switch resolved {
         case .worldInfo, .storage: break
+        case .mobType(let kind): source.visibility.mobTypes.insert(kind.id)
         case .savedPlace(let place):
             if source.annotations.canVisit(place) { source.annotations.visit(place) }
         case .structure(let marker):
@@ -162,7 +164,8 @@ final class SelectionModel {
             source.visibility.places.insert(marker.group)
             source.navigation.focus(on: marker.position)
         case .creature(let marker):
-            source.visibility.creatures.insert(marker.group)
+            if case .mobCreature = item { source.visibility.reveal(marker, inMobList: true) }
+            else { source.visibility.reveal(marker) }
             source.navigation.focus(on: marker.position)
         case .biome(let area):
             source.visibility.biomes.insert(area.group)
@@ -183,11 +186,15 @@ final class SelectionModel {
             if let dimension = hit.dimension, let position = hit.position {
                 focus(on: position, height: hit.y, in: dimension)
             }
-            if case .layer(let layer, _) = hit.source {
+            if case .layer(let layer, let markerID) = hit.source {
                 switch layer {
                 case .structure(let group): source.visibility.structures.insert(group)
                 case .place(let group): source.visibility.places.insert(group)
-                case .creature(let group): source.visibility.creatures.insert(group)
+                case .creature:
+                    if let dimension = hit.dimension,
+                       let marker = source.search.index.dimensions[dimension]?.mobTypes.marker(markerID) {
+                        source.visibility.reveal(marker)
+                    }
                 case .biome(let group): source.visibility.biomes.insert(group)
                 }
             }
@@ -209,9 +216,9 @@ final class SelectionModel {
         case .row(let row)?:
             switch row {
             case .player(let id): item = source?.presentation.drawnPlayerMarkers.contains { $0.playerID == id } == true ? row : nil
-            case .savedPlace, .structure, .place, .creature, .biome, .hit:
+            case .savedPlace, .structure, .place, .creature, .mobCreature, .biome, .hit:
                 item = resolve(row) == nil ? nil : row
-            case .worldInfo, .storage, .inGameMap: item = nil
+            case .worldInfo, .storage, .inGameMap, .mobType: item = nil
             }
         case nil: item = nil
         }

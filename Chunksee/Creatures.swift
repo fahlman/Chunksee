@@ -13,6 +13,7 @@ extension CreatureGroup {
         case .named: String(localized: "Named Creatures")
         case .pet: String(localized: "Pets")
         case .villager: String(localized: "Villagers and Traders")
+        case .mob: String(localized: "Mobs")
         }
     }
 
@@ -21,6 +22,7 @@ extension CreatureGroup {
         case .named: "tag.fill"
         case .pet: "pawprint.fill"
         case .villager: "person.crop.square.fill"
+        case .mob: "hare.fill"
         }
     }
 
@@ -30,10 +32,11 @@ extension CreatureGroup {
         case .named: 0x2E7D32
         case .pet: 0xAD1457
         case .villager: 0x795548
+        case .mob: 0x546E7A
         }
     }
 
-    nonisolated var isShownByDefault: Bool { self != .villager }
+    nonisolated var isShownByDefault: Bool { self == .named || self == .pet }
 }
 
 /// A creature on the map.
@@ -113,8 +116,8 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
             location
             if let owner = creature.owner {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
-                PetDetailRows(creature: creature)
             }
+            PetDetailRows(creature: creature)
             if let profession = VillagerText.inspectorProfession(creature, definitions: session.details.definitions.trading) {
                 LabeledContent("Profession", value: profession)
             }

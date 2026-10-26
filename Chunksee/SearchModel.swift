@@ -19,9 +19,9 @@ final class SearchModel {
         }
     }
     let playerRoster: PlayerRoster
-    var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
+    var playerSnapshot: PlayerSnapshot { indexStore.playerSnapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
-    var index: SearchIndex { indexStore.index(including: playerSnapshot) }
+    var index: SearchIndex { indexStore.index }
     var portals: [String: [NetherPortal]] { indexStore.portals }
     var isIndexing: Bool { indexStore.isIndexing }
     private(set) var isSearching = false
@@ -53,8 +53,9 @@ final class SearchModel {
          indexStore: WorldIndexStore? = nil) {
         self.work = work.makeScope()
         self.ownsIndex = indexStore == nil
-        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension)
+        self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension, playerRoster: playerRoster)
         self.playerRoster = playerRoster
+        precondition(self.indexStore.playerRoster === playerRoster)
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
@@ -111,7 +112,7 @@ final class SearchModel {
     }
 
     private func updateQueries() {
-        guard !isClosed else { return }
+        guard !isClosed, playerSnapshot === playerRoster.snapshot else { return }
         let saved = Set(savedSearches.all.map(\.query))
         let shared = indexStore.savedQueries
         shared.keep(saved)
@@ -160,6 +161,7 @@ final class SearchModel {
                 // Observation schedules the replacement on the main actor; reject an older
                 // player publication even if that scheduled callback has not run yet.
                 guard !Task.isCancelled, let self, !self.isClosed,
+                      self.playerRoster.snapshot === next.playerSnapshot,
                       self.playerSnapshot === next.playerSnapshot,
                       self.sourceGeneration == generation, self.activeQueries[query]?.id == id else { return }
                 self.activeQueries[query] = nil
@@ -190,10 +192,12 @@ final class SearchModel {
 
     /// Waits for the query snapshot actually consumed by the UI, including a changed shared source.
     func waitForSearch() async {
+        await indexStore.waitForProjection()
         updateQueries()
         while !isClosed, !activeQueries.isEmpty {
             let pending = activeQueries.values.map(\.task)
             for task in pending { await task.value }
+            await indexStore.waitForProjection()
             updateQueries()
         }
     }

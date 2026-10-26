@@ -8,6 +8,7 @@ final class WorldSettings {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case structureVisibility
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
+        case mobTypes = "shownMobTypes"
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
         case showsWorldBorder, darkSpots = "showsDarkSpots"
 

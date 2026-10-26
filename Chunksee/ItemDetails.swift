@@ -12,6 +12,7 @@ struct WorldInspector: View {
         case .storage?: StorageView(session: session)
         case .player(let player)?: PlayerDetailView(session: session, player: player).id(player.uuid)
         case .creature(let marker)?: CreatureDetailView(session: session, marker: marker).id(marker.id)
+        case .mobType(let kind)?: MobTypeDetails(session: session, kind: kind)
         case .inGameMap(let map)?: InGameMapDetailView(session: session, map: map).id(map.id)
         case .place(let marker)?:
             if let portal = marker.portal {

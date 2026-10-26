@@ -45,10 +45,11 @@ struct SearchWorkTests {
         let work = BackgroundWork(), defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
+        let players = PlayerRoster([])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         func document(_ key: String) -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: names,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names,
                         singleplayerUUID: nil, firstDimension: nil, savedSearches: saved,
                         execute: { _ in await gate.read(key) }, indexStore: index)
         }
