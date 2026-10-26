@@ -333,7 +333,7 @@ import Testing
                                                    "BB": .intArray([x * 16, 60, 0, x * 16 + 9, 70, 9])])])])
         }
         let village = StructureMarker(try #require(StructureStart.starts(inChunk: .compound(["structures": .compound(["starts": .compound([
-            "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first))
+            "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first), groups: try StructureTagFixture.catalog())
         let wolf = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 1, y: 64, z: 2, customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
         let cat = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 5, y: 64, z: 5, owner: UUID()), dimension: "minecraft:overworld"))
         let villager = try #require(Creature(Fixtures.mob(["id": .string("minecraft:villager"), "Health": .float(20),

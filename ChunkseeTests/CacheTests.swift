@@ -188,7 +188,7 @@ import Testing
         let index = await TestWorld.index(reader)
         let rebuilt = try #require(index.regions[region])
         #expect(rebuilt.structures.isEmpty)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map { StructureMarker($0) }
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
