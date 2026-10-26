@@ -184,10 +184,17 @@ Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longe
 above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
 app; map pixels and hover names use the same scan.
 Normal-view shallow water blends the immediately underlying visible block's colour into the
-existing water shade, fading the floor out by sixteen blocks. The same traversal retains that
-colour; no extra block read or scan is added. Gaps, air and unreadable references leave the floor
-unknown. The contiguous-water depth cap, surface location, hover/copy and Height/Water Depth
-styles stay unchanged. Tile renderer version 12 discards the earlier opaque-water pixels.
+existing water shade, fading the floor out by sixteen blocks. With available game artwork,
+GameAssetLibrary reads the first water-texture frame's average opacity once per library. That
+opacity limits the visible floor, whose brightness uses the same existing depth shade. Missing
+water artwork preserves the former blend exactly. The same traversal retains the floor colour;
+no extra block read or scan is added. Gaps, air and unreadable references leave the floor unknown.
+WorldDefinitions supplies the composed water-fluid tag. MapSurfaceContext carries it to the
+shared surface/depth/hover scan, where Kit's saved-state fluid and upper-face facts choose water
+or a solid upper surface. Missing tags keep the former no-game-file water classification;
+readable empty/replaced tags are authoritative. Tag refresh invalidates the map and hover inputs,
+and the tag's membership participates in every tile key. Tile renderer version 28 discards the
+older fluid classification and water pixels. The depth cap and Height/Water Depth scales remain.
 WorldDetails owns one WorldDefinitions snapshot, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening first uses available world-pack facts; the shared game
 request adds installed resources. Each resource category remains independently available. A failed

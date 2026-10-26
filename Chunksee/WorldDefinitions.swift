@@ -10,6 +10,7 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
     var notableBlocks = NotableBlock.Catalog(tags: [:])
     var structureGroups = StructureGroup.Catalog(tags: [:])
     var trading: TradingDefinitions?
+    var water: GameTag?
 
     static func read(_ world: World, assets: GameAssets?) throws -> Self {
         try Task.checkCancellation()
@@ -21,6 +22,7 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
         result.structureGroups = StructureGroup.Catalog(tags: (try? world.tags(for: StructureGroup.tagIDs,
             in: "worldgen/structure", assets: assets)) ?? [:])
         result.trading = try? world.tradingDefinitions(assets: assets)
+        result.water = (try? world.tags(for: ["minecraft:water"], in: "fluid", assets: assets))?["minecraft:water"]
         for dimension in world.dimensions() {
             result.possibleBiomes[dimension.id] = try? world.possibleBiomes(in: dimension.id, assets: assets)
         }
