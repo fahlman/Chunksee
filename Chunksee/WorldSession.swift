@@ -16,7 +16,7 @@ final class WorldSession {
     var names: PlayerNames { resources.names }
     var savedSearches: SavedSearches { resources.savedSearches }
     var savedPlaces: SavedPlaces { resources.savedPlaces }
-    var players: [PlayerInfo] { resources.players }
+    var players: [PlayerInfo] { search.playerSnapshot.players }
     let visibility: LayerVisibility
     let search: SearchModel
     let heatMap: HeatMapLayer

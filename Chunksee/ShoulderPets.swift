@@ -60,7 +60,7 @@ struct ShoulderPetsSection: View {
     let playerID: UUID
 
     var body: some View {
-        let pets = session.resources.playerSnapshot.shoulderPets.filter { $0.carrier == playerID }
+        let pets = session.search.playerSnapshot.shoulderPets.filter { $0.carrier == playerID }
         if !pets.isEmpty {
             Section("On Shoulders") {
                 ForEach(pets) { pet in

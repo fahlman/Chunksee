@@ -86,6 +86,28 @@ import Testing
         await first.waitUntilClosed(); await second.waitUntilClosed()
     }
 
+    @Test func carrierAndMobViewsUseOnePreparedPlayerPublication() async throws {
+        let url = try makeWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try await PlayerInspectorTests().open(url)
+        defer { session.close() }
+        await session.resources.waitForRefresh()
+        let prior = try #require(session.players.first { $0.uuid == carrier })
+        let oldPosition = PlayerPresentation.position(of: prior)
+        let updated = PlayerInfo(uuid: carrier, nbt: playerData(pets: [parrot(bird)],
+            dimension: .string(overworld), position: [42, 75, -12]))
+        session.resources.playerRoster.publish([updated])
+        // No actor suspension: the roster is newer while its carried-mob merge is pending.
+        #expect(PlayerPresentation.position(of: try #require(session.players.first { $0.uuid == carrier })) == oldPosition)
+        await session.resources.index.waitForProjection()
+        let shownPlayer = try #require(session.players.first { $0.uuid == carrier })
+        let shownPet = try #require(session.presentation.selectedIndex.creatures.first { $0.carrier == carrier })
+        #expect(PlayerPresentation.position(of: shownPlayer)?.x == 42)
+        #expect(shownPet.position == CGPoint(x: 42, y: -12) && shownPet.creature.y == 75)
+        #expect(session.search.playerSnapshot === session.resources.playerSnapshot)
+        session.close(); await session.waitUntilClosed()
+    }
+
     @Test func playerRefreshMovesShoulderPetsAndLandingRetainsTheirIdentity() async throws {
         let url = try makeWorld()
         defer { try? FileManager.default.removeItem(at: url) }
