@@ -22,6 +22,7 @@ actor GameAssetLibrary {
         let blockColors = NSCache<BlockKey, ColorEntry>()
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let water = NSCache<NSString, WaterAppearance>()
+        let textureColors = NSCache<NSString, ColorEntry>()
 
         init() {
             models.countLimit = 512
@@ -37,6 +38,7 @@ actor GameAssetLibrary {
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
             water.countLimit = 1
+            textureColors.countLimit = 256
         }
     }
 
@@ -165,6 +167,7 @@ actor GameAssetLibrary {
         caches.blockColors.removeAllObjects()
         caches.blockTextures.removeAllObjects()
         caches.water.removeAllObjects()
+        caches.textureColors.removeAllObjects()
     }
 
     nonisolated final class WaterAppearance: Sendable {
@@ -194,6 +197,22 @@ actor GameAssetLibrary {
         let result = WaterAppearance(opacity: opacity)
         caches.water.setObject(result, forKey: "water")
         return result
+    }
+
+    nonisolated func cachedTextureColor(_ id: String) -> MapColor? {
+        caches.textureColors.object(forKey: id as NSString)?.color
+    }
+
+    /// Mob symbols sample installed textures through the same decoder/cache as item pictures.
+    /// Missing or transparent artwork stays unavailable; the caller keeps its native symbol.
+    func textureColor(_ id: String) throws -> MapColor? {
+        try checkAvailable()
+        if let cached = caches.textureColors.object(forKey: id as NSString) { return cached.color }
+        guard let identifier = Identifier(id) else { return nil }
+        let color = try texture(identifier)?.representativeColor()
+        try Task.checkCancellation()
+        caches.textureColors.setObject(ColorEntry(color), forKey: id as NSString)
+        return color
     }
 
     nonisolated private final class BlockKey: NSObject {

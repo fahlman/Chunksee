@@ -19,16 +19,20 @@ struct PetDetailRows: View {
 
 nonisolated enum PetDetailText {
     static func appearance(_ appearance: CreatureAppearance, species: String) -> String {
-        let variant: String
+        var parts: [String] = []
+        let variant: String?
         switch (species, appearance.variant) {
         case ("minecraft:cat", "minecraft:black"): variant = String(localized: "Tuxedo")
         case ("minecraft:cat", "minecraft:red"): variant = String(localized: "Ginger")
         case ("minecraft:cat", "minecraft:all_black"): variant = String(localized: "Black")
-        default: variant = appearance.variant.map(name) ?? String(localized: "Unknown")
+        default: variant = appearance.variant.map(name)
         }
-        guard let markings = appearance.markings else { return variant }
-        return String(localized: "\(variant), \(name(markings))",
-                      comment: "A pet's appearance: its coat or variant, followed by its markings.")
+        if let variant { parts.append(variant) }
+        if let markings = appearance.markings { parts.append(name(markings)) }
+        for (key, value) in (appearance.traits ?? [:]).sorted(by: { $0.key < $1.key }) {
+            parts.append(String(localized: "\(ReadableName.from(key)): \(name(value))"))
+        }
+        return parts.isEmpty ? String(localized: "Not recorded") : parts.formatted(.list(type: .and))
     }
 
     static func name(_ id: String) -> String {

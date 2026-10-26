@@ -3,7 +3,7 @@ import ChunkseeKit
 import Foundation
 
 enum SidebarSection: Hashable {
-    case searchResults, world, savedSearches, structures, places, creatures, biomes, inGameMaps, players
+    case searchResults, world, savedSearches, structures, places, creatures, mobs, biomes, inGameMaps, players
 }
 
 /// Disclosure state belongs to this dimension's view. Revealing a marker opens just its ancestors.
@@ -12,6 +12,7 @@ struct SidebarDisclosure {
     var structures: Set<StructureGroup> = []
     var places: Set<PlaceGroup> = []
     var creatures: Set<CreatureGroup> = []
+    var mobTypes: Set<String> = []
     var biomes: Set<BiomeGroup> = []
     var savedSearches: Set<UUID> = []
     var showsSavedPlaces = true
@@ -32,8 +33,17 @@ struct SidebarDisclosure {
             collapsedSections.remove(.places)
             places.insert(marker.group)
         case .creature(let marker)?:
-            collapsedSections.remove(.creatures)
-            creatures.insert(marker.group)
+            if case .mobCreature = item {
+                collapsedSections.remove(.mobs)
+                mobTypes.insert(marker.creature.id)
+            } else if marker.group == .mob {
+                collapsedSections.remove(.mobs)
+                mobTypes.insert(marker.creature.id)
+            } else {
+                collapsedSections.remove(.creatures)
+                creatures.insert(marker.group)
+            }
+        case .mobType?: collapsedSections.remove(.mobs)
         case .biome(let marker)?:
             collapsedSections.remove(.biomes)
             biomes.insert(marker.group)

@@ -31,12 +31,14 @@ struct MapContent {
     /// Nil means all groups (standalone map snapshots); a document supplies its own visibility.
     var shownPlaceGroups: Set<PlaceGroup>?
     var shownCreatureGroups: Set<CreatureGroup>?
+    var shownMobTypes: Set<String> = []
+    var mobAppearances: [String: MobAppearance] = [:]
     var places: [PlaceMarker] {
         get { placePoints.all.filter { shownPlaceGroups?.contains($0.group) ?? true } }
         set { placePoints = PointMarkers(newValue) }
     }
     var creatures: [CreatureMarker] {
-        get { creaturePoints.all.filter { shownCreatureGroups?.contains($0.group) ?? true } }
+        get { creaturePoints.all.filter(showsCreature) }
         set { creaturePoints = PointMarkers(newValue) }
     }
     /// Search results, drawn as pins.
@@ -83,10 +85,17 @@ struct MapContent {
     }
 
     func nearbyCreatures(viewport: MapViewport, size: CGSize, bounds: CGRect? = nil) -> [CreatureMarker] {
-        guard shownCreatureGroups?.isEmpty != true else { return [] }
+        guard shownCreatureGroups?.isEmpty != true || !shownMobTypes.isEmpty else { return [] }
         return creaturePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
                                          viewport: viewport, size: size)
-            .filter { (shownCreatureGroups?.contains($0.group) ?? true) && (viewport.scale >= 0.25 || selection == .creature($0)) }
+            .filter { showsCreature($0) && (viewport.scale >= 0.25 || selection == .creature($0)) }
+    }
+
+    private func showsCreature(_ marker: CreatureMarker) -> Bool {
+        if shownCreatureGroups?.contains(marker.group) ?? true { return true }
+        guard shownMobTypes.contains(marker.creature.id) else { return false }
+        guard let appearance = mobAppearances[marker.creature.id] else { return true }
+        return appearance == MobAppearance(marker.creature.appearance)
     }
 
     /// The individual locations represented by Canvas. Names and actions remain available
@@ -143,6 +152,10 @@ extension MapContent {
         shownPlaceGroups = session.visibility.places
         creaturePoints = index.creaturePoints
         shownCreatureGroups = session.visibility.creatures
+        shownMobTypes = session.visibility.mobTypes
+        mobAppearances = Dictionary(uniqueKeysWithValues: index.mobTypes.kinds.compactMap { kind in
+            session.visibility.appearance(for: kind).map { (kind.id, $0) }
+        })
         hits = session.search.pinnedHits(where: session.presentation.lists).filter { $0.dimension == id && $0.position != nil }
         selectedHitID = session.selection.selectedHitID
         players = session.presentation.drawnPlayerMarkers

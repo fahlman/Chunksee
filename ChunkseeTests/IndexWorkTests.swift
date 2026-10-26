@@ -11,7 +11,7 @@ struct IndexWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: work, firstDimension: nil,
+        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, _ in await gate.read("index") })
         await gate.waitForRequest("index")
         index.rebuild(firstDimension: nil)
@@ -33,9 +33,9 @@ struct IndexWorkTests {
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let reader = RegionReader(dimension: dimension, cache: .off)
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
-        let first = WorldIndexStore(readers: [reader], work: work, firstDimension: nil,
+        let first = WorldIndexStore(readers: [reader], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, _ in await gate.read("first") })
-        let second = WorldIndexStore(readers: [reader], work: work, firstDimension: nil,
+        let second = WorldIndexStore(readers: [reader], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
                                      readDimension: { _, _, _ in await gate.read("second") })
         await gate.waitForRequest("first")
         await gate.waitForRequest("second")

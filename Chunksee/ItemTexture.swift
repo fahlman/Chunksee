@@ -90,6 +90,23 @@ nonisolated struct ItemTexture: Sendable {
         return UInt32(pixels[index]) << 16 | UInt32(pixels[index + 1]) << 8 | UInt32(pixels[index + 2])
     }
 
+    /// Mean visible color in sRGB. Premultiplied channels weight partially transparent pixels;
+    /// unused transparent parts of a skin do not darken the result.
+    func representativeColor() throws -> MapColor? {
+        guard (1...1024).contains(width), (1...1024).contains(height), pixels.count == width * height * 4 else { return nil }
+        var red = 0, green = 0, blue = 0, alpha = 0
+        for y in 0..<height {
+            try Task.checkCancellation()
+            for offset in stride(from: y * width * 4, to: (y + 1) * width * 4, by: 4) {
+                red += Int(pixels[offset]); green += Int(pixels[offset + 1]); blue += Int(pixels[offset + 2])
+                alpha += Int(pixels[offset + 3])
+            }
+        }
+        guard alpha > 0 else { return nil }
+        return MapColor(UInt32(min(255, red * 255 / alpha)) << 16
+            | UInt32(min(255, green * 255 / alpha)) << 8 | UInt32(min(255, blue * 255 / alpha)))
+    }
+
     private struct PNG {
         let image: CGImage
 

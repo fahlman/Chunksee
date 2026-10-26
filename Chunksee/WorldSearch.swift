@@ -11,14 +11,15 @@ nonisolated struct DimensionContent: Sendable {
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
     var placePoints = PointMarkers<PlaceMarker>()
-    var creaturePoints = PointMarkers<CreatureMarker>()
+    private(set) var mobTypes = MobTypes()
+    var creaturePoints: PointMarkers<CreatureMarker> { mobTypes.points }
     var places: [PlaceMarker] {
         get { placePoints.all }
         set { placePoints = PointMarkers(newValue) }
     }
     var creatures: [CreatureMarker] {
         get { creaturePoints.all }
-        set { creaturePoints = PointMarkers(newValue) }
+        set { mobTypes = MobTypes(newValue) }
     }
     var biomeAreas: [BiomeArea] = []
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
@@ -105,7 +106,7 @@ extension SearchQuery.Filter {
         switch self {
         case .structure: String(localized: "structure: villages, strongholds…")
         case .place: String(localized: "place: portals, beds, bells…")
-        case .creature: String(localized: "creature: named creatures, pets, villagers")
+        case .creature: String(localized: "creature: saved mobs")
         case .pet: String(localized: "pet: tamed creatures")
         case .villager: String(localized: "villager: villagers and traders")
         case .trade: String(localized: "trade: villagers selling or buying an item")
