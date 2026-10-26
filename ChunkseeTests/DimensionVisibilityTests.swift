@@ -125,11 +125,11 @@ import Testing
         defaults.set([String](), forKey: "shownCreatureGroups")
         defaults.set(true, forKey: "showsGrid")
         let overworld = LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:overworld")
-        #expect(overworld.structures == [.mineshaft] && overworld.creatures.isEmpty && overworld.showsGrid)
+        #expect(overworld.structures == [.mineshaft, .abandonedCamp] && overworld.creatures.isEmpty && overworld.showsGrid)
         overworld.structures = []
         overworld.showsGrid = false
         let nether = LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:the_nether")
-        #expect(nether.structures == [.mineshaft] && nether.creatures.isEmpty && nether.showsGrid)
+        #expect(nether.structures == [.mineshaft, .abandonedCamp] && nether.creatures.isEmpty && nether.showsGrid)
         #expect(defaults.bool(forKey: "showsGrid") && defaults.stringArray(forKey: "shownStructureGroups") == ["mineshaft"])
         defaults.set(["villager"], forKey: "shownCreatureGroups")
         defaults.set(false, forKey: "showsGrid")

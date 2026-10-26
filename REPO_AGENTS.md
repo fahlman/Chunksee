@@ -132,6 +132,18 @@ TradeText owns each complete villager offer for both the inspector and search re
 the received item, both possible costs, enchantments and the saved sold-out status. Matching still
 uses the separate searchable item names and identifiers, without presentation wording.
 StructureGroup and PlaceGroup own the symbols shared by their sidebar rows and map markers.
+StructureGroup.Catalog reads family membership from the world's shared structure-tag snapshot:
+village, ocean_ruin, ruined_portal, shipwreck, mineshaft and abandoned_camp. A saved member of
+overlapping tags uses the existing group order, then the exact untagged design groups. Readable
+tags, including empty or replaced tags, are authoritative. If a family's tag is unavailable,
+the former vanilla prefix rules preserve that family's no-game-files presentation; data-pack
+tags still apply independently. Unmatched structures remain visible under Other Structures.
+WorldDefinitions owns the catalog and immutable readers carry it into cached region projections.
+Pack or selected-game changes replace those projections through the existing definition refresh;
+the region facts cache and terrain tiles do not contain these presentation groups.
+LayerVisibility records explicit structure-group visibility, giving groups missing from an older
+settings schema their defaults. The legacy shown-only list migrates using its fixed historical
+group schema, preserving previous choices while making the new Abandoned Camps group visible.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
 than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
 Find Player Names uses a settings gear because it opens Settings. Storage uses an archive box,

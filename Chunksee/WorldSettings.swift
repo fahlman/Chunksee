@@ -6,6 +6,7 @@ import Foundation
 final class WorldSettings {
     enum Layer: String, CaseIterable {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
+        case structureVisibility
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
         case mobTypes = "shownMobTypes"
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"

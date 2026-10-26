@@ -173,7 +173,7 @@ struct VisibilityButton: View {
 /// One world dimension's layer controls, remembered between launches in `defaults`.
 @Observable
 final class LayerVisibility {
-    var structures: Set<StructureGroup> { didSet { save(structures.map(\.rawValue), Keys.structures) } }
+    var structures: Set<StructureGroup> { didSet { saveValue(structureChoices, .structureVisibility) } }
     var places: Set<PlaceGroup> { didSet { save(places.map(\.rawValue), Keys.places) } }
     var creatures: Set<CreatureGroup> { didSet { save(creatures.map(\.rawValue), Keys.creatures) } }
     var mobTypes: Set<String> { didSet { save(Array(mobTypes), Keys.mobTypes) } }
@@ -200,7 +200,19 @@ final class LayerVisibility {
             guard let names = values[key] as? [String] else { return Set(Group.allCases.filter(isShown)) }
             return Set(names.compactMap(Group.init(rawValue:)))
         }
-        structures = saved(Keys.structures, default: \.isShownByDefault)
+        if let choices = values[Keys.structureVisibility] as? [String: Bool] {
+            structures = Set(StructureGroup.allCases.filter { choices[$0.rawValue] ?? $0.isShownByDefault })
+        } else if let shown = values[Keys.structures] as? [String] {
+            // The old format stored only shown groups. This fixed historical schema lets
+            // newly introduced groups use their defaults without undoing existing choices.
+            let original: Set<StructureGroup> = [.village, .stronghold, .ancientCity, .trialChambers,
+                .monument, .mansion, .temple, .ruins, .ruinedPortal, .shipwreck, .buriedTreasure,
+                .outpost, .mineshaft, .fortress, .bastion, .netherFossil, .endCity, .other]
+            structures = Set(shown.compactMap(StructureGroup.init(rawValue:)))
+                .union(StructureGroup.allCases.filter { !original.contains($0) && $0.isShownByDefault })
+        } else {
+            structures = Set(StructureGroup.allCases.filter(\.isShownByDefault))
+        }
         places = saved(Keys.places, default: \.isShownByDefault)
         creatures = saved(Keys.creatures, default: \.isShownByDefault)
         mobTypes = Set(values[Keys.mobTypes] as? [String] ?? [])
@@ -211,13 +223,15 @@ final class LayerVisibility {
         showsWorldBorder = values[Keys.showsWorldBorder] as? Bool ?? true
         if previous == nil {
             write([
-                Keys.structures: structures.map(\.rawValue).sorted(), Keys.places: places.map(\.rawValue).sorted(),
+                Keys.structureVisibility: structureChoices, Keys.places: places.map(\.rawValue).sorted(),
                 Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
                 Keys.mobTypes: mobTypes.sorted(),
                 Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
                 Keys.timeSpent: false, Keys.showsSavedPlaces: showsSavedPlaces,
                 Keys.showsWorldBorder: showsWorldBorder,
             ])
+        } else if values[Keys.structureVisibility] == nil {
+            saveValue(structureChoices, .structureVisibility)
         }
     }
 
@@ -232,6 +246,10 @@ final class LayerVisibility {
         if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
             mobAppearances[marker.creature.id] = nil
         }
+    }
+
+    private var structureChoices: [String: Bool] {
+        Dictionary(uniqueKeysWithValues: StructureGroup.allCases.map { ($0.rawValue, structures.contains($0)) })
     }
 
     /// HeatMapLayer owns the live flag; these accessors only restore and persist its value.

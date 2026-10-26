@@ -142,6 +142,7 @@ final class WorldResources {
                          cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
                          options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id]), definitions: snapshot.details.definitions),
                          notableBlocks: snapshot.details.definitions.notableBlocks,
+                         structureGroups: snapshot.details.definitions.structureGroups,
                          read: readRegion)
         }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
@@ -173,6 +174,7 @@ final class WorldResources {
                          cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
                          options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id]), definitions: details.definitions),
                          notableBlocks: details.definitions.notableBlocks,
+                         structureGroups: details.definitions.structureGroups,
                          read: readRegion)
         }, firstDimension: activeDimensionID)
         refreshNightLighting()
@@ -301,7 +303,8 @@ final class WorldResources {
                 return RegionReader(dimension: dimension,
                     cache: ScanCache(forWorldAt: self.url, dimensionID: dimension.id, root: self.cacheRoot),
                     options: RegionReader.options(context: MapSurfaceContext(settings: updated.definitions.dimensionSettings[dimension.id]), definitions: updated.definitions),
-                    notableBlocks: updated.definitions.notableBlocks, read: self.readRegion)
+                    notableBlocks: updated.definitions.notableBlocks,
+                    structureGroups: updated.definitions.structureGroups, read: self.readRegion)
             }
             self.index.replace(readers: readers, firstDimension: self.activeDimensionID)
             for session in self.sessions.values.compactMap(\.value) {

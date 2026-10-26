@@ -22,6 +22,9 @@
     "creature: saved mobs" : {
       "comment" : "Search syntax hint: creature searches all saved mobs, including ordinary unnamed ones."
     },
+    "Abandoned Camps" : {
+      "comment" : "Sidebar structure family supplied by the game's abandoned_camp structure tag."
+    },
     "Selection cleared" : {
       "comment" : "VoiceOver announcement after an empty-map click or map-focused Escape clears the selected row. An in-game map overlay may remain visible."
     },

@@ -346,7 +346,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await TestWorld.index(reader).structures
         #expect(rebuilt.map(\.y) == [-50])
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map(StructureMarker.init)
+        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map { StructureMarker($0) }
         #expect(saved?.first?.y == -50)
         #expect(!FileManager.default.fileExists(atPath: previous.path))
         await reader.close()
