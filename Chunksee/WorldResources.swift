@@ -148,7 +148,7 @@ final class WorldResources {
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         assetObserver = names.minecraft.observeChanges { [weak self] in self?.refreshGameAssets() }
         refreshLighting()
@@ -605,6 +605,7 @@ final class WorldResources {
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
         await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork, definitionsWork, assetWork])
+        await index.waitForProjection()
     }
 
     private func refresh() async {

@@ -359,7 +359,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionContent>(), requests = Changes()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil,
+        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, change in
                                         let key = await requests.record(change)
                                         return await gate.read(key)

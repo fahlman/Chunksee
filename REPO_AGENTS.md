@@ -1237,7 +1237,12 @@ checks coordinate availability and presentation. Unknown numeric dimensions rema
 Vanilla legacy dimensions and datapack dimensions still work; World Info retains its Modded line.
 RegionFacts are adopted by the shared region reader. PlayerSnapshot reads Kit's shoulder pets
 once per accepted player publication. WorldIndexStore derives their combined creature index once
-per player/index snapshot, shared by all dimension searches, sidebars, maps and pet links. A carried
+per player/index snapshot, shared by all dimension searches, sidebars, maps and pet links. The
+merge, point buckets and mob-type counts run off the main actor, owned and drained by the world's
+existing background-work scope. Search reads a prepared index and its matching player snapshot;
+views keep the prior coherent publication while the replacement is prepared. New player or
+index generations cancel obsolete projections, which cannot publish after replacement or close.
+A carried
 bird's saved owner stays distinct from its carrier; only the carrier's validated saved location
 is used. A carried UUID replaces any stale region copy, and missing/unavailable locations never
 fall back to the bird's mounting position. The player's On Shoulders section retains its details
