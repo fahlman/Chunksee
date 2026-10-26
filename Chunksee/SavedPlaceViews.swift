@@ -19,6 +19,7 @@ struct SavedPlacesGroup: View {
                     Image(systemName: MarkerStyle.savedPlaceSymbol)
                 }
                 .tag(SidebarItem.savedPlace(place.id))
+                .repeatSidebarSelection(.savedPlace(place.id), in: session.selection)
                 .id(SidebarItem.savedPlace(place.id))
                 .help(availability.help)
                 .contextMenu {

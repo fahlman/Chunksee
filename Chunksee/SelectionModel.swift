@@ -195,6 +195,12 @@ final class SelectionModel {
         select(item, height: resolved.height(in: source.selectedDimensionID))
     }
 
+    /// Repeating a sidebar action uses today's saved location and the original navigation path.
+    func repeatSelection(_ item: SidebarItem) {
+        guard sidebarSelection == item else { return }
+        choose(item)
+    }
+
     /// A death/respawn marker may show player details here when their row belongs elsewhere.
     @discardableResult func mapClicked(_ clicked: MapTarget?, y: Double?) -> SidebarItem? {
         let item: SidebarItem?

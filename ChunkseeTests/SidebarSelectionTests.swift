@@ -853,6 +853,40 @@ import Testing
         #expect(locations.first { $0.id == "player-player" }?.target == .row(.player(playerID)))
     }
 
+    @Test func repeatedSidebarActionsRecenterWithoutTogglingOrChangingZoom() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let map = try #require(session.map)
+        let index = session.presentation.selectedIndex
+        let creature = try #require(index.creatures.first)
+        let structure = try #require(index.structures.first)
+        let place = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: CGPoint(x: 30, y: 40)))
+        for item in [SidebarItem.player(playerID), .creature(creature.id), .structure(structure.id), .savedPlace(place.id), .inGameMap(3)] {
+            map.viewport.scale = 4
+            session.selection.choose(item)
+            let destination = map.viewport.center
+            map.viewport.center = CGPoint(x: 900, y: -700)
+            let away = map.viewport
+            // Map input keeps its viewport even when its marker was already selected.
+            session.selection.mapClicked(.row(item), y: nil)
+            #expect(map.viewport == away)
+            session.selection.repeatSelection(item)
+            #expect(map.viewport.center == destination && map.viewport.scale == 4)
+            #expect(session.selection.sidebarSelection == item)
+            session.selection.repeatSelection(item)
+            #expect(session.selection.sidebarSelection == item && map.viewport.center == destination)
+        }
+        session.selection.choose(.worldInfo)
+        let viewport = map.viewport
+        session.selection.repeatSelection(.savedPlace(place.id))
+        #expect(session.selection.sidebarSelection == .worldInfo && map.viewport == viewport)
+        session.close(); await session.waitUntilClosed()
+    }
+
     /// An Overworld and a Nether, with `away` now in the Nether but having died and set a respawn
     /// point in the Overworld, and `unplaced` with no current position but both of those.
     private func crossDimensionWorld(away: UUID, unplaced: UUID) throws -> URL {
