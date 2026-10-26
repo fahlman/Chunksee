@@ -123,7 +123,7 @@ struct WorldView: View {
                     sidebarModifiers = modifiers
                 }
                 .environment(\.sidebarPlainClick, sidebarModifiers.isEmpty)
-                .onKeyPress(.return) { press in
+                .onKeyPress(.return, phases: .down) { press in
                     guard press.modifiers.isEmpty, let item = session.selection.sidebarSelection else { return .ignored }
                     session.selection.repeatSelection(item)
                     return .handled
