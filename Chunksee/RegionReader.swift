@@ -12,21 +12,26 @@ actor RegionReader {
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
     nonisolated let scanOptions: RegionScanOptions
+    nonisolated let notableBlocks: NotableBlock.Catalog
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
 
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
-         options: RegionScanOptions = RegionReader.options(), read: @escaping Read = RegionReader.scan) {
+         options: RegionScanOptions = RegionReader.options(),
+         notableBlocks: NotableBlock.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
         self.scanOptions = options
+        self.notableBlocks = notableBlocks
         self.read = read
     }
 
-    nonisolated static func options(context: MapSurfaceContext = .unknown) -> RegionScanOptions {
-        RegionScanOptions(blockIDs: Set(NotableBlock.byID.keys),
-                          biomeSampleY: context.biomeSampleY, height: context.buildHeight)
+    nonisolated static func options(context: MapSurfaceContext = .unknown,
+                                    definitions: WorldDefinitions = .init()) -> RegionScanOptions {
+        RegionScanOptions(blockIDs: definitions.notableBlocks.blockIDs,
+                          biomeSampleY: context.biomeSampleY, height: context.buildHeight,
+                          enchantments: definitions.enchantments)
     }
 
     @concurrent

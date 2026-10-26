@@ -13,11 +13,11 @@ import Testing
             "example:offset": TestWorld.noiseDimension(type: ceilingType, noise: noise(minY: -64, height: 128)),
         ]
         let details = try details(definitions)
-        let roof = MapSurfaceContext(dimensionID: "minecraft:overworld", settings: details.dimensionSettings["minecraft:overworld"])
+        let roof = MapSurfaceContext(settings: details.dimensionSettings["minecraft:overworld"])
         #expect(roof.buildHeight == 256 && roof.ceilingY == 127 && roof.biomeSampleY == 64)
-        let open = MapSurfaceContext(dimensionID: "minecraft:the_nether", settings: details.dimensionSettings["minecraft:the_nether"])
+        let open = MapSurfaceContext(settings: details.dimensionSettings["minecraft:the_nether"])
         #expect(open.buildHeight == 384 && open.ceilingY == nil && open.biomeSampleY == nil)
-        let offset = MapSurfaceContext(dimensionID: "example:offset", settings: details.dimensionSettings["example:offset"])
+        let offset = MapSurfaceContext(settings: details.dimensionSettings["example:offset"])
         #expect(offset.buildHeight == 256 && offset.ceilingY == 63 && offset.biomeSampleY == 0)
         let options = RegionReader.options(context: offset)
         #expect(options.height == 256 && options.biomeSampleY == 0)
@@ -36,7 +36,7 @@ import Testing
         ]
         let details = try details(definitions)
         for id in definitions.keys {
-            let context = MapSurfaceContext(dimensionID: id, settings: details.dimensionSettings[id])
+            let context = MapSurfaceContext(settings: details.dimensionSettings[id])
             #expect(context.ceilingY == nil && context.biomeSampleY == nil)
             #expect(context.buildHeight == (id == "example:no_type" ? nil : 256))
         }
@@ -48,20 +48,18 @@ import Testing
         let details = try details([
             "example:shifted": TestWorld.noiseDimension(type: ceilingType, noise: noise(minY: 64, height: 128)),
         ])
-        let context = MapSurfaceContext(dimensionID: "example:shifted", settings: details.dimensionSettings["example:shifted"])
+        let context = MapSurfaceContext(settings: details.dimensionSettings["example:shifted"])
         // WorldGenerationContext uses max(minimums) and min(heights): 64..<192. Intersecting
         // build bounds instead would end at 128, while logical_height would supply only 64.
         #expect(context.ceilingY == 191 && context.biomeSampleY == 128 && context.buildHeight == 256)
     }
 
-    @Test func unresolvedNetherKeepsItsViewWithoutInventingBuildBounds() throws {
-        let unknown = MapSurfaceContext(dimensionID: "minecraft:the_nether", settings: nil)
-        #expect(unknown.ceilingY == 127 && unknown.biomeSampleY == 64 && unknown.buildHeight == nil)
+    @Test func unresolvedSettingsDoNotInventACeilingOrBuildBounds() throws {
+        let unknown = MapSurfaceContext(settings: nil)
+        #expect(unknown.ceilingY == nil && unknown.biomeSampleY == nil && unknown.buildHeight == nil)
         let details = try details(["example:partial": .compound(["type": ceilingType])])
-        let partial = MapSurfaceContext(dimensionID: "minecraft:the_nether", settings: details.dimensionSettings["example:partial"])
-        #expect(partial.ceilingY == 127 && partial.biomeSampleY == 64 && partial.buildHeight == 256)
-        let custom = MapSurfaceContext(dimensionID: "example:partial", settings: details.dimensionSettings["example:partial"])
-        #expect(custom.ceilingY == nil && custom.biomeSampleY == nil && custom.buildHeight == 256)
+        let partial = MapSurfaceContext(settings: details.dimensionSettings["example:partial"])
+        #expect(partial.ceilingY == nil && partial.biomeSampleY == nil && partial.buildHeight == 256)
     }
 
     @Test func dimensionDocumentsShareContextAcrossTilesHoverCopyAndBiomeScans() async throws {
@@ -76,11 +74,11 @@ import Testing
         ])
     }
 
-    @Test func unresolvedSavedNetherSettingsKeepTilesHoverCopyAndBiomeScanningBelowTheRoof() async throws {
+    @Test func unresolvedSavedSettingsUseTheActualSurfaceWithoutAGuessedRoof() async throws {
         let definitions = ["minecraft:the_nether": TestWorld.noiseDimension(
             type: .string("minecraft:the_nether"), noise: .string("minecraft:nether"))]
-        // Older and not-yet-verified versions, a missing pack list and an unsupported built-in
-        // pack all leave the library's vanilla definitions unresolved. No new format is inferred.
+        // With no supplied jar or enabled fixture pack, references stay unavailable across
+        // save versions. No dimension-name or version fallback invents a ceiling.
         let cases: [(Int32, [String]?)] = [
             (Int32(SaveVersion.java26_2), ["vanilla"]), (Int32(SaveVersion.java26_3 + 1), ["vanilla"]),
             (Int32(SaveVersion.java26_3), nil), (Int32(SaveVersion.java26_3), ["vanilla", "unresolved_experiment"]),
@@ -97,7 +95,7 @@ import Testing
             let settings = WorldDetails.read(try World(contentsOf: url)).dimensionSettings["minecraft:the_nether"]
             #expect(settings?.type == nil && settings?.noiseGeneration == nil)
             try await checkViews(url, expected: [
-                ("minecraft:the_nether", 48, "minecraft:stone", "minecraft:crimson_forest"),
+                ("minecraft:the_nether", 127, "minecraft:bedrock", "minecraft:plains"),
                 ("minecraft:overworld", 127, "minecraft:bedrock", "minecraft:plains"),
             ])
         }
@@ -117,15 +115,15 @@ import Testing
         let world = try World(contentsOf: url), settings = WorldDetails.read(world).dimensionSettings
         let dimension = try #require(world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
         let file = dimension.regionURL(at: region)
-        let contexts = [MapSurfaceContext.unknown] + definitions.keys.sorted().map { MapSurfaceContext(dimensionID: $0, settings: settings[$0]) }
+        let contexts = [MapSurfaceContext.unknown] + definitions.keys.sorted().map { MapSurfaceContext(settings: settings[$0]) }
         let surfaceKeys = try contexts.map { try #require(TileCache.key(for: region, regionFile: file, context: $0)) }
         let sliceKeys = try contexts.map { try #require(TileCache.key(for: region, regionFile: file, context: $0, cutawayY: 2)) }
         #expect(Set(surfaceKeys).count == contexts.count)
         #expect(Set(sliceKeys).count == 1)
 
         let cache = TileCache(directory: url.appendingPathComponent("test-cache"))
-        let roof = MapSurfaceContext(dimensionID: "example:roof", settings: settings["example:roof"])
-        let open = MapSurfaceContext(dimensionID: "example:open", settings: settings["example:open"])
+        let roof = MapSurfaceContext(settings: settings["example:roof"])
+        let open = MapSurfaceContext(settings: settings["example:open"])
         let roofKey = try #require(TileCache.key(for: region, regionFile: file, context: roof))
         let openKey = try #require(TileCache.key(for: region, regionFile: file, context: open))
         let roofTile = try #require(try await RegionTileRenderer(dimension: dimension, surfaceContext: roof,
@@ -150,7 +148,7 @@ import Testing
         let url = try TestWorld.make(chunks: [chunk], dimensionSettings: ["minecraft:overworld": .compound(["type": type])])
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld"))
-        let context = MapSurfaceContext(dimensionID: dimension.id, settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
         #expect(context.buildHeight == 3072)
         let file = try #require(try dimension.region(x: 0, z: 0))
         let known = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context))

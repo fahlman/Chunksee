@@ -72,15 +72,14 @@ import Testing
         let fixture = try fixture()
         defer { fixture.remove() }
         let resources = MinecraftResources(defaults: TestDefaults.make())
-        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
         resources.choose(fixture.root)
-        let library = try #require(await resources.library(for: version))
+        let library = try #require(await resources.library())
         #expect(try await library.mapColors(for: [BlockState("test:new")]).count == 1)
         resources.forget()
         await resources.waitUntilIdle()
         await #expect(throws: CancellationError.self) { try await library.mapColors(for: [BlockState("test:new")]) }
         resources.choose(fixture.root)
-        let replacement = try #require(await resources.library(for: version))
+        let replacement = try #require(await resources.library())
         #expect(replacement.identity != library.identity && replacement.sourceKey == library.sourceKey)
         #expect(try await replacement.mapColors(for: [BlockState("test:new")]).count == 1)
         resources.forget()

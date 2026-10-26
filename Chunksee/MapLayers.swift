@@ -74,6 +74,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                             Image(systemName: row.marker.group.symbol)
                         }
                         .tag(row.id)
+                        .repeatSidebarSelection(row.id, in: session.selection)
                         .help(LocationAvailability.available.help)
                         .locationMenu(session: session, position: row.marker.position,
                                       dimension: session.selectedDimensionID, y: row.marker.yCoordinate)

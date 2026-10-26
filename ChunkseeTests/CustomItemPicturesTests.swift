@@ -63,7 +63,10 @@ import Testing
         let removed = ItemStack(id: "test:custom", components: .compound([
             "!minecraft:custom_model_data": .compound([:]), "CustomModelData": .int(1)
         ]))
-        #expect(library.cachedPicture(for: removed) === greenImage)
+        #expect(library.cachedPicture(for: removed) == nil)
+        let removedImage = try #require(try await library.picture(for: removed))
+        #expect(try ItemPictureFixture.pixels(removedImage).bytes == ItemPictureFixture.pixels(greenImage).bytes)
+        #expect(library.cachedPicture(for: removed) === removedImage)
         let bad = ItemStack(id: "test:custom", components: .compound(["minecraft:custom_model_data": .string("bad")]))
         #expect(library.cachedPicture(for: bad) == nil)
         #expect(try await library.picture(for: bad) == nil)

@@ -98,11 +98,12 @@ final class MapExportModel {
         if !options.includesMarkers { content.removeMarkers() }
         let contentSnapshot = content, renderer = map.currentRenderer, regions = map.availableRegions, readTile = map.renderTile
         let portals = source.presentation.portalsByDimension
+        let types = source.details.dimensionSettings.compactMapValues(\.type), borders = source.details.borders
         let task = work.start(priority: .userInitiated) { [weak self] in
             defer { self?.activeRuns -= 1 }
             do {
                 let image = try await MapImage.export(plan: plan, regions: regions, renderer: renderer, content: contentSnapshot,
-                    portalStatus: { PortalLinkStatus.status(of: $0, portals: portals) }, colorScheme: colorScheme, locale: locale, contrast: contrast,
+                    portalStatus: { PortalLinkStatus.status(of: $0, portals: portals, dimensionTypes: types, borders: borders) }, colorScheme: colorScheme, locale: locale, contrast: contrast,
                     progress: { [weak self] finished, count in
                         guard self?.request == id else { return }
                         self?.completed = finished

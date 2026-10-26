@@ -106,7 +106,9 @@ import Testing
                 "minecraft:base_color": .string("blue"), "minecraft:banner_patterns": .list(.compound, [Self.layer("left", color: "red")]),
                 "!minecraft:base_color": .compound([:]), "!minecraft:banner_patterns": .compound([:])
             ]))
-            #expect(try await library.picture(for: removed) === plain)
+            let removedImage = try #require(try await library.picture(for: removed))
+            #expect(try ItemPictureFixture.pixels(removedImage).bytes == ItemPictureFixture.pixels(plain).bytes)
+            #expect(library.cachedPicture(for: removed) === removedImage)
         }
     }
 

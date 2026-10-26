@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import CoreGraphics
 import Foundation
@@ -10,7 +11,7 @@ import Testing
     let otherOwner = UUID(uuidString: "00000005-0000-0006-0000-000700000008")!
 
     func pet(_ name: String, owner: UUID, x: Double, entityID: UUID = UUID()) -> NBT {
-        .compound(["id": .string("minecraft:wolf"), "Health": .float(40), "CustomName": .string(name),
+        Fixtures.mob(["id": .string("minecraft:wolf"), "Health": .float(40), "CustomName": .string(name),
                    "UUID": .string(entityID.uuidString), "Owner": .string(owner.uuidString),
                    "Pos": .list([.double(x), .double(64), .double(4)])])
     }

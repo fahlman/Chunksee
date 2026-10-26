@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import CoreGraphics
 import Foundation
@@ -113,7 +114,7 @@ import Testing
         #expect(session.map?.depth == MapDepth(y: 48, isSurface: true))
         session.map?.setDepth(MapDepth(y: 101, isSurface: false))
         let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
-        let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([.compound([
+        let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([Fixtures.mob([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Map Fox"),
             "Pos": .list([.double(13), .double(32), .double(13)]),
         ])])])
@@ -912,6 +913,40 @@ import Testing
         #expect(locations.first { $0.id == "player-player" }?.target == .row(.player(playerID)))
     }
 
+    @Test func repeatedSidebarActionsRecenterWithoutTogglingOrChangingZoom() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let map = try #require(session.map)
+        let index = session.presentation.selectedIndex
+        let creature = try #require(index.creatures.first)
+        let structure = try #require(index.structures.first)
+        let place = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: CGPoint(x: 30, y: 40)))
+        for item in [SidebarItem.player(playerID), .creature(creature.id), .structure(structure.id), .savedPlace(place.id), .inGameMap(3)] {
+            map.viewport.scale = 4
+            session.selection.choose(item)
+            let destination = map.viewport.center
+            map.viewport.center = CGPoint(x: 900, y: -700)
+            let away = map.viewport
+            // Map input keeps its viewport even when its marker was already selected.
+            session.selection.mapClicked(.row(item), y: nil)
+            #expect(map.viewport == away)
+            session.selection.repeatSelection(item)
+            #expect(map.viewport.center == destination && map.viewport.scale == 4)
+            #expect(session.selection.sidebarSelection == item)
+            session.selection.repeatSelection(item)
+            #expect(session.selection.sidebarSelection == item && map.viewport.center == destination)
+        }
+        session.selection.choose(.worldInfo)
+        let viewport = map.viewport
+        session.selection.repeatSelection(.savedPlace(place.id))
+        #expect(session.selection.sidebarSelection == .worldInfo && map.viewport == viewport)
+        session.close(); await session.waitUntilClosed()
+    }
+
     /// An Overworld and a Nether, with `away` now in the Nether but having died and set a respawn
     /// point in the Overworld, and `unplaced` with no current position but both of those.
     private func crossDimensionWorld(away: UUID, unplaced: UUID) throws -> URL {
@@ -941,9 +976,9 @@ import Testing
 
     private func searchCreatures(health: Float = 8) -> [NBT] {
         [
-            .compound(["id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Owner": .intArray([1, 2, 3, 4]),
+            Fixtures.mob(["id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Owner": .intArray([1, 2, 3, 4]),
                        "Health": .float(health), "CustomName": .string("Search Pet"), "Pos": .list([.double(13), .double(64), .double(13)])]),
-            .compound(["id": .string("minecraft:villager"), "UUID": .intArray([5, 6, 7, 8]), "Health": .float(20),
+            Fixtures.mob(["id": .string("minecraft:villager"), "UUID": .intArray([5, 6, 7, 8]), "Health": .float(20),
                        "Pos": .list([.double(8), .double(48), .double(9)]),
                        "VillagerData": .compound(["profession": .string("minecraft:farmer"), "level": .int(1)]),
                        "Offers": .compound(["Recipes": .list([.compound([
@@ -968,7 +1003,7 @@ import Testing
         chunk.nbt = .compound(root)
         let url = try TestWorld.make(chunks: [chunk])
         let dimension = url.appendingPathComponent("dimensions/minecraft/overworld")
-        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures ?? [.compound([
+        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures ?? [Fixtures.mob([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10),
             "CustomName": .string("Map Fox"), "Pos": .list([.double(13), .double(petY), .double(13)]),
         ])])])

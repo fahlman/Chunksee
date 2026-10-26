@@ -43,7 +43,7 @@ import Testing
         try await withWorld { url, resources in
             #expect(resources.players.first?.health == 4)
             try writeLevel(url, health: 12)
-            let read: [PlayerInfo]? = await WorldResources.readPlayers(resources.world)
+            let read: [PlayerInfo]? = await WorldResources.readPlayers(resources.world, enchantments: resources.details.definitions.enchantments)
             #expect(read?.first?.health == 12)
             resources.worldChanged([url.appendingPathComponent("level.dat")])
             await resources.waitForRefresh()

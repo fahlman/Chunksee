@@ -87,12 +87,11 @@ extension EnvironmentValues {
     }
 }
 
-/// A document retains its shared library. Changing the chosen folder or saved version makes
+/// A document retains its shared library. Changing the chosen folder makes
 /// old pictures ineligible immediately; returning to the app also notices a replaced jar.
 struct WorldGameAssets: ViewModifier {
     let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
-    @State private var loaded: (source: WorldGameAssetSource, pictures: GameAssetLibrary)?
     private struct Request: Equatable {
         let source: WorldGameAssetSource
         let phase: ScenePhase
@@ -101,22 +100,12 @@ struct WorldGameAssets: ViewModifier {
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
-        let version = GameAssetVersion(name: world.world.level.versionName, dataVersion: world.world.level.dataVersion)
-        let source = WorldGameAssetSource(generation: resources.generation, version: version)
+        let source = WorldGameAssetSource(generation: resources.generation)
         content
-            .environment(\.gameAssetLibrary, loaded?.source == source ? loaded?.pictures : nil)
+            .environment(\.gameAssetLibrary, world.gameAssetLibrary(for: source))
             .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world))) {
-                world.prepareGameAssets(source)
-                if loaded?.source != source {
-                    loaded = nil
-                }
                 guard scenePhase == .active else { return }
-                guard let version, let pictures = await resources.library(for: version), !Task.isCancelled else {
-                    if !Task.isCancelled { loaded = nil; world.setGameAssets(nil, source: source) }
-                    return
-                }
-                loaded = (source, pictures)
-                world.setGameAssets(pictures, source: source)
+                world.refreshGameAssets()
             }
     }
 }

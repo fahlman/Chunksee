@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import ChunkseeKit
 import CoreGraphics
@@ -235,7 +236,7 @@ import SwiftUI
                 "id": .string("minecraft:mob_spawner"), "x": .int(x), "y": .int(64), "z": .int(0),
                 "SpawnData": .compound(["entity": .compound(["id": .string(nether ? "minecraft:blaze" : "minecraft:zombie")])]),
             ])
-            let pet = NBT.compound(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
+            let pet = Fixtures.mob(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
                                    "Pos": .list([.double(Double(x) + 0.5), .double(64), .double(0.5)])])
             return try TestWorld.facts(dimensionID: dimension, blockEntities: [spawner], entities: nether ? [] : [pet], options: options)
         }

@@ -3,7 +3,6 @@ import Foundation
 
 struct WorldGameAssetSource: Equatable {
     let generation: UUID
-    let version: GameAssetVersion?
 }
 
 /// Immutable color facts for one world and game archive. Dimension tabs share this value;
@@ -20,7 +19,7 @@ nonisolated struct MapBiomeColors: Sendable {
     init(world: World, assetSourceKey: String, definitions: [String: BiomeDefinition],
          colorMaps: [Identifier: ItemTexture]) throws {
         seed = try world.seed()
-        sampler = world.level.dataVersion == SaveVersion.java26_3 ? seed.map(BiomeSampler.init(seed:)) : nil
+        sampler = seed.map(BiomeSampler.init(seed:))
         self.assetSourceKey = assetSourceKey
         dataVersion = world.level.dataVersion
         enabledPacks = world.level.enabledDataPacks
@@ -118,7 +117,7 @@ nonisolated final class MapBlockMaterial: Sendable {
     let model: AssetBlock?
     let biomeTints: [BiomeTint]
 
-    init(state: BlockState, model: AssetBlock?, version: Int32) {
+    init(state: BlockState, model: AssetBlock?) {
         self.state = state
         self.model = model
         let indices = Set(model?.parts.flatMap { part in
@@ -130,7 +129,7 @@ nonisolated final class MapBlockMaterial: Sendable {
             }
         } ?? [])
         biomeTints = indices.sorted().compactMap { index in
-            guard case .biome(let source, let offset) = state.tintSource(at: index, gameDataVersion: version) else { return nil }
+            guard case .biome(let source, let offset) = state.tintSource(at: index) else { return nil }
             return BiomeTint(index: index, source: source, yOffset: offset)
         }
     }

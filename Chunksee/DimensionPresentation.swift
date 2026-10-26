@@ -38,15 +38,14 @@ final class DimensionPresentation {
 
     /// An entirely legacy dimension has no drawable terrain; mixed dimensions show readable chunks.
     var isSavedBeforeReadableFormat: Bool {
-        guard let source else { return false }
-        return (source.world.level.dataVersion ?? 0) < DataVersion.flatChunkRoot || selectedIndex.formats.isOnlyLegacy
+        selectedIndex.formats.isOnlyLegacy
     }
 
     /// Do not list unread or unsupported biome data as known-empty.
     var possibleBiomes: [BiomeGroup] {
         guard let source, !isSavedBeforeReadableFormat, let dimension = selectedDimension,
               source.search.index.dimensions[dimension.id] != nil else { return [] }
-        return dimension.vanillaBiomes.map(BiomeGroup.init(id:))
+        return (source.details.definitions.possibleBiomes[dimension.id] ?? []).map(BiomeGroup.init(id:))
     }
 
     func dimensionName(_ id: String) -> String {
@@ -128,15 +127,19 @@ final class DimensionPresentation {
     func isWaitingForPortalLink(_ portal: NetherPortal) -> Bool {
         guard let source, !source.isClosed, let target = NetherPortal.targetDimension(from: portal.dimension) else { return false }
         return source.resources.index.isWaitingForPortals(in: target) ||
-            source.resources.index.isWaitingForPortals(in: portal.dimension)
+            NetherPortal.targetDimension(from: target).map { source.resources.index.isWaitingForPortals(in: $0) } == true
     }
 
     func roundTrip(for portal: NetherPortal) -> NetherPortal.RoundTrip? {
-        PortalLinkStatus.roundTrip(of: portal, portals: portalsByDimension)
+        guard let source else { return nil }
+        return PortalLinkStatus.roundTrip(of: portal, portals: portalsByDimension,
+            dimensionTypes: source.details.dimensionSettings.compactMapValues(\.type), borders: source.details.borders)
     }
 
     func linkStatus(for portal: NetherPortal) -> PortalLinkStatus? {
-        PortalLinkStatus.status(of: portal, portals: portalsByDimension)
+        guard let source else { return nil }
+        return PortalLinkStatus.status(of: portal, portals: portalsByDimension,
+            dimensionTypes: source.details.dimensionSettings.compactMapValues(\.type), borders: source.details.borders)
     }
 
     var inGameMaps: [MapItem] {

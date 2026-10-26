@@ -50,7 +50,7 @@ import Testing
         let resources = try await resources(url, defaults: TestDefaults.make())
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         let library = try fixture.library()
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation, version: GameAssetVersion(name: "26.3", dataVersion: 5023))
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
         await resources.waitForRefresh()
         #expect(first.map?.savedLighting?.saved.sunAngle == 0 && second.map?.savedLighting?.saved.sunAngle == 0)
@@ -122,7 +122,7 @@ import Testing
         map.loadTopBlocks(at: CGPoint(x: 8, y: 8))
         await map.waitUntilIdle(); await map.waitForTopBlocks()
         let tile = try #require(map.tiles[region]), viewport = map.viewport, top = map.topBlock(at: CGPoint(x: 8, y: 8))
-        resources.readPlayers = { _ in Issue.record("Clock-only saves must not read players"); return nil }
+        resources.readPlayers = { _, _ in Issue.record("Clock-only saves must not read players"); return nil }
         resources.readBiomeColors = { _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
         let updated = try lighting(sun: 60)
         resources.readLighting = { _, _ in ["minecraft:overworld": updated] }

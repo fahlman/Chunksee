@@ -20,10 +20,10 @@ struct WorldRefreshWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let gate = AsyncReadGate<[PlayerInfo]>()
         let original = resources.playerSnapshot, file = url.appendingPathComponent("level.dat")
-        resources.readPlayers = { _ in await gate.read("older") }
+        resources.readPlayers = { _, _ in await gate.read("older") }
         resources.worldChanged([file])
         await gate.waitForRequest("older")
-        resources.readPlayers = { _ in await gate.read("newer") }
+        resources.readPlayers = { _, _ in await gate.read("newer") }
         resources.worldChanged([file])
         await gate.waitForRequest("newer")
         resources.close()
@@ -49,7 +49,7 @@ struct WorldRefreshWorkTests {
         let unrelated = AsyncReadGate<Void>(), players = AsyncReadGate<[PlayerInfo]>()
         resources.backgroundWork.start(priority: .utility) { await unrelated.read("other") }
         await unrelated.waitForRequest("other")
-        resources.readPlayers = { _ in await players.read("players") }
+        resources.readPlayers = { _, _ in await players.read("players") }
         resources.worldChanged([url.appendingPathComponent("level.dat")])
         await players.waitForRequest("players")
         await players.finish("players", with: [])
