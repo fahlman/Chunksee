@@ -52,17 +52,21 @@ import Testing
         }
     }
 
-    @Test func aDimensionWhoseChunksAreAllPre118IsExplainedEvenWithCurrentLevelData() async throws {
-        // A world opened in a newer Minecraft has current level data, but chunks nobody revisited stay
-        // in the old format, wrapped in `Level`, which ChunkseeKit rejects.
-        func legacyChunk(x: Int, z: Int) -> TestWorld.ChunkSpec {
-            TestWorld.ChunkSpec(x: x, z: z, nbt: .compound(["DataVersion": .int(2730), "Level": .compound([
+    @Test func onlyUnsupportedNumericChunksHideTerrainWhileLegacyNamedPalettesRemainReadable() async throws {
+        // Current level metadata can coexist with untouched old chunks. Kit reads named
+        // palettes inside Level; numeric block arrays still have no supported terrain path.
+        func legacyChunk(x: Int, z: Int, namedPalette: Bool = false) -> TestWorld.ChunkSpec {
+            let section: NBT = .compound(namedPalette
+                ? ["Y": .byte(0), "Palette": .list([.compound(["Name": .string("minecraft:stone")])])]
+                : ["Y": .byte(0), "Blocks": .byteArray([Int8](repeating: 1, count: 4096))])
+            return TestWorld.ChunkSpec(x: x, z: z, nbt: .compound(["DataVersion": .int(namedPalette ? 2730 : 1343), "Level": .compound([
                 "xPos": .int(Int32(x)), "zPos": .int(Int32(z)), "Status": .string("full"),
-                "Sections": .list([.compound(["Y": .byte(0)])]),
+                "Sections": .list([section]),
             ])]))
         }
         let readable = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
-        for (chunks, isUnreadable) in [([legacyChunk(x: 1, z: 0)], true),                 // only old chunks
+        for (chunks, isUnreadable) in [([legacyChunk(x: 1, z: 0)], true),                 // unsupported numeric blocks
+                                       ([legacyChunk(x: 1, z: 0, namedPalette: true)], false),
                                        ([readable, legacyChunk(x: 1, z: 0)], false),     // mixed: show what's readable
                                        ([readable], false)] as [([TestWorld.ChunkSpec], Bool)] {
             let url = try TestWorld.make(chunks: chunks)   // level data at 5023

@@ -122,8 +122,10 @@ import Testing
 
     @Test func timeSpentIncludesLegacyChunksAndInvalidatesEarlierScanEntries() async throws {
         let legacy = TestWorld.ChunkSpec(x: 2, z: 3, nbt: .compound([
+            "DataVersion": .int(1343),
             "Level": .compound(["xPos": .int(2), "zPos": .int(3), "InhabitedTime": .long(7200),
-                                "Sections": .list([])])
+                                "Sections": .list([.compound(["Y": .byte(0),
+                                    "Blocks": .byteArray([Int8](repeating: 1, count: 4096))])])])
         ]))
         let url = try TestWorld.make(chunks: [terrain(0), legacy])
         defer { try? FileManager.default.removeItem(at: url) }
