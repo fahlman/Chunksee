@@ -253,8 +253,9 @@ import Testing
             "values": ["minecraft:water", "minecraft:flowing_water"]])]
         if let alpha {
             // The opaque second frame must not influence the first-frame opacity.
-            let pixels = Array(repeating: [UInt8(0), 0, 0, alpha], count: 4).flatMap { $0 }
-                + Array(repeating: [UInt8(0), 0, 0, 255], count: 4).flatMap { $0 }
+            let first: [UInt8] = [0, 0, 0, alpha], second: [UInt8] = [0, 0, 0, 255]
+            let pixels = Array(repeating: first, count: 4).flatMap { $0 }
+                + Array(repeating: second, count: 4).flatMap { $0 }
             files["assets/minecraft/textures/block/water_still.png"] = try ItemPictureFixture.png(pixels, width: 2, height: 4)
         }
         return try ItemPictureFixture(extraFiles: files)
