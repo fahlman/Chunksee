@@ -898,10 +898,10 @@ decision. Selecting an unavailable map or saved place shows its details without 
 overlaying it on the wrong dimension. Sidebar, pointer, VoiceOver and linked-pet input share that
 selection transition. Empty/stale map input clears transient row/pin selection
 while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
-VoiceOver marker actions select the corresponding native sidebar row. Only user
-input through the List selection binding calls `choose` and requests sidebar focus. A simultaneous
-sidebar tap also requests its existing focus, including when the already-selected row leaves the
-binding unchanged; it does not select, navigate or replace native row/control actions. Pointer
+VoiceOver marker actions select the corresponding native sidebar row. Sidebar selection and
+repeated-row actions call `choose`; the List binding and its simultaneous focus gesture request
+sidebar focus, including when an already-selected row leaves the binding unchanged. The List's
+focus gesture does not select, navigate or replace native row/control actions. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. It scrolls when native disclosure
 animation finishes, so expanding rows above the viewport cannot undo the reveal by preserving the
