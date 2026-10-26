@@ -98,7 +98,8 @@ import Testing
             dimension: .string(overworld), position: [42, 75, -12]))
         session.resources.playerRoster.publish([updated])
         // No actor suspension: the roster is newer while its carried-mob merge is pending.
-        #expect(PlayerPresentation.position(of: try #require(session.players.first { $0.uuid == carrier })) == oldPosition)
+        let pendingPlayer = try #require(session.players.first { $0.uuid == carrier })
+        #expect(PlayerPresentation.position(of: pendingPlayer) == oldPosition)
         await session.resources.index.waitForProjection()
         let shownPlayer = try #require(session.players.first { $0.uuid == carrier })
         let shownPet = try #require(session.presentation.selectedIndex.creatures.first { $0.carrier == carrier })
