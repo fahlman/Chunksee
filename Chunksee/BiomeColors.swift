@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Outline colors for biomes. Minecraft has no official biome map colors, so these are the app's
