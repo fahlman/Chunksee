@@ -1,3 +1,4 @@
+import Accessibility
 import ChunkseeKit
 import ChunkseeIndex
 import SwiftUI
@@ -245,6 +246,7 @@ struct WorldView: View {
     }
 
     private func selectOnMap(_ target: MapTarget?, y: Double?) {
+        let previousSelection = session.selection.sidebarSelection
         var selected: SidebarItem?
         withAnimation(.default, completionCriteria: .removed) {
             if sidebarDisclosure.selectOnMap(target, y: y, in: session) {
@@ -252,6 +254,9 @@ struct WorldView: View {
             }
         } completion: {
             if let selected { finishSidebarReveal(selected) }
+        }
+        if previousSelection != nil, session.selection.sidebarSelection == nil {
+            AccessibilityNotification.Announcement(String(localized: "Selection cleared")).post()
         }
     }
 

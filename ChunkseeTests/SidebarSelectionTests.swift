@@ -478,6 +478,65 @@ import Testing
         session.close(); await session.waitUntilClosed()
     }
 
+    @Test func mapEscapeClearsSelectionOnlyAfterTheRulerFinishesCancelling() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let map = try #require(session.map)
+        let view = MapView(session: session, map: map, onSelect: { session.selection.mapClicked($0, y: $1) })
+        session.selection.choose(.player(playerID))
+        let viewport = map.viewport, depth = map.depth
+        session.annotations.ruler.isEnabled = true
+        session.annotations.ruler.mark(.zero)
+        session.annotations.ruler.mark(CGPoint(x: 3, y: 4))
+        view.escape()
+        #expect(session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
+        #expect(session.selection.sidebarSelection == .player(playerID))
+        view.escape()
+        #expect(!session.annotations.ruler.isEnabled)
+        #expect(session.selection.sidebarSelection == .player(playerID))
+        view.escape()
+        #expect(session.selection.sidebarSelection == nil && session.selection.mapSelection == nil)
+        #expect(session.selection.inspector == nil && map.viewport == viewport && map.depth == depth)
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test func mapEscapeSharesEmptyMapSelectionAndOverlayRules() async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let map = try #require(session.map)
+        await session.search.waitForIndex()
+        let index = session.presentation.selectedIndex
+        let creature = try #require(index.creatures.first)
+        let place = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: .zero))
+        let overlay = try #require(session.presentation.inGameMaps.first { $0.id == 3 })
+        var disclosure = SidebarDisclosure()
+        let view = MapView(session: session, map: map, onSelect: { disclosure.selectOnMap($0, y: $1, in: session) })
+        for row in [SidebarItem.player(playerID), .creature(creature.id), .savedPlace(place.id), .worldInfo, .storage, .inGameMap(3)] {
+            session.selection.choose(row)
+            let viewport = map.viewport, depth = map.depth
+            disclosure.selectOnMap(nil, y: nil, in: session)
+            let expectedRow = session.selection.sidebarSelection
+            let expectedInspector = session.selection.inspector
+            let expectedMapSelection = session.selection.mapSelection
+            session.selection.choose(row)
+            view.escape()
+            #expect(session.selection.sidebarSelection == expectedRow && session.selection.inspector == expectedInspector)
+            #expect(session.selection.mapSelection == expectedMapSelection && map.viewport == viewport && map.depth == depth)
+        }
+        session.selection.show(overlay)
+        session.selection.mapClicked(.row(.savedPlace(place.id)), y: nil)
+        view.escape()
+        #expect(session.selection.sidebarSelection == nil && session.selection.mapSelection == .inGameMap(overlay))
+        #expect(MapContent(session: session).inGameMap?.map.id == overlay.id && session.selection.inspector == .selection)
+        session.close(); await session.waitUntilClosed()
+    }
+
     @Test func emptyMapKeepsWorldInfoAndStorageRowsSelected() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }

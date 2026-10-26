@@ -118,6 +118,11 @@ Command-9 Fit World uses MapNavigation's existing fit/availability calculation. 
 Storage share one native toggle builder backed by SelectionModel.inspector, keeping their menu
 checkmarks, selected sidebar rows and inspector in sync without separate menu state.
 
+Map-focused Escape first uses MapRuler's existing cancellation behavior. With the ruler off it
+uses the same selection callback as an empty-map click. SelectionModel alone decides which
+global rows and in-game map overlays remain. The shared map callback announces an actual row
+deselection through Apple's accessibility API; other focus contexts keep their own Escape.
+
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
 ItemAppearance uses one filled tree for plant items across every item surface; BiomeGroup keeps
 its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not

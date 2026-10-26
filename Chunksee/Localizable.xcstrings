@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Selection cleared" : {
+      "comment" : "VoiceOver announcement after an empty-map click or map-focused Escape clears the selected row. An in-game map overlay may remain visible."
+    },
     "Increase Y Level" : {
       "comment" : "View menu command: raise the remembered cutaway height by one block and enter Cutaway, including from Surface."
     },
