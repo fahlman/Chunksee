@@ -38,6 +38,7 @@ struct InGameMapRow: View {
             }
         }
         .tag(SidebarItem.inGameMap(map.id))
+        .repeatSidebarSelection(.inGameMap(map.id), in: session.selection)
         .id(SidebarItem.inGameMap(map.id))
         .help(availability.help)
         .locationMenu(session: session, position: CGPoint(x: map.centerX, y: map.centerZ),

@@ -15,6 +15,7 @@ struct WorldView: View {
     @State private var showsBlockFilter = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
+    @State private var sidebarModifiers: EventModifiers = []
 
     var body: some View {
         @Bindable var visibility = session.visibility
@@ -118,6 +119,10 @@ struct WorldView: View {
                     }
                 }
                 .focused($isSidebarFocused)
+                .onModifierKeysChanged(mask: [.command, .shift, .control, .option]) { _, modifiers in
+                    sidebarModifiers = modifiers
+                }
+                .environment(\.sidebarPlainClick, sidebarModifiers.isEmpty)
                 // Clicking the selected row need not change the List binding, but must still
                 // move keyboard input from the map to the sidebar. Keep native row/control actions.
                 .simultaneousGesture(TapGesture().onEnded { isSidebarFocused = true })
@@ -292,6 +297,7 @@ private struct PlayerRow: View {
                           isDimmed: !availability.canNavigate || isOutdated) {
                 Image(systemName: MarkerStyle.playerAppearance(.player).symbol)
             }
+            .repeatSidebarSelection(.player(player.uuid), in: session.selection)
         } commands: {
             if let location = PlayerPresentation.position(of: player) {
                 LocationMenu(session: session, position: CGPoint(x: location.x, y: location.z),
@@ -399,6 +405,7 @@ private struct HitList: View {
                     Image(systemName: MarkerStyle.search.symbol.name)
                 }
                 .tag(SidebarItem.hit(query: query, id: hit.id))
+                .repeatSidebarSelection(.hit(query: query, id: hit.id), in: session.selection)
                 .id(SidebarItem.hit(query: query, id: hit.id))
                 .help(help(for: hit, availability: availability))
                 .locationMenu(session: session, position: hit.position, dimension: hit.dimension,

@@ -885,6 +885,12 @@ they add no readers. Missing heights stay absent; map centers, biome areas and s
 acquire an invented Y. Maps retain their thumbnail, with the shared map symbol as a fallback.
 Selection, visibility, menus and navigation remain outside this stateless label.
 
+Selected location labels in the sidebar repeat SelectionModel.choose on an ordinary click.
+The existing native List primary action supplies Return and double-click behavior.
+A single sidebar modifier-key observer leaves modified clicks to native
+selection, and player visibility buttons remain outside the label gesture. Map marker clicks
+still keep the viewport. Current saved positions and dimension routing remain SelectionModel's.
+
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
 snapshots. A selected search result retains its search-row identity while its typed source identifies
@@ -898,10 +904,10 @@ decision. Selecting an unavailable map or saved place shows its details without 
 overlaying it on the wrong dimension. Sidebar, pointer, VoiceOver and linked-pet input share that
 selection transition. Empty/stale map input clears transient row/pin selection
 while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
-VoiceOver marker actions select the corresponding native sidebar row. Only user
-input through the List selection binding calls `choose` and requests sidebar focus. A simultaneous
-sidebar tap also requests its existing focus, including when the already-selected row leaves the
-binding unchanged; it does not select, navigate or replace native row/control actions. Pointer
+VoiceOver marker actions select the corresponding native sidebar row. Sidebar selection and
+repeated-row actions call `choose`; the List binding and its simultaneous focus gesture request
+sidebar focus, including when an already-selected row leaves the binding unchanged. The List's
+focus gesture does not select, navigate or replace native row/control actions. Pointer
 selection keeps map focus and its viewport; VoiceOver retains its existing centering action.
 The view requests ancestor expansion and scrolling with SwiftUI. It scrolls when native disclosure
 animation finishes, so expanding rows above the viewport cannot undo the reveal by preserving the
