@@ -61,6 +61,14 @@ struct MapView: View {
         }
     }
 
+    func escape() {
+        if session.annotations.ruler.isEnabled {
+            session.annotations.ruler.escape()
+        } else {
+            onSelect(nil, nil)
+        }
+    }
+
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
@@ -96,8 +104,7 @@ struct MapView: View {
         .focusEffectDisabled()
         .focused($isFocused)
         .onKeyPress(.escape) {
-            guard session.annotations.ruler.isEnabled else { return .ignored }
-            session.annotations.ruler.escape()
+            escape()
             return .handled
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
