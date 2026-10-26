@@ -17,11 +17,12 @@ import Testing
         return StructureStart.starts(inChunk: nbt)[0]
     }
 
-    @Test func groupsNamesAndDefaults() {
-        #expect(StructureGroup.group(for: "minecraft:village_savanna") == .village)
-        #expect(StructureGroup.group(for: "minecraft:ocean_ruin_cold") == .ruins)
-        #expect(StructureGroup.group(for: "minecraft:mineshaft_mesa") == .mineshaft)
-        #expect(StructureGroup.group(for: "mydatapack:tower") == .other)
+    @Test func groupsNamesAndDefaults() throws {
+        let groups = try StructureTagFixture.catalog()
+        #expect(groups.group(for: "minecraft:village_savanna") == .village)
+        #expect(groups.group(for: "minecraft:ocean_ruin_cold") == .ruins)
+        #expect(groups.group(for: "minecraft:mineshaft_mesa") == .mineshaft)
+        #expect(groups.group(for: "mydatapack:tower") == .other)
         #expect(!StructureGroup.mineshaft.isShownByDefault && !StructureGroup.netherFossil.isShownByDefault)
         #expect(StructureGroup.stronghold.isShownByDefault)
         let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",

@@ -6,20 +6,20 @@ import Testing
 
 @Suite(.isolatedStores) struct IdentifierPresentationTests {
     @Test(arguments: ["minecraft:", "", ":"])
-    func defaultNamespaceUsesTheSameNamesAndGroups(prefix: String) {
+    func defaultNamespaceUsesTheSameNamesAndGroups(prefix: String) throws {
         #expect(ReadableName.from(prefix + "diamond_sword") == "Diamond Sword")
         #expect(ItemAppearance.symbol(for: prefix + "diamond_sword") == ItemAppearance.symbol(for: "minecraft:diamond_sword"))
         #expect(PlayerRecords.travelName(prefix + "aviate_one_cm") == "Elytra")
         #expect(WorldDetails.readableRule(prefix + "keep_inventory") == "Keep Inventory")
         #expect(PetDetailText.name(prefix + "red_blue") == "Red and Blue")
-        #expect(StructureGroup.group(for: prefix + "village_plains") == .village)
+        #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)
         let bed = PlaceMarker(PointOfInterest(type: prefix + "home", x: 1, y: 64, z: 2, freeTickets: 0))
         #expect(bed.group == .bed && bed.name == "Villager’s Bed")
     }
 
     @Test func customAndUnfamiliarNamesStayVisibleWithoutBecomingVanillaGroups() {
         #expect(ReadableName.from("mod:deep_caves") == "Deep Caves")
-        #expect(StructureGroup.group(for: "mod:village_plains") == .other)
+        #expect(StructureGroup.Catalog(tags: [:]).group(for: "mod:village_plains") == .other)
         #expect(PlaceGroup.group(for: "mod:home") == .other)
         #expect(BlockColors.color(for: "mod:air") != nil)
         #expect(!BlockColors.isWater("mod:water"))
@@ -85,7 +85,8 @@ import Testing
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try PropertyListEncoder().encode([stale])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
-        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache)).structures
+        let groups = try StructureTagFixture.catalog()
+        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, structureGroups: groups)).structures
         #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Plains Village")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }

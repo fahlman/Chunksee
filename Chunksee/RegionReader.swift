@@ -13,17 +13,20 @@ actor RegionReader {
     let cache: ScanCache
     nonisolated let scanOptions: RegionScanOptions
     nonisolated let notableBlocks: NotableBlock.Catalog
+    nonisolated let structureGroups: StructureGroup.Catalog
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
 
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
          options: RegionScanOptions = RegionReader.options(),
-         notableBlocks: NotableBlock.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
+         notableBlocks: NotableBlock.Catalog = .init(tags: [:]),
+         structureGroups: StructureGroup.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
         self.scanOptions = options
         self.notableBlocks = notableBlocks
+        self.structureGroups = structureGroups
         self.read = read
     }
 

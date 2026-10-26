@@ -2,11 +2,11 @@ import CoreGraphics
 import Foundation
 import ChunkseeKit
 
-/// How a family of structures is shown and filtered. Several structure ids share one group, such as
-/// the five kinds of village.
+/// How a family of structures is shown and filtered. Several structure IDs can share one group,
+/// such as the village variants supplied by the game.
 nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     case village, stronghold, ancientCity, trialChambers, monument, mansion, temple, ruins, ruinedPortal
-    case shipwreck, buriedTreasure, outpost, mineshaft, fortress, bastion, netherFossil, endCity, other
+    case shipwreck, buriedTreasure, outpost, mineshaft, fortress, bastion, netherFossil, endCity, abandonedCamp, other
 
     var name: String {
         switch self {
@@ -27,6 +27,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
         case .bastion: String(localized: "Bastion Remnants")
         case .netherFossil: String(localized: "Nether Fossils")
         case .endCity: String(localized: "End Cities")
+        case .abandonedCamp: String(localized: "Abandoned Camps")
         case .other: String(localized: "Other Structures")
         }
     }
@@ -50,6 +51,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
         case .bastion: "crown.fill"
         case .netherFossil: "fossil.shell.fill"
         case .endCity: "building.2.crop.circle"
+        case .abandonedCamp: "tent.fill"
         case .other: "square.dashed"
         }
     }
@@ -74,6 +76,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
         case .bastion: 0x2C2C2C
         case .netherFossil: 0xBFB8A5
         case .endCity: 0xB455B6
+        case .abandonedCamp: 0x566573
         case .other: 0x566573
         }
     }
@@ -82,22 +85,53 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     /// 323 Nether fossils in Ryan's Realm), and they'd bury the rest.
     var isShownByDefault: Bool { self != .mineshaft && self != .netherFossil }
 
-    static func group(for id: String) -> StructureGroup {
+    /// These associations choose presentation families; the game supplies their members.
+    private var tagID: String? {
+        switch self {
+        case .village: "minecraft:village"
+        case .ruins: "minecraft:ocean_ruin"
+        case .ruinedPortal: "minecraft:ruined_portal"
+        case .shipwreck: "minecraft:shipwreck"
+        case .mineshaft: "minecraft:mineshaft"
+        case .abandonedCamp: "minecraft:abandoned_camp"
+        default: nil
+        }
+    }
+
+    static var tagIDs: Set<String> { Set(allCases.compactMap(\.tagID)) }
+
+    /// One immutable grouping snapshot, shared by every region projection for this world.
+    struct Catalog: Sendable, Equatable {
+        private var byID: [String: StructureGroup] = [:]
+
+        init(tags: [String: GameTag]) {
+            // A saved structure gets one row/marker. Overlapping tags use the existing group
+            // order, independent of resource dictionary iteration, before design-only groups.
+            for group in StructureGroup.allCases {
+                guard let tag = group.tagID.flatMap({ tags[$0] }) else { continue }
+                for member in tag.members where byID[member.id] == nil { byID[member.id] = group }
+            }
+        }
+
+        func group(for id: String) -> StructureGroup {
+            guard let id = Identifier(id)?.description else { return .other }
+            return byID[id] ?? StructureGroup.designGroup(for: id)
+        }
+    }
+
+    /// Families without a game tag remain the app's presentation choices.
+    private static func designGroup(for id: String) -> StructureGroup {
         guard let name = ReadableName.vanillaPath(id) else { return .other }
         switch name {
-        case _ where name.hasPrefix("village"): return .village
         case "stronghold": return .stronghold
         case "ancient_city": return .ancientCity
         case "trial_chambers": return .trialChambers
         case "monument": return .monument
         case "mansion": return .mansion
         case "desert_pyramid", "jungle_pyramid", "swamp_hut", "igloo": return .temple
-        case _ where name.hasPrefix("ocean_ruin"), "trail_ruins": return .ruins
-        case _ where name.hasPrefix("ruined_portal"): return .ruinedPortal
-        case _ where name.hasPrefix("shipwreck"): return .shipwreck
+        case "trail_ruins": return .ruins
         case "buried_treasure": return .buriedTreasure
         case "pillager_outpost": return .outpost
-        case _ where name.hasPrefix("mineshaft"): return .mineshaft
         case "fortress": return .fortress
         case "bastion_remnant": return .bastion
         case "nether_fossil": return .netherFossil
@@ -136,10 +170,10 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
         return words.joined(separator: " ")
     }
 
-    init(_ start: StructureStart) {
+    init(_ start: StructureStart, groups: StructureGroup.Catalog = .init(tags: [:])) {
         id = "\(start.id)@\(start.chunkX),\(start.chunkZ)"
         structureID = start.id
-        group = StructureGroup.group(for: start.id)
+        group = groups.group(for: start.id)
         if let box = start.bounds {
             bounds = CGRect(x: box.minX, y: box.minZ, width: box.maxX - box.minX + 1, height: box.maxZ - box.minZ + 1)
             y = box.minY + (box.maxY - box.minY + 1) / 2
