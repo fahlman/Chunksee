@@ -141,7 +141,7 @@ actor GameAssetLibrary {
                 + data.floats.count * MemoryLayout<Float>.stride + data.flags.count * MemoryLayout<Bool>.stride
                 + data.colors.count * MemoryLayout<UInt32>.stride
                 + data.strings.reduce(0) { $0 + 32 + $1.utf8.count }
-                + patternBytes + potBytes + headBytes
+                + patternBytes + potBytes + headBytes + selection.savedPropertyStorageCost
                 + colors.reduce(0) { $0 + 32 + $1.count * MemoryLayout<UInt32>.stride }
         }
     }
@@ -258,7 +258,7 @@ actor GameAssetLibrary {
 
     private func tint(_ index: Int, for request: MapBlockColorRequest) -> UInt32? {
         if let value = request.tints.color(at: index) { return value }
-        if case .constant(let value) = request.state.tintSource(at: index, gameDataVersion: version.dataVersion) { return value }
+        if case .constant(let value) = request.state.tintSource(at: index) { return value }
         return nil
     }
 
@@ -302,7 +302,7 @@ actor GameAssetLibrary {
     private func material(for state: BlockState) -> MapBlockMaterial {
         let key = BlockKey(state)
         if let cached = caches.blockMaterials.object(forKey: key) { return cached }
-        let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state), version: version.dataVersion)
+        let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state))
         let cost = material.model?.parts.reduce(1) { total, part in
             total + part.alternatives.reduce(0) { $0 + Self.modelCost($1.model) }
         } ?? 1
@@ -325,6 +325,11 @@ actor GameAssetLibrary {
     func lighting(in world: World) throws -> [String: MapLighting] {
         try checkAvailable()
         return try MapLighting.read(in: world, assets: assets)
+    }
+
+    func definitions(in world: World) throws -> WorldDefinitions {
+        try checkAvailable()
+        return try WorldDefinitions.read(world, assets: assets)
     }
 
     /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels

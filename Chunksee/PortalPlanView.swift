@@ -10,7 +10,8 @@ struct PortalPlanView: View {
 
     var body: some View {
         let plan = draft.entrance.flatMap {
-            PortalPlan(entrance: $0, dimension: draft.dimension, portals: session.presentation.portalsByDimension)
+            PortalPlan(entrance: $0, dimension: draft.dimension, portals: session.presentation.portalsByDimension,
+                       dimensionTypes: session.details.dimensionSettings.compactMapValues(\.type), borders: session.details.borders)
         }
         VStack(alignment: .leading, spacing: 16) {
             Label("Plan Portal", systemImage: PlaceGroup.portal.symbol).font(.headline)

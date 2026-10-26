@@ -71,7 +71,9 @@ import Testing
         let removed = ItemStack(id: plain.id, components: .compound([
             "minecraft:profile": .string("Someone"), "!minecraft:profile": .compound([:])
         ]))
-        #expect(try await library.picture(for: removed) === defaultImage)
+        let removedImage = try #require(try await library.picture(for: removed))
+        #expect(try ItemPictureFixture.pixels(removedImage).bytes == ItemPictureFixture.pixels(defaultImage).bytes)
+        #expect(library.cachedPicture(for: removed) === removedImage)
         #expect(library.cachedPicture(for: plain) === defaultImage)
         await library.close()
         #expect(library.cachedPicture(for: red) == nil)

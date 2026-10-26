@@ -44,7 +44,7 @@ import Testing
             .write(to: pack.appendingPathComponent("pack.mcmeta"))
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
             "LevelName": .string("Height Scale"), "DataVersion": .int(Int32(SaveVersion.java26_3)),
-            "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string("file/custom")])])
+            "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack), .string("file/custom")])])
         ])]), to: url.appendingPathComponent("level.dat"))
         let details = WorldDetails.read(try World(contentsOf: url))
         let scale = try #require(MapHeightScale(settings: details.dimensionSettings["minecraft:overworld"]))

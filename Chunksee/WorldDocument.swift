@@ -64,8 +64,9 @@ nonisolated struct WorldSnapshot: Sendable {
                 let path = dimension.documentURL(inWorldAt: url).resolvingSymlinksInPath().path
                 if documents[path] == nil { documents[path] = dimension.id }
             }
+            let details = WorldDetails.read(world)
             let snapshot = WorldSnapshot(access: access, world: world, dimensions: dimensions, dimensionDocuments: documents,
-                                         players: world.players(), details: WorldDetails.read(world))
+                                         players: world.players(enchantments: details.definitions.enchantments), details: details)
             try Task.checkCancellation()
             return snapshot
         } catch is CancellationError {

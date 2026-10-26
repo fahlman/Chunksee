@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import ChunkseeKit
 import CoreGraphics
@@ -62,7 +63,7 @@ import Testing
     }
 
     private func entities(_ x: Int, name: String) -> TestWorld.ChunkSpec {
-        .init(x: x, z: 0, nbt: .compound(["DataVersion": .int(5023), "Entities": .list([.compound([
+        .init(x: x, z: 0, nbt: .compound(["DataVersion": .int(5023), "Entities": .list([Fixtures.mob([
             "id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, Int32(x)]),
             "Owner": .intArray([5, 6, 7, 8]), "Health": .float(8), "CustomName": .string(name),
             "Pos": .list([.double(Double(x * 16)), .double(64), .double(0)]),
@@ -100,7 +101,9 @@ import Testing
     }
 
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let definitions = resources.details.definitions
+        let reader = RegionReader(dimension: dimension, cache: .off,
+            options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id]), definitions: definitions), notableBlocks: definitions.notableBlocks)
         let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
         let incremental = try #require(resources.index.index.dimensions[dimension.id])
@@ -176,6 +179,7 @@ import Testing
     }
 
     @Test func terrainEntitiesAndPOIReuseOtherRegionsAndPreserveWholeDimensionAggregates() async throws {
+        let context = try PortalTestContext()
         let url = try TestWorld.make(chunks: [terrain(31), terrain(32)])
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url)
@@ -197,7 +201,7 @@ import Testing
         #expect(initial.biomeAreas.filter { $0.chunkCount == 2 }.count == 2) // surface and cave join across x=512
         let portal = try #require(initial.places.first { $0.group == .portal }?.portal)
         #expect(portal.blocks.count == 4)
-        #expect(PortalLinkStatus.status(of: portal, portals: resources.index.portals) == .linked)
+        #expect(PortalLinkStatus.status(of: portal, portals: resources.index.portals, dimensionTypes: context.types, borders: context.borders) == .linked)
         await reads.reset()
         let terrainFile = try write([terrain(32, count: 9)], in: dimension, folder: .terrain, region: 1)
         await changed([terrainFile], in: resources)

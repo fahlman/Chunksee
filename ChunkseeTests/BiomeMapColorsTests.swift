@@ -253,8 +253,7 @@ import Testing
         let snapshot = try await library.biomeColors(in: resources.world)
         let gate = AsyncReadGate<MapBiomeColors>()
         resources.readBiomeColors = { _, _, _, _ in await gate.read("initial") }
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation,
-            version: GameAssetVersion(name: resources.world.level.versionName, dataVersion: resources.world.level.dataVersion))
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source)
         resources.setGameAssets(library, source: source)
         await gate.waitForRequest("initial")
@@ -289,8 +288,7 @@ import Testing
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), library = try fixture.library()
         resources.refreshDelay = .zero
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation,
-            version: GameAssetVersion(name: resources.world.level.versionName, dataVersion: resources.world.level.dataVersion))
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source)
         resources.setGameAssets(library, source: source)
         await resources.waitForRefresh()
@@ -567,8 +565,7 @@ import Testing
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), library = try fixture.library()
         resources.refreshDelay = .zero
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation,
-            version: GameAssetVersion(name: resources.world.level.versionName, dataVersion: resources.world.level.dataVersion))
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)
@@ -617,8 +614,7 @@ import Testing
             try Fixtures.writeGzippedNBT(.compound(["data": .compound([
                 "seed": .long(0), "dimensions": .compound(["minecraft:overworld": .compound(["type": type])])
             ])]), to: file)
-            return MapSurfaceContext(dimensionID: dimension.id,
-                settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings[dimension.id])
+            return MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings[dimension.id])
         }
         let cache = TileCache(directory: url.appendingPathComponent("tiles"))
         var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false, cutawayY: 15)

@@ -30,21 +30,22 @@ import Testing
         }
     }
 
-    @Test func aWorldSavedBeforeMinecraft118IsRecognized() async throws {
+    @Test func readableChunksAndPackBiomesDoNotDependOnTheWorldVersion() async throws {
         func session(dataVersion: Int32?) async throws -> (URL, WorldSession) {
-            let url = try TestWorld.make(chunks: [])
-            var data: [String: NBT] = ["LevelName": .string("Old")]
+            let url = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+            var data: [String: NBT] = ["LevelName": .string("Old"),
+                "DataPacks": .compound(["Enabled": .list([.string(TestWorldResources.pack)])])]
             if let dataVersion { data["DataVersion"] = .int(dataVersion) }
             try Data(Compression.deflate(NBT.compound(["Data": .compound(data)]).serialized(), gzip: true))
                 .write(to: url.appendingPathComponent("level.dat"))
             let defaults = TestDefaults.make()
             return (url, try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil))
         }
-        for (dataVersion, isOld) in [(nil, true), (Int32(2730), true), (Int32(2844), false), (Int32(5023), false)] as [(Int32?, Bool)] {
+        for dataVersion: Int32? in [nil, 2730, 2844, 5023, 9999] {
             let (url, opened) = try await session(dataVersion: dataVersion)
-            #expect(opened.presentation.isSavedBeforeReadableFormat == isOld, "data version \(String(describing: dataVersion))")
             await opened.search.waitForIndex()
-            #expect(opened.presentation.possibleBiomes.isEmpty == isOld)   // no "(0)" rows for a world that can't be read
+            #expect(!opened.presentation.isSavedBeforeReadableFormat, "data version \(String(describing: dataVersion))")
+            #expect(opened.presentation.possibleBiomes.count == 4)
             opened.close()
             await opened.waitUntilClosed()
             try? FileManager.default.removeItem(at: url)

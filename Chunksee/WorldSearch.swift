@@ -37,7 +37,7 @@ nonisolated struct DimensionContent: Sendable {
     static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
         let available = reader.availableRegions
         let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
-            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
+            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs, notableBlocks: reader.notableBlocks)
         let selected = change.mapRegions
         let changed = previousIndex.regionsToRead(available: available, selected: selected)
         let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex?).self) { group in
@@ -215,7 +215,10 @@ nonisolated enum WorldSearch {
     /// The richest chunks holding a notable block whose name or id matches every word, one hit per
     /// chunk and block. The pin sits at the chunk's center; the detail gives the height range to dig.
     private static func blockHits(_ index: SearchIndex, query: SearchQuery) -> [SearchHit] {
-        let blocks = Set(NotableBlock.allCases.filter { query.matches($0.searchText) })
+        let catalogs = index.dimensions.values.compactMap { $0.shared?.notableBlocks }
+        let blocks = Set(NotableBlock.allCases.filter { block in
+            query.matches(block.name) || catalogs.contains { query.matches(block.searchText(in: $0)) }
+        })
         return index.richestDeposits(matching: blocks, limit: blockResultLimit, in: \.blocks).compactMap { entry in
             let dimension = entry.dimension, chunk = entry.value.chunk, deposit = entry.value.deposit
             guard let origin = chunk.blockOrigin else { return nil }

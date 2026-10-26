@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import AppKit
 import ChunkseeKit
 import Testing
@@ -117,7 +118,7 @@ import Testing
             } else {
                 fields["Owner"] = .intArray([1, 2, 3, 4])
             }
-            return .compound(fields)
+            return Fixtures.mob(fields)
         }
         var entities: [NBT] = []
         for axis in 0..<4 {

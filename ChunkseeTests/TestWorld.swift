@@ -31,9 +31,8 @@ nonisolated enum TestWorld {
         let regionDir = root.appendingPathComponent("dimensions/minecraft/overworld/region")
         try FileManager.default.createDirectory(at: regionDir, withIntermediateDirectories: true)
         var levelData: [String: NBT] = ["LevelName": .string("Test"), "DataVersion": .int(Int32(SaveVersion.java26_3))]
-        if !dimensionSettings.isEmpty {
-            levelData["DataPacks"] = .compound(["Enabled": .list([.string("vanilla")])])
-        }
+        try TestWorldResources.write(to: root)
+        levelData["DataPacks"] = .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack)])])
         let level = NBT.compound(["Data": .compound(levelData)])
         try Fixtures.writeGzippedNBT(level, to: root.appendingPathComponent("level.dat"))
         if !dimensionSettings.isEmpty {

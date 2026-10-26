@@ -6,35 +6,37 @@ import Testing
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct PortalPlanTests {
     @Test func matchingCoordinatesAndHeightUseTheSharedPortalRules() throws {
+        let context = try PortalTestContext()
         let entrance = NetherPortal.Block(x: -9, y: 64, z: -1)
         let near = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: -2, y: 60, z: -1)])
         let high = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: -2, y: 100, z: -1)])
         let plan = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld,
-                                          portals: [NetherPortal.nether: [high, near]]))
+                                          portals: [NetherPortal.nether: [high, near]], dimensionTypes: context.types, borders: context.borders))
         #expect(plan.targetDimension == NetherPortal.nether)
         #expect(plan.destination == .init(x: -2, y: 64, z: -1))
         #expect(plan.link == .portal(near, block: near.entry))
         let higher = try #require(PortalPlan(entrance: .init(x: -9, y: 99, z: -1), dimension: NetherPortal.overworld,
-                                            portals: [NetherPortal.nether: [high, near]]))
+                                            portals: [NetherPortal.nether: [high, near]], dimensionTypes: context.types, borders: context.borders))
         #expect(higher.link == .portal(high, block: high.entry))
-        let reverse = try #require(PortalPlan(entrance: .init(x: -2, y: -13, z: 3), dimension: NetherPortal.nether, portals: [:]))
+        let reverse = try #require(PortalPlan(entrance: .init(x: -2, y: -13, z: 3), dimension: NetherPortal.nether, portals: [:], dimensionTypes: context.types, borders: context.borders))
         #expect(reverse.targetDimension == NetherPortal.overworld)
         #expect(reverse.destination == .init(x: -16, y: -13, z: 24))
         for dimension in ["minecraft:the_end", "custom:caves"] {
-            #expect(PortalPlan(entrance: entrance, dimension: dimension, portals: [:]) == nil)
+            #expect(PortalPlan(entrance: entrance, dimension: dimension, portals: [:], dimensionTypes: context.types, borders: context.borders) == nil)
         }
     }
 
     @Test func unreadPortalDataIsNotAnEmptyDestination() throws {
+        let context = try PortalTestContext()
         let entrance = NetherPortal.Block(x: 80, y: 64, z: 160)
         let destination = NetherPortal.Block(x: 10, y: 64, z: 20)
-        let unread = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld, portals: [:]))
+        let unread = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld, portals: [:], dimensionTypes: context.types, borders: context.borders))
         #expect(unread.destination == destination && unread.link == nil)
-        let empty = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld, portals: [NetherPortal.nether: []]))
+        let empty = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld, portals: [NetherPortal.nether: []], dimensionTypes: context.types, borders: context.borders))
         #expect(empty.link == .wouldCreateNewPortal(destination: destination))
         let far = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: 100, y: 64, z: 20)])
         let outside = try #require(PortalPlan(entrance: entrance, dimension: NetherPortal.overworld,
-                                             portals: [NetherPortal.nether: [far]]))
+                                             portals: [NetherPortal.nether: [far]], dimensionTypes: context.types, borders: context.borders))
         #expect(outside.link == .wouldCreateNewPortal(destination: destination))
     }
 

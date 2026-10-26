@@ -15,6 +15,7 @@ final class WorldIndexStore {
     private(set) var readers: [RegionReader]
     private let readDimension: @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent
     @ObservationIgnored private var indexTask: Task<Void, Never>?
+    @ObservationIgnored private var readerGeneration = 0
     @ObservationIgnored private var creatureProjection: (revision: Int, players: PlayerSnapshot, index: SearchIndex)?
     /// A pass asked for while one runs, with the dimension to read first. It starts when the
     /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
@@ -89,10 +90,10 @@ final class WorldIndexStore {
         isIndexing = index.dimensions.isEmpty
         let readers = readers.filter { changes?[$0.dimension.id] != nil || changes == nil }
             .sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
-        let readDimension = readDimension
+        let readDimension = readDimension, generation = readerGeneration
         indexTask = work.start(priority: .utility) { [weak self] in
             defer {
-                if self?.isClosed == true {
+                if self?.isClosed == true, self?.readerGeneration == generation {
                     self?.indexTask = nil
                     self?.queuedPass = nil
                     self?.isIndexing = false
@@ -102,12 +103,12 @@ final class WorldIndexStore {
                 guard !Task.isCancelled, self?.isClosed == false else { return }
                 let previous = self?.index.dimensions[reader.dimension.id]
                 let part = await readDimension(reader, previous, changes?[reader.dimension.id] ?? .all)
-                guard let self, !Task.isCancelled, !self.isClosed else { return }
+                guard let self, !Task.isCancelled, !self.isClosed, self.readerGeneration == generation else { return }
                 self.index.dimensions[reader.dimension.id] = part
                 self.portals = self.index.dimensions.mapValues { $0.places.compactMap(\.portal) }
                 self.revision += 1
             }
-            guard let self else { return }
+            guard let self, !Task.isCancelled, !self.isClosed, self.readerGeneration == generation else { return }
             self.isIndexing = false
             self.indexTask = nil
             if let next = self.queuedPass {
@@ -115,6 +116,22 @@ final class WorldIndexStore {
                 self.rebuild(firstDimension: next.firstDimension, changes: next.changes)
             }
         }
+    }
+
+    /// Definitions are part of the readers' immutable cache identity. Retire a previous pass
+    /// immediately; ordinary region saves still use the queued-pass behavior above.
+    func replace(readers: [RegionReader], firstDimension: String?) {
+        guard !isClosed else { return }
+        readerGeneration += 1
+        indexTask?.cancel()
+        indexTask = nil
+        queuedPass = nil
+        self.readers = readers
+        index = SearchIndex()
+        portals = [:]
+        creatureProjection = nil
+        revision += 1
+        rebuild(firstDimension: firstDimension)
     }
 
     /// Waits for the running pass and any pass queued behind it, or until the store closes.

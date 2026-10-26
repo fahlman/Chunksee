@@ -172,18 +172,27 @@ nonisolated enum PortalLinkStatus: Equatable, Sendable {
     case noPartner
 
     /// Unknown dimension scans stay distinct from known-empty lists.
-    static func roundTrip(of portal: NetherPortal, portals: [String: [NetherPortal]]) -> NetherPortal.RoundTrip? {
+    static func roundTrip(of portal: NetherPortal, portals: [String: [NetherPortal]],
+                          dimensionTypes: [String: DimensionType], borders: [String: WorldBorder]) -> NetherPortal.RoundTrip? {
         guard let target = NetherPortal.targetDimension(from: portal.dimension),
-              let candidates = portals[target], let origins = portals[portal.dimension] else { return nil }
-        return portal.roundTrip(into: candidates, returningThrough: origins)
+              let returning = NetherPortal.targetDimension(from: target), let candidates = portals[target] else { return nil }
+        if let origins = portals[returning] {
+            return portal.roundTrip(into: candidates, returningThrough: origins, dimensionTypes: dimensionTypes, borders: borders)
+        }
+        switch portal.link(into: candidates, dimensionTypes: dimensionTypes, borders: borders) {
+        case .portal(let destination, let block)?: return .returnUnknown(target: destination, block: block)
+        case .wouldCreateNewPortal(let destination)?: return .wouldCreateNewPortal(destination: destination)
+        case nil: return nil
+        }
     }
 
-    static func status(of portal: NetherPortal, portals: [String: [NetherPortal]]) -> PortalLinkStatus? {
-        switch roundTrip(of: portal, portals: portals) {
+    static func status(of portal: NetherPortal, portals: [String: [NetherPortal]],
+                          dimensionTypes: [String: DimensionType], borders: [String: WorldBorder]) -> PortalLinkStatus? {
+        switch roundTrip(of: portal, portals: portals, dimensionTypes: dimensionTypes, borders: borders) {
         case .twoWay?: .linked
         case .oneWay?: .oneWay
         case .wouldCreateNewPortal?: .noPartner
-        case nil: nil
+        case .returnUnknown?, nil: nil
         }
     }
 }
@@ -206,7 +215,7 @@ struct PortalDetailView: View {
             SelectedSearchSection(session: session)
             Section {
                 switch trip {
-                case .twoWay(let target, _)?, .oneWay(let target, _, _)?:
+                case .twoWay(let target, _)?, .oneWay(let target, _, _)?, .returnUnknown(let target, _)?:
                     Text("Leads to the portal in \(target.dimension, format: session.presentation.dimensionNameStyle) at \(Coordinates.text(x: target.centerX, z: target.centerZ)).")
                     if case .oneWay(_, _, let returning)? = trip {
                         switch returning {
@@ -219,6 +228,9 @@ struct PortalDetailView: View {
                                   systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                         }
+                    }
+                    if case .returnUnknown? = trip {
+                        Text("The return link is unknown.").foregroundStyle(.secondary)
                     }
                     Button("Show the Other Side") { session.selection.show(target) }
                         .locationMenu(session: session, position: CGPoint(x: target.centerX, y: target.centerZ),

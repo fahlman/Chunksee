@@ -33,7 +33,8 @@ final class MapAnnotations {
 
     func canPlanPortal(at point: CGPoint? = nil, in dimension: String? = nil) -> Bool {
         guard let source, !source.isClosed, let point = point ?? source.map?.viewport.center,
-              MapCoordinates(point: point) != nil, let dimension = dimension ?? source.selectedDimensionID else { return false }
+              MapCoordinates(point: point) != nil, let dimension = dimension ?? source.selectedDimensionID,
+              source.dimensions.contains(where: { $0.id == dimension }) else { return false }
         return NetherPortal.targetDimension(from: dimension) != nil
     }
 

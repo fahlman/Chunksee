@@ -16,7 +16,7 @@ import Testing
         red.tints = .init()
         red.tints.append(.init(index: 0, color: 0xff0000))
         let requests = [MapBlockColorRequest(state: .init("minecraft:stone")), green, red,
-                        MapBlockColorRequest(state: .init("test:unverified"))]
+                        MapBlockColorRequest(state: .init("test:custom"))]
         var indices = [UInt16](repeating: .max, count: 256)
         var positions = [BlockPosition?](repeating: nil, count: 256)
         indices.replaceSubrange(0..<6, with: [0, 0, 0, 1, 2, 3])
@@ -26,8 +26,8 @@ import Testing
             .init(blockX: 0, blockY: 0, blockZ: 0), .init(blockX: 0, blockY: 0, blockZ: 0)])
         let first = try await library.mapTextures(requests: requests, indices: indices, positions: positions)
         // Minecraft's verified weighted choices at these positions are first, second, third.
-        #expect(first.prefix(5).map { $0?.rgb(at: .init(8, 8)) } == [0xff0000, 0x00ff00, 0x0000ff, 0x123456, 0xff0000])
-        #expect(first.dropFirst(5).allSatisfy { $0 == nil })
+        #expect(first.prefix(6).map { $0?.rgb(at: .init(8, 8)) } == [0xff0000, 0x00ff00, 0x0000ff, 0x123456, 0xff0000, 0xff0000])
+        #expect(first.dropFirst(6).allSatisfy { $0 == nil })
         let warm = try await library.mapTextures(requests: requests, indices: indices, positions: positions)
         #expect(warm.map { $0?.pixels } == first.map { $0?.pixels })
         await library.close()
@@ -419,7 +419,7 @@ import Testing
         for (id, model) in [("dirt", "quadrants"), ("grass_block", "tinted")] {
             try json("assets/minecraft/blockstates/\(id).json", ["variants": ["": ["model": "test:block/\(model)"]]])
         }
-        try json("assets/test/blockstates/unverified.json", ["variants": ["": ["model": "test:block/red"]]])
+        try json("assets/test/blockstates/custom.json", ["variants": ["": ["model": "test:block/red"]]])
         return try ItemPictureFixture(extraFiles: files)
     }
 }

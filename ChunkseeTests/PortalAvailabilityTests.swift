@@ -17,7 +17,8 @@ import Testing
         init() throws {
             emptyFacts = try TestWorld.facts()
             let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
-            url = try TestWorld.make(chunks: [chunk])
+            url = try TestWorld.make(chunks: [chunk], dimensionSettings: PortalTestContext.dimensions)
+            try PortalTestContext.writeBorder(to: url)
             defaults = TestDefaults.make()
             names = PlayerNames(defaults: defaults)
             searches = SavedSearches(defaults: defaults)
@@ -98,7 +99,8 @@ import Testing
             // A cross-dimension jump can select its destination before that dimension publishes.
             // The opposite side is known, but its return still needs the selected portal's scan.
             let arriving = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: 1, y: 2, z: 1)])
-            #expect(session.presentation.roundTrip(for: arriving) == nil)
+            if case .returnUnknown? = session.presentation.roundTrip(for: arriving) {}
+            else { Issue.record("The known outward link must survive a pending return scan") }
             #expect(session.presentation.isWaitingForPortalLink(arriving))
             await gate.finish("nether", with: try TestWorld.facts(dimensionID: "minecraft:the_nether"))
             await session.resources.index.waitForIndex()
@@ -126,14 +128,14 @@ import Testing
         }
     }
 
-    @Test func unsupportedAndClosedTargetsNeverRemainLoading() async throws {
+    @Test func customTargetsUseTheGamesDestinationAndClosedTargetsNeverRemainLoading() async throws {
         try await withFixture { f in
             try f.addTarget()
             let (session, gate) = try await f.controlled()
             await gate.waitForRequest("nether")
             let portal = try #require(session.presentation.portalsByDimension["minecraft:overworld"]?.first)
             let unsupported = NetherPortal(dimension: "example:sky", blocks: [.init(x: 8, y: 2, z: 8)])
-            #expect(session.presentation.roundTrip(for: unsupported) == nil && !session.presentation.isWaitingForPortalLink(unsupported))
+            #expect(session.presentation.roundTrip(for: unsupported) == nil && session.presentation.isWaitingForPortalLink(unsupported))
             #expect(session.presentation.isWaitingForPortalLink(portal))
             session.resources.close()
             await gate.waitForCancellation("nether")
