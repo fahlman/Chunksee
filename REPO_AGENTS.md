@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.71.0`, resolved to `0.71.0` (`9c472384a20262e1ec7ae804e2b62729a964cf18`).
+  minor" from `0.72.0`, resolved to `0.72.0` (`414374a109089515b501d55cabfc5f1c1a465802`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1360,6 +1360,23 @@ stack's custom name or enchantment. Native labels and slot accessibility retain 
 EquipmentSection omits empty equipment for both players and pets, matching the other optional
 inspector sections. The pet-only “Equipment: None” row is removed; Kit's equipment applicability
 stays unchanged. Inventory grids retain empty slots because those represent storage positions.
+
+MobTypes owns one immutable presentation snapshot of located creatures: the shared point index,
+type membership, complete saved-appearance counts, special-group projection and identity lookups.
+DimensionContent replaces it with each creature publication. The Mobs sidebar lists names only;
+type disclosures prepare nearest-first individual rows off-main when expanded. Named Creatures,
+Pets and Villagers remain overlapping views of those same entities. MapContent combines their
+visibility with type visibility once, then applies the selected type's appearance filter, so a
+named pet never acquires duplicate markers. Types start hidden, selecting one shows it, and
+LayerVisibility remembers type visibility per dimension. Appearance filters last for the open
+dimension and ignore a choice absent from the latest snapshot; selecting an individual clears
+a conflicting filter. The type inspector keeps counts and explains saved-position limitations.
+Mob symbols use Kit's generated sheep tints or an alpha-weighted representative color from the
+actual installed axolotl texture. GameAssetLibrary owns a bounded shared color cache alongside
+its existing decoded textures and clears it on source retirement. Missing artwork leaves the
+normal untinted symbol; no replacement color table or bundled game pictures are used. Label text
+keeps native colors. VoiceOver includes the color; AppKit's NSColor.accessibilityName supplies a
+localized name for sampled colors because SwiftUI has no equivalent API.
 
 Creature.displayName owns custom-name, villager-profession and kind fallback naming for located
 markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and

@@ -7,6 +7,7 @@ final class WorldSettings {
     enum Layer: String, CaseIterable {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
+        case mobTypes = "shownMobTypes"
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
         case showsWorldBorder, darkSpots = "showsDarkSpots"
 

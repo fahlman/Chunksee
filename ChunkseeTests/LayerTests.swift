@@ -213,7 +213,7 @@ enum StructureTestWorld {
         #expect(VillagerText.levelName(5) == "Master")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
         #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
-        #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == nil)
+        #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == .mob)
     }
 
     @Test(arguments: [5, 6, 7, 8, 9, 10]) func oldCacheIsRebuiltAndSelectedPetDetailsFollowSavedChanges(oldVersion: Int) async throws {
@@ -295,7 +295,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         await session.search.waitForIndex()
-        #expect(session.presentation.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
+        #expect(session.presentation.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.mob, .pet, .villager])
         // Once read, the sidebar can list every Overworld biome, found or not.
         #expect(session.presentation.possibleBiomes.count == 4 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]

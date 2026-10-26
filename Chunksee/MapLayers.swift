@@ -70,8 +70,14 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                     // The collection owns the same identity used by selection and scrolling.
                     // An inner .id adds a dynamic row-list transformation for every marker.
                     ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
-                        LocationLabel(title: Text(row.marker.name)) {
-                            Image(systemName: row.marker.group.symbol)
+                        Group {
+                            if let creature = row.marker as? CreatureMarker {
+                                MobLocationLabel(marker: creature)
+                            } else {
+                                LocationLabel(title: Text(row.marker.name)) {
+                                    Image(systemName: row.marker.group.symbol)
+                                }
+                            }
                         }
                         .tag(row.id)
                         .repeatSidebarSelection(row.id, in: session.selection)
@@ -170,6 +176,9 @@ final class LayerVisibility {
     var structures: Set<StructureGroup> { didSet { save(structures.map(\.rawValue), Keys.structures) } }
     var places: Set<PlaceGroup> { didSet { save(places.map(\.rawValue), Keys.places) } }
     var creatures: Set<CreatureGroup> { didSet { save(creatures.map(\.rawValue), Keys.creatures) } }
+    var mobTypes: Set<String> { didSet { save(Array(mobTypes), Keys.mobTypes) } }
+    /// Appearance filters belong to this open dimension, not the saved world's content.
+    var mobAppearances: [String: MobAppearance] = [:]
     /// None at first: outlining every biome would cover the map.
     var biomes: Set<BiomeGroup> { didSet { save(biomes.map(\.id), Keys.biomes) } }
     var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
@@ -194,6 +203,7 @@ final class LayerVisibility {
         structures = saved(Keys.structures, default: \.isShownByDefault)
         places = saved(Keys.places, default: \.isShownByDefault)
         creatures = saved(Keys.creatures, default: \.isShownByDefault)
+        mobTypes = Set(values[Keys.mobTypes] as? [String] ?? [])
         biomes = Set((values[Keys.biomes] as? [String] ?? []).map(BiomeGroup.init(id:)))
         hiddenPlayers = Set((values[Keys.hiddenPlayers] as? [String] ?? []).compactMap(UUID.init(uuidString:)))
         showsGrid = values[Keys.showsGrid] as? Bool ?? false
@@ -203,10 +213,24 @@ final class LayerVisibility {
             write([
                 Keys.structures: structures.map(\.rawValue).sorted(), Keys.places: places.map(\.rawValue).sorted(),
                 Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
+                Keys.mobTypes: mobTypes.sorted(),
                 Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
                 Keys.timeSpent: false, Keys.showsSavedPlaces: showsSavedPlaces,
                 Keys.showsWorldBorder: showsWorldBorder,
             ])
+        }
+    }
+
+    func appearance(for kind: MobTypes.Kind) -> MobAppearance? {
+        guard let appearance = mobAppearances[kind.id], kind.contains(appearance) else { return nil }
+        return appearance
+    }
+
+    func reveal(_ marker: CreatureMarker, inMobList: Bool = false) {
+        if inMobList || marker.group == .mob { mobTypes.insert(marker.creature.id) }
+        else { creatures.insert(marker.group) }
+        if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
+            mobAppearances[marker.creature.id] = nil
         }
     }
 

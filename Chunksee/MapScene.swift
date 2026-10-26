@@ -197,8 +197,10 @@ struct MapScene {
             let selected = content.selection == .creature(marker)
             let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(marker.id) ? .selected
                 : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
+            let row: SidebarItem = marker.group == .mob || content.selectedItem == .mobCreature(marker.id)
+                ? .mobCreature(marker.id) : .creature(marker.id)
             items.append(Item(label: .creature(marker), layer: .creature,
-                target: .row(.creature(marker.id)), position: marker.position, y: marker.yCoordinate,
+                target: .row(row), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .creature(marker.group),
                 labelPriority: priority))
         }
