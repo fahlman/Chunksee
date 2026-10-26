@@ -16,10 +16,10 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
+        let players = PlayerRoster([])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerRoster([])
         func document() -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
@@ -54,10 +54,10 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
+        let players = PlayerRoster([])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerRoster([])
         func document() -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
@@ -86,10 +86,11 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
+        let players = PlayerRoster([])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, indexStore: index)
         await gate.waitForRequest("saved")
@@ -143,18 +144,18 @@ import Testing
         let defaults = TestDefaults.make(), uuid = UUID()
         let saved = SavedSearches(defaults: defaults), names = PlayerNames(defaults: defaults)
         saved.add("saved")
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
-        await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
         func player(_ revision: Int32) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["XpLevel": .int(revision)]))
         }
+        let players = PlayerRoster([player(1)])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
+        await index.waitForIndex()
+        let gate = AsyncReadGate<[String: [SearchHit]]>()
         func document(_ players: PlayerRoster) -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read(String($0.players[0].experienceLevel!)) }, indexStore: index)
         }
-        let players = PlayerRoster([player(1)])
         let first = document(players), second = document(players)
         await gate.waitForRequest("1")
         players.publish([player(2)])
@@ -223,10 +224,10 @@ import Testing
         saved.add("saved")
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
-        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil)
+        let players = PlayerRoster([player])
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let players = PlayerRoster([player])
         func document() -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
                         firstDimension: nil, savedSearches: saved,
@@ -343,7 +344,8 @@ import Testing
     }
 
     @Test func closingTheWorldReleasesWaitersButWaitsForTheUnderlyingPass() async {
-        let index = WorldIndexStore(readers: [], work: BackgroundWork(), firstDimension: nil)
+        let players = PlayerRoster([])
+        let index = WorldIndexStore(readers: [], work: BackgroundWork(), firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<SavedQueryResults.Results>()
         let request = SearchRequest(queries: ["saved"], index: SearchIndex(), players: [], playerNames: [:])

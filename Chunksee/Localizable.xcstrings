@@ -1,6 +1,27 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Mobs" : {
+      "comment" : "Sidebar section listing only creature types with saved individuals in this dimension."
+    },
+    "Saved Mobs" : {
+      "comment" : "Mob-type inspector count of saved individuals."
+    },
+    "Appearances" : {
+      "comment" : "Mob-type inspector section for saved variants, markings and other appearance traits."
+    },
+    "All Appearances" : {
+      "comment" : "Map filter choice that includes every saved appearance of this mob type."
+    },
+    "Not recorded" : {
+      "comment" : "A saved mob has no recorded appearance facts; no default appearance is invented."
+    },
+    "These positions come from the last save. Mobs may move or disappear when the world is played." : {
+      "comment" : "Mob-type inspector explains that saved positions are a snapshot, not live mob tracking."
+    },
+    "creature: saved mobs" : {
+      "comment" : "Search syntax hint: creature searches all saved mobs, including ordinary unnamed ones."
+    },
     "Abandoned Camps" : {
       "comment" : "Sidebar structure family supplied by the game's abandoned_camp structure tag."
     },

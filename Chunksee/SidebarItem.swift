@@ -12,13 +12,16 @@ enum Inspector: Equatable {
 
 /// A sidebar row that can be selected. Every item opens its inspector; a usable location also
 /// centers the map when chosen in the sidebar.
-enum SidebarItem: Hashable {
+nonisolated enum SidebarItem: Hashable, Sendable {
     case worldInfo
     case storage
     case savedPlace(UUID)
     case structure(String)
     case place(String)
     case creature(String)
+    case mobType(String)
+    /// The same saved creature has a distinct row identity in its type's disclosure.
+    case mobCreature(String)
     case biome(String)
     case inGameMap(Int)
     case player(UUID)
@@ -55,6 +58,7 @@ enum ResolvedSidebarItem {
     case structure(StructureMarker)
     case place(PlaceMarker)
     case creature(CreatureMarker)
+    case mobType(MobTypes.Kind)
     case biome(BiomeArea)
     case inGameMap(MapItem)
     case player(PlayerInfo)
@@ -72,7 +76,7 @@ extension ResolvedSidebarItem {
             guard let location = PlayerPresentation.position(of: player), location.dimension == dimension else { return nil }
             return BlockPosition.coordinate(containing: location.y)
         case .hit(let hit): return hit.dimension == dimension ? hit.y : nil
-        case .worldInfo, .storage, .savedPlace, .biome, .inGameMap: return nil
+        case .worldInfo, .storage, .savedPlace, .biome, .inGameMap, .mobType: return nil
         }
     }
 }

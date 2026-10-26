@@ -36,11 +36,14 @@ nonisolated struct ShoulderPet: Identifiable, Sendable {
 extension SearchIndex {
     /// Player and entity files may be saved separately. A carried UUID must not also appear at
     /// its stale region position, including when its carrier cannot currently be located.
-    func including(_ pets: [ShoulderPet]) -> SearchIndex {
+    @concurrent
+    func including(_ pets: [ShoulderPet]) async -> SearchIndex {
+        guard !Task.isCancelled else { return self }
         let carriedIDs = Set(pets.map(\.id))
         let located = Dictionary(grouping: pets.compactMap(\.marker), by: \.dimension)
         var result = self
         for (dimension, part) in dimensions {
+            guard !Task.isCancelled else { return self }
             let retained = part.creatures.filter { !carriedIDs.contains($0.id) }
             let additions = located[dimension] ?? []
             guard retained.count != part.creatures.count || !additions.isEmpty else { continue }
@@ -57,7 +60,7 @@ struct ShoulderPetsSection: View {
     let playerID: UUID
 
     var body: some View {
-        let pets = session.resources.playerSnapshot.shoulderPets.filter { $0.carrier == playerID }
+        let pets = session.search.playerSnapshot.shoulderPets.filter { $0.carrier == playerID }
         if !pets.isEmpty {
             Section("On Shoulders") {
                 ForEach(pets) { pet in
