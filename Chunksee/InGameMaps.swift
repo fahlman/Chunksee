@@ -67,7 +67,8 @@ struct InGameMapDetailView: View {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
                 }
             } header: {
-                InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol)
+                InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol,
+                                 picture: .item(ItemStack(id: "minecraft:filled_map")))
             }
             if session.presentation.canShow(map) {
                 Section {

@@ -350,6 +350,17 @@ actor GameAssetLibrary {
         return try world.nightMonsterLighting(assets: assets)
     }
 
+    /// Kit owns the game's entity-to-egg relationship; the ordinary item path draws it.
+    func spawnEgg(for species: String) throws -> ItemStack? {
+        try checkAvailable()
+        return assets?.spawnEggItemID(for: species).map { ItemStack(id: $0.description) }
+    }
+
+    func blockItem(for block: BlockState) throws -> ItemStack? {
+        try checkAvailable()
+        return assets?.blockItemID(for: block.id).map { ItemStack(id: $0.description) }
+    }
+
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {

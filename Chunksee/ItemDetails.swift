@@ -17,19 +17,7 @@ struct WorldInspector: View {
             if let portal = marker.portal {
                 PortalDetailView(session: session, portal: portal)
             } else {
-                LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
-                                destination: destination(marker.position, y: marker.yCoordinate)) {
-                    switch marker.group {
-                    case .spawner:
-                        LabeledContent("Spawns", value: marker.mob.map { ReadableName.from($0) } ?? String(localized: "Nothing"))
-                    case .bed, .workstation:
-                        LabeledContent("Claimed by a Villager", value: marker.isClaimed ? String(localized: "Yes") : String(localized: "No"))
-                    case .unopenedLoot:
-                        LabeledContent("Container", value: ReadableName.from(marker.type))
-                        Text("The contents have not been generated yet.").foregroundStyle(.secondary)
-                    default: EmptyView()
-                    }
-                }
+                PlaceDetailView(session: session, marker: marker)
             }
         case .structure(let marker)?:
             LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
@@ -62,12 +50,58 @@ struct WorldInspector: View {
     }
 }
 
+private struct PlaceDetailView: View {
+    let session: WorldSession
+    let marker: PlaceMarker
+    @Environment(\.gameAssetLibrary) private var pictures
+    @State private var loaded: (request: Request, item: ItemStack?)?
+
+    private struct Request: Equatable {
+        let world: ObjectIdentifier
+        let revision: Int
+        let dimension: String?
+        let position: BlockPosition?
+        let library: UUID?
+    }
+
+    var body: some View {
+        let request = Request(world: ObjectIdentifier(session.resources), revision: session.resources.index.revision,
+                              dimension: session.selectedDimensionID, position: marker.blockPosition,
+                              library: pictures?.identity)
+        let item = loaded?.request == request ? loaded?.item : nil
+        LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
+                        destination: MapDestination(coordinates: Coordinates(marker.position, y: marker.yCoordinate),
+                                                    dimension: session.selectedDimensionID),
+                        picture: item.map(InspectorHeading.Picture.item)) {
+            switch marker.group {
+            case .spawner:
+                LabeledContent("Spawns", value: marker.mob.map { ReadableName.from($0) } ?? String(localized: "Nothing"))
+            case .bed, .workstation:
+                LabeledContent("Claimed by a Villager", value: marker.isClaimed ? String(localized: "Yes") : String(localized: "No"))
+            case .unopenedLoot:
+                LabeledContent("Container", value: ReadableName.from(marker.type))
+                Text("The contents have not been generated yet.").foregroundStyle(.secondary)
+            default: EmptyView()
+            }
+        }
+        .task(id: request) {
+            guard let position = request.position, let dimension = request.dimension,
+                  let pictures, loaded?.request != request else { return }
+            let block = await session.resources.headingBlock(at: position, in: dimension)
+            guard !Task.isCancelled else { return }
+            let item = if let block { try? await pictures.blockItem(for: block) } else { nil as ItemStack? }
+            if !Task.isCancelled { loaded = (request, item) }
+        }
+    }
+}
+
 /// The same heading, location actions and form layout for every simple location inspector.
 private struct LocationDetails<Details: View>: View {
     let session: WorldSession
     let title: Text
     let symbol: String
     let destination: MapDestination?
+    var picture: InspectorHeading.Picture?
     @ViewBuilder var details: Details
 
     var body: some View {
@@ -80,7 +114,7 @@ private struct LocationDetails<Details: View>: View {
                 }
                 details
             } header: {
-                InspectorHeading(title: title, symbol: symbol)
+                InspectorHeading(title: title, symbol: symbol, picture: picture)
             }
             SelectedSearchSection(session: session)
         }

@@ -97,6 +97,9 @@ final class WorldResources {
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
     @ObservationIgnored var readPlayers: @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0, enchantments: $1) }
+    @ObservationIgnored var readHeadingBlock: @Sendable (ChunkseeKit.Dimension, BlockPosition) async throws -> BlockState? = {
+        try await WorldResources.readBlock($0, at: $1)
+    }
     @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
         try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3)
     }
@@ -531,6 +534,31 @@ final class WorldResources {
     }
 
     func waitUntilClosed() async { await closingTask?.value }
+
+    /// Register even a single inspector read so world access lasts until cancellation drains.
+    func headingBlock(at position: BlockPosition, in dimensionID: String) async -> BlockState? {
+        guard !isClosed, !Task.isCancelled,
+              let dimension = dimensions.first(where: { $0.id == dimensionID }) else { return nil }
+        let read = readHeadingBlock
+        var block: BlockState?
+        guard let task = backgroundWork.start(priority: .utility, operation: {
+            guard !Task.isCancelled else { return }
+            block = try? await read(dimension, position)
+        }) else { return nil }
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard !isClosed, !Task.isCancelled else { return nil }
+        return block
+    }
+
+    @concurrent private nonisolated static func readBlock(_ dimension: ChunkseeKit.Dimension,
+                                                         at position: BlockPosition) async throws -> BlockState? {
+        try Task.checkCancellation()
+        return try dimension.block(at: position)
+    }
 
     func worldChanged(_ files: [URL]) {
         guard !isClosed, !refreshWork.isClosed else { return }
