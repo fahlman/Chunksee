@@ -25,7 +25,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _, _ in try await reads.read(dimension.id) })
+                                       readRegion: { dimension, _, options in try await reads.read(dimension.id, options: options) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         #expect(Set(await reads.requested) == Set(ids))
@@ -52,7 +52,7 @@ import Testing
         let defaults = TestDefaults.make()
         let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                                       readRegion: { dimension, _, _ in try await reads.read(dimension.id) })
+                                       readRegion: { dimension, _, options in try await reads.read(dimension.id, options: options) })
         resources.refreshDelay = .zero
         await resources.index.waitForIndex()
         let nether = try #require(resources.dimensions.first { $0.id == ids[1] })
@@ -122,6 +122,33 @@ import Testing
         #expect(index.index.dimensions.isEmpty && !index.isIndexing)
     }
 
+    @Test(.timeLimit(.minutes(1))) func replacementReadersRejectAnOlderIndexPassFinishingLast() async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(World(contentsOf: url).dimension("overworld"))
+        let older = RegionReader(dimension: dimension, cache: .off)
+        let newer = RegionReader(dimension: dimension, cache: .off)
+        let gate = AsyncReadGate<DimensionContent>(), work = BackgroundWork()
+        let index = WorldIndexStore(readers: [older], work: work, firstDimension: nil,
+            readDimension: { reader, _, _ in await gate.read(reader === older ? "older" : "newer") })
+        await gate.waitForRequest("older")
+        index.replace(readers: [newer], firstDimension: dimension.id)
+        await gate.waitForCancellation("older")
+        await gate.waitForRequest("newer")
+        var current = DimensionContent()
+        current.biomes[.init(x: 0, z: 0)] = "test:current"
+        await gate.finish("newer", with: current)
+        await index.waitForIndex()
+        let revision = index.revision
+        await gate.finish("older", with: DimensionContent())
+        await work.waitUntilFinished()
+        #expect(index.index.dimensions[dimension.id]?.biomes[.init(x: 0, z: 0)] == "test:current")
+        #expect(index.revision == revision && !index.isIndexing)
+        index.cancel()
+        await index.waitForTasks()
+        await older.close(); await newer.close()
+    }
+
     private actor RegionReads {
         private(set) var requested: [String] = []
         private var versions: [String: Int32] = [:]
@@ -131,12 +158,12 @@ import Testing
             if let dimension { versions[dimension, default: 1] += 1 }
         }
 
-        func read(_ dimension: String) throws -> RegionFacts {
+        func read(_ dimension: String, options: RegionScanOptions) throws -> RegionFacts {
             requested.append(dimension)
             return try TestWorld.facts(dimensionID: dimension, blockEntities: [.compound([
                 "id": .string("minecraft:chest"), "x": .int(1), "y": .int(64), "z": .int(2),
                 "Items": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(versions[dimension] ?? 1)])]),
-            ])])
+            ])], options: options)
         }
     }
 }

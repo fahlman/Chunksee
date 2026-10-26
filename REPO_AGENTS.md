@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.70.1`, resolved to `0.70.1` (`dedd118a34a3e5c7e8b0645c5e035a5a14f4564f`).
+  minor" from `0.71.0`, resolved to `0.71.0` (`9c472384a20262e1ec7ae804e2b62729a964cf18`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -171,20 +171,26 @@ existing water shade, fading the floor out by sixteen blocks. The same traversal
 colour; no extra block read or scan is added. Gaps, air and unreadable references leave the floor
 unknown. The contiguous-water depth cap, surface location, hover/copy and Height/Water Depth
 styles stay unchanged. Tile renderer version 12 discards the earlier opaque-water pixels.
-WorldDetails reads Kit's dimensionSettings once for each world snapshot. MapSurfaceContext derives
-normal-view choices from those saved type/generation facts: known build height reaches the shared
-heightmap reader, a known ceiling with nonempty generation bounds uses the surface-rule range's
-upper plane for roof hiding, and its middle plane for biome sampling. Resolved roof choices follow
-those saved bounds rather than logical height. Resolved non-ceiling or empty generation context retains Surface; explicit cutaways always
-use their chosen Y. Map rendering, hover and Copy Coordinates receive the same renderer settings.
-Tile-renderer version 10 discards older pixels; Surface cache keys include build height and ceiling
-start, while cutaway keys ignore that unused context. When saved type/generation metadata cannot
-be resolved, MapSurfaceContext alone preserves the existing Nether display (roof start Y127,
-biome sample Y64) for its saved dimension ID. This display fallback does not invent build bounds;
-resolved settings, including a non-ceiling type or an empty generation range, take priority.
-Other unresolved dimensions retain Surface. RegionFacts cache keys already include scan
-height and biome sample options. New dimension discovery adopts metadata only for new IDs;
-existing documents retain their snapshot until a document reread or move replaces their resources.
+WorldDetails owns one WorldDefinitions snapshot, loaded off-main through Kit with the selected
+jar and the world's enabled packs. Opening first uses available world-pack facts; the shared game
+request adds installed resources. Each resource category remains independently available. A failed
+player refresh retains the previous coherent definitions/player snapshot until the next save. Initial player reads, later player reads and region scans use
+its same enchantment dictionary. It also supplies dimension settings, possible biome associations,
+trading definitions and the shared NotableBlock.Catalog. Current health and other saved facts stay
+available when maximum health cannot be established.
+
+MapSurfaceContext derives normal-view choices from resolved type/generation facts: known build
+height reaches the shared heightmap reader; a known ceiling with nonempty generation bounds uses
+the surface-rule range's upper plane for roof hiding and middle plane for biome sampling. Unknown
+context keeps the actual surface, without a dimension-name ceiling fallback. Explicit cutaways
+keep their chosen Y. Source/pack replacement updates each map's height scale and renderer context,
+cancels obsolete renders/coordinate reads, and replaces the world's immutable region readers.
+Their scan options include the enchantments and tag-derived block IDs; each shared index uses the
+same catalog. Old index passes cannot publish into the replacement generation. Heat maps rebind to
+the new reader, and retired readers/loaders drain under the world's BackgroundWork owner.
+Tile renderer version 27 invalidates the previous interpretation. Source/color and surface keys
+continue to distinguish their own inputs; the published Kit's RegionFacts version 20 invalidates
+older scan envelopes.
 
 | File | Owns |
 |---|---|
@@ -216,7 +222,7 @@ existing documents retain their snapshot until a document reread or move replace
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
-| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; exact saved-version jar lookup, file identity and weak sharing across live documents |
+| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
 | `GameAssetLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
@@ -432,7 +438,7 @@ Slider dragging holds an unfinished height in the view and commits it only when 
 (Ryan, 2026-10-19, #84/#248). The map, cache and remembered view keep their committed depth
 during the drag. Exact-number entry and non-drag slider changes apply immediately; leaving the
 popover discards an unfinished drag. WorldDetails reads dimension types and generation settings
-through Kit 0.40.0 in the existing off-main metadata pass. DimensionPresentation supplies the
+through its shared off-main definition snapshot. DimensionPresentation supplies the
 current dimension's verified build range to the slider; logical height does not define that range
 or the renderer's ceiling start. MapSurfaceContext owns the separate normal-view policy above.
 Numeric entry and its one-block steps accept any Int, without extending the slider’s limits. The slider
@@ -549,10 +555,10 @@ matching/ranking; the app chooses its display limit and converts the typed resul
 SearchHit keeps app-only titles, details, native coordinates and selection links. No extra catalog,
 query state or background work is introduced.
 
-ChunkseeIndex.NotableBlock owns the nine notable-block groups, their 13 saved IDs and grouped
-deposit counts/section height bounds. Blocks.swift keeps only aliases, localized names/search
+ChunkseeIndex.NotableBlock owns the nine display groups and grouped deposit counts/section height
+bounds. Its Catalog resolves ore membership from runtime block tags; the app has no ore-ID list. Blocks.swift keeps only aliases, localized names/search
 labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader uses the shared
-catalog for scan options; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
+world catalog for scan options and search aliases; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
 ScanCache continues to store core RegionFacts, with no cache-format change.
 
 `SearchModel.results(for:)` reads published results for the current or a saved query. It never
@@ -1221,16 +1227,20 @@ disk cache; ordinary player and region refreshes replace them.
 MinecraftResources owns the existing `minecraftFolderBookmark` and read-only access lease for both
 names and pictures. It restores existing choices without a second preference. Reads retain the
 lease until completion; choosing/removing the folder cancels its asset scope and changes source
-generation so old results cannot publish. GameAssetLibraries resolves only the saved version name
-and data version, checking the jar's own metadata and a fresh file stamp before/after reading.
-The jar is capped at 128 MiB and the live registry is weak: documents using one file share its
-GameAssetLibrary actor, while closing the last user releases it. A changed folder generation
-also retires the previous registry through MinecraftResources' existing BackgroundWork owner.
-The registry rejects new requests and closes every live picture actor, clearing its archive and
-caches after any current synchronous draw. The cleanup retains the previous read-only access
-lease until that work finishes. Hidden native tabs may retain the empty actor, but cannot retain
-an obsolete archive or reopen it. View generation checks still hide stale pictures immediately;
-only active scenes load a replacement. Returning to an active scene rechecks file identity.
+generation so old results cannot publish. GameAssetLibraries enumerates installed jars and uses
+Kit's version metadata to select the newest declared release; if none is installed, it uses the
+newest readable version of any kind. Build time orders known dates, with data version as a fallback
+when dates are unavailable. World version never gates selection. File stamps are checked before
+and after reads. Each jar is capped at 128 MiB; the registry retains small version metadata and weak
+references to live GameAssetLibrary actors. It retains at most the best uncached archive while
+choosing a source. One file shares its actor across worlds.
+
+A changed folder generation retires the previous registry through MinecraftResources' background
+owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
+access until cleanup completes. MinecraftResources also notifies each open world directly.
+WorldResources owns the shared replacement request and definition publication even when every tab
+is hidden; view environment values derive from that owner. Returning to an active scene rechecks
+file identity. Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
@@ -1242,15 +1252,15 @@ ItemStack.itemModelSelection. Both cold and warm lookups use immutable native ca
 that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
 a partial string identity. Custom conditions, strings, numeric ranges and colors stay in Kit;
 custom colors resolve to the existing constant tint. Other saved tints are evaluated separately
-from the original stack. Trim pattern, name and count
-do not split otherwise identical pictures. Missing/removed/inline trim materials keep the generic
-fallback, including older jars; non-nil trim selection requires verified 26.3 semantics. Removed, malformed and unresolved references keep
+from the original stack. Saved component presence is part of selector identity. Unused trim-pattern
+and name values, and count, do not split pictures whose selector inputs are otherwise identical. Missing/removed/inline trim materials keep the generic
+fallback, including older jars; the supplied game data resolves readable selectors without a version gate. Removed, malformed and unresolved references keep
 the symbol rather than reusing the ordinary image. ItemIcon's existing full-stack request identity
 rejects stale results when a reference changes; item names and counts retain their original owner.
 Its actor owns bounded native caches for models (16 MiB estimated cost), decoded textures
 (16 MiB) and rendered thumbnails (8 MiB), each also capped at 512 entries. Model tint usage is
 prepared once off-main. Retained selection strings/arrays are conservatively charged to the model
-and image budgets at insertion, including custom-data and ordered banner-design keys. Public production-path tests keep
+and image budgets at insertion, including custom-data, ordered banner-design keys and Kit's savedPropertyStorageCost for component identities and saved block properties. Public production-path tests keep
 otherwise identical stacks' numeric, flag, exact Unicode string and color choices distinct in
 cold and warm caches; native ItemIcon pixels are checked in Light and Dark. There is no app-side
 component parser, model selector, resource-pack loader or game artwork.
@@ -1384,7 +1394,7 @@ dimension documents. The existing GameAssetLibrary actor loads Kit's complete re
 catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
 all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
 the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
-passes checked absolute X/Z to the swamp rule. With a saved 26.3 seed, Kit's BiomeSampler chooses
+passes checked absolute X/Z to the swamp rule. With a saved seed, Kit's BiomeSampler chooses
 seed-displaced cells across chunk/section/region boundaries. The saved DimensionType clamps
 source Y to its build limits when known; missing interior sections and neighboring chunks stay
 unavailable. Per-block palettes retain direct lookup; an unknown seed never becomes seed zero.
@@ -1416,7 +1426,7 @@ phases retain cancellation; there is no world-wide biome cache or task owner.
 Those ring reads use Kit's `Chunk.keysNotNeededForBiomes` profile, so unrelated block palettes
 and heightmaps are not decoded. The shared Chunk/biomeSnapshot reader still validates the
 retained biome data. Valid biomes remain usable when a neighbor's block palette is malformed;
-TileCache renderer version 26 rebuilds older tiles that may have cached fallback colors there.
+TileCache renderer version 27 also rebuilds older tiles that may have cached fallback colors there.
 Before coloring columns, each chunk task gathers the tint, floor and water sample positions,
 selects their cells through Kit, and reads each distinct cell once grouped by source chunk.
 It interns the resulting names into task-local color values and integer position indices. The

@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import CoreGraphics
 import Foundation
@@ -144,7 +145,8 @@ enum StructureTestWorld {
         #expect(places.allSatisfy { $0.group == .portal })
     }
 
-    @Test func portalLinkStatuses() {
+    @Test func portalLinkStatuses() throws {
+        let context = try PortalTestContext()
         typealias Block = NetherPortal.Block
         func frame(_ d: String, _ x: Int, _ z: Int) -> NetherPortal {
             NetherPortal(dimension: d, blocks: [0, 1].flatMap { dx in (0..<3).map { Block(x: x + dx, y: 64 + $0, z: z) } })
@@ -153,26 +155,28 @@ enum StructureTestWorld {
         let n = frame("minecraft:the_nether", 100, 0)
         let lonely = frame("minecraft:overworld", 8000, 8000)
         let portals = ["minecraft:overworld": [a, b, lonely], "minecraft:the_nether": [n]]
-        #expect(PortalLinkStatus.status(of: a, portals: portals) == .linked)    // n leads back to a (closer to 800)
-        #expect(PortalLinkStatus.status(of: b, portals: portals) == .oneWay)    // b -> n, but n -> a
-        #expect(PortalLinkStatus.status(of: lonely, portals: portals) == .noPartner)
-        #expect(PortalLinkStatus.status(of: a, portals: ["minecraft:overworld": [a]]) == nil)  // Nether not loaded yet
+        #expect(PortalLinkStatus.status(of: a, portals: portals, dimensionTypes: context.types, borders: context.borders) == .linked)    // n leads back to a (closer to 800)
+        #expect(PortalLinkStatus.status(of: b, portals: portals, dimensionTypes: context.types, borders: context.borders) == .oneWay)    // b -> n, but n -> a
+        #expect(PortalLinkStatus.status(of: lonely, portals: portals, dimensionTypes: context.types, borders: context.borders) == .noPartner)
+        #expect(PortalLinkStatus.status(of: a, portals: ["minecraft:overworld": [a]], dimensionTypes: context.types, borders: context.borders) == nil)  // Nether not loaded yet
     }
 
     @Test func returnWouldCreateIsKnownOneWayRatherThanUnknown() throws {
+        let context = try PortalTestContext()
         let source = NetherPortal(dimension: NetherPortal.overworld, blocks: [.init(x: 7, y: 64, z: 0)])
         let target = NetherPortal(dimension: NetherPortal.nether, blocks: [.init(x: -16, y: 64, z: 0)])
         let portals = [NetherPortal.overworld: [source], NetherPortal.nether: [target]]
-        #expect(PortalLinkStatus.status(of: source, portals: portals) == .oneWay)
-        let trip = try #require(PortalLinkStatus.roundTrip(of: source, portals: portals))
+        #expect(PortalLinkStatus.status(of: source, portals: portals, dimensionTypes: context.types, borders: context.borders) == .oneWay)
+        let trip = try #require(PortalLinkStatus.roundTrip(of: source, portals: portals, dimensionTypes: context.types, borders: context.borders))
         guard case .oneWay(let found, _, .wouldCreateNewPortal(let destination)) = trip else {
             Issue.record("The inspector needs the known return-creates prediction")
             return
         }
         #expect(found == target)
         #expect(destination == .init(x: -128, y: 64, z: 0))
-        #expect(PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.overworld: [source]]) == nil)
-        #expect(PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.nether: [target]]) == nil)
+        #expect(PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.overworld: [source]], dimensionTypes: context.types, borders: context.borders) == nil)
+        if case .returnUnknown? = PortalLinkStatus.roundTrip(of: source, portals: [NetherPortal.nether: [target]],
+            dimensionTypes: context.types, borders: context.borders) {} else { Issue.record("Known outward link lost while return index is unread") }
     }
 
     @Test func scannerReadsPoiFiles() async throws {
@@ -198,7 +202,7 @@ enum StructureTestWorld {
     let owner = UUID()
 
     func entity(_ id: String, x: Double, z: Double, extra: [String: NBT] = [:]) -> NBT {
-        .compound(["id": .string(id), "Health": .float(10), "Pos": .list([.double(x), .double(64), .double(z)])].merging(extra) { $1 })
+        Fixtures.mob(["id": .string(id), "Health": .float(10), "Pos": .list([.double(x), .double(64), .double(z)])].merging(extra) { $1 })
     }
 
     @Test func groupsAndTitles() throws {
@@ -248,7 +252,7 @@ enum StructureTestWorld {
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
-        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: RegionReader.options()))?.creatures
+        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: try #require(session.resources.readers[dimension.id]).scanOptions))?.creatures
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))
@@ -293,7 +297,7 @@ enum StructureTestWorld {
         await session.search.waitForIndex()
         #expect(session.presentation.selectedIndex.creatures.map(\.group).sorted { $0.rawValue < $1.rawValue } == [.pet, .villager])
         // Once read, the sidebar can list every Overworld biome, found or not.
-        #expect(session.presentation.possibleBiomes.count == 56 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
+        #expect(session.presentation.possibleBiomes.count == 4 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
         #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
@@ -588,6 +592,28 @@ enum StructureTestWorld {
         #expect(layer.visibleImages?.count == 1)
         layer.cancel()
         await reader.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func replacingTheReaderRejectsItsLateHeatImage() async throws {
+        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimensions().first)
+        let gate = AsyncReadGate<RegionFacts>(), work = BackgroundWork()
+        let older = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
+        let newer = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
+        let layer = HeatMapLayer(reader: older, work: work)
+        layer.isShown = true
+        await gate.waitForRequest("older")
+        layer.replaceReader(newer)
+        await gate.waitForRequest("newer")
+        await gate.finish("newer", with: try TestWorld.facts())
+        await layer.waitForReads()
+        #expect(layer.visibleImages?.isEmpty == true)
+        await gate.finish("older", with: try TestWorld.facts(inhabitedTime: HeatMap.maximumTicks))
+        await work.waitUntilFinished()
+        #expect(layer.visibleImages?.isEmpty == true && !layer.isLoading)
+        layer.cancel()
+        await older.close(); await newer.close()
     }
 
     @Test(.timeLimit(.minutes(1))) func closingRejectsALateImageAndDropsTheQueuedPass() async throws {

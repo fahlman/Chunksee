@@ -24,7 +24,7 @@ nonisolated enum PetDetailText {
         case ("minecraft:cat", "minecraft:black"): variant = String(localized: "Tuxedo")
         case ("minecraft:cat", "minecraft:red"): variant = String(localized: "Ginger")
         case ("minecraft:cat", "minecraft:all_black"): variant = String(localized: "Black")
-        default: variant = name(appearance.variant)
+        default: variant = appearance.variant.map(name) ?? String(localized: "Unknown")
         }
         guard let markings = appearance.markings else { return variant }
         return String(localized: "\(variant), \(name(markings))",

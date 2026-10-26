@@ -20,7 +20,7 @@ import Testing
             "Owner": .string((owner ?? self.owner).uuidString),
             "Pos": .list([.double(999), .double(20), .double(888)])]
         if let id { fields["UUID"] = .string(id.uuidString) }
-        return .compound(fields)
+        return Fixtures.mob(fields)
     }
 
     func playerData(pets: [NBT], dimension: NBT = .string("minecraft:the_nether"),

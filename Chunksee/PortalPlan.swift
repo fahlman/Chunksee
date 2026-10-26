@@ -38,12 +38,13 @@ nonisolated struct PortalPlan {
     let destination: NetherPortal.Block
     let link: NetherPortal.Link?
 
-    init?(entrance: NetherPortal.Block, dimension: String, portals: [String: [NetherPortal]]) {
+    init?(entrance: NetherPortal.Block, dimension: String, portals: [String: [NetherPortal]],
+          dimensionTypes: [String: DimensionType], borders: [String: WorldBorder]) {
         guard let target = NetherPortal.targetDimension(from: dimension),
-              let destination = NetherPortal.destination(of: entrance, from: dimension) else { return nil }
+              let destination = NetherPortal.destination(of: entrance, from: dimension, dimensionTypes: dimensionTypes, destinationBorder: borders[target]) else { return nil }
         targetDimension = target
         self.destination = destination
         let proposed = NetherPortal(dimension: dimension, blocks: [entrance])
-        link = portals[target].flatMap { proposed.link(into: $0, entering: entrance) }
+        link = portals[target].flatMap { proposed.link(into: $0, dimensionTypes: dimensionTypes, borders: borders, entering: entrance) }
     }
 }

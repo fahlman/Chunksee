@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import CoreGraphics
 import Foundation
@@ -113,7 +114,7 @@ import Testing
         #expect(session.map?.depth == MapDepth(y: 48, isSurface: true))
         session.map?.setDepth(MapDepth(y: 101, isSurface: false))
         let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
-        let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([.compound([
+        let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([Fixtures.mob([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Map Fox"),
             "Pos": .list([.double(13), .double(32), .double(13)]),
         ])])])
@@ -882,9 +883,9 @@ import Testing
 
     private func searchCreatures(health: Float = 8) -> [NBT] {
         [
-            .compound(["id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Owner": .intArray([1, 2, 3, 4]),
+            Fixtures.mob(["id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Owner": .intArray([1, 2, 3, 4]),
                        "Health": .float(health), "CustomName": .string("Search Pet"), "Pos": .list([.double(13), .double(64), .double(13)])]),
-            .compound(["id": .string("minecraft:villager"), "UUID": .intArray([5, 6, 7, 8]), "Health": .float(20),
+            Fixtures.mob(["id": .string("minecraft:villager"), "UUID": .intArray([5, 6, 7, 8]), "Health": .float(20),
                        "Pos": .list([.double(8), .double(48), .double(9)]),
                        "VillagerData": .compound(["profession": .string("minecraft:farmer"), "level": .int(1)]),
                        "Offers": .compound(["Recipes": .list([.compound([
@@ -909,7 +910,7 @@ import Testing
         chunk.nbt = .compound(root)
         let url = try TestWorld.make(chunks: [chunk])
         let dimension = url.appendingPathComponent("dimensions/minecraft/overworld")
-        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures ?? [.compound([
+        let entity = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list(creatures ?? [Fixtures.mob([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10),
             "CustomName": .string("Map Fox"), "Pos": .list([.double(13), .double(petY), .double(13)]),
         ])])])

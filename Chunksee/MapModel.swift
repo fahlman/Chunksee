@@ -36,7 +36,7 @@ final class MapModel {
     private(set) var showsDarkSpots = false
     private(set) var nightLighting: MonsterSpawnLight?
     var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
-    let heightScale: MapHeightScale?
+    private(set) var heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
     private(set) var tiles: [RegionPosition: MapTileImage] = [:]
@@ -61,7 +61,7 @@ final class MapModel {
     @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
-    private let renderer: RegionTileRenderer
+    private var renderer: RegionTileRenderer
     private var gameAssets: GameAssetLibrary?
     private var biomeColors: MapBiomeColors?
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
@@ -693,6 +693,17 @@ final class MapModel {
         let previous = depth.cutawayY
         depth = value
         guard previous != value.cutawayY else { return }
+        surfaceChanged()
+    }
+
+    func setDimensionSettings(_ settings: DimensionSettings?) {
+        let context = MapSurfaceContext(settings: settings)
+        let scale = MapHeightScale(settings: settings)
+        guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
+        renderer.surfaceContext = context
+        renderer.heightScale = scale
+        heightScale = scale
+        if scale == nil, style == .height { style = .normal }
         surfaceChanged()
     }
 

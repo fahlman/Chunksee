@@ -114,7 +114,7 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
                 PetDetailRows(creature: creature)
             }
-            if let profession = VillagerText.inspectorProfession(creature) {
+            if let profession = VillagerText.inspectorProfession(creature, definitions: session.details.definitions.trading) {
                 LabeledContent("Profession", value: profession)
             }
         } header: {

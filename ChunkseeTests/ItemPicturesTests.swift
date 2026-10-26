@@ -139,13 +139,13 @@ import UniformTypeIdentifiers
         }
     }
 
-    @Test func unverifiedContainerVersionsKeepTheirFallback() async throws {
+    @Test func readableContainerPicturesIgnoreTheGameVersion() async throws {
         let fixture = try ItemPictureFixture(dataVersion: 5024)
         defer { fixture.remove() }
         let library = try fixture.library()
         for id in ["test:chest_front", "test:shulker_front"] {
-            #expect(try await library.picture(for: ItemStack(id: id)) == nil)
-            #expect(library.cachedPicture(for: ItemStack(id: id)) == nil)
+            let image = try #require(try await library.picture(for: ItemStack(id: id)))
+            #expect(library.cachedPicture(for: ItemStack(id: id)) === image)
         }
         #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
     }
@@ -305,7 +305,7 @@ import UniformTypeIdentifiers
         #expect(ItemAppearance.name(of: red, locale: Locale(identifier: "en_US")) == "12 Flat “Keeps its name”")
     }
 
-    @Test func picturesShareSelectedModelsAndRetainTheOriginalStacksTints() async throws {
+    @Test func picturesKeepSavedComponentSelectionsAndOriginalTintsSeparate() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
         let library = try fixture.library()
@@ -317,14 +317,16 @@ import UniformTypeIdentifiers
             "minecraft:item_model": .string("test:leather"), "minecraft:dyed_color": .int(0x0000FF)
         ]))
         let redImage = try #require(try await library.picture(for: red))
-        #expect(library.cachedPicture(for: shared) === redImage)
-        #expect(try await library.picture(for: shared) === redImage)
+        #expect(library.cachedPicture(for: shared) == nil)
+        let sharedImage = try #require(try await library.picture(for: shared))
+        #expect(try ItemPictureFixture.pixels(sharedImage).bytes == ItemPictureFixture.pixels(redImage).bytes)
+        #expect(try await library.picture(for: shared) === sharedImage)
         #expect(library.cachedPicture(for: blue) == nil)
         let blueImage = try #require(try await library.picture(for: blue))
         #expect(redImage !== blueImage)
         #expect(try ItemPictureFixture.pixels(redImage).color(56, 56) == [255, 0, 0, 255])
         #expect(try ItemPictureFixture.pixels(blueImage).color(56, 56) == [0, 0, 255, 255])
-        #expect(library.cachedPicture(for: shared) === redImage)
+        #expect(library.cachedPicture(for: shared) === sharedImage)
         #expect(library.cachedPicture(for: blue) === blueImage)
     }
 
@@ -434,6 +436,30 @@ import UniformTypeIdentifiers
         #expect(try await library.picture(for: unused) != nil)
     }
 
+    @Test func savedPropertyKeysConsumeThePictureCacheBudget() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        let fields = Dictionary(uniqueKeysWithValues: (0..<2048).map { ("test:flag\($0)", NBT.int(1)) })
+        var stacks: [ItemStack] = []
+        for index in 0..<100 {
+            var components = fields
+            components["minecraft:block_state"] = .compound(["style": .string(String(repeating: "x", count: 60_000) + String(index))])
+            let stack = ItemStack(id: "test:flat", components: .compound(components))
+            #expect(try #require(stack.itemModelSelection).savedPropertyStorageCost > 150_000)
+            stacks.append(stack)
+            #expect(try await library.picture(for: stack) != nil)
+        }
+        // Only 100 entries, below the 512-entry limit. Their retained selector bytes must
+        // therefore force eviction through the cost budget, despite sharing one tiny model.
+        #expect(stacks.filter { library.cachedPicture(for: $0) != nil }.count < stacks.count)
+        let ordinary = ItemStack(id: "test:flat")
+        let image = try #require(try await library.picture(for: ordinary))
+        #expect(library.cachedPicture(for: ordinary) === image)
+        #expect(try await library.picture(for: ordinary) === image)
+        #expect(try ItemPictureFixture.pixels(image).bytes.contains { $0 != 0 })
+    }
+
     @Test func existingMinecraftBookmarkIsSharedWithPlayerNames() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
@@ -443,43 +469,37 @@ import UniformTypeIdentifiers
         defaults.set(bookmark, forKey: "minecraftFolderBookmark")
         let names = PlayerNames(defaults: defaults, readCaches: { _ in [:] })
         #expect(names.minecraftFolder?.standardizedFileURL == fixture.root.standardizedFileURL)
-        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        #expect(await names.minecraft.library(for: version) != nil)
+        #expect(await names.minecraft.library() != nil)
         names.forgetMinecraftFolder()
         #expect(names.minecraft.folder == nil && names.minecraftFolder == nil)
         #expect(defaults.data(forKey: "minecraftFolderBookmark") == nil)
         await names.chooseMinecraftFolder(fixture.root)
-        #expect(await names.minecraft.library(for: version) != nil)
+        #expect(await names.minecraft.library() != nil)
         await names.minecraft.waitUntilIdle()
     }
 
-    @Test func librariesRequireTheSavedVersionAndShareOnlyTheSameFile() async throws {
+    @Test func librariesShareTheSelectedFileAndRetireWithPermission() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
         let resources = MinecraftResources(defaults: TestDefaults.make())
-        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        #expect(await resources.library(for: version) == nil)
+        #expect(await resources.library() == nil)
         resources.choose(fixture.root)
-        let first = try #require(await resources.library(for: version))
-        let second = try #require(await resources.library(for: version))
+        let first = try #require(await resources.library())
+        let second = try #require(await resources.library())
         #expect(first === second)
         let stack = ItemStack(id: "test:flat")
         #expect(try await first.picture(for: stack) != nil)
         #expect(second.cachedPicture(for: stack) != nil)
-        let wrong = try #require(GameAssetVersion(name: "26.3", dataVersion: 1))
-        #expect(await resources.library(for: wrong) == nil)
-        let missing = try #require(GameAssetVersion(name: "1.21", dataVersion: 3953))
-        #expect(await resources.library(for: missing) == nil)
         let generation = resources.generation
         resources.forget()
         #expect(resources.generation != generation && resources.folder == nil)
-        #expect(await resources.library(for: version) == nil)
+        #expect(await resources.library() == nil)
         await resources.waitUntilIdle()
         // Retained inactive views cannot keep reading or warming the retired source.
         #expect(first.cachedPicture(for: stack) == nil)
         #expect(try await second.picture(for: stack) == nil)
         resources.choose(fixture.root)
-        let reopened = try #require(await resources.library(for: version))
+        let reopened = try #require(await resources.library())
         #expect(first !== reopened)
         #expect(try await reopened.picture(for: stack) != nil)
         #expect(try await first.picture(for: stack) == nil)
@@ -490,9 +510,8 @@ import UniformTypeIdentifiers
         let firstFixture = try ItemPictureFixture(), secondFixture = try ItemPictureFixture()
         defer { firstFixture.remove(); secondFixture.remove() }
         let libraries = GameAssetLibraries()
-        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        let first = try #require(try await libraries.library(for: version, under: firstFixture.root))
-        let second = try #require(try await libraries.library(for: version, under: secondFixture.root))
+        let first = try #require(try await libraries.library(under: firstFixture.root))
+        let second = try #require(try await libraries.library(under: secondFixture.root))
         #expect(first !== second)
         let stack = ItemStack(id: "test:flat")
         #expect(try await first.picture(for: stack) != nil)
@@ -502,23 +521,18 @@ import UniformTypeIdentifiers
             #expect(library.cachedPicture(for: stack) == nil)
             #expect(try await library.picture(for: stack) == nil)
         }
-        #expect(try await libraries.library(for: version, under: firstFixture.root) == nil)
+        #expect(try await libraries.library(under: firstFixture.root) == nil)
     }
 
     @Test func changingTheJarDoesNotReuseItsOldPictures() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
         let libraries = GameAssetLibraries()
-        let version = try #require(GameAssetVersion(name: "26.3", dataVersion: 5023))
-        let first = try #require(try await libraries.library(for: version, under: fixture.root))
+        let first = try #require(try await libraries.library(under: fixture.root))
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: fixture.jar.path)
-        let replacement = try #require(try await libraries.library(for: version, under: fixture.root))
+        let replacement = try #require(try await libraries.library(under: fixture.root))
         #expect(first !== replacement && first.sourceKey != replacement.sourceKey)
-        for name in ["", "..", "/tmp/test", "a/b", "a\\b", "a\0b"] {
-            #expect(GameAssetVersion(name: name, dataVersion: 5023) == nil)
-        }
-        #expect(GameAssetVersion(name: "26.3", dataVersion: Int.max) == nil)
-        #expect(GameAssetVersion(name: nil, dataVersion: 5023) == nil)
+
     }
 
     @Test func cancelledPicturesDoNotDrawOrPublish() async throws {

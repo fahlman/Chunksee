@@ -9,7 +9,7 @@ nonisolated enum VillagerText {
         return ReadableName.from(profession)
     }
 
-    static func inspectorProfession(_ creature: Creature) -> String? {
+    static func inspectorProfession(_ creature: Creature, definitions: TradingDefinitions? = nil) -> String? {
         guard let villager = creature.villager else { return nil }
         let name: String
         if let profession = professionName(villager) {
@@ -20,7 +20,8 @@ nonisolated enum VillagerText {
             return nil
         }
         // An unverified custom profession keeps its existing rank; only known false omits it.
-        guard villager.supportsTrading != false, let level = levelName(villager.level) else { return name }
+        if villager.supportsTrading(using: definitions) == false { return name }
+        guard let level = levelName(villager.level) else { return name }
         return String(localized: "\(name), \(level)")
     }
 

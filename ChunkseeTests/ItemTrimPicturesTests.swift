@@ -34,8 +34,10 @@ import Testing
                 "material": .string("test:gold"), "pattern": .string("test:different")
             ])
         ]))
-        #expect(library.cachedPicture(for: shared) === golden)
-        #expect(try await library.picture(for: shared) === golden)
+        #expect(library.cachedPicture(for: shared) == nil)
+        let sharedImage = try #require(try await library.picture(for: shared))
+        #expect(try ItemPictureFixture.pixels(sharedImage).bytes == ItemPictureFixture.pixels(golden).bytes)
+        #expect(library.cachedPicture(for: shared) === sharedImage)
         await library.close()
         #expect(library.cachedPicture(for: gold) == nil)
         #expect(try await library.picture(for: gold) == nil)
@@ -55,7 +57,7 @@ import Testing
         #expect(pixels.color(70, 70) == [0, 255, 0, 255])
     }
 
-    @Test func olderUntrimmedPicturesAndMissingMaterialFallbacksRemainAvailable() async throws {
+    @Test func olderTrimmedPicturesAndMissingMaterialFallbacksRemainAvailable() async throws {
         let fixture = try Self.fixture(extraFiles: [
             "version.json": ItemPictureFixture.json(["id": "1.21.5", "world_version": 4325])
         ])
@@ -65,11 +67,13 @@ import Testing
         for trim in [NBT.compound(["!minecraft:trim": .compound([:]), "Trim": .compound(["material": .string("test:gold")])]),
                      .compound(["minecraft:trim": .compound(["material": .compound([:])])])] {
             let stack = ItemStack(id: "test:armor", components: trim)
-            #expect(try await library.picture(for: stack) === ordinary)
-            #expect(library.cachedPicture(for: stack) === ordinary)
+            let image = try #require(try await library.picture(for: stack))
+            #expect(try ItemPictureFixture.pixels(image).bytes == ItemPictureFixture.pixels(ordinary).bytes)
+            #expect(library.cachedPicture(for: stack) === image)
         }
-        #expect(try await library.picture(for: Self.stack("gold")) == nil)
-        #expect(library.cachedPicture(for: Self.stack("gold")) == nil)
+        let trimmed = try #require(try await library.picture(for: Self.stack("gold")))
+        #expect(try ItemPictureFixture.pixels(trimmed).color(56, 8) == [255, 255, 0, 255])
+        #expect(library.cachedPicture(for: Self.stack("gold")) === trimmed)
     }
 
     @Test func malformedTrimNeverReusesAnUntrimmedOrPreviouslyTrimmedImage() async throws {

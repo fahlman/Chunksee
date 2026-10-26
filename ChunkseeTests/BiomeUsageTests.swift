@@ -66,7 +66,7 @@ import Testing
                     #expect(scan.caveBiomes[ChunkPosition(x: 0, z: 0)] == [expected])
                     let areas = scan.biomeAreas.filter { BiomePresentation.caveBiomeIDs.contains($0.group.id) }
                     #expect(areas.count == 1 && areas.first?.group.id == expected && areas.first?.chunkCount == 1)
-                    let catalog = try f.dimension().vanillaBiomes
+                    let catalog = try #require(try World(contentsOf: f.url).possibleBiomes(in: "minecraft:overworld", assets: nil))
                     #expect(catalog.contains("minecraft:lush_caves") && catalog.contains("minecraft:deep_dark"))
                 }
             }
