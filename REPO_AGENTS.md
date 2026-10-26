@@ -879,9 +879,9 @@ they add no readers. Missing heights stay absent; map centers, biome areas and s
 acquire an invented Y. Maps retain their thumbnail, with the shared map symbol as a fallback.
 Selection, visibility, menus and navigation remain outside this stateless label.
 
-Selected location labels in the sidebar repeat SelectionModel.choose on an ordinary click;
-Return while the sidebar is focused uses the same path. The native List primary action keeps
-double-click behavior. A single sidebar modifier-key observer leaves modified clicks to native
+Selected location labels in the sidebar repeat SelectionModel.choose on an ordinary click.
+The existing native List primary action supplies Return and double-click behavior.
+A single sidebar modifier-key observer leaves modified clicks to native
 selection, and player visibility buttons remain outside the label gesture. Map marker clicks
 still keep the viewport. Current saved positions and dimension routing remain SelectionModel's.
 
