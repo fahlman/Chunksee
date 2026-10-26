@@ -86,6 +86,29 @@ import Testing
         await first.waitUntilClosed(); await second.waitUntilClosed()
     }
 
+    @Test func carrierAndMobViewsUseOnePreparedPlayerPublication() async throws {
+        let url = try makeWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try await PlayerInspectorTests().open(url)
+        defer { session.close() }
+        await session.resources.waitForRefresh()
+        let prior = try #require(session.players.first { $0.uuid == carrier })
+        let oldPosition = PlayerPresentation.position(of: prior)
+        let updated = PlayerInfo(uuid: carrier, nbt: playerData(pets: [parrot(bird)],
+            dimension: .string(overworld), position: [42, 75, -12]))
+        session.resources.playerRoster.publish([updated])
+        // No actor suspension: the roster is newer while its carried-mob merge is pending.
+        let pendingPlayer = try #require(session.players.first { $0.uuid == carrier })
+        #expect(PlayerPresentation.position(of: pendingPlayer) == oldPosition)
+        await session.resources.index.waitForProjection()
+        let shownPlayer = try #require(session.players.first { $0.uuid == carrier })
+        let shownPet = try #require(session.presentation.selectedIndex.creatures.first { $0.carrier == carrier })
+        #expect(PlayerPresentation.position(of: shownPlayer)?.x == 42)
+        #expect(shownPet.position == CGPoint(x: 42, y: -12) && shownPet.creature.y == 75)
+        #expect(session.search.playerSnapshot === session.resources.playerSnapshot)
+        session.close(); await session.waitUntilClosed()
+    }
+
     @Test func playerRefreshMovesShoulderPetsAndLandingRetainsTheirIdentity() async throws {
         let url = try makeWorld()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -149,7 +172,7 @@ import Testing
         await session.waitUntilClosed()
     }
 
-    @Test func unavailableCarriersKeepDetailsAndNeverUseMountingCoordinates() throws {
+    @Test func unavailableCarriersKeepDetailsAndNeverUseMountingCoordinates() async throws {
         let inputs = [playerData(pets: [parrot(bird)], position: nil),
                       playerData(pets: [parrot(bird)], position: [.nan, 64, 0]),
                       playerData(pets: [parrot(bird)], dimension: .int(999)),
@@ -162,7 +185,7 @@ import Testing
             var part = DimensionContent()
             let regionCreature = try #require(Creature(parrot(bird)))
             part.creatures = [try #require(CreatureMarker(regionCreature, dimension: overworld))]
-            let projected = SearchIndex(dimensions: [overworld: part]).including(snapshot.shoulderPets)
+            let projected = await SearchIndex(dimensions: [overworld: part]).including(snapshot.shoulderPets)
             #expect(projected.creatures.isEmpty)
             #expect(projected.dimensions.keys.sorted() == [overworld])
         }

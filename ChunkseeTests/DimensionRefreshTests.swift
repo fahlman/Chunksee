@@ -81,7 +81,7 @@ import Testing
         let dimensions = try World(contentsOf: url).dimensions()
         let readers = try ids.map { id in RegionReader(dimension: try #require(dimensions.first { $0.id == id }), cache: .off) }
         let gate = AsyncReadGate<DimensionContent>()
-        let index = WorldIndexStore(readers: readers, work: BackgroundWork(), firstDimension: nil,
+        let index = WorldIndexStore(readers: readers, work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
         index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
@@ -109,7 +109,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionContent>()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil,
+        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(ids[0])
         index.rebuild(firstDimension: nil, changes: [ids[0]: .all])
@@ -129,7 +129,7 @@ import Testing
         let older = RegionReader(dimension: dimension, cache: .off)
         let newer = RegionReader(dimension: dimension, cache: .off)
         let gate = AsyncReadGate<DimensionContent>(), work = BackgroundWork()
-        let index = WorldIndexStore(readers: [older], work: work, firstDimension: nil,
+        let index = WorldIndexStore(readers: [older], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
             readDimension: { reader, _, _ in await gate.read(reader === older ? "older" : "newer") })
         await gate.waitForRequest("older")
         index.replace(readers: [newer], firstDimension: dimension.id)

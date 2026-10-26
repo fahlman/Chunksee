@@ -82,11 +82,19 @@ struct WorldView: View {
                                     shown: $visibility.places, item: { SidebarItem.place($0.id) },
                                     expandedGroups: $sidebarDisclosure.places)
                     }
-                    if !index.creatures.isEmpty {
+                    if index.mobTypes.hasSpecialCreatures {
                         Section("Creatures", isExpanded: sectionExpanded(.creatures)) {
-                            LayerGroups(session: session, markers: index.creatures, origin: session.presentation.spawnPoint,
+                            LayerGroups(session: session, markers: index.mobTypes.specialCreatures, origin: session.presentation.spawnPoint,
                                         shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
                                         expandedGroups: $sidebarDisclosure.creatures)
+                        }
+                    }
+                    if !index.mobTypes.kinds.isEmpty {
+                        Section("Mobs", isExpanded: sectionExpanded(.mobs)) {
+                            MobGroups(session: session, catalog: index.mobTypes, expanded: $sidebarDisclosure.mobTypes) {
+                                if case .mobCreature? = session.selection.sidebarSelection,
+                                   let item = session.selection.sidebarSelection { finishSidebarReveal(item) }
+                            }
                         }
                     }
                     // Every biome the dimension can have, once it's been read, so one not found yet shows 0.
