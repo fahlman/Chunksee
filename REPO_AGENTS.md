@@ -1390,9 +1390,9 @@ Mob symbols use Kit's generated sheep tints or an alpha-weighted representative 
 actual installed axolotl texture. GameAssetLibrary owns a bounded shared color cache alongside
 its existing decoded textures and clears it on source retirement. Missing artwork leaves the
 normal untinted symbol; no replacement color table or bundled game pictures are used. Label text
-keeps native colors. VoiceOver includes the color and a textured mob's independent saved variant,
-so an approximate spoken color cannot confuse cyan with blue. AppKit's NSColor.accessibilityName supplies a
-localized name for sampled colors because SwiftUI has no equivalent API.
+keeps native colors. VoiceOver names the saved variant for every tinted mob, including when its
+artwork is unavailable, using the same naming as the inspector. It never guesses a color name
+from sampled pixels.
 
 Creature.displayName owns custom-name, villager-profession and kind fallback naming for located
 markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and

@@ -1,4 +1,3 @@
-import AppKit
 import ChunkseeKit
 import SwiftUI
 
@@ -10,8 +9,7 @@ struct MobLocationLabel: View {
     var body: some View {
         switch marker.creature.appearance?.colorSource(for: marker.creature.id) {
         case .tint(let color):
-            MobLabel(marker: marker, color: MapColor(color),
-                     colorName: marker.creature.appearance?.variant.map(PetDetailText.name))
+            MobLabel(marker: marker, color: MapColor(color))
         case .texture(let id): MobTextureLabel(marker: marker, texture: id)
         case nil: MobLabel(marker: marker)
         }
@@ -32,13 +30,7 @@ private struct MobTextureLabel: View {
     var body: some View {
         let request = Request(library: pictures?.identity, texture: texture)
         let color = loaded?.request == request ? loaded?.color : pictures?.cachedTextureColor(texture)
-        MobLabel(marker: marker, color: color, colorName: color.map { color in
-            // SwiftUI has no localized color-name API; AppKit supplies the native spoken name.
-            NSColor(srgbRed: Double(color.red) / 255, green: Double(color.green) / 255,
-                    blue: Double(color.blue) / 255, alpha: 1).accessibilityName
-        }, appearanceName: marker.creature.appearance.map {
-            PetDetailText.appearance($0, species: marker.creature.id)
-        })
+        MobLabel(marker: marker, color: color)
         .task(id: request) {
             guard loaded?.request != request, let pictures else { return }
             let resolved = try? await pictures.textureColor(request.texture)
@@ -50,8 +42,6 @@ private struct MobTextureLabel: View {
 private struct MobLabel: View {
     let marker: CreatureMarker
     var color: MapColor?
-    var colorName: String?
-    var appearanceName: String?
 
     var body: some View {
         LocationLabel(title: Text(marker.name)) {
@@ -64,9 +54,13 @@ private struct MobLabel: View {
     }
 
     private var spokenLabel: Text {
-        let title = colorName.map { Text("\($0) \(marker.name)") } ?? Text(marker.name)
-        // A sampled color name is approximate: macOS calls the cyan skin "blue".
-        // Keep the independent saved variant audible, including when art is unavailable.
-        return appearanceName.map { Text("\(title), \($0)") } ?? title
+        // The saved variant identifies the tint without guessing a name from its pixels.
+        // Keep that identity audible even when its artwork is unavailable.
+        if let appearance = marker.creature.appearance, let variant = appearance.variant,
+           appearance.colorSource(for: marker.creature.id) != nil {
+            Text("\(PetDetailText.name(variant)) \(marker.name)")
+        } else {
+            Text(marker.name)
+        }
     }
 }
