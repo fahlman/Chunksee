@@ -1422,6 +1422,14 @@ seed-displaced cells across chunk/section/region boundaries. The saved Dimension
 source Y to its build limits when known; missing interior sections and neighboring chunks stay
 unavailable. Per-block palettes retain direct lookup; an unknown seed never becomes seed zero.
 Unavailable facts retain BlockColors. Height remains independent of game/biome colors.
+Biome outlines reuse that world's same color snapshot. The established known-biome palette
+remains a design choice; other biomes use water for the game's `is_ocean`/`is_river` members,
+and otherwise grass then foliage at the area's representative point. With no usable land
+colormap, the definition's own water color remains available; only an unavailable definition
+uses the stable name hash. Enabled-pack overrides work without a selected game archive too.
+WorldResources owns the observable snapshot, refreshes it for packs and source changes, and
+rejects retired reads. Live and exported maps share MapScene's outline drawing. These overlays
+never enter terrain tiles, so outline tags do not change the terrain source key or cache version.
 View > Map Style > Blend Biome Colors is an initially-off, per-dimension display choice, owned
 by MapModel and persisted by WorldSettings. BiomeBlending averages the client's default 5-by-5
 square at the same Y, using integer RGB channels. Kit still selects every biome and resolves
