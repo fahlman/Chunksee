@@ -77,15 +77,31 @@ final class HeatMapLayer {
             load()
         }
     }
-    private let loader: RefreshLoader<[RegionPosition: CGImage]>
-    private let hasReader: Bool
+    private var loader: RefreshLoader<[RegionPosition: CGImage]>
+    private var hasReader: Bool
+    private let work: BackgroundWork
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
     init(reader: RegionReader?, work: BackgroundWork) {
+        self.work = work
         hasReader = reader != nil
         loader = RefreshLoader(work: work, priority: .userInitiated) { previous in
             guard let reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }
+    }
+
+    func replaceReader(_ reader: RegionReader?) {
+        guard !loader.isClosed else { return }
+        let previous = loader
+        previous.close()
+        // Keep the retired loader alive until its read drains, under the world's owner.
+        work.start(priority: .utility) { await previous.waitUntilFinished() }
+        hasReader = reader != nil
+        loader = RefreshLoader(work: work, priority: .userInitiated) { previous in
+            guard let reader else { return [:] }
+            return await HeatMap.images(reader, previous: previous ?? [:])
+        }
+        load()
     }
 
     /// Restores this tab's flag without making a second live copy in LayerVisibility.

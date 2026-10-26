@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
 import ChunkseeKit
@@ -128,8 +129,9 @@ import Testing
         let world = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1), options: RegionReader.options())
-        let deposits = BlockDeposit.grouped(try #require(facts.chunks.first).blockDeposits)
+        let definitions = try WorldDefinitions.read(World(contentsOf: world), assets: nil)
+        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1), options: RegionReader.options(definitions: definitions))
+        let deposits = BlockDeposit.grouped(try #require(facts.chunks.first).blockDeposits, using: definitions.notableBlocks)
         #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
 
         let defaults = TestDefaults.make()
@@ -334,7 +336,7 @@ import Testing
             "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first))
         let wolf = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 1, y: 64, z: 2, customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
         let cat = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 5, y: 64, z: 5, owner: UUID()), dimension: "minecraft:overworld"))
-        let villager = try #require(Creature(.compound(["id": .string("minecraft:villager"), "Health": .float(20),
+        let villager = try #require(Creature(Fixtures.mob(["id": .string("minecraft:villager"), "Health": .float(20),
                                                          "Pos": .list([.double(9), .double(64), .double(9)]),
                                                          "VillagerData": .compound(["profession": .string("minecraft:farmer")])])))
         let farmer = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
@@ -370,7 +372,7 @@ import Testing
             .compound(["id": .string(id), "count": .int(count), "components": .compound(components)])
         }
         let mendingBook = item("minecraft:enchanted_book", 1, ["minecraft:stored_enchantments": .compound(["minecraft:mending": .int(1)])])
-        let librarian = try #require(Creature(.compound([
+        let librarian = try #require(Creature(Fixtures.mob([
             "id": .string("minecraft:villager"), "Health": .float(20), "Pos": .list([.double(30), .double(64), .double(-12)]),
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)]),
             "Offers": .compound(["Recipes": .list([

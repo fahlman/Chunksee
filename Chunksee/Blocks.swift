@@ -22,7 +22,9 @@ extension NotableBlock {
     }
 
     /// The text `block:` searches match: the name and every id.
-    nonisolated var searchText: String { ([name] + ids).joined(separator: " ") }
+    nonisolated func searchText(in catalog: NotableBlock.Catalog?) -> String {
+        ([name] + (catalog?.ids(for: self) ?? []).sorted()).joined(separator: " ")
+    }
 }
 
 /// A chunk's deposit as retained and sorted by the shared dimension index.

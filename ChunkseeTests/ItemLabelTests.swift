@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeKit
 import ChunkseeIndex
 import Foundation
@@ -44,7 +45,7 @@ import Testing
     }
 
     @Test func tradeSearchFindsCustomNamesOnEveryCostAndRetainsEnchantments() throws {
-        let creature = try #require(Creature(.compound([
+        let creature = try #require(Creature(Fixtures.mob([
             "id": .string("minecraft:villager"), "Health": .float(20),
             "Pos": .list([.double(2), .double(64), .double(3)]),
             "VillagerData": .compound(["profession": .string("minecraft:weaponsmith"), "level": .int(5)]),

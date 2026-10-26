@@ -13,6 +13,7 @@ final class MinecraftResources {
     private let work = BackgroundWork()
     @ObservationIgnored private lazy var reads = work.makeScope()
     private var libraries = GameAssetLibraries()
+    @ObservationIgnored private var observers: [UUID: () -> Void] = [:]
     private static let bookmarkKey = "minecraftFolderBookmark"
 
     init(defaults: UserDefaults) {
@@ -30,14 +31,28 @@ final class MinecraftResources {
     isolated deinit { work.close() }
 
     func choose(_ url: URL) {
-        forget()
+        retire()
         access = WorldReadAccess(url)
         let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                                              includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(bookmark, forKey: Self.bookmarkKey)
+        for observer in observers.values { observer() }
     }
 
     func forget() {
+        retire()
+        for observer in observers.values { observer() }
+    }
+
+    func observeChanges(_ action: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = action
+        return id
+    }
+
+    func stopObserving(_ id: UUID) { observers[id] = nil }
+
+    private func retire() {
         generation = UUID()
         reads.cancel()
         let previousLibraries = libraries, previousAccess = access
@@ -52,12 +67,12 @@ final class MinecraftResources {
         defaults.removeObject(forKey: Self.bookmarkKey)
     }
 
-    func library(for version: GameAssetVersion) async -> GameAssetLibrary? {
+    func library() async -> GameAssetLibrary? {
         guard let access, !Task.isCancelled else { return nil }
         let generation = generation, libraries = libraries
         var result: GameAssetLibrary?
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
-            let loaded = try? await libraries.library(for: version, under: access.url)
+            let loaded = try? await libraries.library(under: access.url)
             withExtendedLifetime(access) {}
             guard !Task.isCancelled, self?.generation == generation else { return }
             result = loaded
@@ -67,19 +82,6 @@ final class MinecraftResources {
     }
 
     func waitUntilIdle() async { await work.waitUntilFinished() }
-}
-
-nonisolated struct GameAssetVersion: Hashable, Sendable {
-    let name: String
-    let dataVersion: Int32
-
-    init?(name: String?, dataVersion: Int?) {
-        guard let name, !name.isEmpty, name != ".", name != "..",
-              !name.contains("/"), !name.contains("\\"), !name.contains("\0"),
-              let dataVersion, let saved = Int32(exactly: dataVersion) else { return nil }
-        self.name = name
-        self.dataVersion = saved
-    }
 }
 
 /// Jar reads and validation are serial off-main. Live windows using the same file share one
@@ -95,35 +97,67 @@ actor GameAssetLibraries {
         init(_ value: GameAssetLibrary) { self.value = value }
     }
     private var live: [Identity: WeakLibrary] = [:]
+    private var versions: [Identity: GameAssets.Version] = [:]
     private var isClosed = false
 
     func close() async {
         isClosed = true
         let pictures = live.values.compactMap(\.value)
         live.removeAll()
+        versions.removeAll()
         for library in pictures { await library.close() }
     }
 
-    func library(for version: GameAssetVersion, under folder: URL) throws -> GameAssetLibrary? {
+    func library(under folder: URL) throws -> GameAssetLibrary? {
         try Task.checkCancellation()
         guard !isClosed else { return nil }
-        let url = folder.appendingPathComponent("versions", isDirectory: true)
-            .appendingPathComponent(version.name, isDirectory: true)
-            .appendingPathComponent(version.name + ".jar").resolvingSymlinksInPath()
-        // The ordinary client is about 41 MiB. A large or unrelated selected file must not
-        // allocate arbitrary memory merely because an inventory became visible.
-        guard let stamp = CacheKey.fileStamp(for: url), (1...134_217_728).contains(stamp.size) else { return nil }
-        let key = Identity(url: url, size: stamp.size, modified: stamp.modified)
+        let directory = folder.appendingPathComponent("versions", isDirectory: true)
+        let installed = (try? FileManager.default.contentsOfDirectory(at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         live = live.filter { $0.value.value != nil }
-        if let cached = live[key]?.value {
-            return cached.version.id == version.name && cached.version.dataVersion == version.dataVersion ? cached : nil
+        var seen: Set<Identity> = []
+        var selected: (key: Identity, version: GameAssets.Version, assets: GameAssets?)?
+        for entry in installed.sorted(by: { $0.path < $1.path }) {
+            try Task.checkCancellation()
+            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+            let url = entry.appendingPathComponent(entry.lastPathComponent + ".jar").resolvingSymlinksInPath()
+            // Bound one archive, and retain at most the best uncached candidate during discovery.
+            guard let stamp = CacheKey.fileStamp(for: url), (1...134_217_728).contains(stamp.size) else { continue }
+            let key = Identity(url: url, size: stamp.size, modified: stamp.modified)
+            seen.insert(key)
+            let assets: GameAssets?
+            let version: GameAssets.Version
+            if let known = versions[key] {
+                assets = nil
+                version = known
+            } else {
+                guard let opened = try? GameAssets(contentsOf: url),
+                      let after = CacheKey.fileStamp(for: url), after.size == stamp.size, after.modified == stamp.modified else { continue }
+                assets = opened
+                version = opened.version
+                versions[key] = version
+            }
+            if let best = selected, !Self.prefers(version, over: best.version) { continue }
+            selected = (key, version, assets)
         }
-        guard let assets = try GameAssets(contentsOf: url), assets.version.id == version.name,
-              assets.version.dataVersion == version.dataVersion,
-              let after = CacheKey.fileStamp(for: url), after.size == stamp.size, after.modified == stamp.modified else { return nil }
+        versions = versions.filter { seen.contains($0.key) }
+        guard let selected else { return nil }
+        let key = selected.key
+        guard let stamp = CacheKey.fileStamp(for: key.url), stamp.size == key.size, stamp.modified == key.modified else { return nil }
+        if let cached = live[key]?.value { return cached }
+        guard let assets = try selected.assets ?? GameAssets(contentsOf: key.url),
+              let after = CacheKey.fileStamp(for: key.url), after.size == stamp.size, after.modified == stamp.modified else { return nil }
         try Task.checkCancellation()
-        let pictures = GameAssetLibrary(assets: assets, sourceKey: CacheKey.hash("\(url.absoluteString)|\(stamp.size)|\(stamp.modified)|\(version.name)|\(version.dataVersion)"))
+        let pictures = GameAssetLibrary(assets: assets, sourceKey: CacheKey.hash("\(key.url.absoluteString)|\(stamp.size)|\(stamp.modified)|\(assets.version.id)|\(assets.version.dataVersion)"))
         live[key] = WeakLibrary(pictures)
         return pictures
+    }
+
+    /// The jar declares whether it is a release and when it was built. Missing dates use the
+    /// saved-format revision as an ordering fallback, never a version-name guess or world gate.
+    nonisolated static func prefers(_ candidate: GameAssets.Version, over current: GameAssets.Version) -> Bool {
+        if (candidate.isStable == true) != (current.isStable == true) { return candidate.isStable == true }
+        if let a = candidate.buildTime, let b = current.buildTime, a != b { return a > b }
+        return candidate.dataVersion > current.dataVersion
     }
 }

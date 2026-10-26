@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import AppKit
 import ChunkseeKit
@@ -19,7 +20,7 @@ import Testing
                      read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension(dimensionID))
-        let context = MapSurfaceContext(dimensionID: dimension.id, settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
         if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
                                      cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
         return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)
@@ -120,9 +121,9 @@ import Testing
         let entities = url.appendingPathComponent("dimensions/minecraft/overworld/entities")
         try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
         let pets = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([-1, -1]), "Entities": .list([
-            .compound(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
+            Fixtures.mob(["id": .string("minecraft:wolf"), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
                        "Pos": .list([.double(-8.7), .double(-12.3), .double(-5.2)])]),
-            .compound(["id": .string("minecraft:villager"), "Health": .float(20),
+            Fixtures.mob(["id": .string("minecraft:villager"), "Health": .float(20),
                        "VillagerData": .compound(["profession": .string("minecraft:farmer")]),
                        "Pos": .list([.double(-3.7), .double(-22.3), .double(-13.2)])]),
         ])])

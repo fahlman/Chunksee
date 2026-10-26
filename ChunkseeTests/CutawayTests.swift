@@ -93,7 +93,7 @@ import SwiftUI
             let below = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0, cutawayY: -1))
             #expect(below.allSatisfy { $0 == nil })
             // Surface keeps its roof rule; cutaway must show the actual block at the requested Y.
-            let context = MapSurfaceContext(dimensionID: "minecraft:overworld", settings: WorldDetails.read(try World(contentsOf: f.url)).dimensionSettings["minecraft:overworld"])
+            let context = MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: f.url)).dimensionSettings["minecraft:overworld"])
             let surface = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context))
             let roofSlice = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context, cutawayY: 15))
             #expect(surface[0]?.y == 10 && roofSlice[0]?.y == 15)

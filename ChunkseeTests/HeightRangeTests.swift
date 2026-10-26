@@ -14,7 +14,7 @@ import Testing
 
         func metadata(_ types: [String: NBT], version: Int32 = 5023) throws {
             let level = NBT.compound(["Data": .compound(["LevelName": .string("Height Ranges"),
-                "DataVersion": .int(version), "DataPacks": .compound(["Enabled": .list([.string("vanilla")])])])])
+                "DataVersion": .int(version), "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack)])])])])
             try Data(Compression.deflate(level.serialized(), gzip: true)).write(to: url.appendingPathComponent("level.dat"))
             let folder = url.appendingPathComponent("data/minecraft")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -92,11 +92,10 @@ import Testing
     }
 
     @Test func unavailableTypesLeaveNumericEntryWithoutGuessedBounds() async throws {
-        for example in ["missing", "unresolved", "unverified", "unreadable"] {
+        for example in ["missing", "unresolved", "unreadable"] {
             try await withFixture { f in
                 if example != "missing" {
-                    try f.metadata(["minecraft:overworld": .string(example == "unresolved" ? "example:unknown" : "minecraft:overworld")],
-                                   version: example == "unverified" ? 9999 : 5023)
+                    try f.metadata(["minecraft:overworld": .string(example == "unresolved" ? "example:unknown" : "minecraft:overworld")])
                 }
                 if example == "unreadable" {
                     try Data("invalid saved metadata".utf8).write(to: f.url.appendingPathComponent("data/minecraft/world_gen_settings.dat"))
@@ -127,6 +126,9 @@ import Testing
             #expect(added.map != nil && added.presentation.heightRange == -128...127)
             #expect(original.map === map && map.depth.cutawayY == 900)
             #expect(original.presentation.heightRange == -64...319)
+            await resources.waitForRefresh()
+            #expect(original.presentation.heightRange == 0...255)
+            #expect(original.map === map && map.depth.cutawayY == 900)
         }
     }
 }

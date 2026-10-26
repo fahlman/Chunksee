@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeIndex
 import ChunkseeKit
 import Testing
@@ -19,7 +20,7 @@ import Testing
                 "sell": .compound(["id": .string("minecraft:emerald"), "count": .int(1)]),
             ])])])
         }
-        return try #require(Creature(.compound(fields)))
+        return try #require(Creature(Fixtures.mob(fields)))
     }
 
     @Test func savedDefaultsComeFromKitAndUnknownLevelsStayAbsent() throws {
@@ -61,7 +62,7 @@ import Testing
             let saved = try creature(profession: id)
             #expect(CreatureMarker(saved, dimension: "minecraft:overworld")?.name == name)
         }
-        let trader = try #require(Creature(.compound([
+        let trader = try #require(Creature(Fixtures.mob([
             "id": .string("minecraft:wandering_trader"), "Health": .float(20),
             "Pos": .list([.double(2), .double(64), .double(3)]),
             "Offers": .compound(["Recipes": .list([.compound([

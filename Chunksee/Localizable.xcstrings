@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The return link is unknown." : {
+      "comment" : "Portal inspector: the outward destination is known, but the return scan or its dimension facts are unavailable."
+    },
     "Increase Y Level" : {
       "comment" : "View menu command: raise the remembered cutaway height by one block and enter Cutaway, including from Surface."
     },

@@ -1,3 +1,4 @@
+import ChunkseeKitTestSupport
 import ChunkseeKit
 import Foundation
 import Testing
@@ -11,7 +12,7 @@ import Testing
         var nbt = pet("minecraft:wolf").compound!
         nbt["Health"] = .float(19.5)
         nbt["attributes"] = attributes
-        let creature = try #require(Creature(.compound(nbt), dataVersion: 5023))
+        let creature = try #require(Creature(Fixtures.mob(nbt), dataVersion: 5023))
         let player = PlayerInfo(uuid: UUID(), nbt: .compound([
             "DataVersion": .int(5023), "Health": .float(19.5), "attributes": attributes,
         ]))
@@ -44,7 +45,7 @@ import Testing
         let armor = item("minecraft:wolf_armor", name: "Fluffy Coat", wear: true)
         var nbt = pet("minecraft:wolf").compound!
         nbt["equipment"] = .compound(["body": armor])
-        let wolf = try #require(Creature(.compound(nbt), dataVersion: 5023))
+        let wolf = try #require(Creature(Fixtures.mob(nbt), dataVersion: 5023))
         let rows = EquipmentPresentation.rows(try #require(wolf.equipment))
         let coat = try #require(rows.first?.item)
         #expect(rows.map(\.slot) == ["body"])
@@ -74,18 +75,18 @@ import Testing
         var donkeyNBT = pet("minecraft:donkey").compound!
         donkeyNBT["ChestedHorse"] = .byte(1)
         donkeyNBT["equipment"] = .compound(["saddle": item("minecraft:saddle")])
-        let donkey = try #require(Creature(.compound(donkeyNBT), dataVersion: 5023))
+        let donkey = try #require(Creature(Fixtures.mob(donkeyNBT), dataVersion: 5023))
         let carried = EquipmentPresentation.rows(try #require(donkey.equipment))
         #expect(carried.map(\.slot) == ["saddle", "storage"])
         #expect(carried.map { $0.item.id } == ["minecraft:saddle", "minecraft:chest"])
         let wolf = try #require(Creature(pet("minecraft:wolf"), dataVersion: 5023))
         #expect(try #require(wolf.equipment).isEmpty)
         let parrot = try #require(Creature(pet("minecraft:parrot"), dataVersion: 5023))
-        #expect(parrot.equipment == nil)
+        #expect(try #require(parrot.equipment).isEmpty)
     }
 
     private func pet(_ id: String) -> NBT {
-        .compound(["id": .string(id), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
+        Fixtures.mob(["id": .string(id), "Health": .float(20), "Owner": .intArray([1, 2, 3, 4]),
                    "Pos": .list([.double(0), .double(64), .double(0)])])
     }
 
