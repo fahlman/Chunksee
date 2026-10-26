@@ -342,6 +342,7 @@ final class WorldResources {
         let read = readBiomeColors, world = world, previous = biomeColors
         let reload = needsBiomeReload
         biomeWork.start(priority: nil) { [weak self] in
+            guard !Task.isCancelled else { return }
             let updated = try? await read(world, library, previous, reload)
             guard !Task.isCancelled, let self, !self.isClosed,
                   self.biomeReadGeneration == generation, self.gameAssets?.identity == library?.identity else { return }
