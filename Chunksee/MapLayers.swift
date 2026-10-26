@@ -241,10 +241,13 @@ final class LayerVisibility {
     }
 
     func reveal(_ marker: CreatureMarker, inMobList: Bool = false) {
-        if inMobList || marker.group == .mob { mobTypes.insert(marker.creature.id) }
-        else { creatures.insert(marker.group) }
-        if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
-            mobAppearances[marker.creature.id] = nil
+        if inMobList || marker.group == .mob {
+            mobTypes.insert(marker.creature.id)
+            if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
+                mobAppearances[marker.creature.id] = nil
+            }
+        } else {
+            creatures.insert(marker.group)
         }
     }
 

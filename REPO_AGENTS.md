@@ -1377,12 +1377,15 @@ MobTypes owns one immutable presentation snapshot of located creatures: the shar
 type membership, complete saved-appearance counts, special-group projection and identity lookups.
 DimensionContent replaces it with each creature publication. The Mobs sidebar lists names only;
 type disclosures prepare nearest-first individual rows off-main when expanded. Named Creatures,
-Pets and Villagers remain overlapping views of those same entities. MapContent combines their
-visibility with type visibility once, then applies the selected type's appearance filter, so a
-named pet never acquires duplicate markers. Types start hidden, selecting one shows it, and
+Pets and Villagers remain overlapping views of those same entities. A marker appears when its
+special group is shown, or its type is shown and its appearance matches that type's filter.
+MapContent applies this OR once, so entities never acquire duplicate markers and a type filter
+cannot hide a shown named creature or pet. Mobs use `hare.fill`, distinct from Pets' paw print.
+Types start hidden, selecting one shows it, and
 LayerVisibility remembers type visibility per dimension. Appearance filters last for the open
-dimension and ignore a choice absent from the latest snapshot; selecting an individual clears
-a conflicting filter. The type inspector keeps counts and explains saved-position limitations.
+dimension and ignore a choice absent from the latest snapshot; selecting an individual through
+its type clears a conflicting type filter. Selecting through a special group preserves that
+independent filter. The type inspector keeps counts and explains saved-position limitations.
 Mob symbols use Kit's generated sheep tints or an alpha-weighted representative color from the
 actual installed axolotl texture. GameAssetLibrary owns a bounded shared color cache alongside
 its existing decoded textures and clears it on source retirement. Missing artwork leaves the

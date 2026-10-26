@@ -92,7 +92,8 @@ struct MapContent {
     }
 
     private func showsCreature(_ marker: CreatureMarker) -> Bool {
-        guard (shownCreatureGroups?.contains(marker.group) ?? true) || shownMobTypes.contains(marker.creature.id) else { return false }
+        if shownCreatureGroups?.contains(marker.group) ?? true { return true }
+        guard shownMobTypes.contains(marker.creature.id) else { return false }
         guard let appearance = mobAppearances[marker.creature.id] else { return true }
         return appearance == MobAppearance(marker.creature.appearance)
     }

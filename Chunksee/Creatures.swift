@@ -22,7 +22,7 @@ extension CreatureGroup {
         case .named: "tag.fill"
         case .pet: "pawprint.fill"
         case .villager: "person.crop.square.fill"
-        case .mob: "pawprint.fill"
+        case .mob: "hare.fill"
         }
     }
 

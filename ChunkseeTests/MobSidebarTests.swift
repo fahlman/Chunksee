@@ -1,3 +1,4 @@
+import AppKit
 import ChunkseeKit
 import ChunkseeIndex
 import ChunkseeKitTestSupport
@@ -7,9 +8,9 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct MobSidebarTests {
-    private func marker(_ species: String, x: Double, name: String? = nil,
+    private func marker(_ species: String, x: Double, name: String? = nil, owner: UUID? = nil,
                         appearance: CreatureAppearance? = nil) throws -> CreatureMarker {
-        try #require(CreatureMarker(Creature(id: species, x: x, y: 64, z: 0, customName: name,
+        try #require(CreatureMarker(Creature(id: species, x: x, y: 64, z: 0, customName: name, owner: owner,
             appearance: appearance), dimension: "minecraft:overworld"))
     }
 
@@ -24,6 +25,8 @@ import Testing
         let custom = try marker("test:sheep", x: 8)
         let catalog = MobTypes([white, red, unknown, fish, otherFish, custom])
         #expect(catalog.kinds.count == 3 && catalog.kinds.reduce(0) { $0 + $1.count } == 6)
+        #expect(CreatureGroup.mob.symbol != CreatureGroup.pet.symbol)
+        #expect(NSImage(systemSymbolName: CreatureGroup.mob.symbol, accessibilityDescription: nil) != nil)
         #expect(catalog.specialCreatures == [white])
         #expect(catalog.marker(red.id) == red)
         let sheep = try #require(catalog.kind("minecraft:sheep"))
@@ -42,30 +45,41 @@ import Testing
         catch is CancellationError {} catch { Issue.record(error) }
     }
 
-    @Test func typeAndSpecialVisibilityShareMarkersAndAppearanceFilters() throws {
-        let white = try marker("minecraft:sheep", x: 5, name: "Snow", appearance: .init(variant: "minecraft:white"))
-        let red = try marker("minecraft:sheep", x: 1, appearance: .init(variant: "minecraft:red"))
+    @Test(arguments: [false, true])
+    func typeFiltersKeepNamedAndPetVisibilityIndependent(_ pet: Bool) throws {
+        let species = pet ? "minecraft:wolf" : "minecraft:sheep"
+        let white = try marker(species, x: 5, name: pet ? nil : "Snow", owner: pet ? UUID() : nil,
+                               appearance: .init(variant: pet ? "minecraft:pale" : "minecraft:white"))
+        let red = try marker(species, x: 1, appearance: .init(variant: pet ? "minecraft:rusty" : "minecraft:red"))
         var content = MapContent()
         content.creatures = [white, red]
-        content.shownCreatureGroups = [.named]
-        content.shownMobTypes = ["minecraft:sheep"]
+        content.shownCreatureGroups = [white.group]
+        content.shownMobTypes = [species]
         #expect(content.creatures == [white, red])
-        content.mobAppearances["minecraft:sheep"] = MobAppearance(red.creature.appearance)
-        #expect(content.creatures == [red])
+        content.mobAppearances[species] = MobAppearance(red.creature.appearance)
+        #expect(content.creatures == [white, red])
         let viewport = MapViewport(center: .zero, scale: 1)
-        #expect(content.nearbyCreatures(viewport: viewport, size: CGSize(width: 100, height: 100)) == [red])
+        #expect(content.nearbyCreatures(viewport: viewport, size: CGSize(width: 100, height: 100)) == [white, red])
         let locations = content.accessibleLocations(viewport: viewport, size: CGSize(width: 100, height: 100))
         #expect(locations.filter { $0.target == .row(.mobCreature(red.id)) }.count == 1)
+        content.shownCreatureGroups = []
+        #expect(content.creatures == [red])
+        content.shownCreatureGroups = [white.group]
+        content.shownMobTypes = []
+        #expect(content.creatures == [white])
 
         let settings = WorldSettings(id: UUID(), defaults: TestDefaults.make())
         let visibility = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
-        visibility.mobTypes = ["minecraft:sheep"]
-        visibility.mobAppearances["minecraft:sheep"] = MobAppearance(white.creature.appearance)
-        #expect(visibility.appearance(for: try #require(MobTypes([red]).kind("minecraft:sheep"))) == nil)
+        visibility.mobTypes = [species]
+        visibility.mobAppearances[species] = MobAppearance(red.creature.appearance)
+        visibility.reveal(white)
+        #expect(visibility.mobAppearances[species] == MobAppearance(red.creature.appearance))
+        visibility.mobAppearances[species] = MobAppearance(white.creature.appearance)
+        #expect(visibility.appearance(for: try #require(MobTypes([red]).kind(species))) == nil)
         visibility.reveal(red, inMobList: true)
-        #expect(visibility.mobAppearances["minecraft:sheep"] == nil)
+        #expect(visibility.mobAppearances[species] == nil)
         let reopened = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
-        #expect(reopened.mobTypes == ["minecraft:sheep"] && reopened.mobAppearances.isEmpty)
+        #expect(reopened.mobTypes == [species] && reopened.mobAppearances.isEmpty)
         #expect(LayerVisibility(settings: settings, dimension: "minecraft:the_nether").mobTypes.isEmpty)
     }
 
@@ -99,7 +113,12 @@ import Testing
         guard case .mobType(let kind)? = session.selection.inspectorItem else { Issue.record("Type inspector was not selected"); return }
         #expect(kind.count == 2 && MapContent(session: session).creatures.count == 2)
         session.visibility.mobAppearances[kind.id] = MobAppearance(white.creature.appearance)
+        #expect(MapContent(session: session).creatures.count == 2) // Named Berry is independently shown.
+        session.visibility.creatures.remove(.named)
         #expect(MapContent(session: session).creatures == [white])
+        session.selection.choose(.creature(red.id))
+        #expect(session.visibility.mobAppearances[kind.id] == MobAppearance(white.creature.appearance))
+        #expect(MapContent(session: session).creatures.count == 2)
         session.selection.choose(.mobCreature(red.id))
         #expect(session.visibility.mobAppearances[kind.id] == nil)
         #expect(session.selection.mapSelection == .creature(red) && session.map?.viewport.center == red.position)
