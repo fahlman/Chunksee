@@ -36,6 +36,8 @@ private struct MobTextureLabel: View {
             // SwiftUI has no localized color-name API; AppKit supplies the native spoken name.
             NSColor(srgbRed: Double(color.red) / 255, green: Double(color.green) / 255,
                     blue: Double(color.blue) / 255, alpha: 1).accessibilityName
+        }, appearanceName: marker.creature.appearance.map {
+            PetDetailText.appearance($0, species: marker.creature.id)
         })
         .task(id: request) {
             guard loaded?.request != request, let pictures else { return }
@@ -49,6 +51,7 @@ private struct MobLabel: View {
     let marker: CreatureMarker
     var color: MapColor?
     var colorName: String?
+    var appearanceName: String?
 
     var body: some View {
         LocationLabel(title: Text(marker.name)) {
@@ -57,6 +60,13 @@ private struct MobLabel: View {
                 .shadow(color: color == nil ? .clear : .primary.opacity(0.45), radius: 0.5)
                 .accessibilityHidden(true)
         }
-        .accessibilityLabel(colorName.map { Text("\($0) \(marker.name)") } ?? Text(marker.name))
+        .accessibilityLabel(spokenLabel)
+    }
+
+    private var spokenLabel: Text {
+        let title = colorName.map { Text("\($0) \(marker.name)") } ?? Text(marker.name)
+        // A sampled color name is approximate: macOS calls the cyan skin "blue".
+        // Keep the independent saved variant audible, including when art is unavailable.
+        return appearanceName.map { Text("\(title), \($0)") } ?? title
     }
 }
