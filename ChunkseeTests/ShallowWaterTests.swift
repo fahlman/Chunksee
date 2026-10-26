@@ -50,14 +50,17 @@ import Testing
     }
 
     @Test func gameFluidFactsAgreeAcrossTheSurfaceHoverAndDepthStyle() async throws {
-        let states: [NBT] = [.string("minecraft:kelp"), .string("minecraft:seagrass"),
+        let states: [NBT] = [.compound(["Name": .string("minecraft:kelp")]),
+            .compound(["Name": .string("minecraft:seagrass")]),
             .compound(["Name": .string("minecraft:oak_stairs"), "Properties": .compound(["waterlogged": .string("true")])]),
-            .string("minecraft:tube_coral"),
+            .compound(["Name": .string("minecraft:tube_coral")]),
             .compound(["Name": .string("minecraft:oak_stairs"), "Properties": .compound([
                 "waterlogged": .string("true"), "half": .string("top")])])]
         let chunks = states.enumerated().map { x, state in
-            let section = Fixtures.section(y: 0, palette: [.string("minecraft:air"), .string("minecraft:sand"),
-                .string("minecraft:water"), state], indices: (0..<4096).map { index in
+            let palette = ["minecraft:air", "minecraft:sand", "minecraft:water"].map {
+                NBT.compound(["Name": .string($0)])
+            } + [state]
+            let section = Fixtures.section(y: 0, palette: palette, indices: (0..<4096).map { index in
                     let y = index / 256
                     return y == 0 ? 1 : y == 3 || y == 5 ? 3 : y < 5 ? 2 : 0
                 })
