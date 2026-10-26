@@ -103,8 +103,10 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     /// One immutable grouping snapshot, shared by every region projection for this world.
     struct Catalog: Sendable, Equatable {
         private var byID: [String: StructureGroup] = [:]
+        private var availableTags: Set<String>
 
         init(tags: [String: GameTag]) {
+            availableTags = Set(tags.keys)
             // A saved structure gets one row/marker. Overlapping tags use the existing group
             // order, independent of resource dictionary iteration, before design-only groups.
             for group in StructureGroup.allCases {
@@ -115,7 +117,26 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
 
         func group(for id: String) -> StructureGroup {
             guard let id = Identifier(id)?.description else { return .other }
-            return byID[id] ?? StructureGroup.designGroup(for: id)
+            if let group = byID[id] { return group }
+            let design = StructureGroup.designGroup(for: id)
+            if design != .other { return design }
+            // Keep the previous presentation when this family's game data is unavailable.
+            // A readable tag, even an empty one, overrides these no-game-files fallbacks.
+            guard let fallback = StructureGroup.unavailableTagGroup(for: id),
+                  let tag = fallback.tagID, !availableTags.contains(tag) else { return .other }
+            return fallback
+        }
+    }
+
+    private static func unavailableTagGroup(for id: String) -> StructureGroup? {
+        guard let name = ReadableName.vanillaPath(id) else { return nil }
+        switch name {
+        case _ where name.hasPrefix("village"): return .village
+        case _ where name.hasPrefix("ocean_ruin"): return .ruins
+        case _ where name.hasPrefix("ruined_portal"): return .ruinedPortal
+        case _ where name.hasPrefix("shipwreck"): return .shipwreck
+        case _ where name.hasPrefix("mineshaft"): return .mineshaft
+        default: return nil
         }
     }
 
