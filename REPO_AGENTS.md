@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.77.0`, resolved to `0.77.0` (`7a92dae0eb0806b158406c5541d9f30daf82f77b`).
+  minor" from `0.78.0`, resolved to `0.78.0` (`6c05e9531ce4d85bc98c0963f0be5145ec84dc8d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1579,7 +1579,7 @@ Kit's effective-language equality preserves that identity when the contents are 
 language object still publishes new names and refreshes saved searches in every attached window.
 WorldGameAssets injects the snapshot through the SwiftUI environment. Search captures the same
 snapshot, includes its identity in shared-query reuse, and rejects results from retired names.
-Language selection does not change world parsing or scan membership. The Kit 0.77.0 adoption
+Language selection does not change world parsing or scan membership. The Kit 0.78.0 adoption
 uses RegionFacts interpretation 28 and tile renderer version 33 to discard saved projections
 and pictures from the earlier JSON numeric/member interpretation.
 
