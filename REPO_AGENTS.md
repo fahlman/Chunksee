@@ -246,6 +246,7 @@ older scan envelopes.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
+| `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
 | `GameArtworkLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
@@ -1468,8 +1469,9 @@ Kit 0.66.1 supplies verified omitted 26.3 default properties to those same model
 the app neither edits saved states nor keeps a second registry of default properties.
 
 Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
-dimension documents. The existing GameArtworkLibrary actor loads Kit's complete registered-biome
-catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
+dimension documents. GameDataLibrary loads Kit's complete registered-biome catalog; an explicit
+GameArtworkLibrary capability supplies its shared decoded grass/foliage/dry-foliage colormaps
+when available. Numeric definition colors remain available without that capability. Kit owns
 all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
 the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
 passes checked absolute X/Z to the swamp rule. With a saved seed, Kit's BiomeSampler chooses
