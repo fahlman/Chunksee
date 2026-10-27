@@ -32,6 +32,7 @@ struct MapBlockFilterView: View {
     }
 
     var body: some View {
+        let leaves = MapBlockFilter.leafIDs(in: catalog, tag: session.details.definitions.leafTag)
         VStack(alignment: .leading, spacing: 12) {
             Text("Show/Hide Blocks").font(.headline)
             Text("Hide blocks to see below them, or highlight blocks to make them stand out.")
@@ -69,11 +70,14 @@ struct MapBlockFilterView: View {
             Text("Names come from this dimension’s saved palettes. Some may not currently appear on the map.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Hide Leaves", isOn: Binding {
-                let leaves = MapBlockFilter.leafNames(in: catalog)
-                return !leaves.isEmpty && leaves.isSubset(of: draft.hiddenIDs)
-            } set: { draft = draft.choosing($0 ? .hide : .show, for: MapBlockFilter.leafNames(in: catalog)) })
-                .disabled(MapBlockFilter.leafNames(in: catalog).isEmpty)
-                .help("Select every saved block name ending in _leaves; individual choices stay editable")
+                leaves.map { !$0.isEmpty && $0.isSubset(of: draft.hiddenIDs) } ?? false
+            } set: { hidden in
+                if let leaves { draft = draft.choosing(hidden ? .hide : .show, for: leaves) }
+            })
+                .disabled(leaves?.isEmpty ?? true)
+                .help(leaves == nil
+                      ? Text("Leaf types are unavailable. You can still choose individual blocks.")
+                      : Text("Select blocks in Minecraft’s leaves group; individual choices stay editable"))
             HStack {
                 Button("Reset Choices") { draft = MapBlockFilter() }
                     .disabled(draft == MapBlockFilter())

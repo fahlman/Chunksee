@@ -39,10 +39,10 @@ nonisolated struct MapBlockFilter: Equatable, Sendable {
         Self(isEnabled: enabled, hiddenIDs: hiddenIDs, highlightedIDs: highlightedIDs)
     }
 
-    /// A name-based convenience, not Minecraft's leaves tag: mods may use other names. The sheet
-    /// keeps every exact ID individually editable and explains what this shortcut selects.
-    static func leafNames(in catalog: Set<String>) -> Set<String> {
-        Set(catalog.filter { $0.hasSuffix("_leaves") })
+    /// Only offered saved IDs are selected; tag declarations alone do not establish that a
+    /// block exists in this dimension. Unavailable membership stays distinct from an empty tag.
+    static func leafIDs(in catalog: Set<String>, tag: GameTag?) -> Set<String>? {
+        tag.map { Set($0.members.map(\.id)).intersection(catalog) }
     }
 
     enum Emphasis: UInt8, Hashable, Sendable, Codable {
