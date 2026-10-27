@@ -93,6 +93,34 @@ import Testing
         }
     }
 
+    @Test func malformedLayerSidecarsAreRejectedWithoutLosingTheValidRoundtrip() async throws {
+        let fixture = try fixture(), root = try world([15: "test:torch", 14: "test:wall"])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let assets = try fixture.library()
+        let tile = try #require(try await RegionTileRenderer(dimension: dimension, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let detail = try #require(tile.detail?.detail), encoded = try #require(detail.encoded())
+        #expect(MapSurfaceDetail.decoded(encoded) == detail)
+        let payload = try #require(try PropertyListSerialization.propertyList(from: encoded, format: nil) as? [String: Any])
+        let chunks = try #require(payload["chunks"] as? [[String: Any]])
+        let original = try #require(chunks.first?["overlays"] as? Data)
+        try #require(original.count >= 20)
+        var malformed: [Data] = [Data(original.dropLast()), original + original, original + Data([0])]
+        for (offset, bytes) in [(1, [UInt8(2)]), (2, [0, 0]), (7, [1]), (8, [255, 255]), (10, [0, 0, 0, 128])] {
+            var changed = original
+            changed.replaceSubrange(offset..<(offset + bytes.count), with: bytes)
+            malformed.append(changed)
+        }
+        for records in malformed {
+            var changed = payload, changedChunks = chunks
+            changedChunks[0]["overlays"] = records
+            changed["chunks"] = changedChunks
+            let data = try PropertyListSerialization.data(fromPropertyList: changed, format: .binary, options: 0)
+            #expect(MapSurfaceDetail.decoded(data) == nil)
+        }
+        await assets.close()
+    }
+
     @Test func lilyPadsKeepTheWaterLookBetweenTheirPixels() async throws {
         let fixture = try fixture(), root = try world([15: "test:lily", 14: "minecraft:water", 13: "minecraft:water"])
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }

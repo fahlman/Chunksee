@@ -34,7 +34,8 @@ nonisolated struct TileCache: Sendable {
     /// 28: game-derived water-bearing states and texture opacity for shallow-water floors.
     /// 29: confirmed missing artwork and selected-game definition evidence.
     /// 30: model coverage, underlying terrain and partial-block detail layers.
-    static let rendererVersion = 30
+    /// 31: compact overlay and layer records in the close-up sidecar.
+    static let rendererVersion = 31
 
     let directory: URL
 

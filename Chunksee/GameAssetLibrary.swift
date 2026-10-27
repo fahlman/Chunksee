@@ -1,6 +1,7 @@
 import ChunkseeKit
 import CoreGraphics
 import Foundation
+import Synchronization
 
 /// One live jar's resources and bounded, shared picture and map-color caches. All decode/drawing
 /// work is serial off-main; scrolling requests already drawn items without repeating that work.
@@ -12,6 +13,7 @@ actor GameAssetLibrary {
     private nonisolated let caches = Caches()
 
     /// NSCache synchronizes get/set/eviction (Foundation's documented thread-safety contract).
+    /// Coverage batches use a Mutex for the same synchronization with one lock per chunk.
     /// Values are immutable, and limits are configured
     /// before publication; only the actor inserts entries. Synchronous readers never decode.
     nonisolated private final class Caches: @unchecked Sendable {
@@ -20,7 +22,7 @@ actor GameAssetLibrary {
         let images = NSCache<ItemKey, CGImage>()
         let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
-        let blockCoverage = NSCache<BlockKey, CoverageEntry>()
+        let blockCoverage = Mutex(CoverageValues())
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let water = NSCache<NSString, WaterAppearance>()
         let textureColors = NSCache<NSString, ColorEntry>()
@@ -35,8 +37,6 @@ actor GameAssetLibrary {
             blockTextures.totalCostLimit = 16 * 1024 * 1024
             blockColors.countLimit = 4096
             blockColors.totalCostLimit = 2 * 1024 * 1024
-            blockCoverage.countLimit = 4096
-            blockCoverage.totalCostLimit = 2 * 1024 * 1024
             blockMaterials.countLimit = 512
             blockMaterials.totalCostLimit = 16 * 1024 * 1024
             images.countLimit = 512
@@ -108,9 +108,23 @@ actor GameAssetLibrary {
         let present: Bool?
         init(_ present: Bool?) { self.present = present }
     }
-    nonisolated private final class CoverageEntry {
-        let coverage: MapBlockCoverage
-        init(_ coverage: MapBlockCoverage) { self.coverage = coverage }
+    /// Coverage is tiny value data. A chunk copies its answers under one lock instead of
+    /// contending on NSCache for every palette entry across all rendering workers.
+    nonisolated private struct CoverageValues: Sendable {
+        var values: [BlockState: MapBlockCoverage] = [:]
+        var bytes = 0
+
+        mutating func insert(_ coverage: MapBlockCoverage, for state: BlockState) {
+            guard values[state] == nil else { return }
+            let cost = 128 + state.description.utf8.count + state.properties.count * 64
+            guard cost <= 2 * 1024 * 1024 else { return }
+            if values.count >= 4096 || bytes + cost > 2 * 1024 * 1024 {
+                values.removeAll(keepingCapacity: true)
+                bytes = 0
+            }
+            values[state] = coverage
+            bytes += cost
+        }
     }
 
     /// Kit owns every saved fact that can choose a model. Keep that complete value in both
@@ -185,7 +199,7 @@ actor GameAssetLibrary {
         caches.images.removeAllObjects()
         caches.blockMaterials.removeAllObjects()
         caches.blockColors.removeAllObjects()
-        caches.blockCoverage.removeAllObjects()
+        caches.blockCoverage.withLock { $0 = CoverageValues() }
         caches.blockTextures.removeAllObjects()
         caches.water.removeAllObjects()
         caches.textureColors.removeAllObjects()
@@ -339,23 +353,26 @@ actor GameAssetLibrary {
     }
 
     nonisolated func cachedMapCoverage(for states: [BlockState]) -> [MapBlockCoverage]? {
-        var result: [MapBlockCoverage] = []
-        result.reserveCapacity(states.count)
-        for state in states {
-            guard let entry = caches.blockCoverage.object(forKey: BlockKey(state)) else { return nil }
-            result.append(entry.coverage)
+        caches.blockCoverage.withLock { cache in
+            var result: [MapBlockCoverage] = []
+            result.reserveCapacity(states.count)
+            for state in states {
+                guard let coverage = cache.values[state] else { return nil }
+                result.append(coverage)
+            }
+            return result
         }
-        return result
     }
 
     /// Alpha does not depend on biome tint. Measure once per state, before the chunk's one
     /// column walk, and share the immutable answer across rendering and block readouts.
     func mapCoverage(for states: [BlockState]) throws -> [MapBlockCoverage] {
         try checkAvailable()
-        return try states.map { state in
+        let cached = caches.blockCoverage.withLock { cache in states.map { cache.values[$0] } }
+        var additions: [(BlockState, MapBlockCoverage)] = []
+        let result = try zip(states, cached).map { state, cached in
             try Task.checkCancellation()
-            let key = BlockKey(state)
-            if let entry = caches.blockCoverage.object(forKey: key) { return entry.coverage }
+            if let cached { return cached }
             let coverage: MapBlockCoverage
             let material = material(for: state)
             if state.isAir == true {
@@ -373,10 +390,13 @@ actor GameAssetLibrary {
                     coverage = appearance.covers ? .covers : .partial(opacity: appearance.opacity)
                 }
             } else { coverage = .unavailable }
-            caches.blockCoverage.setObject(CoverageEntry(coverage), forKey: key,
-                cost: 128 + state.description.utf8.count + state.properties.count * 64)
+            additions.append((state, coverage))
             return coverage
         }
+        caches.blockCoverage.withLock { cache in
+            for (state, coverage) in additions { cache.insert(coverage, for: state) }
+        }
+        return result
     }
 
     /// One batch for a chunk's retained palette. Kit chooses each position's actual variants;

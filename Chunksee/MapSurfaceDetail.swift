@@ -20,12 +20,12 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
     }
 
     struct Chunk: Sendable, Equatable {
-        struct Layer: Sendable, Equatable, Codable {
+        struct Layer: Sendable, Equatable {
             let material: UInt16
             let y: Int32
         }
 
-        struct Overlay: Sendable, Equatable, Codable {
+        struct Overlay: Sendable, Equatable {
             let column: UInt8
             let baseColor: UInt32
             let isWater: Bool
@@ -139,7 +139,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
         let index: Int
         let materials: Data
         let indices: Data
-        let overlays: [Chunk.Overlay]
+        let overlays: Data
     }
 
     /// Neighboring chunks usually repeat the same few states and tints. Serialize and decode
@@ -156,6 +156,60 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
     private static func decodeIndices(_ data: Data) -> [UInt16] {
         data.withUnsafeBytes { bytes in
             (0..<(data.count / 2)).map { UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: UInt16.self)) }
+        }
+    }
+
+    /// The same small record repeats for every visible layer. Packed fields avoid building
+    /// and compressing thousands of property-list dictionaries for those records.
+    private static func encodeOverlays(_ overlays: [Chunk.Overlay]) -> Data {
+        var data = Data()
+        data.reserveCapacity(overlays.reduce(0) { $0 + 8 + $1.layers.count * 6 })
+        func append<T: FixedWidthInteger>(_ value: T) {
+            var value = value.littleEndian
+            withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
+        }
+        for overlay in overlays {
+            append(overlay.column)
+            append(UInt8(overlay.isWater ? 1 : 0))
+            append(UInt16(overlay.layers.count))
+            append(overlay.baseColor)
+            for layer in overlay.layers {
+                append(layer.material)
+                append(layer.y)
+            }
+        }
+        return data
+    }
+
+    private static func decodeOverlays(_ data: Data, materialCount: Int) -> [Chunk.Overlay]? {
+        guard data.count <= maximumChunkBytes else { return nil }
+        return data.withUnsafeBytes { bytes in
+            var offset = 0, retainedBytes = 0
+            var columns: Set<UInt8> = [], result: [Chunk.Overlay] = []
+            func read<T: FixedWidthInteger>(_ type: T.Type) -> T? {
+                let size = MemoryLayout<T>.size
+                guard size <= bytes.count - offset else { return nil }
+                defer { offset += size }
+                return T(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: T.self))
+            }
+            while offset < bytes.count {
+                guard result.count < 256, let column = read(UInt8.self), columns.insert(column).inserted,
+                      let flags = read(UInt8.self), flags <= 1,
+                      let count = read(UInt16.self), count > 0, Int(count) <= RegionTileRenderer.maximumColumnLayers,
+                      let color = read(UInt32.self), color <= 0xffffff,
+                      Int(count) * 6 <= bytes.count - offset else { return nil }
+                retainedBytes += 64 + Int(count) * 16
+                guard retainedBytes <= maximumChunkBytes else { return nil }
+                var layers: [Chunk.Layer] = []
+                layers.reserveCapacity(Int(count))
+                for _ in 0..<count {
+                    guard let material = read(UInt16.self), Int(material) < materialCount,
+                          let y = read(Int32.self), y != RegionTileRenderer.Canvas.noHeight else { return nil }
+                    layers.append(Chunk.Layer(material: material, y: y))
+                }
+                result.append(Chunk.Overlay(column: column, baseColor: color, isWater: flags == 1, layers: layers))
+            }
+            return result
         }
     }
 
@@ -176,7 +230,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
                 }
             }
             stored.append(StoredChunk(index: index, materials: Self.encodeIndices(references),
-                                      indices: Self.encodeIndices(chunk.indices), overlays: chunk.overlays))
+                                      indices: Self.encodeIndices(chunk.indices), overlays: Self.encodeOverlays(chunk.overlays)))
         }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
@@ -198,15 +252,12 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
         for chunk in stored.chunks {
             guard (0..<1024).contains(chunk.index), result.chunks[chunk.index] == nil,
                   !chunk.materials.isEmpty, chunk.materials.count <= maximumChunkBytes,
-                  chunk.materials.count.isMultiple(of: 2), chunk.indices.count == 512,
-                  chunk.overlays.count <= 256, Set(chunk.overlays.map(\.column)).count == chunk.overlays.count,
-                  chunk.overlays.allSatisfy({ !$0.layers.isEmpty && $0.layers.count <= maximumChunkBytes / 16
-                      && $0.baseColor <= 0xffffff }) else { return nil }
+                  chunk.materials.count.isMultiple(of: 2), chunk.indices.count == 512 else { return nil }
             let references = decodeIndices(chunk.materials), indices = decodeIndices(chunk.indices)
             guard references.allSatisfy({ Int($0) < stored.materials.count }),
                   indices.allSatisfy({ $0 == noMaterial || Int($0) < references.count }),
-                  chunk.overlays.allSatisfy({ $0.layers.allSatisfy { Int($0.material) < references.count && $0.y != RegionTileRenderer.Canvas.noHeight } }) else { return nil }
-            let restored = Chunk(materials: references.map { stored.materials[Int($0)] }, indices: indices, overlays: chunk.overlays,
+                  let overlays = decodeOverlays(chunk.overlays, materialCount: references.count) else { return nil }
+            let restored = Chunk(materials: references.map { stored.materials[Int($0)] }, indices: indices, overlays: overlays,
                                  materialBytes: references.reduce(0) { $0 + costs[Int($1)] })
             guard restored.estimatedBytes <= maximumChunkBytes,
                   result.estimatedBytes + 64 + restored.estimatedBytes <= maximumRetainedBytes else { return nil }
