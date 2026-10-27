@@ -355,13 +355,12 @@ actor GameAssetLibrary {
     /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
     func biomeColors(in world: World) throws -> MapBiomeColors {
         try checkAvailable()
-        let definitions = try world.biomeDefinitions(assets: assets)
         var maps: [Identifier: ItemTexture] = [:]
         for name in ["grass", "foliage", "dry_foliage"] {
             try Task.checkCancellation()
             if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
         }
-        return try MapBiomeColors(world: world, assetSourceKey: sourceKey, definitions: definitions, colorMaps: maps)
+        return try MapBiomeColors.read(in: world, assetSourceKey: sourceKey, assets: assets, colorMaps: maps)
     }
 
     func nightLighting(in world: World) throws -> [String: MonsterSpawnLight] {

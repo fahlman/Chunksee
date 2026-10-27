@@ -819,9 +819,10 @@ final class MapModel {
     /// The source owner shares this exact library with pictures. Swapping it cancels old
     /// renders; stable file keys let a reselected unchanged jar reuse its correct disk tiles.
     func setGameAssets(_ library: GameAssetLibrary?, biomeColors: MapBiomeColors? = nil) {
+        let biomeColors = library == nil ? nil : biomeColors
         guard !isClosed, gameAssets?.identity != library?.identity || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
         gameAssets = library
-        self.biomeColors = library == nil ? nil : biomeColors
+        self.biomeColors = biomeColors
         if style != .height { reloadTiles() }
     }
 

@@ -87,7 +87,7 @@ final class WorldResources {
     }
     @ObservationIgnored private var gameAssetSource: WorldGameAssetSource?
     @ObservationIgnored private var gameAssets: GameAssetLibrary?
-    @ObservationIgnored private var biomeColors: MapBiomeColors?
+    private(set) var biomeColors: MapBiomeColors?
     @ObservationIgnored private var biomeReadGeneration = 0
     @ObservationIgnored private var needsBiomeReload = false
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
@@ -100,7 +100,7 @@ final class WorldResources {
     @ObservationIgnored var readHeadingBlock: @Sendable (ChunkseeKit.Dimension, BlockPosition) async throws -> BlockState? = {
         try await WorldResources.readBlock($0, at: $1)
     }
-    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
+    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary?, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
         try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3)
     }
 
@@ -154,6 +154,7 @@ final class WorldResources {
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         assetObserver = names.minecraft.observeChanges { [weak self] in self?.refreshGameAssets() }
+        refreshBiomeColors(reload: true)
         refreshLighting()
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
             backgroundWork.start(priority: .background) {
@@ -224,6 +225,7 @@ final class WorldResources {
             session.map?.setGameAssets(nil)
             session.map?.setSavedLighting(nil)
         }
+        refreshBiomeColors(reload: true)
         refreshLighting()
         clearNightLighting()
         refreshNightLighting()
@@ -334,7 +336,8 @@ final class WorldResources {
     }
 
     private func refreshBiomeColors(reload: Bool) {
-        guard !isClosed, let library = gameAssets else { return }
+        guard !isClosed else { return }
+        let library = gameAssets
         needsBiomeReload = needsBiomeReload || reload
         biomeReadGeneration += 1
         let generation = biomeReadGeneration
@@ -342,9 +345,10 @@ final class WorldResources {
         let read = readBiomeColors, world = world, previous = biomeColors
         let reload = needsBiomeReload
         biomeWork.start(priority: nil) { [weak self] in
+            guard !Task.isCancelled else { return }
             let updated = try? await read(world, library, previous, reload)
             guard !Task.isCancelled, let self, !self.isClosed,
-                  self.biomeReadGeneration == generation, self.gameAssets?.identity == library.identity else { return }
+                  self.biomeReadGeneration == generation, self.gameAssets?.identity == library?.identity else { return }
             // A transient unreadable save keeps its last good colors. A successful empty
             // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
             if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
@@ -354,12 +358,14 @@ final class WorldResources {
         }
     }
 
-    @concurrent nonisolated static func readBiomeColors(_ world: World, library: GameAssetLibrary,
+    @concurrent nonisolated static func readBiomeColors(_ world: World, library: GameAssetLibrary?,
                                                        previous: MapBiomeColors?, reload: Bool) async throws -> MapBiomeColors {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        if !reload, let previous, try previous.matchesMetadata(current, assetSourceKey: library.sourceKey) { return previous }
-        return try await library.biomeColors(in: current)
+        let sourceKey = library?.sourceKey ?? "no-game-files"
+        if !reload, let previous, try previous.matchesMetadata(current, assetSourceKey: sourceKey) { return previous }
+        if let library { return try await library.biomeColors(in: current) }
+        return try MapBiomeColors.read(in: current, assetSourceKey: sourceKey, assets: nil)
     }
 
     /// Optional gameplay light metadata is shared by all interested dimension tabs. Ordinary

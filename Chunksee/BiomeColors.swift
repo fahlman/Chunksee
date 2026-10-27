@@ -1,8 +1,8 @@
+import CoreGraphics
 import Foundation
 
 /// Outline colors for biomes. Minecraft has no official biome map colors, so these are the app's
-/// own: blues for water, oranges for deserts and badlands, white for snow, reds for the Nether and
-/// purples for the End.
+/// own for familiar biomes. Other biomes use their readable game colors before the name hash.
 nonisolated enum BiomeColors {
     static let table: [String: UInt32] = [
         "minecraft:ocean": 0x000070, "minecraft:deep_ocean": 0x000030, "minecraft:warm_ocean": 0x0000AC,
@@ -30,9 +30,10 @@ nonisolated enum BiomeColors {
         "minecraft:small_end_islands": 0x5A5A9A, "minecraft:the_void": 0x101010,
     ]
 
-    static func color(for biome: String) -> MapColor {
+    static func color(for biome: String, game: MapBiomeColors? = nil, at position: CGPoint = .zero) -> MapColor {
         if let hex = table[biome] { return MapColor(hex) }
-        // Biomes from mods and data packs: a stable color from the name.
+        if let color = game?.outlineColor(for: biome, at: position) { return color }
+        // No readable definition: preserve a stable visible outline rather than hide the biome.
         var hash: UInt32 = 2_166_136_261
         for byte in biome.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
         return MapColor(hash & 0xFFFFFF)

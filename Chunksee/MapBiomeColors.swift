@@ -15,12 +15,24 @@ nonisolated struct MapBiomeColors: Sendable {
     let seed: Int64?
     let sampler: BiomeSampler?
     private let colors: [String: Biome]
+    private let waterBiomes: Set<String>
+
+    static func read(in world: World, assetSourceKey: String, assets: GameAssets?,
+                     colorMaps: [Identifier: ItemTexture] = [:]) throws -> Self {
+        let definitions = try world.biomeDefinitions(assets: assets)
+        let tags = (try? world.tags(for: ["minecraft:is_ocean", "minecraft:is_river"],
+                                   in: "worldgen/biome", assets: assets)) ?? [:]
+        try Task.checkCancellation()
+        return try Self(world: world, assetSourceKey: assetSourceKey, definitions: definitions,
+                        colorMaps: colorMaps, waterBiomes: Set(tags.values.flatMap { $0.members.map(\.id) }))
+    }
 
     init(world: World, assetSourceKey: String, definitions: [String: BiomeDefinition],
-         colorMaps: [Identifier: ItemTexture]) throws {
+         colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String> = []) throws {
         seed = try world.seed()
         sampler = seed.map(BiomeSampler.init(seed:))
         self.assetSourceKey = assetSourceKey
+        self.waterBiomes = waterBiomes
         dataVersion = world.level.dataVersion
         enabledPacks = world.level.enabledDataPacks
         colors = definitions.mapValues { Biome(definition: $0, colorMaps: colorMaps) }
@@ -34,6 +46,23 @@ nonisolated struct MapBiomeColors: Sendable {
                     value.grassColorModifier.rawValue].joined(separator: "|")
         }
         sourceKey = CacheKey.hash(assetSourceKey + "\nseed:" + (seed.map(String.init) ?? "unknown") + "\n" + rows.joined(separator: "\n"))
+    }
+
+    /// A map area uses one representative color, sampled at its saved representative point.
+    /// Water tags affect the live outline only, never the cached terrain color source key.
+    func outlineColor(for name: String, at position: CGPoint) -> MapColor? {
+        guard let id = Identifier(name)?.description, let biome = colors[id],
+              let point = MapCoordinates(point: position) else { return nil }
+        let rgb: UInt32?
+        if waterBiomes.contains(id) { rgb = biome.color(.water, x: point.x, z: point.z) }
+        else {
+            // Explicit overrides still work without artwork. If both land colormaps are
+            // unavailable, use this definition's known water color before inventing a hash.
+            rgb = biome.color(.grass, x: point.x, z: point.z)
+                ?? biome.color(.foliage, x: point.x, z: point.z)
+                ?? biome.color(.water, x: point.x, z: point.z)
+        }
+        return rgb.map(MapColor.init)
     }
 
     func matchesMetadata(_ world: World, assetSourceKey: String) throws -> Bool {
