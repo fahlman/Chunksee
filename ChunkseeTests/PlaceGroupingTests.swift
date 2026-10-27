@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ChunkseeIndex
 import ChunkseeKitTestSupport
 import Foundation
 import Testing
