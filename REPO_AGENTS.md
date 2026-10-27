@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.75.0`, resolved to `0.75.0` (`ef6e7334aa06ead9680f8e93016f658be5cf1ae1`).
+  minor" from `0.76.0`, resolved to `0.76.0` (`56363221f604df98302193bb17363e35207ff0a4`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1594,6 +1594,8 @@ same GameNames language snapshot as the rest of the window. Minecraft's substitu
 accept `%s`, numbered `%n$s` and `%%`; malformed templates retain the whole template. Numeric
 arguments retain Kit's integer/Float/Double distinction and use Java's corresponding
 decimal/scientific presentation; the app never guesses the kind from a rounded value.
+Kit 0.76.0 supplies these argument kinds and the shared resource numeric correction; rendered
+tile version 32 invalidates colors or model choices computed with the previous conversion.
 No game-file parser is added here. Layout
 is bounded to 65,536 visits/fragments, 128 interpreted levels, and 16 MiB each of output and
 visited translation templates. A title that exceeds those bounds uses its readable ID.
