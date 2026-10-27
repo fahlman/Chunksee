@@ -1,27 +1,43 @@
+import ChunkseeKit
 import Foundation
 
 /// Match the Mac's interface language to the files the selected game actually supplies.
 nonisolated enum GameLanguageChoice {
     static var preferredLanguage: String { Locale.preferredLanguages.first ?? "en" }
 
-    static func code(for preference: String, available: [String]) -> String {
-        let normalized = preference.replacingOccurrences(of: "-", with: "_").lowercased()
-        if available.contains(normalized) { return normalized }
-
-        let locale = Locale(identifier: preference)
-        guard let language = locale.language.languageCode?.identifier else { return "en_us" }
-        if let region = locale.region?.identifier {
-            let exact = "\(language)_\(region.lowercased())"
-            if available.contains(exact) { return exact }
+    static func language(for preference: String, available: [String],
+                         read: (String) -> GameLanguage?) -> GameLanguage? {
+        let requested = Locale.Language(identifier: preference)
+        let codes = available.sorted()
+        // Filenames only shortlist reads. Apple's match also finds aliases such as no_no
+        // for nb-NO; the file's own declaration must still establish the language and script.
+        var possible = Set(codes.filter {
+            Locale.Language(identifier: $0).languageCode == requested.languageCode
+        })
+        possible.formUnion(Bundle.preferredLocalizations(from: codes, forPreferences: [preference]))
+        let ordered = possible.sorted { lhs, rhs in
+            let left = Locale.Language(identifier: lhs).isEquivalent(to: requested)
+            let right = Locale.Language(identifier: rhs).isEquivalent(to: requested)
+            return left == right ? lhs < rhs : left
         }
 
-        // Let Apple match region/script preferences within the same language. Sorting also
-        // makes its no-preference fallback independent of archive or index entry order.
-        let candidates = available.filter {
-            Locale(identifier: $0).language.languageCode?.identifier == language
-        }.sorted()
-        guard let fallback = candidates.first else { return "en_us" }
-        return Bundle.preferredLocalizations(from: candidates, forPreferences: [preference])
-            .first(where: candidates.contains) ?? fallback
+        var candidates: [(locale: String, names: GameLanguage)] = []
+        for code in ordered {
+            guard let names = read(code) else { return nil }
+            guard let declaration = names.declaredLanguageCode else { continue }
+            let language = Locale.Language(identifier: declaration)
+            guard language.languageCode == requested.languageCode,
+                  language.script == requested.script else { continue }
+            if language.isEquivalent(to: requested) { return names }
+            candidates.append((language.maximalIdentifier, names))
+        }
+        // Match regions only among verified identities. A filename such as en_pt may
+        // actually declare Pirate Speak, and sr_cs declares Latin rather than Cyrillic.
+        if let selected = Bundle.preferredLocalizations(from: candidates.map(\.locale),
+                                                        forPreferences: [requested.maximalIdentifier]).first,
+           let match = candidates.first(where: { $0.locale == selected }) {
+            return match.names
+        }
+        return candidates.first?.names ?? read("en_us")
     }
 }

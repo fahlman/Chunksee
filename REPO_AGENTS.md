@@ -1563,11 +1563,14 @@ threshold. No new controls, localization keys, file access, asset copy or world 
 
 WorldResources owns one immutable GameNames snapshot for its selected game and the Mac’s first
 preferred interface language (Locale.preferredLanguages), refreshed when a window becomes active.
-GameLanguageChoice matches the installed codes supplied by Kit: exact code or language/region
-first (including script-tagged input), then Apple’s localization matching among sorted codes
-for the same language, then English. The sorted first same-language code is the final matching
-fallback; archive/index order never chooses it. Region and number-format settings do not choose
-game names. GameAssetLibrary reads the available codes and chosen language off the main actor,
+GameLanguageChoice uses installed filenames to shortlist candidates and Apple's matching to include
+locale aliases, then verifies each requested file's own declared language and script through Kit.
+A filename alone never proves a match: a novelty language or different script may reuse a familiar
+code. An exact declared match returns immediately; otherwise Apple's localization matching chooses
+among the verified same-language/script identities, with deterministic ordering and English fallback.
+Missing declarations remain unavailable instead of inheriting English's identity. Region and
+number-format settings do not choose game names. GameAssetLibrary reads candidates off the main actor
+and reuses the selected translation snapshot,
 with the chosen Minecraft folder for launcher-indexed files. Kit supplies per-key English
 fallback; the app uses a readable saved ID when no key exists. Changing language or game source
 invalidates the old snapshot; retired reads cannot publish after replacement, removal or closure.

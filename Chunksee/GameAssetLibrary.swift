@@ -157,8 +157,10 @@ actor GameAssetLibrary {
     func language(_ preference: String, minecraftDirectory: URL?) -> GameLanguage? {
         guard let assets else { return nil }
         let choices = assets.languageCodes(minecraftDirectory: minecraftDirectory)
-        let code = GameLanguageChoice.code(for: preference, available: choices)
-        return assets.language(code, minecraftDirectory: minecraftDirectory)
+        return GameLanguageChoice.language(for: preference, available: choices) { code in
+            guard !Task.isCancelled else { return nil }
+            return assets.language(code, minecraftDirectory: minecraftDirectory)
+        }
     }
 
     /// The source owner retires this reader even when hidden tabs still retain the actor.

@@ -9,6 +9,7 @@ enum GameNameFixture {
     static func game(unluck: String = "Bad Luck") throws -> ItemPictureFixture {
         try ItemPictureFixture(extraFiles: [
             "assets/minecraft/lang/en_us.json": ItemPictureFixture.json([
+                "language.code": "en_us",
                 "effect.minecraft.unluck": unluck,
                 "effect.minecraft.dolphins_grace": "Dolphin’s Grace",
                 "effect.minecraft.hero_of_the_village": "Hero of the Village",
@@ -23,6 +24,7 @@ enum GameNameFixture {
                 "gameMode.survival": "Survival Mode", "options.difficulty.hard": "Hard",
             ]),
             "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json([
+                "language.code": "fra_FR",
                 "effect.minecraft.unluck": "Malchance", "block.minecraft.diamond_ore": "Minerai de diamant",
                 "block.minecraft.spawner": "Générateur de monstres",
             ]),
