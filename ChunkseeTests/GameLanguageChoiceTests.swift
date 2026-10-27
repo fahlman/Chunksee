@@ -12,6 +12,7 @@ import Testing
             "fr_fr": "fra_FR", "fr_ca": "fra_CA", "fra_de": "vmf_DE",
             "de_de": "deu_DE", "de_at": "bar_AT", "es_es": "spa_ES", "es_mx": "spa_MX",
             "sr_cs": "srp-Latn_RS", "sr_sp": "srp-Cyrl_RS", "no_no": "nob_NO",
+            "ms_my": "zlm_MY",
             "zh_cn": "zho-Hans_CN", "zh_tw": "zho-Hant_TW",
         ]
         var files = try declarations.reduce(into: [String: Data]()) { files, entry in
@@ -32,6 +33,7 @@ import Testing
             ("es-US", "es_mx"), ("es-419", "es_mx"), ("es-ES", "es_es"),
             ("zh-Hans-CN", "zh_cn"), ("zh-Hant-TW", "zh_tw"),
             ("sr-Cyrl-RS", "sr_sp"), ("sr-Latn-RS", "sr_cs"), ("nb-NO", "no_no"),
+            ("no-NO", "no_no"), ("ms-MY", "ms_my"), ("ms-SG", "ms_my"), ("ms-Arab", "en_us"),
             ("fr-DE", "fr_fr"), ("fr-AT", "fr_fr"), ("fr-CA", "fr_ca"),
             ("ja-JP", "en_us"),
         ] {
@@ -49,24 +51,26 @@ import Testing
         let game = try game()
         defer { game.remove() }
         let assets = try #require(try GameAssets(contentsOf: game.jar)), choices = assets.languageCodes()
-        for preference in ["es-US", "es-419", "de-US", "zh-Hans", "zh-Hant", "en-PT", "fr-DE", "sr-Cyrl-RS"] {
+        for preference in ["es-US", "es-419", "de-US", "zh-Hans", "zh-Hant", "en-PT", "fr-DE", "sr-Cyrl-RS", "ms-MY", "no-NO"] {
             let first = GameLanguageChoice.language(for: preference, available: choices) { assets.language($0) }
             let reversed = GameLanguageChoice.language(for: preference, available: Array(choices.reversed())) { assets.language($0) }
             #expect(first == reversed)
         }
     }
 
-    @Test func anExactDeclaredMatchReadsOnlyThatLanguage() throws {
+    @Test func verifiedRegionalChoicesAndEnglishFallbackReadOnlyOnce() throws {
         let game = try game()
         defer { game.remove() }
         let assets = try #require(try GameAssets(contentsOf: game.jar))
-        var reads: [String] = []
-        let names = GameLanguageChoice.language(for: "fr-FR", available: assets.languageCodes()) {
-            reads.append($0)
-            return assets.language($0)
+        for (preference, expected) in [("fr-FR", "fr_fr"), ("es-US", "es_mx"), ("ja-JP", "en_us")] {
+            var reads: [String] = []
+            let names = GameLanguageChoice.language(for: preference, available: assets.languageCodes()) {
+                reads.append($0)
+                return assets.language($0)
+            }
+            #expect(names?["test.name"] == expected)
+            #expect(reads == [expected])
         }
-        #expect(names?["test.name"] == "fr_fr")
-        #expect(reads == ["fr_fr"])
     }
 
     @Test func anAbsentDeclarationDoesNotBecomeEnglishByInheritance() throws {
