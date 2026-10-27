@@ -67,15 +67,16 @@ nonisolated struct RegionTileRenderer: Sendable {
     private func surface(for region: RegionPosition) async throws -> Canvas? {
         guard style != .height || heightScale != nil,
               let file = try dimension.region(x: region.x, z: region.z) else { return nil }
+        let coverage = style == .height ? nil : try await gameAssets?.mapCoverageReader()
         if samplesNeighborBiomes, let origin = region.chunkOrigin {
-            return try await sampledSurface(in: file, region: region, origin: origin)
+            return try await sampledSurface(in: file, region: region, origin: origin, coverage: coverage)
         }
         let coordinates = file.chunkCoordinates
         var canvas = Canvas(nightLight: darkSpots == nil ? nil : Array(repeating: DarkSpots.Status.unknown.rawValue, count: Self.side * Self.side))
         if chunkConcurrency <= 1 {
             for (localX, localZ) in coordinates {
                 try Task.checkCancellation()
-                if let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ) {
+                if let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ, coverage: coverage) {
                     canvas.set(columns, chunkX: localX, chunkZ: localZ, style: style, heightScale: heightScale)
                 }
             }
@@ -88,7 +89,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                     next += 1
                     group.addTask {
                         try Task.checkCancellation()
-                        let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ)
+                        let columns = try await coloredColumns(in: file, region: region, localX: localX, localZ: localZ, coverage: coverage)
                         return columns.map { (localX, localZ, $0) }
                     }
                 }
@@ -159,7 +160,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Decode ahead while coloring chunks whose nine neighbor reads have completed. Both jobs
     /// share one worker limit; a four-row window bounds retained compact interior data without a
     /// decode/color barrier after every row. No full Chunk or NBT survives a decode task.
-    private func sampledSurface(in file: RegionFile, region: RegionPosition, origin: ChunkPosition) async throws -> Canvas {
+    private func sampledSurface(in file: RegionFile, region: RegionPosition, origin: ChunkPosition,
+                                coverage: (@Sendable (BlockState) -> MapBlockCoverage)?) async throws -> Canvas {
         let sources = file.chunkCoordinates.map { ChunkPosition(x: $0.localX, z: $0.localZ) }
             .sorted { ($0.z, $0.x) < ($1.z, $1.x) }
         let present = Set(sources)
@@ -203,7 +205,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                         let position = sources[nextSource]; nextSource += 1
                         group.addTask {
                             try Task.checkCancellation()
-                            let scanned = try await scan(file, localX: position.x, localZ: position.z)
+                            let scanned = Self.scan(file, localX: position.x, localZ: position.z, context: surfaceContext,
+                                                    cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots, coverage: coverage)
                             return .decoded(position, scanned.map { Self.colorInput($0.sections, columns: $0.columns) })
                         }
                     }
@@ -460,8 +463,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         var detail: MapSurfaceDetail.Chunk? = nil
     }
 
-    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
-        guard let scanned = try await scan(file, localX: localX, localZ: localZ) else { return nil }
+    private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int,
+                                coverage: (@Sendable (BlockState) -> MapBlockCoverage)?) async throws -> ColoredChunk? {
+        guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
+                                      cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots, coverage: coverage) else { return nil }
         guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
@@ -696,7 +701,12 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     @concurrent
     func topBlocks(in file: RegionFile, localX: Int, localZ: Int) async throws -> [TopBlock?]? {
-        guard let (sections, columns) = try await scan(file, localX: localX, localZ: localZ) else { return nil }
+        let coverage = style == .height ? nil : try await gameAssets?.mapCoverageReader()
+        guard let (sections, columns) = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
+                                                cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots,
+                                                coverage: coverage) else { return nil }
+        try Task.checkCancellation()
+        if style != .height { try await gameAssets?.checkAvailable() }
         return Self.topBlocks(sections: sections, columns: columns)
     }
 
@@ -710,30 +720,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
     }
 
-    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter, darkSpots: DarkSpots? = nil) -> (sections: ColorSections, columns: [Column?])? {
+    private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter,
+                             darkSpots: DarkSpots? = nil, coverage: (@Sendable (BlockState) -> MapBlockCoverage)? = nil) -> (sections: ColorSections, columns: [Column?])? {
         guard let chunk = readChunk(file, localX: localX, localZ: localZ, darkSpots: darkSpots) else { return nil }
-        return scan(chunk, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots)
-    }
-
-    private func scan(_ file: RegionFile, localX: Int, localZ: Int) async throws -> (sections: ColorSections, columns: [Column?])? {
-        guard let chunk = Self.readChunk(file, localX: localX, localZ: localZ, darkSpots: darkSpots) else { return nil }
-        var coverage: [BlockState: MapBlockCoverage]?
-        if style != .height, let gameAssets {
-            var seen: Set<BlockState> = [], states: [BlockState] = []
-            let hidden = blockFilter.effectiveHiddenIDs
-            for section in chunk.sections {
-                for state in section.blockStates?.palette ?? [] where state.isAir != true && !hidden.contains(state.id) {
-                    if seen.insert(state).inserted { states.append(state) }
-                }
-            }
-            let values: [MapBlockCoverage]
-            if let cached = gameAssets.cachedMapCoverage(for: states) { values = cached }
-            else { values = try await gameAssets.mapCoverage(for: states) }
-            coverage = Dictionary(uniqueKeysWithValues: zip(states, values))
-        }
-        try Task.checkCancellation()
-        return Self.scan(chunk, context: surfaceContext, cutawayY: cutawayY, blockFilter: blockFilter,
-                         darkSpots: darkSpots, coverage: coverage)
+        return scan(chunk, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots, coverage: coverage)
     }
 
     private static func readChunk(_ file: RegionFile, localX: Int, localZ: Int, darkSpots: DarkSpots?) -> Chunk? {
@@ -746,7 +736,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private static func scan(_ chunk: Chunk, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter,
-                             darkSpots: DarkSpots?, coverage: [BlockState: MapBlockCoverage]? = nil) -> (sections: ColorSections, columns: [Column?]) {
+                             darkSpots: DarkSpots?, coverage: (@Sendable (BlockState) -> MapBlockCoverage)? = nil) -> (sections: ColorSections, columns: [Column?]) {
         var sections = ColorSections(chunk, filter: blockFilter, water: context.water, coverage: coverage)
         var columns: [Column?]
         if let cutawayY {
@@ -837,7 +827,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         private let hiddenIDs: Set<String>
         private let filter: MapBlockFilter
         private let water: GameTag?
-        private let coverage: [BlockState: MapBlockCoverage]?
+        private let coverage: (@Sendable (BlockState) -> MapBlockCoverage)?
         private var entries: [[Entry]]
         private let highestSection: Int?
 
@@ -855,7 +845,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
 
         init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter(), water: GameTag? = nil,
-             coverage: [BlockState: MapBlockCoverage]? = nil) {
+             coverage: (@Sendable (BlockState) -> MapBlockCoverage)? = nil) {
             self.chunk = chunk
             self.filter = filter
             self.water = water
@@ -882,7 +872,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         entries[s][p] = .clear
                         return .clear
                     }
-                    let shape = coverage[state] ?? .unavailable
+                    let shape = coverage(state)
                     let paint = Paint(color: BlockColors.color(for: id, usesGameCoverage: true)!, emphasis: filter.emphasis(for: id))
                     switch shape {
                     case .partial(let opacity): entries[s][p] = .partial(paint, opacity: opacity, water: isWater)
@@ -1012,7 +1002,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         case .water, .partial(_, _, true): continuesWater = true
                         default: continuesWater = false
                         }
-                        guard continuesWater, var column = states[i].column else {
+                        guard continuesWater, let depth = states[i].column?.waterDepth else {
                             switch entry {
                             case .solid(let paint), .partial(let paint, _, false):
                                 states[i].column?.waterFloorColor = paint.color
@@ -1022,10 +1012,10 @@ nonisolated struct RegionTileRenderer: Sendable {
                             states[i].phase = .done
                             return false
                         }
-                        column.waterDepth += min(run.y.count, RegionTileRenderer.maximumWaterDepth - column.waterDepth)
-                        states[i].column = column
+                        let updatedDepth = depth + min(run.y.count, RegionTileRenderer.maximumWaterDepth - depth)
+                        states[i].column!.waterDepth = updatedDepth
                         states[i].waterBottom = run.y.lowerBound
-                        states[i].phase = column.waterDepth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                        states[i].phase = updatedDepth == RegionTileRenderer.maximumWaterDepth ? .done : .water
                         return states[i].phase == .water
                     }
                 }

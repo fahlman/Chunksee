@@ -1584,9 +1584,13 @@ height. Normal map pixels blend each layer over the base by coverage; close-up p
 the actual textures bottom to top over the retained base. Relief uses the ground/water height;
 hover keeps the highest visible layer. Partial blocks over water retain the existing water look in
 their gaps. Filtering removes hidden layers before traversal. Sidecars retain these layers under
-the existing chunk, region and encoded budgets. Coverage lookups copy a chunk's answers under one
-Mutex lock from a bounded value cache; rendering workers do not acquire a shared NSCache lock for
-each palette entry. Overlay headers and layer material/height pairs use compact little-endian data
+the existing chunk, region and encoded budgets. Each region/readout obtains an immutable coverage
+reader from its selected library. Its existing off-main chunk walk resolves only reached palette
+entries, avoiding model reads for buried blocks. A bounded Mutex-protected value cache shares each
+miss, using the library's existing material and texture readers/caches. Retirement drains a current
+miss before clearing those caches and prevents retained readers from refilling them; region/readout
+publication still checks the library. No-artwork scans remain synchronous. Overlay headers and layer
+material/height pairs use compact little-endian data
 beside the existing compact indices, with bounded decoding and validation of flags, columns,
 materials and heights. Cache version 31 invalidates earlier pixels and sidecar formats.
 More than 256 partial layers in one column use the first visible block's flat fallback, bounding

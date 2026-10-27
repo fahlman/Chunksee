@@ -13,13 +13,34 @@ import Testing
         let states = ["test:ground", "test:torch", "test:wall", "test:flower", "minecraft:barrier", "minecraft:chest", "test:empty", "test:missing"].map { BlockState($0) }
         let expected: [MapBlockCoverage] = [.covers, .partial(opacity: 1 / 64), .partial(opacity: 1 / 4),
             .partial(opacity: 128 / 255), .none, .unavailable, .unavailable, .unavailable]
-        let coverage = try await assets.mapCoverage(for: states)
-        #expect(coverage == expected)
-        #expect(assets.cachedMapCoverage(for: states) == expected)
+        let coverage = try await assets.mapCoverageReader()
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return coverage(states[1])
+        }
+        #expect(await cancelled.value == .unavailable)
+        #expect(states.map(coverage) == expected)
+        #expect(states.map(coverage) == expected)
         #expect(try await assets.mapColors(for: [BlockState("test:flower")]) == [MapColor(0xff0000)])
         await assets.close()
-        #expect(assets.cachedMapCoverage(for: states) == nil)
-        await #expect(throws: CancellationError.self) { try await assets.mapCoverage(for: states) }
+        #expect(states.map(coverage) == Array(repeating: .unavailable, count: states.count))
+        #expect(assets.cachedMapMaterials(for: states) == nil)
+        await #expect(throws: CancellationError.self) { try await assets.mapCoverageReader() }
+    }
+
+    @Test func buriedModelsAreReadOnlyWhenTheCutawayReachesThem() async throws {
+        let fixture = try fixture(), root = try world([5: "test:torch"])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let assets = try fixture.library()
+        var renderer = RegionTileRenderer(dimension: dimension, gameAssets: assets)
+        let surface = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
+        #expect(try ItemPictureFixture.pixels(surface.full.image).color(8, 8) == [0, 255, 0, 255])
+        #expect(assets.cachedMapMaterials(for: [BlockState("test:torch")]) == nil)
+        renderer.cutawayY = 5
+        let cutaway = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
+        #expect(try ItemPictureFixture.pixels(cutaway.full.image).color(8, 8) == [4, 251, 0, 255])
+        #expect(assets.cachedMapMaterials(for: [BlockState("test:torch")]) != nil)
     }
 
     @Test(arguments: ["test:torch", "test:wall", "test:flower"])
@@ -213,7 +234,9 @@ import Testing
     @Test func excessiveTranslucentTowersKeepAVisibleFlatSurface() throws {
         let sections = (0..<20).map { Fixtures.section(y: $0, palette: [.string("test:torch")], indices: []) }
         let chunk = try Chunk(nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3, sections: sections))
-        var colors = RegionTileRenderer.ColorSections(chunk, coverage: [BlockState("test:torch"): .partial(opacity: 1 / 64)])
+        var colors = RegionTileRenderer.ColorSections(chunk, coverage: {
+            $0 == BlockState("test:torch") ? .partial(opacity: 1 / 64) : .unavailable
+        })
         let columns = colors.topColumns()
         #expect(columns.count == 256)
         #expect(columns.allSatisfy { $0?.y == 319 && $0?.layers.isEmpty == true })
