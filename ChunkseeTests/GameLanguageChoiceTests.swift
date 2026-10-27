@@ -14,12 +14,12 @@ import Testing
             "sr_cs": "srp-Latn_RS", "sr_sp": "srp-Cyrl_RS", "no_no": "nob_NO",
             "zh_cn": "zho-Hans_CN", "zh_tw": "zho-Hant_TW",
         ]
-        var files = declarations.reduce(into: [String: Data]()) { files, entry in
+        var files = try declarations.reduce(into: [String: Data]()) { files, entry in
             var values = ["language.code": entry.value, "test.name": entry.key]
             if entry.key == "en_us" { values["test.fallback"] = "English fallback" }
-            files["assets/minecraft/lang/\(entry.key).json"] = ItemPictureFixture.json(values)
+            files["assets/minecraft/lang/\(entry.key).json"] = try ItemPictureFixture.json(values)
         }
-        files["assets/minecraft/lang/fr_at.json"] = ItemPictureFixture.json(["test.name": "Missing identity"])
+        files["assets/minecraft/lang/fr_at.json"] = try ItemPictureFixture.json(["test.name": "Missing identity"])
         return try ItemPictureFixture(extraFiles: files)
     }
 
