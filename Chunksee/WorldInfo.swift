@@ -16,7 +16,7 @@ nonisolated struct WorldDetails: Sendable {
     var borders: [String: WorldBorder] = [:]
     var dragonFight: EnderDragonFight?
     var wanderingTrader: WanderingTraderTimer?
-    /// Maps made in the game that have something drawn, in a recognized dimension.
+    /// Every readable saved map, including blank pictures and unavailable dimensions.
     var maps: [MapItem] = []
 
     var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
@@ -48,7 +48,7 @@ nonisolated struct WorldDetails: Sendable {
         }
         details.dragonFight = try? world.enderDragonFight()
         details.wanderingTrader = try? world.wanderingTrader()
-        details.maps = world.mapItems().filter { !$0.isBlank && $0.dimension != nil }
+        details.maps = world.mapItems()
         return details
     }
 
