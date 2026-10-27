@@ -15,6 +15,8 @@ nonisolated struct GameNames: Sendable {
 
     func name(key: String, fallback: String) -> String { language?[key] ?? fallback }
 
+    func hasSameContents(as language: GameLanguage?) -> Bool { self.language == language }
+
     func name(_ id: String, in registry: String) -> String {
         translation(id, in: registry) ?? ReadableName.from(id)
     }

@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.72.0`, resolved to `0.72.0` (`414374a109089515b501d55cabfc5f1c1a465802`).
+  minor" from `0.75.0`, resolved to `0.75.0` (`ef6e7334aa06ead9680f8e93016f658be5cf1ae1`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1566,6 +1566,9 @@ GameAssetLibrary calls Kit’s bounded GameAssets.language reader off the main a
 chosen Minecraft folder for launcher-indexed language files. Kit supplies per-key English
 fallback; the app uses a readable saved ID when no key exists. Changing locale or game source
 invalidates the old snapshot; retired reads cannot publish after replacement, removal or closure.
+Rereading the same source retains the loaded names and snapshot identity until the result arrives;
+Kit's effective-language equality preserves that identity when the contents are unchanged. A changed
+language object still publishes new names and refreshes saved searches in every attached window.
 WorldGameAssets injects the snapshot through the SwiftUI environment. Search captures the same
 snapshot, includes its identity in shared-query reuse, and rejects results from retired names.
 This does not change world parsing, scan membership, map rendering or cache formats.

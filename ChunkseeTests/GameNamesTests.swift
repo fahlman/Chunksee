@@ -168,6 +168,56 @@ enum GameNameFixture {
         await world.names.minecraft.waitUntilIdle()
     }
 
+    @Test func anUnchangedSourceRereadKeepsNamesAndSavedSearchesInEveryWindow() async throws {
+        let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone", "minecraft:spawner"]) { x, y, z in
+            (x, y, z) == (1, 1, 1) ? 1 : 0
+        }
+        let root = try TestWorld.make(chunks: [chunk]), game = try GameNameFixture.game()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let world = try await resources(root, game: game)
+        defer { world.close() }
+        let sessions = [WorldSession(resources: world), WorldSession(resources: world)]
+        world.savedSearches.add("block:")
+        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameAssets()
+        await world.waitForRefresh()
+        await world.index.waitForIndex()
+        for session in sessions { await session.search.waitForSearch() }
+        let loaded = world.currentGameNames
+        let gate = AsyncReadGate<GameLanguage?>(), library = try game.library()
+        let reread = await library.language("en_US", minecraftDirectory: game.root)
+        world.readLanguage = { _, _, _ in await gate.read("reread") }
+        world.refreshGameAssets()
+        await gate.waitForRequest("reread")
+        #expect(world.currentGameNames.identity == loaded.identity)
+        #expect(world.currentGameNames.name("unluck", in: "effect") == "Bad Luck")
+        for session in sessions {
+            #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
+            #expect(!session.search.isSearching)
+        }
+        await gate.finish("reread", with: reread)
+        await world.waitForRefresh()
+        #expect(world.currentGameNames.identity == loaded.identity)
+        for session in sessions {
+            #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
+            #expect(!session.search.isSearching)
+        }
+        // A changed language object with the same jar still publishes new names.
+        let changed = await library.language("fr_FR", minecraftDirectory: game.root)
+        world.readLanguage = { _, _, _ in changed }
+        world.refreshGameAssets()
+        await world.waitForRefresh()
+        #expect(world.currentGameNames.identity != loaded.identity)
+        #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
+        for session in sessions {
+            await session.search.waitForSearch()
+            #expect(session.search.results(for: "block:").map(\.title) == ["Générateur de monstres"])
+        }
+        world.close()
+        await world.waitUntilClosed()
+        await world.names.minecraft.waitUntilIdle()
+    }
+
     @Test func aLateLanguageReadCannotReplaceTheNewerLocale() async throws {
         let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }

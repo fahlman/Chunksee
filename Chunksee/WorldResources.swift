@@ -302,10 +302,12 @@ final class WorldResources {
         if let locale { languageLocale = locale.identifier }
         let request = LanguageRequest(source: names.minecraft.generation, library: gameAssets?.identity, locale: languageLocale)
         guard reload || request != languageRequest else { return }
+        let sourceChanged = request != languageRequest
         languageWork.cancel()
         languageRequest = request
         languageGeneration = UUID()
-        languageNames = GameNames()
+        // A background reread of the same source must not blank visible names or searches.
+        if sourceChanged { languageNames = GameNames() }
         guard let library = gameAssets else { return }
         let generation = languageGeneration, read = readLanguage, folder = names.minecraft.folder
         languageWork.start(priority: .utility) { [weak self] in
@@ -313,7 +315,9 @@ final class WorldResources {
             guard !Task.isCancelled, let self, !self.isClosed, self.languageGeneration == generation,
                   self.languageRequest == request, self.names.minecraft.generation == request.source,
                   self.gameAssets?.identity == request.library else { return }
-            self.languageNames = GameNames(language)
+            if !self.languageNames.hasSameContents(as: language) {
+                self.languageNames = GameNames(language)
+            }
         }
     }
 
