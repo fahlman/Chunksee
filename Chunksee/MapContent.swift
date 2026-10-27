@@ -16,6 +16,7 @@ struct MapContent {
     /// A map made in the game, drawn where it belongs at the given opacity.
     var inGameMap: (map: MapItem, image: CGImage, opacity: Double)?
     var biomeAreas: [BiomeArea] = []
+    var biomeColors: MapBiomeColors?
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkPosition: String] = [:]
     var caveBiomes: [ChunkPosition: [String]] = [:]
@@ -143,6 +144,7 @@ extension MapContent {
             inGameMap = (item, image, session.selection.inGameMapOpacity)
         }
         biomeAreas = index.biomeAreas.filter { session.visibility.biomes.contains($0.group) }
+        biomeColors = session.resources.biomeColors
         biomes = index.biomes
         caveBiomes = index.caveBiomes
         border = session.visibility.showsWorldBorder ? session.presentation.limitedWorldBorder : nil
