@@ -29,12 +29,14 @@ nonisolated enum GameLanguageChoice {
             guard language.languageCode == requested.languageCode,
                   language.script == requested.script else { continue }
             if language.isEquivalent(to: requested) { return names }
-            candidates.append((language.maximalIdentifier, names))
+            candidates.append((Locale.canonicalLanguageIdentifier(from: declaration), names))
         }
         // Match regions only among verified identities. A filename such as en_pt may
         // actually declare Pirate Speak, and sr_cs declares Latin rather than Cyrillic.
+        // Inferred script subtags prevent Bundle's regional fallback (for example es-US
+        // to es-MX). Canonical identifiers retain the declared region without adding them.
         if let selected = Bundle.preferredLocalizations(from: candidates.map(\.locale),
-                                                        forPreferences: [requested.maximalIdentifier]).first,
+                                                        forPreferences: [Locale.canonicalLanguageIdentifier(from: preference)]).first,
            let match = candidates.first(where: { $0.locale == selected }) {
             return match.names
         }
