@@ -705,7 +705,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             column.map {
                 let entry = $0.layers.first?.entry ?? PaletteEntry(section: $0.section, palette: $0.palette)
                 return TopBlock(id: sections.blockID(section: entry.section, palette: entry.palette), y: $0.surfaceY,
-                                waterDepth: $0.layers.isEmpty ? $0.waterDepth : 0, nightLight: $0.nightLight)
+                                waterDepth: $0.surfaceY == $0.y ? $0.waterDepth : 0, nightLight: $0.nightLight)
             }
         }
     }

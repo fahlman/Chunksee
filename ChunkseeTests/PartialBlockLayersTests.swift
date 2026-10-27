@@ -10,9 +10,9 @@ import Testing
         let fixture = try fixture()
         defer { fixture.remove() }
         let assets = try fixture.library()
-        let states = ["test:ground", "test:torch", "test:wall", "test:flower", "minecraft:barrier", "minecraft:chest", "test:empty"].map { BlockState($0) }
+        let states = ["test:ground", "test:torch", "test:wall", "test:flower", "minecraft:barrier", "minecraft:chest", "test:empty", "test:missing"].map { BlockState($0) }
         let expected: [MapBlockCoverage] = [.covers, .partial(opacity: 1 / 64), .partial(opacity: 1 / 4),
-            .partial(opacity: 128 / 255), .none, .unavailable, .unavailable]
+            .partial(opacity: 128 / 255), .none, .unavailable, .unavailable, .unavailable]
         let coverage = try await assets.mapCoverage(for: states)
         #expect(coverage == expected)
         #expect(assets.cachedMapCoverage(for: states) == expected)
@@ -139,6 +139,34 @@ import Testing
         #expect(ground.detail?.detail.chunks[0]?.overlays.isEmpty == true)
     }
 
+    @Test func waterloggedPartialBlocksKeepTheirWaterDepthAndShowWaterInTheirGaps() async throws {
+        let palette: [NBT] = [.string("test:ground"), .string("minecraft:water"), .compound([
+            "Name": .string("minecraft:oak_fence"), "Properties": .compound(["waterlogged": .string("true")])])]
+        let section = Fixtures.section(y: 0, palette: palette,
+            indices: (0..<4096).map { $0 / 256 == 15 ? 2 : $0 / 256 > 12 ? 1 : 0 })
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
+            dataVersion: SaveVersion.java26_3, sections: [section]))])
+        let fixture = try fixture(), waterRoot = try world([15: "minecraft:water", 14: "minecraft:water", 13: "minecraft:water"])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: waterRoot) }
+        let saved = try World(contentsOf: root), assets = try fixture.library()
+        let dimension = try #require(saved.dimension("overworld")), game = try #require(try GameAssets(contentsOf: fixture.jar))
+        let context = MapSurfaceContext(settings: nil, water: try WorldDefinitions.read(saved, assets: game).water)
+        let renderer = RegionTileRenderer(dimension: dimension, surfaceContext: context, gameAssets: assets)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let top = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0)?[136])
+        #expect(top.id == "minecraft:oak_fence" && top.y == 15 && top.waterDepth == 3)
+        let tile = try #require(try await renderer.tile(for: .init(x: 0, z: 0))), surface = try #require(tile.detail)
+        #expect(surface.heights[8 * 512 + 8] == 15)
+        let detail = try #require(try await MapDetailRenderer.render(.init(x: 0, z: 0), surface: surface,
+            assets: assets, heightScale: nil, usesSavedLighting: false))
+        let waterDimension = try #require(try World(contentsOf: waterRoot).dimension("overworld"))
+        let waterTile = try #require(try await RegionTileRenderer(dimension: waterDimension, surfaceContext: context, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let pixels = try ItemPictureFixture.pixels(detail.image)
+        let water = try ItemPictureFixture.pixels(waterTile.full.image).color(8, 8)
+        #expect(pixels.color(129, 129) == water)
+        #expect(pixels.color(136, 136) == [0, 0, 255, 255])
+    }
+
     @Test func fullBlocksKeepTheirColorHeightAndPicture() async throws {
         let fixture = try fixture(), root = try world([15: "test:ground"])
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
@@ -173,6 +201,7 @@ import Testing
     private func fixture() throws -> ItemPictureFixture {
         var files: [String: Data] = [:]
         func json(_ path: String, _ object: Any) throws { files[path] = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) }
+        try json("data/minecraft/tags/fluid/water.json", ["values": ["minecraft:water", "minecraft:flowing_water"]])
         func block(_ id: String, _ elements: [[String: Any]]) throws {
             let parts = id.split(separator: ":")
             try json("assets/\(parts[0])/blockstates/\(parts[1]).json", ["variants": ["": ["model": id]]])
@@ -191,6 +220,7 @@ import Testing
         try block("test:ground", [top("green")])
         try block("test:torch", [top("red", from: [7, 0, 7], to: [9, 10, 9])])
         try block("test:wall", [top("blue", from: [4, 0, 4], to: [12, 16, 12])])
+        try block("minecraft:oak_fence", [top("blue", from: [4, 0, 4], to: [12, 16, 12])])
         try block("test:lily", [top("lily", to: [16, 1, 16])])
         try block("test:flower", [["from": [0, 0, 8], "to": [16, 16, 8], "faces": [
             "north": ["texture": "#flower", "uv": [0, 0, 16, 16]], "south": ["texture": "#flower", "uv": [0, 0, 16, 16]]]]])

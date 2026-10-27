@@ -18,7 +18,10 @@ import Testing
         let pixels = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         // Synthetic art is deliberately different from Minecraft's installed opacity.
         let expected: [[UInt8]] = [[114, 159, 236, 255], [104, 144, 217, 255], [55, 95, 174, 255], [35, 65, 125, 255]]
-        for x in expected.indices { #expect(pixel(pixels, x: x * 16 + 5, z: 5) == expected[x]) }
+        for x in expected.indices {
+            let actual = pixel(pixels, x: x * 16 + 5, z: 5)
+            #expect(actual == expected[x])
+        }
         await library.close()
     }
 
@@ -85,7 +88,8 @@ import Testing
             #expect(columns.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
             #expect(hover.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
             if x < 4 {
-                #expect(pixel(normal, x: x * 16 + 5, z: 5) == [104, 144, 217, 255])
+                let actual = pixel(normal, x: x * 16 + 5, z: 5)
+                #expect(actual == [104, 144, 217, 255])
                 let color = MapStylePalette.waterColor(depth: 5)
                 #expect(pixel(depth, x: x * 16 + 5, z: 5) == [color.red, color.green, color.blue, 255])
             } else {
@@ -254,6 +258,15 @@ import Testing
     private func waterFixture(alpha: UInt8?) throws -> ItemPictureFixture {
         var files = ["data/minecraft/tags/fluid/water.json": try ItemPictureFixture.json([
             "values": ["minecraft:water", "minecraft:flowing_water"]])]
+        // Supply the floor being measured: absent sand art correctly draws the missing-image
+        // pattern now, which would test a different floor rather than water's opacity.
+        files["assets/minecraft/blockstates/sand.json"] = try ItemPictureFixture.json([
+            "variants": ["": ["model": "test:block/sand"]]])
+        files["assets/test/models/block/sand.json"] = try ItemPictureFixture.json([
+            "textures": ["sand": "test:block/sand"],
+            "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": ["up": ["texture": "#sand"]]]]])
+        files["assets/test/textures/block/sand.png"] = try ItemPictureFixture.png(
+            Array(repeating: [UInt8](arrayLiteral: 219, 211, 160, 255), count: 4).flatMap { $0 })
         if let alpha {
             // The opaque second frame must not influence the first-frame opacity.
             let first: [UInt8] = [0, 0, 0, alpha], second: [UInt8] = [0, 0, 0, 255]

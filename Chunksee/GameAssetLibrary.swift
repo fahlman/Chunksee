@@ -361,7 +361,9 @@ actor GameAssetLibrary {
             if state.isAir == true {
                 coverage = .none
             } else if material.modelIsMissing {
-                coverage = .covers
+                // A placeholder picture cannot establish the real shape or override fluid
+                // facts. Ordinary missing blocks still stop the scan and draw that picture.
+                coverage = .unavailable
             } else if let model = material.model,
                       let appearance = try GameModelRenderer.topAppearance(model, tint: { _ in 0xffffff }, texture: blockTexture) {
                 if appearance.opacity == 0 {
