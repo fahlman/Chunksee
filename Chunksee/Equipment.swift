@@ -40,10 +40,6 @@ nonisolated enum EquipmentPresentation {
         var id: String { slot }
     }
 
-    static func items(for player: PlayerInfo) -> [String: ItemStack] {
-        player.equippedItems.filter { slotOrder.contains($0.key) && $0.key != "storage" }
-    }
-
     static func rows(_ items: [String: ItemStack]) -> [Row] {
         let filled = items.filter { $0.value.count > 0 }
         let slots = slotOrder + filled.keys.filter { !slotOrder.contains($0) }.sorted()
