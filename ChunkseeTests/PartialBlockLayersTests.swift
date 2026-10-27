@@ -140,7 +140,7 @@ import Testing
     }
 
     @Test func waterloggedPartialBlocksKeepTheirWaterDepthAndShowWaterInTheirGaps() async throws {
-        let palette: [NBT] = [.string("test:ground"), .string("minecraft:water"), .compound([
+        let palette: [NBT] = [.compound(["Name": .string("test:ground")]), .compound(["Name": .string("minecraft:water")]), .compound([
             "Name": .string("minecraft:oak_fence"), "Properties": .compound(["waterlogged": .string("true")])])]
         let section = Fixtures.section(y: 0, palette: palette,
             indices: (0..<4096).map { $0 / 256 == 15 ? 2 : $0 / 256 > 12 ? 1 : 0 })
