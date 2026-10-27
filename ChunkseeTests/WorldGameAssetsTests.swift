@@ -1,8 +1,10 @@
 import ChunkseeKit
+import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
 import Observation
 import Testing
+import Synchronization
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldGameAssetsTests {
@@ -43,8 +45,8 @@ import Testing
         first.refreshGameAssets(); second.refreshGameAssets()
         await first.waitForRefresh(); await second.waitForRefresh()
         let source = WorldGameAssetSource(generation: names.minecraft.generation)
-        let library = try #require(first.gameAssetLibrary(for: source))
-        #expect(second.gameAssetLibrary(for: source) === library)
+        let library = try #require(first.gameArtworkLibrary(for: source))
+        #expect(second.gameArtworkLibrary(for: source) === library)
         #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
         let definitions = first.details.definitions, readers = first.readers
         #expect(definitions.enchantments["test:sample"] != nil)
@@ -61,21 +63,22 @@ import Testing
 
         names.minecraft.usesGameArtwork = false
         await expectUpdate(observation)
-        for resources in [first, second] { #expect(resources.gameAssetLibrary(for: source) == nil && resources.biomeColors == nil) }
+        for resources in [first, second] { #expect(resources.gameArtworkLibrary(for: source) == nil && resources.biomeColors?.source.artwork == .unavailable) }
         for session in [a, hidden, b] {
-            #expect(session.map?.currentRenderer.gameAssets == nil && session.map?.currentRenderer.biomeColors == nil)
+            #expect(session.map?.currentRenderer.gameArtwork == nil && session.map?.currentRenderer.gameData === library.data
+                && session.map?.currentRenderer.biomeColors?.source.artwork == .unavailable)
         }
-        #expect(map.detailImages.isEmpty && map.currentRenderer.colorSourceKey == nil)
+        #expect(map.detailImages.isEmpty && map.currentRenderer.gameSource.artwork == .unavailable)
         await first.waitForRefresh(); await second.waitForRefresh(); await map.waitForRenders()
         let fallbackPixels = try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes
         #expect(fallbackPixels != originalPixels)
         #expect(first.details.definitions == definitions && first.readers["minecraft:overworld"] === readers["minecraft:overworld"])
-        #expect(await names.minecraft.library() === library && names.minecraft.generation == source.generation)
+        #expect(await names.minecraft.library()?.data === library.data && names.minecraft.generation == source.generation)
         #expect(first.biomeColors?.outlineColor(for: "test:sample", at: .zero) == MapColor(0x123456))
 
         names.minecraft.usesGameArtwork = true
         await first.waitForRefresh(); await second.waitForRefresh(); await map.waitForRenders()
-        #expect(first.gameAssetLibrary(for: source) === library && second.gameAssetLibrary(for: source) === library)
+        #expect(first.gameArtworkLibrary(for: source) === library && second.gameArtworkLibrary(for: source) === library)
         #expect(map.currentRenderer.colorSourceKey == artworkKey && !map.detailImages.isEmpty)
         #expect(try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes == originalPixels)
         #expect(first.details.definitions == definitions)
@@ -91,12 +94,12 @@ import Testing
         resources.refreshGameAssets()
         await resources.waitForRefresh()
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        let library = try #require(resources.gameAssetLibrary(for: source))
+        let library = try #require(resources.gameArtworkLibrary(for: source))
         let withArtwork = try #require(resources.biomeColors)
-        let withoutArtwork = try await library.biomeColors(in: resources.world, usesArtwork: false)
+        let withoutArtwork = try await library.data.biomeColors(in: resources.world, artwork: nil)
         #expect(withArtwork.outlineColor(for: "test:sample", at: .zero) != withoutArtwork.outlineColor(for: "test:sample", at: .zero))
         let gate = AsyncReadGate<MapBiomeColors>()
-        resources.readBiomeColors = { _, _, _, _, artwork in await gate.read(artwork ? "on" : "off") }
+        resources.readBiomeColors = { _, _, artwork, _, _ in await gate.read(artwork == nil ? "off" : "on") }
         resources.refreshDelay = .zero
         resources.worldChanged([root.appendingPathComponent("datapacks/ChunkseeTest/data/test/worldgen/biome/sample.json")])
         await gate.waitForRequest("on")
@@ -106,10 +109,73 @@ import Testing
         await gate.finish("off", with: withoutArtwork)
         await gate.finish("on", with: withArtwork)
         await resources.waitForRefresh()
-        #expect(resources.gameAssetLibrary(for: source) == nil)
+        #expect(resources.gameArtworkLibrary(for: source) == nil)
         #expect(resources.biomeColors?.sourceKey == withoutArtwork.sourceKey)
         resources.close()
         await resources.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
+    }
+
+    @Test func artworkOffReadsDataAndRendersWithoutReadingAnyTexture() async throws {
+        let fixture = try artworkFixture()
+        let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+                                sections: [section], extra: ["yPos": .int(0)]))])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.usesGameArtwork = false
+        let reads = Mutex<[String]>([])
+        let library = GameResourceLibrary(assets: try #require(try GameAssets(contentsOf: fixture.jar)), sourceKey: "fixture") { assets, id in
+            reads.withLock { $0.append(id) }
+            return assets.texture(id)
+        }
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources), source = WorldGameAssetSource(generation: names.minecraft.generation)
+        resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
+        await resources.waitForRefresh()
+        let map = try #require(session.map), region = RegionPosition(x: 0, z: 0)
+        let definitions = resources.details.definitions
+        #expect(definitions.enchantments["test:sample"] != nil)
+        #expect(map.currentRenderer.gameData === library.data)
+        #expect(names.minecraft.artwork(for: library) == nil && resources.gameArtworkLibrary(for: source) == nil)
+        #expect(try await library.data.mapMaterials(for: [.init("minecraft:stone")]).first?.model != nil)
+        let colors = try #require(map.currentRenderer.biomeColors)
+        #expect(colors.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+        func rendered() async throws -> RegionTileRenderer.RenderedTile {
+            var renderer = map.currentRenderer
+            renderer.cache = TileCache(directory: root.appendingPathComponent("artwork-test-cache"))
+            return try #require(try await renderer.tile(for: region))
+        }
+        let off = try await rendered()
+        #expect(off.detail == nil)
+        let offKey = try #require(off.cacheWrite?.key)
+        #expect(offKey.gameSource.artwork == .unavailable)
+        #expect(reads.withLock { $0.isEmpty })
+
+        names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        let artwork = try #require(resources.gameArtworkLibrary(for: source))
+        #expect(try await artwork.picture(for: .init(id: "test:flat")) != nil)
+        #expect(try await artwork.textureColor("test:item/red") != nil)
+        let on = try await rendered(), onKey = try #require(on.cacheWrite?.key)
+        #expect(on.heights == off.heights)
+        #expect(on.cacheWrite?.surface.isWater == off.cacheWrite?.surface.isWater)
+        #expect(onKey.gameSource.artwork == .game(library.sourceKey) && onKey != offKey)
+        #expect(map.currentRenderer.biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+        #expect(!reads.withLock { $0.isEmpty })
+
+        names.minecraft.usesGameArtwork = false
+        let readsAtSwitch = reads.withLock { $0 }
+        #expect(resources.biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+        await resources.waitForRefresh()
+        let offAgain = try await rendered()
+        #expect(offAgain.detail == nil && offAgain.heights == off.heights)
+        #expect(try await library.data.definitions(in: resources.world) == definitions)
+        #expect(offAgain.cacheWrite?.key == offKey)
+        #expect(reads.withLock { $0 } == readsAtSwitch)
+        resources.close(); await resources.waitUntilClosed()
     }
 
     private func artworkFixture() throws -> ItemPictureFixture {
@@ -133,7 +199,7 @@ import Testing
         (updates: AsyncStream<Bool>, finish: @Sendable () -> Void) {
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         // This is the accessor used to inject pictures into the view environment.
-        _ = withObservationTracking { resources.gameAssetLibrary(for: source) } onChange: {
+        _ = withObservationTracking { resources.gameArtworkLibrary(for: source) } onChange: {
             continuation.yield(true)
         }
         return (updates, { continuation.finish() })
@@ -154,7 +220,7 @@ import Testing
         defer { resources.close() }
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         let observation = observe(resources, source: source)
-        #expect(resources.gameAssetLibrary(for: source) == nil)
+        #expect(resources.gameArtworkLibrary(for: source) == nil)
         resources.prepareGameAssets(source)
         await expectUpdate(observation)
         resources.close()
@@ -173,7 +239,7 @@ import Testing
         resources.refreshGameAssets()
         await resources.waitForRefresh()
         await expectUpdate(loading)
-        let first = try #require(resources.gameAssetLibrary(for: source))
+        let first = try #require(resources.gameArtworkLibrary(for: source))
         let item = ItemStack(id: "test:flat")
         #expect(try await first.picture(for: item) != nil)
 
@@ -182,7 +248,7 @@ import Testing
         resources.refreshGameAssets()
         await resources.waitForRefresh()
         await expectUpdate(replacing)
-        let replacement = try #require(resources.gameAssetLibrary(for: source))
+        let replacement = try #require(resources.gameArtworkLibrary(for: source))
         #expect(replacement !== first)
         #expect(resources.names.minecraft.generation == source.generation)
         #expect(try await replacement.picture(for: item) != nil)
@@ -199,13 +265,14 @@ import Testing
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.refreshGameAssets()
         await resources.waitForRefresh()
-        let first = try #require(resources.gameAssetLibrary(for: source))
+        let firstLibrary = try #require(await resources.names.minecraft.library())
+        let first = try #require(resources.gameArtworkLibrary(for: source))
         let removal = observe(resources, source: source)
         resources.names.minecraft.forget()
         await expectUpdate(removal)
-        #expect(resources.gameAssetLibrary(for: source) == nil)
-        resources.setGameAssets(first, source: source)
-        #expect(resources.gameAssetLibrary(for: source) == nil)
+        #expect(resources.gameArtworkLibrary(for: source) == nil)
+        resources.setGameAssets(firstLibrary, source: source)
+        #expect(resources.gameArtworkLibrary(for: source) == nil)
         await resources.waitForRefresh()
         await resources.names.minecraft.waitUntilIdle()
         #expect(try await first.picture(for: ItemStack(id: "test:flat")) == nil)
@@ -215,15 +282,16 @@ import Testing
         let rechoice = observe(resources, source: current)
         await resources.waitForRefresh()
         await expectUpdate(rechoice)
-        let replacement = try #require(resources.gameAssetLibrary(for: current))
+        let replacementLibrary = try #require(await resources.names.minecraft.library())
+        let replacement = try #require(resources.gameArtworkLibrary(for: current))
         #expect(replacement !== first)
-        resources.setGameAssets(first, source: source)
-        #expect(resources.gameAssetLibrary(for: current) === replacement)
+        resources.setGameAssets(firstLibrary, source: source)
+        #expect(resources.gameArtworkLibrary(for: current) === replacement)
         let closing = observe(resources, source: current)
         resources.close()
         await expectUpdate(closing)
-        resources.setGameAssets(replacement, source: current)
-        #expect(resources.gameAssetLibrary(for: current) == nil)
+        resources.setGameAssets(replacementLibrary, source: current)
+        #expect(resources.gameArtworkLibrary(for: current) == nil)
         await resources.waitUntilClosed()
         await resources.names.minecraft.waitUntilIdle()
     }

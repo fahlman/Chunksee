@@ -24,7 +24,7 @@ nonisolated enum MapDetailRenderer {
 
     @concurrent
     static func render(_ chunk: ChunkPosition, surface: MapSurfaceDetail.Surface,
-                       assets: GameAssetLibrary, heightScale: MapHeightScale?, usesSavedLighting: Bool) async throws -> MapTileImage? {
+                       assets: GameArtworkLibrary, heightScale: MapHeightScale?, usesSavedLighting: Bool) async throws -> MapTileImage? {
         try Task.checkCancellation()
         let side = RegionTileRenderer.side
         guard surface.heights.count == side * side,

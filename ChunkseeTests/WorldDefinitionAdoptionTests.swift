@@ -157,10 +157,10 @@ import Testing
             "data/minecraft/tags/block/leaves.json": Data(#"{"values":["example:needles"]}"#.utf8)
         ])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let resources = try await resources(root), first = try game.library(), second = try game.library(), third = try game.library()
+        let resources = try await resources(root), first = try game.resources(), second = try game.resources(), third = try game.resources()
         defer { resources.close() }
         let blank = try await WorldResources.readDefinitions(resources.world, library: nil)
-        let known = try await WorldResources.readDefinitions(resources.world, library: first)
+        let known = try await WorldResources.readDefinitions(resources.world, library: first.data)
         let gate = AsyncReadGate<WorldResources.DefinitionSnapshot>()
         resources.readDefinitions = { _, library in
             guard let library else { return blank }

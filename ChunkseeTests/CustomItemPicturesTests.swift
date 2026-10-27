@@ -81,7 +81,7 @@ import Testing
         _ = try #require(try await library.picture(for: other))
         _ = try #require(try await library.picture(for: selected))
         let renderer = ImageRenderer(content: ItemIcon(item: selected)
-            .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+            .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, appearance))
         renderer.scale = 4
         let pixels = try ItemPictureFixture.pixels(try #require(renderer.cgImage))
         #expect(pixels.color(40, 40) == [0, 0, 255, 255])
