@@ -85,8 +85,9 @@ final class WorldResources {
     @ObservationIgnored var readLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
     }
-    @ObservationIgnored private var gameAssetSource: WorldGameAssetSource?
-    @ObservationIgnored private var gameAssets: GameAssetLibrary?
+    // The view accessor must observe both its initial source guard and the later loaded library.
+    private var gameAssetSource: WorldGameAssetSource?
+    private var gameAssets: GameAssetLibrary?
     private(set) var biomeColors: MapBiomeColors?
     @ObservationIgnored private var biomeReadGeneration = 0
     @ObservationIgnored private var needsBiomeReload = false
