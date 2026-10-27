@@ -1,6 +1,21 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Newer Minecraft World" : {
+      "comment" : "Title for the non-blocking comparison of a saved world's version with the selected game files."
+    },
+    "Dismiss Notice" : {
+      "comment" : "Accessible title of the version notice's close button. Dismissing the banner keeps the information in World Info."
+    },
+    "The version notice remains in World Info" : {
+      "comment" : "Help for dismissing the newer-world banner."
+    },
+    "This world was saved with Minecraft %@, which is newer than the selected Minecraft %@. Chunksee will show what it can read." : {
+      "comment" : "Non-blocking notice. The first name comes from the save; the second comes from the selected game files. Do not translate version names."
+    },
+    "This world was saved with a newer Minecraft version than the selected Minecraft %@. Chunksee will show what it can read." : {
+      "comment" : "Non-blocking notice when the save records a newer data version but no version name. The name comes from the selected game files."
+    },
     "Mobs" : {
       "comment" : "Sidebar section listing only creature types with saved individuals in this dimension."
     },

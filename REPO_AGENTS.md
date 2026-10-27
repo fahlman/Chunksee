@@ -124,6 +124,12 @@ global rows and in-game map overlays remain. The shared map callback announces a
 deselection through Apple's accessibility API; other focus contexts keep their own Escape.
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
+WorldResources owns the saved version and the comparison with its current selected game library.
+WorldVersionNotice compares the supplied data versions and displays their supplied names; absent
+saved data versions do not produce a newer-world notice. A successful metadata refresh updates
+the saved version, and source-generation checks reject retired game files. The non-blocking map
+banner is remembered once per version pair in WorldSettings, shared across dimension documents;
+World Info keeps the notice while the comparison applies. Neither presentation gates any reads.
 ItemAppearance uses one filled tree for plant items across every item surface; BiomeGroup keeps
 its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not
 need globally unique strings when their meaning is clear in context.
