@@ -8,6 +8,7 @@ nonisolated struct SearchRequest: Sendable {
     var index: SearchIndex
     var players: [PlayerInfo]
     var playerNames: [UUID: PlayerPresentation.Name]
+    var gameNames = GameNames()
 }
 
 /// The world index and published query results. Views read snapshots; they never scan a world.
@@ -28,10 +29,13 @@ final class SearchModel {
     private var queryResults: [String: [SearchHit]] = [:]
     private var displayedQuery = ""
     var isActive: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
-    var results: [SearchHit] { isActive ? queryResults[displayedQuery] ?? [] : [] }
+    var results: [SearchHit] {
+        isActive && sources?.gameNamesID == readGameNames().identity ? queryResults[displayedQuery] ?? [] : []
+    }
 
     let indexStore: WorldIndexStore
     private let ownsIndex: Bool
+    private let readGameNames: @MainActor () -> GameNames
     private let names: PlayerNames
     private let singleplayerUUID: UUID?
     private let savedSearches: SavedSearches
@@ -50,12 +54,13 @@ final class SearchModel {
     init(readers: [RegionReader], work: BackgroundWork, playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
-         indexStore: WorldIndexStore? = nil) {
+         indexStore: WorldIndexStore? = nil, gameNames: @escaping @MainActor () -> GameNames = { GameNames() }) {
         self.work = work.makeScope()
         self.ownsIndex = indexStore == nil
         self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension, playerRoster: playerRoster)
         self.playerRoster = playerRoster
         precondition(self.indexStore.playerRoster === playerRoster)
+        readGameNames = gameNames
         self.names = names
         self.singleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
@@ -65,7 +70,8 @@ final class SearchModel {
     }
 
     func results(for query: String) -> [SearchHit] {
-        query == text ? results : queryResults[query] ?? []
+        guard sources?.gameNamesID == readGameNames().identity else { return [] }
+        return query == text ? results : queryResults[query] ?? []
     }
 
     /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
@@ -97,6 +103,7 @@ final class SearchModel {
     /// Shared names and saved searches can change from another window or Settings.
     private func observeSources() {
         withObservationTracking {
+            _ = readGameNames().identity
             _ = names.local
             _ = names.online
             _ = savedSearches.all
@@ -122,8 +129,11 @@ final class SearchModel {
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
-        let next = SearchSources(names: playerNames, playerSnapshot: playerSnapshot, indexRevision: indexStore.revision)
+        let gameNames = readGameNames()
+        let next = SearchSources(names: playerNames, playerSnapshot: playerSnapshot, indexRevision: indexStore.revision,
+                                 gameNamesID: gameNames.identity)
         if next != sources {
+            if next.gameNamesID != sources?.gameNamesID { queryResults = [:] }
             sources = next
             sourceGeneration = UUID()
             for query in activeQueries.values { cancelQuery(query) }
@@ -142,7 +152,7 @@ final class SearchModel {
         // Editing the current query doesn't invalidate completed or pending saved searches.
         for query in queries.sorted() where !completedQueries.contains(query) && activeQueries[query] == nil {
             let id = UUID(), generation = sourceGeneration, execute = execute
-            let request = SearchRequest(queries: [query], index: index, players: players, playerNames: playerNames)
+            let request = SearchRequest(queries: [query], index: index, players: players, playerNames: playerNames, gameNames: gameNames)
             let isSaved = saved.contains(query)
             guard let task = work.start(priority: .userInitiated, operation: { [weak self] in
                 defer {
@@ -163,6 +173,7 @@ final class SearchModel {
                 guard !Task.isCancelled, let self, !self.isClosed,
                       self.playerRoster.snapshot === next.playerSnapshot,
                       self.playerSnapshot === next.playerSnapshot,
+                      self.readGameNames().identity == next.gameNamesID,
                       self.sourceGeneration == generation, self.activeQueries[query]?.id == id else { return }
                 self.activeQueries[query] = nil
                 guard let found else { self.isSearching = !self.activeQueries.isEmpty; return }

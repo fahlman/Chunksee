@@ -345,7 +345,7 @@ import Testing
                                 placePoints: PointMarkers([bed]),
                                 mobTypes: MobTypes([wolf, cat, farmer])))
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
-        #expect(search("structure:village").map(\.title) == ["Plains Village"])
+        #expect(search("structure:village").map(\.title) == ["Village Plains"])
         #expect(search("structure:village_plains").count == 1)
         #expect(search("structure:village").first?.source == .layer(.structure(.village), markerID: village.id))
         #expect(search("place:bed").map(\.title) == ["Bed"])

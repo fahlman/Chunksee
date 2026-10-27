@@ -154,6 +154,10 @@ actor GameAssetLibrary {
         version = assets.version
     }
 
+    func language(_ locale: String, minecraftDirectory: URL?) -> GameLanguage? {
+        assets?.language(locale, minecraftDirectory: minecraftDirectory)
+    }
+
     /// The source owner retires this reader even when hidden tabs still retain the actor.
     /// Actor isolation lets a current synchronous draw finish before releasing its archive.
     func close() {

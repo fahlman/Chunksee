@@ -243,17 +243,17 @@ import Testing
 
 @Suite(.isolatedStores) struct PlayerRecordsTests {
     @Test func namesRankingsAndDistances() {
-        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm") == "Elytra")
-        #expect(PlayerRecords.travelName("minecraft:boat_one_cm") == "Boat")
-        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond") == "Mine Diamond")
+        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm") == "Aviate One Cm")
+        #expect(PlayerRecords.travelName("minecraft:boat_one_cm") == "Boat One Cm")
+        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond") == "Story Mine Diamond")
         let records = PlayerRecords(statistics: PlayerStatistics(values: [
             "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
         ]))
-        #expect(records.distances.map(\.name) == ["Boat", "Walk"])   // crouching, under 100 m, is left out
+        #expect(records.distances.map(\.name) == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
         #expect(records.distances.first?.value == 2_087_548_000)
         #expect(records.top("minecraft:mined", count: 2).map(\.name) == ["Dirt", "Stone"])
-        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk" })
+        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk One Cm" })
     }
 
     @Test func summaryAndTableShareReadableStatistics() throws {
@@ -263,7 +263,7 @@ import Testing
                                  "minecraft:damage_taken": 155, "mod:walk_one_cm": 999],
         ]))
         let english = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
-        #expect(records.summaryStatistics.map(\.name) == ["Time Played", "Mobs Killed", "Deaths", "Walk"])
+        #expect(records.summaryStatistics.map(\.name) == ["Play Time", "Mob Kills", "Deaths", "Walk One Cm"])
         for summary in records.summaryStatistics {
             let table = try #require(records.rows.first { $0.id == summary.id })
             #expect(summary.name == table.name && summary.value == table.value && summary.unit == table.unit)
@@ -293,7 +293,7 @@ import Testing
         let stones = records.top("minecraft:mined")
         #expect(stones.map(\.name) == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
         #expect(stones[0].id != stones[1].id)
-        #expect(records.summaryStatistics.first?.name == "Time Played")
+        #expect(records.summaryStatistics.first?.name == "Play Time")
         #expect(records.summaryStatistics.first?.unit == .ticks)
         let legacyTime = try #require(rows.first { $0.statisticID == "minecraft:play_one_minute" })
         let summaryTime = try #require(records.summaryStatistics.first)

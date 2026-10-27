@@ -29,7 +29,7 @@ import Testing
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
             StructureMarker(start($0, chunk: (0, 0))).name
         }
-        #expect(names == ["Plains Village", "Cold Ocean Ruin", "Ocean Ruined Portal", "Beached Shipwreck", "Ancient City"])
+        #expect(names == ["Village Plains", "Ocean Ruin Cold", "Ruined Portal Ocean", "Shipwreck Beached", "Ancient City"])
     }
 
     @Test func boundsAndStrongholdPortalRoom() {

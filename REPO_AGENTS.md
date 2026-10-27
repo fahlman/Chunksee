@@ -573,7 +573,7 @@ SearchHit keeps app-only titles, details, native coordinates and selection links
 query state or background work is introduced.
 
 ChunkseeIndex.NotableBlock owns the nine display groups and grouped deposit counts/section height
-bounds. Its Catalog resolves ore membership from runtime block tags; the app has no ore-ID list. Blocks.swift keeps only aliases, localized names/search
+bounds. Its Catalog resolves ore membership from runtime block tags; the app has no ore-ID list. Blocks.swift keeps only aliases, game-language names/search
 labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader uses the shared
 world catalog for scan options and search aliases; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
 ScanCache continues to store core RegionFacts, with no cache-format change.
@@ -744,8 +744,7 @@ nitwits and valid custom professions remain distinct.
 The inspector's “None” profession value is limited to a villager whose saved profession is
 explicitly unemployed; unknown professions omit the row through that same label owner.
 The row is labeled Profession. Its rank uses Kit's `supportsTrading`: known false omits it,
-unknown retains the prior behavior, and saved offers or a trading profession allow it. Only
-saved/default levels 1–5 have localized ranks. The app contains no profession capability list.
+unknown retains the prior behavior, and saved offers or a trading profession allow it. Ranks come from the selected game’s merchant.level keys, with the saved level number when a key is absent. The app contains no profession capability or rank-name list.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
 the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
 use Kit's `inventorySlots(in:)` for hotbar,
@@ -772,9 +771,9 @@ index and open/select in the destination dimension document. No owner is inferre
 Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
-not a live countdown. PlayerEffectText.NameStyle owns effect names and vanilla exceptions,
-independent of enchantment names; both share level numeral presentation. Visible effect rows and
-their accessibility representation use that native style, and the string adapter forwards to it.
+not a live countdown. PlayerEffectText gets effect names from the world’s GameNames snapshot;
+there is no effect-name exception list. Effects and enchantments share level numeral presentation.
+Visible effect rows and their accessibility representation use the same resolved name.
 Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
 `GameDuration` owns saved tick conversion and the configured native Duration.UnitsFormatStyle.
@@ -1552,3 +1551,22 @@ color, normals, shadow heights/masks and retained detail data, including after a
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail
 threshold. No new controls, localization keys, file access, asset copy or world modification.
+
+## Game-supplied names (#438)
+
+WorldResources owns one immutable GameNames snapshot for its selected game and app locale.
+GameAssetLibrary calls Kit’s bounded GameAssets.language reader off the main actor, with the
+chosen Minecraft folder for launcher-indexed language files. Kit supplies per-key English
+fallback; the app uses a readable saved ID when no key exists. Changing locale or game source
+invalidates the old snapshot; retired reads cannot publish after replacement, removal or closure.
+WorldGameAssets injects the snapshot through the SwiftUI environment. Search captures the same
+snapshot, includes its identity in shared-query reuse, and rejects results from retired names.
+This does not change world parsing, scan membership, map rendering or cache formats.
+
+Effects, merchant ranks, statistics, vanilla advancement titles, notable-block search labels,
+game modes and difficulty use the game’s keys. Statistics retain their saved values and Kit-owned
+units. The existing notable-block groups choose representative block IDs solely for their labels;
+their membership remains Kit’s runtime tag catalog. The game supplies no structure or cat-variant
+names, so their fallback preserves ID word order. Loot-table labels derive from saved paths, with
+no special renames. Old-format guidance uses the saved version name, when available, without a
+version number in the UI string. No game language files are redistributed.

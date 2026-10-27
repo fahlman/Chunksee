@@ -53,17 +53,12 @@ nonisolated struct PlayerRecords: Sendable {
         return primary + distances
     }
 
-    /// `minecraft:walk_one_cm` → "Walk", `minecraft:aviate_one_cm` → "Elytra".
-    static func travelName(_ id: String) -> String {
-        let base = ReadableName.identifierPath(id).replacingOccurrences(of: "_one_cm", with: "")
-        let names = ["aviate": String(localized: "Elytra"), "walk_on_water": String(localized: "Walk on Water"),
-                     "walk_under_water": String(localized: "Walk Under Water")]
-        return names[base] ?? ReadableName.from(base)
+    static func travelName(_ id: String, gameNames: GameNames = GameNames()) -> String {
+        gameNames.name(id, in: "stat")
     }
 
-    /// `minecraft:story/mine_diamond` → "Mine Diamond".
-    static func advancementName(_ id: String) -> String {
-        ReadableName.from(String(id.split(separator: "/").last ?? Substring(id)))
+    static func advancementName(_ id: String, gameNames: GameNames = GameNames()) -> String {
+        gameNames.advancement(id)
     }
 
     /// Every statistic as a row, for the sortable table.
@@ -140,17 +135,17 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
         categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
     }
 
-    var name: String {
-        if unit == .centimeters { return PlayerRecords.travelName(statisticID) }
-        if categoryID == "minecraft:custom" {
-            switch statisticID {
-            case "minecraft:play_time", "minecraft:play_one_minute": return String(localized: "Time Played")
-            case "minecraft:mob_kills": return String(localized: "Mobs Killed")
-            case "minecraft:deaths": return String(localized: "Deaths")
-            default: break
-            }
+    var name: String { name(in: GameNames()) }
+
+    func name(in gameNames: GameNames) -> String {
+        switch categoryID {
+        case "minecraft:custom": gameNames.name(statisticID, in: "stat")
+        case "minecraft:mined": gameNames.name(statisticID, in: "block")
+        case "minecraft:killed", "minecraft:killed_by": gameNames.name(statisticID, in: "entity")
+        case "minecraft:used", "minecraft:broken", "minecraft:crafted", "minecraft:picked_up", "minecraft:dropped":
+            gameNames.item(statisticID)
+        default: ReadableName.from(statisticID)
         }
-        return ReadableName.from(statisticID)
     }
 
     /// Both surfaces format the same saved value; the reader owns its unit, not its label.
@@ -193,6 +188,7 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 /// Statistics and advancements sections of the player inspector.
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
+    @Environment(\.gameNames) private var gameNames
     @Binding var showsAllStatistics: Bool
 
     var body: some View {
@@ -200,7 +196,7 @@ struct PlayerRecordsSections: View {
             if records.statistics != nil {
                 Section("Statistics") {
                     ForEach(records.summaryStatistics) { row in
-                        LabeledContent(row.name) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                        LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                     }
                     Button("All Statistics…") { showsAllStatistics = true }
                 }
@@ -211,7 +207,7 @@ struct PlayerRecordsSections: View {
             if !completed.isEmpty {
                 Section {
                     ForEach(completed.prefix(5), id: \.id) { advancement in
-                        LabeledContent(PlayerRecords.advancementName(advancement.id)) {
+                        LabeledContent(PlayerRecords.advancementName(advancement.id, gameNames: gameNames)) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }
@@ -234,7 +230,7 @@ struct PlayerRecordsSections: View {
         if !entries.isEmpty {
             Section(title) {
                 ForEach(entries) { row in
-                    LabeledContent(row.name) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                    LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                 }
             }
         }
@@ -244,16 +240,25 @@ struct PlayerRecordsSections: View {
 /// Every statistic in a sortable table.
 struct StatisticsTable: View {
     let rows: [StatisticRow]
-    @State private var sortOrder = [KeyPathComparator(\StatisticRow.value, order: .reverse)]
+    @Environment(\.gameNames) private var gameNames
+    @State private var sortOrder = [KeyPathComparator(\NamedRow.value, order: .reverse)]
+
+    nonisolated private struct NamedRow: Identifiable, Sendable {
+        let row: StatisticRow
+        let name: String
+        var id: StatisticRow.ID { row.id }
+        var category: String { row.category }
+        var value: Int { row.value }
+    }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("All Statistics").font(.headline).accessibilityAddTraits(.isHeader)
-            Table(rows.sorted(using: sortOrder), sortOrder: $sortOrder) {
+            Table(rows.map { NamedRow(row: $0, name: $0.name(in: gameNames)) }.sorted(using: sortOrder), sortOrder: $sortOrder) {
                 TableColumn("Category", value: \.category)
                 TableColumn("Statistic", value: \.name)
-                TableColumn("Value", value: \.value) { Text($0, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                TableColumn("Value", value: \.value) { Text($0.row, format: StatisticRow.ValueStyle()).monospacedDigit() }
             }
             HStack {
                 Spacer()

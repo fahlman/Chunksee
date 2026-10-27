@@ -3,12 +3,12 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
-/// Readable names from ids: `minecraft:diamond_sword` → "Diamond Sword". Minecraft's own names
-/// live in its language files, which can't be redistributed.
+/// The fallback when the selected game supplies no name: preserve the saved ID's word order.
 nonisolated enum ReadableName {
     static func from(_ id: String) -> String {
         let base = identifierPath(id)
-        return base.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        return base.split(whereSeparator: { $0 == "_" || $0 == "/" })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
     /// Only vanilla IDs participate in the app’s vanilla names, colors and categories.

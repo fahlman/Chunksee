@@ -183,7 +183,7 @@ nonisolated enum WorldSearch {
         var results: [String: [SearchHit]] = [:]
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }
-            results[query] = search(query, in: request.index, players: request.players) {
+            results[query] = search(query, in: request.index, players: request.players, gameNames: request.gameNames) {
                 request.playerNames[$0.uuid] ?? PlayerPresentation.label(of: $0, singleplayerUUID: nil)
             }
         }
@@ -192,14 +192,14 @@ nonisolated enum WorldSearch {
 
     /// One layer's markers matching every word (all of them with no words): biome areas largest
     /// first, everything else by id.
-    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex) -> [SearchHit] {
+    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex, gameNames: GameNames = GameNames()) -> [SearchHit] {
         let hits: [SearchHit]
         switch filter {
         case .structure: hits = layerHits(index.structures, query: query, y: \.y) { .structure($0.group) }
         case .place: hits = layerHits(index.places, query: query, y: { $0.y }) { .place($0.group) }
         case .creature, .pet, .villager: hits = creatureHits(index.creatures, filter: filter, query: query)
         case .trade: hits = tradeHits(index.creatures, query: query)
-        case .block: hits = blockHits(index, query: query)
+        case .block: hits = blockHits(index, query: query, gameNames: gameNames)
         case .biome:
             // An area is named by its size, so its biome leads the row.
             hits = layerHits(index.biomeAreas, query: query, count: \.chunkCount) { .biome($0.group) }
@@ -215,17 +215,17 @@ nonisolated enum WorldSearch {
 
     /// The richest chunks holding a notable block whose name or id matches every word, one hit per
     /// chunk and block. The pin sits at the chunk's center; the detail gives the height range to dig.
-    private static func blockHits(_ index: SearchIndex, query: SearchQuery) -> [SearchHit] {
+    private static func blockHits(_ index: SearchIndex, query: SearchQuery, gameNames: GameNames) -> [SearchHit] {
         let catalogs = index.dimensions.values.compactMap { $0.shared?.notableBlocks }
         let blocks = Set(NotableBlock.allCases.filter { block in
-            query.matches(block.name) || catalogs.contains { query.matches(block.searchText(in: $0)) }
+            query.matches(block.searchText(in: nil, gameNames: gameNames)) || catalogs.contains { query.matches(block.searchText(in: $0, gameNames: gameNames)) }
         })
         return index.richestDeposits(matching: blocks, limit: blockResultLimit, in: \.blocks).compactMap { entry in
             let dimension = entry.dimension, chunk = entry.value.chunk, deposit = entry.value.deposit
             guard let origin = chunk.blockOrigin else { return nil }
             return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)", source: .block(deposit.block),
                              dimension: dimension, position: CGPoint(x: origin.x + 8, y: origin.z + 8), y: deposit.minY,
-                             title: deposit.block.name,
+                             title: deposit.block.name(in: gameNames),
                              // The inspector shows quantity and height; the sidebar keeps only the block's name.
                              detail: String(localized: "\(deposit.count) blocks · Y \(deposit.minY) to \(deposit.maxY)"),
                              count: deposit.count)
@@ -306,11 +306,11 @@ nonisolated enum WorldSearch {
     }
 
     /// Places matching the query text, most items first. `name(of:)` names players.
-    static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo],
+    static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo], gameNames: GameNames = GameNames(),
                        name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
         let query = SearchQuery(text)
         if let filter = query.filter {
-            return search(filter, query: query, in: index)
+            return search(filter, query: query, in: index, gameNames: gameNames)
         }
         guard !query.isEmpty else { return [] }
         var hits: [SearchHit] = []
