@@ -502,7 +502,10 @@ nonisolated struct RegionTileRenderer: Sendable {
         var requests = states.map { MapBlockColorRequest(state: $0) }
         if usesBiomeColors {
             let materials: [MapBlockMaterial]
-            if let cached = gameData?.cachedMapMaterials(for: states) { materials = cached }
+            // The palette does not use model tint indices. Keep water's data color without
+            // preparing unused texture materials when the artwork capability is absent.
+            if gameArtwork == nil { materials = states.map { MapBlockMaterial(state: $0, model: nil) } }
+            else if let cached = gameData?.cachedMapMaterials(for: states) { materials = cached }
             else if let gameData { materials = try await gameData.mapMaterials(for: states) }
             else { materials = states.map { MapBlockMaterial(state: $0, model: nil) } }
             // Copy the small descriptors once per palette. Reading cached material objects
