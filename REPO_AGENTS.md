@@ -130,6 +130,13 @@ saved data versions do not produce a newer-world notice. A successful metadata r
 the saved version, and source-generation checks reject retired game files. The non-blocking map
 banner is remembered once per version pair in WorldSettings, shared across dimension documents;
 World Info keeps the notice while the comparison applies. Neither presentation gates any reads.
+
+EquipmentPresentation orders all filled saved slots, including unfamiliar player slots; a mob's
+saved equipment, appearance and collar do not require an owner. WorldDetails keeps every readable
+in-game map. DimensionPresentation routes records with missing or unavailable dimensions to the
+first dimension's sidebar, while navigation remains available only for known destinations.
+Blank maps use the map symbol and explain their empty picture. An unresolved saved dimension value
+and its readable picture remain in the map inspector even when the picture cannot be overlaid.
 ItemAppearance uses one filled tree for plant items across every item surface; BiomeGroup keeps
 its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not
 need globally unique strings when their meaning is clear in context.
@@ -741,8 +748,8 @@ existing 28-point slots. ItemAppearance owns both labeled tooltip text and the g
 value. The slot retains the complete accessible item description and hides the decorative bar
 from accessibility. Unbreakable and non-durable items have no reading, so neither surface adds a bar.
 
-The creature inspector shows saved current/maximum health in hearts and applicable pet order,
-appearance, collar and equipment from ChunkseeKit. Missing data stays absent. The selected
+The creature inspector shows saved current/maximum health in hearts and applicable sitting order,
+appearance, collar and equipment from ChunkseeKit, independently of ownership. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
 VillagerText uses Kit's computed `Villager.isUnemployed` for profession-name availability. The app
 owns readable labels, but does not interpret saved `minecraft:none` or malformed professions;
@@ -753,7 +760,8 @@ The row is labeled Profession. Its rank uses Kit's `supportsTrading`: known fals
 unknown retains the prior behavior, and saved offers or a trading profession allow it. Only
 saved/default levels 1–5 have localized ranks. The app contains no profession capability list.
 Player equipment rows use Kit's `PlayerInfo.equippedItems`, including the selected main hand;
-the app keeps only presentation slot filtering, ordering and labels. The player inventory grids
+the app keeps only empty-stack filtering, slot ordering and labels. Unfamiliar slots remain after
+the familiar slots in sorted order. The player inventory grids
 use Kit's `inventorySlots(in:)` for hotbar,
 storage and ender chest; saved slot numbers, empty slots and duplicate handling stay in Kit.
 The app owns only the grid and selected-hotbar styling. Players and creatures share

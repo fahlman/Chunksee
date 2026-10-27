@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Saved Dimension" : {
+      "comment" : "Map inspector label for the original saved dimension value when it cannot be resolved to a dimension."
+    },
+    "Nothing is drawn on this map." : {
+      "comment" : "Explains a saved in-game map whose picture contains only blank pixels."
+    },
+    "Saved Map Picture" : {
+      "comment" : "Inspector section and accessibility label for an in-game map picture whose dimension is unavailable."
+    },
     "Newer Minecraft World" : {
       "comment" : "Title for the non-blocking comparison of a saved world's version with the selected game files."
     },
