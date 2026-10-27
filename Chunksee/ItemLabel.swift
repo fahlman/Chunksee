@@ -92,23 +92,23 @@ extension EnvironmentValues {
 struct WorldGameAssets: ViewModifier {
     let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.locale) private var locale
     private struct Request: Equatable {
         let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
-        let locale: String
+        let preferredLanguage: String
     }
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
         let source = WorldGameAssetSource(generation: resources.generation)
+        let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
             .environment(\.gameAssetLibrary, world.gameAssetLibrary(for: source))
-            .environment(\.gameNames, world.gameNames(for: locale))
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), locale: locale.identifier)) {
+            .environment(\.gameNames, world.gameNames(for: preferredLanguage))
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
-                world.refreshGameLanguage(locale: locale)
+                world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()
             }
     }

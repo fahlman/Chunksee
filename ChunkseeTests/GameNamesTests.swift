@@ -97,9 +97,9 @@ enum GameNameFixture {
         defer { game.remove(); replacement.remove(); try? FileManager.default.removeItem(at: root) }
         let world = try await resources(root, game: game)
         defer { world.close() }
-        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameLanguage(preferredLanguage: "en_US")
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
-        _ = withObservationTracking { world.gameNames(for: Locale(identifier: "en_US")) } onChange: {
+        _ = withObservationTracking { world.gameNames(for: "en_US") } onChange: {
             continuation.yield(true)
         }
         world.refreshGameAssets()
@@ -108,11 +108,11 @@ enum GameNameFixture {
         var iterator = updates.makeAsyncIterator()
         #expect(await iterator.next(isolation: #isolation) == true)
         #expect(world.currentGameNames.name("unluck", in: "effect") == "Bad Luck")
-        world.refreshGameLanguage(locale: Locale(identifier: "fr_FR"))
-        #expect(world.gameNames(for: Locale(identifier: "en_US")).identity == nil)
+        world.refreshGameLanguage(preferredLanguage: "fr_FR")
+        #expect(world.gameNames(for: "en_US").identity == nil)
         await world.waitForRefresh()
         #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
-        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameLanguage(preferredLanguage: "en_US")
         await world.waitForRefresh()
         world.names.minecraft.choose(replacement.root)
         #expect(world.currentGameNames.identity == nil)
@@ -140,7 +140,7 @@ enum GameNameFixture {
         defer { world.close() }
         let first = WorldSession(resources: world), second = WorldSession(resources: world)
         world.savedSearches.add("block:")
-        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameLanguage(preferredLanguage: "en_US")
         world.refreshGameAssets()
         await world.waitForRefresh()
         await world.index.waitForIndex()
@@ -148,7 +148,7 @@ enum GameNameFixture {
             await session.search.waitForSearch()
             #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
         }
-        world.refreshGameLanguage(locale: Locale(identifier: "fr_FR"))
+        world.refreshGameLanguage(preferredLanguage: "fr_FR")
         // Retired labels are ineligible even before Observation schedules the replacement query.
         #expect(first.search.results(for: "block:").isEmpty)
         await world.waitForRefresh()
@@ -178,7 +178,7 @@ enum GameNameFixture {
         defer { world.close() }
         let sessions = [WorldSession(resources: world), WorldSession(resources: world)]
         world.savedSearches.add("block:")
-        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameLanguage(preferredLanguage: "en_US")
         world.refreshGameAssets()
         await world.waitForRefresh()
         await world.index.waitForIndex()
@@ -218,7 +218,7 @@ enum GameNameFixture {
         await world.names.minecraft.waitUntilIdle()
     }
 
-    @Test func aLateLanguageReadCannotReplaceTheNewerLocale() async throws {
+    @Test func aLateLanguageReadCannotReplaceTheNewerPreference() async throws {
         let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let world = try await resources(root, game: game), gate = AsyncReadGate<GameLanguage?>()
@@ -227,10 +227,10 @@ enum GameNameFixture {
         let english = await library.language("en_US", minecraftDirectory: game.root)
         let french = await library.language("fr_FR", minecraftDirectory: game.root)
         world.readLanguage = { _, locale, _ in await gate.read(locale) }
-        world.refreshGameLanguage(locale: Locale(identifier: "en_US"))
+        world.refreshGameLanguage(preferredLanguage: "en_US")
         world.refreshGameAssets()
         await gate.waitForRequest("en_US")
-        world.refreshGameLanguage(locale: Locale(identifier: "fr_FR"))
+        world.refreshGameLanguage(preferredLanguage: "fr_FR")
         await gate.waitForRequest("fr_FR")
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         _ = withObservationTracking { world.currentGameNames } onChange: { continuation.yield(true) }

@@ -65,7 +65,7 @@ final class WorldResources {
     private let assetWork: BackgroundWork.Scope
     private let languageWork: BackgroundWork.Scope
     private var languageNames = GameNames()
-    private var languageLocale = Locale.current.identifier
+    private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private var languageRequest: LanguageRequest?
     @ObservationIgnored private var languageGeneration = UUID()
     @ObservationIgnored var readLanguage: @Sendable (GameAssetLibrary, String, URL?) async -> GameLanguage? = {
@@ -75,7 +75,7 @@ final class WorldResources {
     private struct LanguageRequest: Equatable {
         let source: UUID
         let library: UUID?
-        let locale: String
+        let preference: String
     }
     @ObservationIgnored private var assetObserver: UUID?
     @ObservationIgnored private var assetReadGeneration = 0
@@ -293,14 +293,14 @@ final class WorldResources {
         return languageNames
     }
 
-    func gameNames(for locale: Locale) -> GameNames {
-        languageLocale == locale.identifier ? currentGameNames : GameNames()
+    func gameNames(for preferredLanguage: String) -> GameNames {
+        languagePreference == preferredLanguage ? currentGameNames : GameNames()
     }
 
-    func refreshGameLanguage(locale: Locale? = nil, reload: Bool = false) {
+    func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
         guard !isClosed else { return }
-        if let locale { languageLocale = locale.identifier }
-        let request = LanguageRequest(source: names.minecraft.generation, library: gameAssets?.identity, locale: languageLocale)
+        if let preferredLanguage { languagePreference = preferredLanguage }
+        let request = LanguageRequest(source: names.minecraft.generation, library: gameAssets?.identity, preference: languagePreference)
         guard reload || request != languageRequest else { return }
         let sourceChanged = request != languageRequest
         languageWork.cancel()
@@ -311,7 +311,7 @@ final class WorldResources {
         guard let library = gameAssets else { return }
         let generation = languageGeneration, read = readLanguage, folder = names.minecraft.folder
         languageWork.start(priority: .utility) { [weak self] in
-            let language = await read(library, request.locale, folder)
+            let language = await read(library, request.preference, folder)
             guard !Task.isCancelled, let self, !self.isClosed, self.languageGeneration == generation,
                   self.languageRequest == request, self.names.minecraft.generation == request.source,
                   self.gameAssets?.identity == request.library else { return }
