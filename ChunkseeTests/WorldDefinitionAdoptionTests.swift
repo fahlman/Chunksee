@@ -103,9 +103,59 @@ import Testing
         await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test func leafTagChangesReachOpenSessionsWithoutReplacingReadersOrExplicitChoices() async throws {
+        let root = try fixture(enchantment: "test:ward")
+        let game = try ItemPictureFixture(extraFiles: [
+            "data/minecraft/tags/block/leaves.json": Data(#"{"values":["minecraft:oak_leaves"]}"#.utf8)
+        ])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root), session = WorldSession(resources: resources)
+        defer { session.close() }
+        let map = try #require(session.map)
+        let choices = MapBlockFilter(hiddenIDs: ["minecraft:oak_leaves"], highlightedIDs: ["example:needles"])
+        map.setBlockFilter(choices)
+        let readers = resources.readers
+        func expectLeaves(_ expected: [String]?) async {
+            await resources.waitForRefresh()
+            await resources.index.waitForIndex()
+            #expect(session.details.definitions.leafTag?.members.map(\.id) == expected)
+            #expect(map.blockFilter == choices)
+            #expect(resources.readers.count == readers.count)
+            for (id, reader) in readers { #expect(resources.readers[id] === reader) }
+        }
+        await expectLeaves(nil)
+        resources.names.minecraft.choose(game.root)
+        await expectLeaves(["minecraft:oak_leaves"])
+        let tag = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/leaves.json")
+        try write(#"{"values":["example:needles"]}"#,
+                  to: root.appendingPathComponent("datapacks/ChunkseeTest/data/example/tags/block/firs.json"))
+        try write(##"{"values":["#example:firs"]}"##, to: tag)
+        resources.worldChanged([tag])
+        await expectLeaves(["minecraft:oak_leaves", "example:needles"])
+        try write(##"{"replace":true,"values":["#example:firs"]}"##, to: tag)
+        resources.worldChanged([tag])
+        await expectLeaves(["example:needles"])
+        try write(#"{"replace":true,"values":[]}"#, to: tag)
+        resources.worldChanged([tag])
+        await expectLeaves([])
+        try write("damaged tag", to: tag)
+        resources.worldChanged([tag])
+        await expectLeaves(nil)
+        try FileManager.default.removeItem(at: tag)
+        resources.worldChanged([tag])
+        await expectLeaves(["minecraft:oak_leaves"])
+        resources.names.minecraft.forget()
+        await expectLeaves(nil)
+        session.close(); await resources.waitUntilClosed()
+        await resources.names.minecraft.waitUntilIdle()
+    }
+
     @Test func staleAndClosedWorldDefinitionReadsCannotPublish() async throws {
         let root = try fixture(enchantment: "minecraft:protection")
-        let game = try ItemPictureFixture(extraFiles: ["data/minecraft/enchantment/protection.json": Data(neutral.utf8)])
+        let game = try ItemPictureFixture(extraFiles: [
+            "data/minecraft/enchantment/protection.json": Data(neutral.utf8),
+            "data/minecraft/tags/block/leaves.json": Data(#"{"values":["example:needles"]}"#.utf8)
+        ])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let resources = try await resources(root), first = try game.library(), second = try game.library(), third = try game.library()
         defer { resources.close() }
@@ -126,6 +176,7 @@ import Testing
         await gate.finish("newer", with: known)
         await gate.finish("older", with: blank)
         try await expectHealth(20, in: resources)
+        #expect(resources.details.definitions.leafTag?.members.map(\.id) == ["example:needles"])
         resources.setGameAssets(third, source: source)
         await gate.waitForRequest("closing")
         let original = resources.playerSnapshot, definitions = resources.details.definitions
