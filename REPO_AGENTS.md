@@ -1274,7 +1274,8 @@ A changed folder generation retires the previous registry through MinecraftResou
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
 access until cleanup completes. MinecraftResources also notifies each open world directly.
 WorldResources owns the shared replacement request and definition publication even when every tab
-is hidden; view environment values derive from that owner. Returning to an active scene rechecks
+is hidden; view environment values derive from its observable source and loaded library, so first
+load and archive replacement update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
