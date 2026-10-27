@@ -169,7 +169,7 @@ struct PlayerDetailView: View {
                 }
             }
             PlayerEffectsSection(effects: player.activeEffects)
-            EquipmentSection(items: EquipmentPresentation.items(for: player))
+            EquipmentSection(items: player.equippedItems)
             LinkedPetsSection(session: session, playerID: player.uuid)
             ShoulderPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {

@@ -129,7 +129,7 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
                 HealthRow(health: creature.health, maximum: creature.maxHealth)
             }
         }
-        if creature.owner != nil, let equipment = creature.equipment {
+        if let equipment = creature.equipment {
             EquipmentSection(items: equipment)
         }
         if let trades = creature.villager?.trades, !trades.isEmpty {
