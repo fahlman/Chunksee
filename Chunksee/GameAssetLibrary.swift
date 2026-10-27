@@ -20,6 +20,7 @@ actor GameAssetLibrary {
         let images = NSCache<ItemKey, CGImage>()
         let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
+        let blockCoverage = NSCache<BlockKey, CoverageEntry>()
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let water = NSCache<NSString, WaterAppearance>()
         let textureColors = NSCache<NSString, ColorEntry>()
@@ -34,6 +35,8 @@ actor GameAssetLibrary {
             blockTextures.totalCostLimit = 16 * 1024 * 1024
             blockColors.countLimit = 4096
             blockColors.totalCostLimit = 2 * 1024 * 1024
+            blockCoverage.countLimit = 4096
+            blockCoverage.totalCostLimit = 2 * 1024 * 1024
             blockMaterials.countLimit = 512
             blockMaterials.totalCostLimit = 16 * 1024 * 1024
             images.countLimit = 512
@@ -104,6 +107,10 @@ actor GameAssetLibrary {
     nonisolated private final class DefinitionEntry {
         let present: Bool?
         init(_ present: Bool?) { self.present = present }
+    }
+    nonisolated private final class CoverageEntry {
+        let coverage: MapBlockCoverage
+        init(_ coverage: MapBlockCoverage) { self.coverage = coverage }
     }
 
     /// Kit owns every saved fact that can choose a model. Keep that complete value in both
@@ -178,6 +185,7 @@ actor GameAssetLibrary {
         caches.images.removeAllObjects()
         caches.blockMaterials.removeAllObjects()
         caches.blockColors.removeAllObjects()
+        caches.blockCoverage.removeAllObjects()
         caches.blockTextures.removeAllObjects()
         caches.water.removeAllObjects()
         caches.textureColors.removeAllObjects()
@@ -330,11 +338,51 @@ actor GameAssetLibrary {
         return nil
     }
 
+    nonisolated func cachedMapCoverage(for states: [BlockState]) -> [MapBlockCoverage]? {
+        var result: [MapBlockCoverage] = []
+        result.reserveCapacity(states.count)
+        for state in states {
+            guard let entry = caches.blockCoverage.object(forKey: BlockKey(state)) else { return nil }
+            result.append(entry.coverage)
+        }
+        return result
+    }
+
+    /// Alpha does not depend on biome tint. Measure once per state, before the chunk's one
+    /// column walk, and share the immutable answer across rendering and block readouts.
+    func mapCoverage(for states: [BlockState]) throws -> [MapBlockCoverage] {
+        try checkAvailable()
+        return try states.map { state in
+            try Task.checkCancellation()
+            let key = BlockKey(state)
+            if let entry = caches.blockCoverage.object(forKey: key) { return entry.coverage }
+            let coverage: MapBlockCoverage
+            let material = material(for: state)
+            if state.isAir == true {
+                coverage = .none
+            } else if material.modelIsMissing {
+                coverage = .covers
+            } else if let model = material.model,
+                      let appearance = try GameModelRenderer.topAppearance(model, tint: { _ in 0xffffff }, texture: blockTexture) {
+                if appearance.opacity == 0 {
+                    // An empty model cannot rule out geometry supplied by a block-entity renderer.
+                    coverage = state.hasBlockEntityRenderer == false ? .none : .unavailable
+                } else {
+                    coverage = appearance.covers ? .covers : .partial(opacity: appearance.opacity)
+                }
+            } else { coverage = .unavailable }
+            caches.blockCoverage.setObject(CoverageEntry(coverage), forKey: key,
+                cost: 128 + state.description.utf8.count + state.properties.count * 64)
+            return coverage
+        }
+    }
+
     /// One batch for a chunk's retained palette. Kit chooses each position's actual variants;
     /// the same source, model, tint, decoded texture and rasterizer owners draw their pixels.
     func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) throws -> [ItemTexture?] {
         try checkAvailable()
-        guard requests.count <= 256, indices.count == 256, positions.count == 256 else { return [] }
+        guard requests.count < Int(UInt16.max), indices.count == positions.count,
+              indices.count <= 256 + MapSurfaceDetail.maximumChunkBytes / 16 else { return [] }
         let materials = requests.map { material(for: $0.state) }
         return try positions.enumerated().map { index, position in
             try Task.checkCancellation()

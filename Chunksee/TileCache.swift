@@ -33,7 +33,8 @@ nonisolated struct TileCache: Sendable {
     /// 26: neighboring biomes remain available when unrelated block palettes are malformed.
     /// 28: game-derived water-bearing states and texture opacity for shallow-water floors.
     /// 29: confirmed missing artwork and selected-game definition evidence.
-    static let rendererVersion = 29
+    /// 30: model coverage, underlying terrain and partial-block detail layers.
+    static let rendererVersion = 30
 
     let directory: URL
 

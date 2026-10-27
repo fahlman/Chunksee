@@ -661,9 +661,7 @@ final class MapModel {
         guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
                 ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
-              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
-                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter,
-                                                       darkSpots: renderer.darkSpots)
+              let blocks = try? await renderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ)
         else { return nil }
         var annotated = blocks
         if let library = renderer.gameAssets,

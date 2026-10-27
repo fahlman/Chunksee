@@ -203,8 +203,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         let position = sources[nextSource]; nextSource += 1
                         group.addTask {
                             try Task.checkCancellation()
-                            let scanned = Self.scan(file, localX: position.x, localZ: position.z, context: surfaceContext,
-                                                    cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots)
+                            let scanned = try await scan(file, localX: position.x, localZ: position.z)
                             return .decoded(position, scanned.map { Self.colorInput($0.sections, columns: $0.columns) })
                         }
                     }
@@ -427,7 +426,13 @@ nonisolated struct RegionTileRenderer: Sendable {
         let columns: [Column?]
         let biomes: ChunkBiomeSnapshot
         let states: [BlockState]
-        let positions: [(surface: Int?, floor: Int?)]
+        let positions: [ColorPosition]
+    }
+
+    private struct ColorPosition: Sendable {
+        var surface: Int?
+        var floor: Int?
+        var layers: [Int] = []
     }
 
     private static func colorInput(_ sections: ColorSections, columns: [Column?]) -> ColorInput {
@@ -441,10 +446,11 @@ nonisolated struct RegionTileRenderer: Sendable {
             indices[entry] = index
             return index
         }
-        let positions = columns.map { column -> (surface: Int?, floor: Int?) in
-            guard let column else { return (nil, nil) }
-            return (column.waterDepth == 0 ? index(for: PaletteEntry(section: column.section, palette: column.palette)) : nil,
-                    column.waterFloor.flatMap { index(for: $0) })
+        let positions = columns.map { column -> ColorPosition in
+            guard let column else { return ColorPosition() }
+            return ColorPosition(surface: column.waterDepth == 0 ? index(for: PaletteEntry(section: column.section, palette: column.palette)) : nil,
+                                 floor: column.waterFloor.flatMap { index(for: $0) },
+                                 layers: column.layers.compactMap { index(for: $0.entry) })
         }
         return ColorInput(columns: columns, biomes: sections.biomeSnapshot, states: states, positions: positions)
     }
@@ -455,8 +461,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
-        guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
-                                      cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
+        guard let scanned = try await scan(file, localX: localX, localZ: localZ) else { return nil }
         guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
@@ -528,6 +533,9 @@ nonisolated struct RegionTileRenderer: Sendable {
                 let floor = column.y.subtractingReportingOverflow(column.waterDepth)
                 if !floor.overflow { requestTints(position.floor, column: index, y: floor.partialValue) }
                 if column.waterDepth > 0 { request(.water, column: index, y: column.y) }
+                for (layer, palette) in zip(column.layers, position.layers) {
+                    requestTints(palette, column: index, y: layer.y)
+                }
             }
             if let biomeColors, let point = coordinates(0) {
                 let current = ChunkPosition(containingBlockX: Int(point.x), blockZ: Int(point.z))
@@ -563,10 +571,13 @@ nonisolated struct RegionTileRenderer: Sendable {
                 return index
             }
             positions = positions.enumerated().map { index, position in
-                guard let column = scanned.columns[index] else { return (nil, nil) }
+                guard let column = scanned.columns[index] else { return ColorPosition() }
                 let floorY = column.y.subtractingReportingOverflow(column.waterDepth)
-                return (tintedIndex(position.surface, column: index, y: column.y),
-                        floorY.overflow ? nil : tintedIndex(position.floor, column: index, y: floorY.partialValue))
+                return ColorPosition(surface: tintedIndex(position.surface, column: index, y: column.y),
+                    floor: floorY.overflow ? nil : tintedIndex(position.floor, column: index, y: floorY.partialValue),
+                    layers: zip(column.layers, position.layers).compactMap { layer, palette in
+                        tintedIndex(palette, column: index, y: layer.y)
+                    })
             }
         }
         let colors: [MapColor?]
@@ -594,10 +605,14 @@ nonisolated struct RegionTileRenderer: Sendable {
             if let index = position.floor, let color = colors[index] {
                 column.waterFloorColor = color
             }
+            for (layer, palette) in position.layers.enumerated() {
+                if let color = colors[palette] { column.layers[layer].color = color }
+            }
             return column
         }
         return ColoredChunk(columns: columns,
-                            detail: MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface)))
+                            detail: MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface),
+                                                          layerIndices: positions.map(\.layers), style: style))
     }
 
     /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
@@ -676,18 +691,63 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// readout: the same scan the map is drawn with, naming what it found.
     static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), darkSpots: DarkSpots? = nil) -> [TopBlock?]? {
         guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
+        return topBlocks(sections: sections, columns: columns)
+    }
+
+    @concurrent
+    func topBlocks(in file: RegionFile, localX: Int, localZ: Int) async throws -> [TopBlock?]? {
+        guard let (sections, columns) = try await scan(file, localX: localX, localZ: localZ) else { return nil }
+        return Self.topBlocks(sections: sections, columns: columns)
+    }
+
+    private static func topBlocks(sections: ColorSections, columns: [Column?]) -> [TopBlock?] {
         return columns.map { column in
-            column.map { TopBlock(id: sections.blockID(section: $0.section, palette: $0.palette), y: $0.y, waterDepth: $0.waterDepth, nightLight: $0.nightLight) }
+            column.map {
+                let entry = $0.layers.first?.entry ?? PaletteEntry(section: $0.section, palette: $0.palette)
+                return TopBlock(id: sections.blockID(section: entry.section, palette: entry.palette), y: $0.surfaceY,
+                                waterDepth: $0.layers.isEmpty ? $0.waterDepth : 0, nightLight: $0.nightLight)
+            }
         }
     }
 
     private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter, darkSpots: DarkSpots? = nil) -> (sections: ColorSections, columns: [Column?])? {
+        guard let chunk = readChunk(file, localX: localX, localZ: localZ, darkSpots: darkSpots) else { return nil }
+        return scan(chunk, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots)
+    }
+
+    private func scan(_ file: RegionFile, localX: Int, localZ: Int) async throws -> (sections: ColorSections, columns: [Column?])? {
+        guard let chunk = Self.readChunk(file, localX: localX, localZ: localZ, darkSpots: darkSpots) else { return nil }
+        var coverage: [BlockState: MapBlockCoverage]?
+        if style != .height, let gameAssets {
+            var seen: Set<BlockState> = [], states: [BlockState] = []
+            let hidden = blockFilter.effectiveHiddenIDs
+            for section in chunk.sections {
+                for state in section.blockStates?.palette ?? [] where state.isAir != true && !hidden.contains(state.id) {
+                    if seen.insert(state).inserted { states.append(state) }
+                }
+            }
+            let values: [MapBlockCoverage]
+            if let cached = gameAssets.cachedMapCoverage(for: states) { values = cached }
+            else { values = try await gameAssets.mapCoverage(for: states) }
+            coverage = Dictionary(uniqueKeysWithValues: zip(states, values))
+        }
+        try Task.checkCancellation()
+        return Self.scan(chunk, context: surfaceContext, cutawayY: cutawayY, blockFilter: blockFilter,
+                         darkSpots: darkSpots, coverage: coverage)
+    }
+
+    private static func readChunk(_ file: RegionFile, localX: Int, localZ: Int, darkSpots: DarkSpots?) -> Chunk? {
         // Keep the ordinary read profile unchanged. The optional layer samples light from this
         // same decode and surface walk, without retaining a Chunk or adding another scan.
         let skipping = darkSpots?.rule == nil ? Chunk.keysNotNeededForTerrain : Chunk.keysNotNeededForTerrainAndLight
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: skipping),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
-        var sections = ColorSections(chunk, filter: blockFilter, water: context.water)
+        return chunk
+    }
+
+    private static func scan(_ chunk: Chunk, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter,
+                             darkSpots: DarkSpots?, coverage: [BlockState: MapBlockCoverage]? = nil) -> (sections: ColorSections, columns: [Column?]) {
+        var sections = ColorSections(chunk, filter: blockFilter, water: context.water, coverage: coverage)
         var columns: [Column?]
         if let cutawayY {
             columns = sections.topColumns(from: .height(cutawayY))
@@ -699,7 +759,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         if let darkSpots {
             for index in columns.indices {
                 guard let column = columns[index] else { continue }
-                columns[index]?.nightLight = darkSpots.status(in: chunk, x: index % 16, surfaceY: column.y, z: index / 16)
+                columns[index]?.nightLight = darkSpots.status(in: chunk, x: index % 16, surfaceY: column.surfaceY, z: index / 16)
             }
         }
         return (sections, columns)
@@ -726,10 +786,26 @@ nonisolated struct RegionTileRenderer: Sendable {
         var waterFloor: PaletteEntry?
         var colorShade = 1.0
         var nightLight: DarkSpots.Status?
+        var layers: [Layer] = []
+
+        var surfaceY: Int { layers.first?.y ?? y }
+        var surfaceEmphasis: MapBlockFilter.Emphasis { layers.first?.emphasis ?? emphasis }
+
+        struct Layer: Equatable, Sendable {
+            let entry: PaletteEntry
+            let y: Int
+            var color: MapColor
+            let opacity: Double
+            let emphasis: MapBlockFilter.Emphasis
+        }
     }
 
     /// Water is counted only this deep: deeper water is shaded the same, so the scan stops there.
     static let maximumWaterDepth = 32
+
+    /// Bound transient layers before color/tint and detail budgets apply. Pathological towers
+    /// keep their first visible block's former flat presentation instead of exhausting memory.
+    static let maximumColumnLayers = 256
 
     /// A column's top block by name, for the hover readout. Under water, `id` is the water, `y`
     /// its surface and `waterDepth` at most `maximumWaterDepth`.
@@ -754,12 +830,14 @@ nonisolated struct RegionTileRenderer: Sendable {
             case clear
             case solid(Paint)
             case water(Paint)
+            case partial(Paint, opacity: Double, water: Bool)
         }
 
         private let chunk: Chunk
         private let hiddenIDs: Set<String>
         private let filter: MapBlockFilter
         private let water: GameTag?
+        private let coverage: [BlockState: MapBlockCoverage]?
         private var entries: [[Entry]]
         private let highestSection: Int?
 
@@ -776,10 +854,12 @@ nonisolated struct RegionTileRenderer: Sendable {
             return states.palette[entry.palette]
         }
 
-        init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter(), water: GameTag? = nil) {
+        init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter(), water: GameTag? = nil,
+             coverage: [BlockState: MapBlockCoverage]? = nil) {
             self.chunk = chunk
             self.filter = filter
             self.water = water
+            self.coverage = coverage
             hiddenIDs = filter.effectiveHiddenIDs
             entries = chunk.sections.map { section in
                 Array(repeating: .unresolved, count: section.blockStates?.palette.count ?? 0)
@@ -797,6 +877,23 @@ nonisolated struct RegionTileRenderer: Sendable {
                 // empty tag is authoritative; known fluid and upper-face facts take precedence.
                 let isWater = state?.containsFluid(in: water).map { $0 && state?.hasSolidUpperFace != true }
                     ?? BlockColors.isWater(id)
+                if let coverage {
+                    guard let state, state.isAir != true, !hiddenIDs.contains(id) else {
+                        entries[s][p] = .clear
+                        return .clear
+                    }
+                    let shape = coverage[state] ?? .unavailable
+                    let paint = Paint(color: BlockColors.color(for: id, usesGameCoverage: true)!, emphasis: filter.emphasis(for: id))
+                    switch shape {
+                    case .partial(let opacity): entries[s][p] = .partial(paint, opacity: opacity, water: isWater)
+                    case .covers: entries[s][p] = .solid(paint)
+                    case .none, .unavailable:
+                        if isWater, state.hasBlockEntityRenderer != true {
+                            entries[s][p] = .water(Paint(color: BlockColors.color(for: "minecraft:water")!, emphasis: paint.emphasis))
+                        } else { entries[s][p] = shape == .none ? .clear : .solid(paint) }
+                    }
+                    return entries[s][p]
+                }
                 let color = hiddenIDs.contains(id) ? nil : BlockColors.color(for: isWater ? "minecraft:water" : id)
                 if let color {
                     let paint = Paint(color: color, emphasis: filter.emphasis(for: id))
@@ -817,6 +914,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 var column: Column?
                 var ceilingStart: Int?
                 var waterBottom = 0
+                var layers: [Column.Layer] = []
             }
             var states = [ColumnState](repeating: ColumnState(phase: underCeiling ? .ceiling : .searching), count: 256)
             let chunk = self.chunk
@@ -849,7 +947,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                         case .clear:
                             states[i].phase = .searching
                             states[i].column = nil
-                        case .solid(let paint), .water(let paint):
+                        case .solid(let paint), .water(let paint), .partial(let paint, _, _):
                             // Preserve the dark fallback below the five-block roof band when a
                             // column never reaches open space. A span may cross that band's edge.
                             if states[i].column == nil, let ceiling = states[i].ceilingStart {
@@ -866,6 +964,33 @@ nonisolated struct RegionTileRenderer: Sendable {
                         return true
                     case .searching:
                         switch entry {
+                        case .partial(let paint, let opacity, let water):
+                            let entry = PaletteEntry(section: run.sectionIndex, palette: palette)
+                            let count = water ? 1 : run.y.count
+                            if count > RegionTileRenderer.maximumColumnLayers - states[i].layers.count {
+                                let first = states[i].layers.first ?? Column.Layer(entry: entry, y: run.y.upperBound,
+                                    color: paint.color, opacity: opacity, emphasis: paint.emphasis)
+                                states[i].column = Column(y: first.y, color: first.color, waterDepth: 0, emphasis: first.emphasis,
+                                    section: first.entry.section, palette: first.entry.palette)
+                                states[i].layers = []
+                                states[i].phase = .done
+                                return false
+                            }
+                            if water {
+                                states[i].layers.append(Column.Layer(entry: entry, y: run.y.upperBound, color: paint.color,
+                                                                     opacity: opacity, emphasis: paint.emphasis))
+                                let depth = min(run.y.count, RegionTileRenderer.maximumWaterDepth)
+                                states[i].column = Column(y: run.y.upperBound, color: BlockColors.color(for: "minecraft:water")!,
+                                    waterDepth: depth, emphasis: paint.emphasis, section: run.sectionIndex, palette: palette)
+                                states[i].waterBottom = run.y.lowerBound
+                                states[i].phase = depth == RegionTileRenderer.maximumWaterDepth ? .done : .water
+                                return states[i].phase == .water
+                            }
+                            for y in stride(from: run.y.upperBound, through: run.y.lowerBound, by: -1) {
+                                states[i].layers.append(Column.Layer(entry: entry, y: y, color: paint.color,
+                                                                     opacity: opacity, emphasis: paint.emphasis))
+                            }
+                            return true
                         case .solid(let paint):
                             states[i].column = Column(y: run.y.upperBound, color: paint.color, waterDepth: 0, emphasis: paint.emphasis,
                                                       section: run.sectionIndex, palette: palette)
@@ -882,10 +1007,17 @@ nonisolated struct RegionTileRenderer: Sendable {
                             return true
                         }
                     case .water:
-                        guard case .water = entry, var column = states[i].column else {
-                            if case .solid(let paint) = entry {
+                        let continuesWater: Bool
+                        switch entry {
+                        case .water, .partial(_, _, true): continuesWater = true
+                        default: continuesWater = false
+                        }
+                        guard continuesWater, var column = states[i].column else {
+                            switch entry {
+                            case .solid(let paint), .partial(let paint, _, false):
                                 states[i].column?.waterFloorColor = paint.color
                                 states[i].column?.waterFloor = PaletteEntry(section: run.sectionIndex, palette: palette)
+                            default: break
                             }
                             states[i].phase = .done
                             return false
@@ -898,7 +1030,17 @@ nonisolated struct RegionTileRenderer: Sendable {
                     }
                 }
             }
-            return states.map { $0.column }
+            return states.map { state in
+                if var column = state.column {
+                    column.layers = state.layers
+                    return column
+                }
+                // If the saved column has no usable ground, keep its first visible block's
+                // former fallback rather than inventing a surface or dropping the saved block.
+                guard let first = state.layers.first else { return nil }
+                return Column(y: first.y, color: first.color, waterDepth: 0, emphasis: first.emphasis,
+                              section: first.entry.section, palette: first.entry.palette)
+            }
         }
     }
 
@@ -914,6 +1056,14 @@ nonisolated struct RegionTileRenderer: Sendable {
             return floor.shaded(depthShade).blended(with: water, amount: max(opacity, depthBlend))
         }
         return floor.blended(with: water, amount: depthBlend)
+    }
+
+    static func layeredColor(for column: Column, style: MapStyle = .normal) -> MapColor {
+        let base = style == .waterDepth && column.waterDepth > 0
+            ? MapStylePalette.waterColor(depth: column.waterDepth) : baseColor(for: column)
+        return column.layers.reversed().reduce(base) { color, layer in
+            color.blended(with: layer.color, amount: layer.opacity)
+        }
     }
 
     /// Pixels plus the surface height of each column, kept so relief shading can compare
@@ -938,12 +1088,12 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
 
         mutating func set(x: Int, z: Int, column: Column) {
-            set(x: x, z: z, column: column, color: baseColor(for: column))
+            set(x: x, z: z, column: column, color: layeredColor(for: column))
         }
 
         private mutating func set(x: Int, z: Int, column: Column, color: MapColor) {
             guard let height = Int32(exactly: column.y), height != Self.noHeight else { return }
-            let color = column.emphasis.applying(to: color)
+            let color = column.surfaceEmphasis.applying(to: color)
             let i = z * side + x
             pixels[i * 4] = color.red
             pixels[i * 4 + 1] = color.green
@@ -972,10 +1122,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                 if style == .height {
                     guard let heightScale else { continue }
                     color = MapStylePalette.heightColor(y: column.y, scale: heightScale)
-                } else if column.waterDepth > 0 {
-                    color = MapStylePalette.waterColor(depth: column.waterDepth)
                 } else {
-                    color = column.color
+                    color = layeredColor(for: column, style: style)
                 }
                 set(x: chunkX * 16 + i % 16, z: chunkZ * 16 + i / 16, column: column, color: color)
             }

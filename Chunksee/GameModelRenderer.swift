@@ -57,7 +57,9 @@ nonisolated enum GameModelRenderer {
     }
 
     static func missingTopColor() throws -> MapColor? {
-        try topColor(choices: [[(faces: missingFaces(top: true), weight: 1)]])
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        try draw(missingFaces(top: true), into: &pixels)
+        return TopAppearance(pixels: pixels).color
     }
 
     static func missingTopTexture() throws -> ItemTexture {
@@ -163,59 +165,86 @@ nonisolated enum GameModelRenderer {
         }
     }
 
-    /// Average the unlit, visible top pixels, weighting the game's alternatives instead of
-    /// arbitrarily choosing their first model. Transparent pixels contribute no color.
-    static func topColor(_ block: AssetBlock, tint: (Int) -> UInt32?,
-                         texture: (Identifier) -> ItemTexture?) throws -> MapColor? {
-        var choices: [[(faces: [Face], weight: Double)]] = []
-        var combinations = 1
-        var retained: [Identifier: ItemTexture] = [:]
-        var textureBytes = 0
-        for part in block.parts {
-            let count = combinations.multipliedReportingOverflow(by: part.alternatives.count)
-            // Bound unusual multipart/weighted combinations instead of expanding them forever.
-            guard !count.overflow, count.partialValue <= 64 else { return nil }
-            combinations = count.partialValue
-            let total = Double(part.alternatives.reduce(0) { $0 + $1.weight })
-            var options: [(faces: [Face], weight: Double)] = []
-            for alternative in part.alternatives {
-                try Task.checkCancellation()
-                guard let faces = try topFaces(alternative, tint: tint, texture: texture,
-                                               retained: &retained, textureBytes: &textureBytes) else { return nil }
-                options.append((faces, Double(alternative.weight) / total))
+    struct TopAppearance {
+        let color: MapColor?
+        let opacity: Double
+        let covers: Bool
+
+        init(pixels: [UInt8]) {
+            var sum = SIMD3<Double>.zero, alpha = 0.0, covers = !pixels.isEmpty
+            for i in stride(from: 0, to: pixels.count, by: 4) {
+                sum += SIMD3(Double(pixels[i]), Double(pixels[i + 1]), Double(pixels[i + 2]))
+                alpha += Double(pixels[i + 3])
+                covers = covers && pixels[i + 3] == 255
             }
-            choices.append(options)
+            self.init(sum: sum, alpha: alpha, pixels: pixels.count / 4, covers: covers)
         }
-        return try topColor(choices: choices)
+
+        fileprivate init(sum: SIMD3<Double>, alpha: Double, pixels: Int, covers: Bool) {
+            opacity = pixels == 0 ? 0 : alpha / Double(pixels * 255)
+            self.covers = covers
+            if alpha > 0 {
+                let rgb = sum * (255 / alpha)
+                color = MapColor(UInt32(UInt8(clamping: Int(rgb.x.rounded()))) << 16
+                    | UInt32(UInt8(clamping: Int(rgb.y.rounded()))) << 8 | UInt32(UInt8(clamping: Int(rgb.z.rounded()))))
+            } else { color = nil }
+        }
     }
 
-    private static func topColor(choices: [[(faces: [Face], weight: Double)]]) throws -> MapColor? {
-        guard choices.reduce(0, { $0 + ($1.map { $0.faces.count }.max() ?? 0) }) <= 4096 else { return nil }
-        var sum = SIMD3<Double>.zero, alpha = 0.0
-        func accumulate(_ part: Int, faces: [Face], weight: Double) throws {
-            if part < choices.count {
-                for choice in choices[part] { try accumulate(part + 1, faces: faces + choice.faces, weight: weight * choice.weight) }
+    /// Keep the existing color resolution. Coverage uses the same drawing at the close-up
+    /// texture resolution, where every alternative must cover every pixel to hide the ground.
+    static func topColor(_ block: AssetBlock, tint: (Int) -> UInt32?,
+                         texture: (Identifier) -> ItemTexture?) throws -> MapColor? {
+        try topAppearance(block, side: size, tint: tint, texture: texture)?.color
+    }
+
+    static func topAppearance(_ block: AssetBlock, side: Int = blockTextureSide, tint: (Int) -> UInt32?,
+                              texture: (Identifier) -> ItemTexture?) throws -> TopAppearance? {
+        var combinations = 1
+        for part in block.parts {
+            let count = combinations.multipliedReportingOverflow(by: part.alternatives.count)
+            guard !count.overflow, count.partialValue <= 64 else { return nil }
+            combinations = count.partialValue
+        }
+        var sum = SIMD3<Double>.zero, alpha = 0.0, covers = true, readable = true
+        var retained: [Identifier: ItemTexture] = [:], textureBytes = 0
+        func accumulate(_ part: Int, alternatives: [AssetBlock.Alternative], weight: Double) throws {
+            guard readable else { return }
+            if part < block.parts.count {
+                let choices = block.parts[part].alternatives
+                let total = Double(choices.reduce(0) { $0 + $1.weight })
+                for choice in choices {
+                    try accumulate(part + 1, alternatives: alternatives + [choice], weight: weight * Double(choice.weight) / total)
+                }
                 return
             }
-            var pixels = [UInt8](repeating: 0, count: size * size * 4)
-            try draw(faces, into: &pixels)
-            for i in stride(from: 0, to: pixels.count, by: 4) {
-                sum += SIMD3<Double>(Double(pixels[i]), Double(pixels[i + 1]), Double(pixels[i + 2])) * weight
-                alpha += Double(pixels[i + 3]) * weight
+            guard let image = try topTexture(alternatives, tint: tint, texture: texture, side: side,
+                                            retained: &retained, textureBytes: &textureBytes) else {
+                readable = false
+                return
+            }
+            for i in stride(from: 0, to: image.pixels.count, by: 4) {
+                sum += SIMD3(Double(image.pixels[i]), Double(image.pixels[i + 1]), Double(image.pixels[i + 2])) * weight
+                alpha += Double(image.pixels[i + 3]) * weight
+                covers = covers && image.pixels[i + 3] == 255
             }
         }
-        try accumulate(0, faces: [], weight: 1)
-        guard alpha > 0 else { return nil }
-        let rgb = sum * (255 / alpha)
-        return MapColor(UInt32(UInt8(clamping: Int(rgb.x.rounded()))) << 16
-            | UInt32(UInt8(clamping: Int(rgb.y.rounded()))) << 8 | UInt32(UInt8(clamping: Int(rgb.z.rounded()))))
+        try accumulate(0, alternatives: [], weight: 1)
+        return readable ? TopAppearance(sum: sum, alpha: alpha, pixels: side * side, covers: covers) : nil
     }
 
     /// Actual chosen models share the top-color geometry/UV path, but preserve individual
     /// pixels instead of averaging them. Sixteen pixels per block matches the supplied jar art.
     static func topTexture(_ alternatives: [AssetBlock.Alternative], tint: (Int) -> UInt32?,
-                           texture: (Identifier) -> ItemTexture?) throws -> ItemTexture? {
+                           texture: (Identifier) -> ItemTexture?, side: Int = blockTextureSide) throws -> ItemTexture? {
         var retained: [Identifier: ItemTexture] = [:], textureBytes = 0
+        return try topTexture(alternatives, tint: tint, texture: texture, side: side,
+                              retained: &retained, textureBytes: &textureBytes)
+    }
+
+    private static func topTexture(_ alternatives: [AssetBlock.Alternative], tint: (Int) -> UInt32?,
+                                   texture: (Identifier) -> ItemTexture?, side: Int,
+                                   retained: inout [Identifier: ItemTexture], textureBytes: inout Int) throws -> ItemTexture? {
         var faces: [Face] = []
         for alternative in alternatives {
             try Task.checkCancellation()
@@ -224,7 +253,10 @@ nonisolated enum GameModelRenderer {
                   prepared.count <= 4096 - faces.count else { return nil }
             faces.append(contentsOf: prepared)
         }
-        let side = blockTextureSide
+        if faces.isEmpty {
+            return try uprightTexture(alternatives, tint: tint, texture: texture, side: side,
+                                      retained: &retained, textureBytes: &textureBytes)
+        }
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         try draw(faces, into: &pixels, side: side)
         return ItemTexture(width: side, height: side, pixels: pixels)
@@ -232,7 +264,7 @@ nonisolated enum GameModelRenderer {
 
     private static func topFaces(_ alternative: AssetBlock.Alternative, tint: (Int) -> UInt32?,
                                  texture: (Identifier) -> ItemTexture?, retained: inout [Identifier: ItemTexture],
-                                 textureBytes: inout Int) throws -> [Face]? {
+                                 textureBytes: inout Int, upright: Bool = false) throws -> [Face]? {
         guard case .elements(let elements) = alternative.model.geometry else { return nil }
         let r = SIMD3<Float>(alternative.rotation) * (-Float.pi / 180)
         let rotation = simd_quatf(angle: r.z, axis: SIMD3(0, 0, 1))
@@ -249,7 +281,11 @@ nonisolated enum GameModelRenderer {
                 }
                 guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else { return nil }
                 let normal = simd_cross(points[1] - points[0], points[3] - points[0])
-                guard normal.z > 0.000001 else { continue }
+                if upright {
+                    guard abs(normal.z) <= 0.000001, simd_length_squared(normal) > 0.000001 else { continue }
+                } else {
+                    guard normal.z > 0.000001 else { continue }
+                }
                 let image: ItemTexture
                 if let cached = retained[face.material.texture] { image = cached }
                 else {
@@ -273,6 +309,34 @@ nonisolated enum GameModelRenderer {
             }
         }
         return faces
+    }
+
+    /// Edge-on plants have no top pixels. Sample their own UV rectangles through the same
+    /// rasterizer and use the area-weighted texture average as a translucent ground tint.
+    private static func uprightTexture(_ alternatives: [AssetBlock.Alternative], tint: (Int) -> UInt32?,
+                                       texture: (Identifier) -> ItemTexture?, side: Int,
+                                       retained: inout [Identifier: ItemTexture], textureBytes: inout Int) throws -> ItemTexture? {
+        var sum = SIMD4<Double>.zero, area = 0.0, count = 0
+        let square: [SIMD3<Float>] = [SIMD3(-0.5, 0.5, 0), SIMD3(-0.5, -0.5, 0),
+                                     SIMD3(0.5, -0.5, 0), SIMD3(0.5, 0.5, 0)]
+        for alternative in alternatives {
+            guard let faces = try topFaces(alternative, tint: tint, texture: texture, retained: &retained,
+                                           textureBytes: &textureBytes, upright: true),
+                  faces.count <= 4096 - count else { return nil }
+            count += faces.count
+            for face in faces {
+                let weight = Double(simd_length(simd_cross(face.points[1] - face.points[0], face.points[3] - face.points[0])))
+                var pixels = [UInt8](repeating: 0, count: side * side * 4)
+                try draw([Face(points: square, uv: face.uv, texture: face.texture, color: face.color)], into: &pixels, side: side)
+                for i in stride(from: 0, to: pixels.count, by: 4) {
+                    sum += SIMD4(Double(pixels[i]), Double(pixels[i + 1]), Double(pixels[i + 2]), Double(pixels[i + 3])) * weight
+                }
+                area += weight * Double(side * side)
+            }
+        }
+        let average = area > 0 ? sum / area : .zero
+        let rgba = (0..<4).map { UInt8(clamping: Int(average[$0].rounded())) }
+        return ItemTexture(width: side, height: side, pixels: Array(repeating: rgba, count: side * side).flatMap { $0 })
     }
 
     private static func rasterize(_ face: Face, pixels: inout [UInt8], depths: inout [Float], side: Int) {

@@ -32,52 +32,84 @@ nonisolated enum MapDetailRenderer {
               let origin = chunk.blockOrigin,
               let materials = surface.detail.chunks[chunk.localZ * 32 + chunk.localX] else { return nil }
         let startX = chunk.localX * 16, startZ = chunk.localZ * 16
-        let positions: [BlockPosition?] = (0..<256).map { i in
+        var positions: [BlockPosition?] = (0..<256).map { i in
             let height = surface.heights[(startZ + i / 16) * side + startX + i % 16]
             guard height != RegionTileRenderer.Canvas.noHeight else { return nil }
             return BlockPosition(blockX: origin.x + i % 16, blockY: Int(height), blockZ: origin.z + i / 16)
         }
+        var indices = materials.indices
+        var overlays = [MapSurfaceDetail.Chunk.Overlay?](repeating: nil, count: 256)
+        var layerRanges = [Range<Int>](repeating: 0..<0, count: 256)
+        for overlay in materials.overlays {
+            let i = Int(overlay.column), start = indices.count
+            overlays[i] = overlay
+            for layer in overlay.layers.reversed() {
+                indices.append(layer.material)
+                positions.append(BlockPosition(blockX: origin.x + i % 16, blockY: Int(layer.y), blockZ: origin.z + i / 16))
+            }
+            layerRanges[i] = start..<indices.count
+        }
         let textures = try await assets.mapTextures(requests: materials.materials.map(\.request),
-                                                     indices: materials.indices, positions: positions)
+                                                     indices: indices, positions: positions)
+        guard textures.count == positions.count else { return nil }
         let texels = GameModelRenderer.blockTextureSide, imageSide = 16 * texels
         var pixels = [UInt8](repeating: 0, count: imageSide * imageSide * 4), hasPixels = false
         // Normals still have one pixel per block; the shared shader samples them by location,
         // so sixteen-times larger texture pictures do not need sixteen-times larger normals.
         var normals = usesSavedLighting ? [UInt8](repeating: 0, count: 16 * 16 * 4) : nil
         let lighting = MapRelief(heightScale: heightScale, directionalStrength: usesSavedLighting ? 0.25 : 1)
-        for (i, texture) in textures.enumerated() {
+        for i in 0..<256 {
             try Task.checkCancellation()
-            guard let texture, texture.width == texels, texture.height == texels,
-                  texture.pixels.count == texels * texels * 4 else { continue }
-            let material = materials.materials[Int(materials.indices[i])]
+            guard textures[i] != nil || overlays[i] != nil else { continue }
             let index = (startZ + i / 16) * side + startX + i % 16
             let slope = MapRelief.slope(at: index, heights: surface.heights, side: side)
-            let light = lighting.factor(height: surface.heights[index], north: slope.north, west: slope.west)
+            let isWater = overlays[i]?.isWater == true
+            let light = isWater ? 1 : lighting.factor(height: surface.heights[index], north: slope.north, west: slope.west)
             if usesSavedLighting {
-                RegionTileRenderer.encodeNormal(slope.normal, into: &normals!, at: i * 4)
+                RegionTileRenderer.encodeNormal(isWater ? SIMD3(0, 0, 1) : slope.normal, into: &normals!, at: i * 4)
                 normals![i * 4 + 3] = 255
             }
             let night = surface.nightLight.flatMap { DarkSpots.Status(rawValue: $0[index]) }
-            for y in 0..<texels {
-                for x in 0..<texels {
-                    let source = (y * texels + x) * 4, alpha = UInt32(texture.pixels[source + 3])
-                    guard alpha > 0 else { continue }
-                    // Shade straight color, then premultiply again. Bright slopes must never
-                    // produce RGB greater than alpha around partially transparent plant edges.
-                    func straight(_ channel: Int) -> UInt32 { min(255, (UInt32(texture.pixels[source + channel]) * 255 + alpha / 2) / alpha) }
-                    let color = MapColor(straight(0) << 16 | straight(1) << 8 | straight(2)).shaded(material.colorShade)
-                    var shaded = material.emphasis.applying(to: color).shaded(light)
-                    if let night {
-                        shaded = DarkSpots.color(shaded, status: night, x: index % side, z: index / side)
+            func shade(_ color: MapColor, emphasis: MapBlockFilter.Emphasis) -> MapColor {
+                let shaded = emphasis.applying(to: color).shaded(light)
+                return night.map { DarkSpots.color(shaded, status: $0, x: index % side, z: index / side) } ?? shaded
+            }
+            func target(_ x: Int, _ y: Int) -> Int {
+                ((i / 16 * texels + y) * imageSide + i % 16 * texels + x) * 4
+            }
+            if let overlay = overlays[i], let top = overlay.layers.first {
+                let color = shade(MapColor(overlay.baseColor), emphasis: materials.materials[Int(top.material)].emphasis)
+                for y in 0..<texels {
+                    for x in 0..<texels {
+                        let t = target(x, y)
+                        pixels[t] = color.red; pixels[t + 1] = color.green; pixels[t + 2] = color.blue; pixels[t + 3] = 255
                     }
-                    let target = ((i / 16 * texels + y) * imageSide + i % 16 * texels + x) * 4
-                    pixels[target] = UInt8((UInt32(shaded.red) * alpha + 127) / 255)
-                    pixels[target + 1] = UInt8((UInt32(shaded.green) * alpha + 127) / 255)
-                    pixels[target + 2] = UInt8((UInt32(shaded.blue) * alpha + 127) / 255)
-                    pixels[target + 3] = UInt8(alpha)
-                    hasPixels = true
+                }
+                hasPixels = true
+            }
+            func draw(_ textureIndex: Int) {
+                guard let texture = textures[textureIndex], texture.width == texels, texture.height == texels,
+                      texture.pixels.count == texels * texels * 4 else { return }
+                let material = materials.materials[Int(indices[textureIndex])]
+                for y in 0..<texels {
+                    for x in 0..<texels {
+                        let source = (y * texels + x) * 4, alpha = UInt32(texture.pixels[source + 3])
+                        guard alpha > 0 else { continue }
+                        // Shade straight color, then composite premultiplied pixels over the
+                        // retained ground and lower layers, never over the averaged top color.
+                        func straight(_ channel: Int) -> UInt32 { min(255, (UInt32(texture.pixels[source + channel]) * 255 + alpha / 2) / alpha) }
+                        let color = MapColor(straight(0) << 16 | straight(1) << 8 | straight(2)).shaded(material.colorShade)
+                        let shaded = shade(color, emphasis: material.emphasis), t = target(x, y)
+                        pixels[t] = UInt8((UInt32(shaded.red) * alpha + UInt32(pixels[t]) * (255 - alpha) + 127) / 255)
+                        pixels[t + 1] = UInt8((UInt32(shaded.green) * alpha + UInt32(pixels[t + 1]) * (255 - alpha) + 127) / 255)
+                        pixels[t + 2] = UInt8((UInt32(shaded.blue) * alpha + UInt32(pixels[t + 2]) * (255 - alpha) + 127) / 255)
+                        pixels[t + 3] = UInt8(alpha + (UInt32(pixels[t + 3]) * (255 - alpha) + 127) / 255)
+                        hasPixels = true
+                    }
                 }
             }
+            draw(i)
+            for textureIndex in layerRanges[i] { draw(textureIndex) }
         }
         try Task.checkCancellation()
         guard hasPixels, let image = CGImage.rgba(pixels, width: imageSide, height: imageSide) else { return nil }

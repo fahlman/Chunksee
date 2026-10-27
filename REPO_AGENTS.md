@@ -1570,3 +1570,21 @@ color, normals, shadow heights/masks and retained detail data, including after a
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail
 threshold. No new controls, localization keys, file access, asset copy or world modification.
+
+With selected game artwork, MapBlockCoverage measures the same projected geometry, UVs and texture
+alpha used by the detail renderer. Full coverage stops the column walk; partial coverage retains
+layers until the ground or water surface. Upright-only models supply a translucent tint from their
+own texture pixels. Empty models are invisible only when Kit's generated block-entity-renderer
+fact rules out code-supplied geometry; unavailable facts keep the saved block visible. The former
+name-based visibility list remains solely for the no-game-files presentation. Height mode is unchanged.
+
+The one terrain decode/walk supplies base height and material, ordered layer materials and their
+actual Y coordinates, water floor and hover facts. Biome tint is resolved separately at each layer's
+height. Normal map pixels blend each layer over the base by coverage; close-up pictures composite
+the actual textures bottom to top over the retained base. Relief uses the ground/water height;
+hover keeps the highest visible layer. Partial blocks over water retain the existing water look in
+their gaps. Filtering removes hidden layers before traversal. Sidecars retain these layers under
+the existing chunk, region and encoded budgets; cache version 30 invalidates the former pixels.
+More than 256 partial layers in one column use the first visible block's flat fallback, bounding
+transient scan storage before those detail budgets apply. Columns without usable ground use that
+same fallback. No second world read is needed to draw retained layers at close zoom.

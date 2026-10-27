@@ -83,6 +83,36 @@ import Testing
         await library.close()
     }
 
+    @Test func partialPlantsAndTheirGroundUseSeparateBiomeHeights() async throws {
+        let white: [UInt8] = [255, 255, 255, 255], clear: [UInt8] = [0, 0, 0, 0]
+        let fixture = try fixture(extraFiles: [
+            "assets/test/textures/block/plant.png": ItemPictureFixture.png(white + clear + white + clear),
+            "assets/test/models/block/plant.json": ItemPictureFixture.json([
+                "textures": ["plant": "test:block/plant"],
+                "elements": [["from": [0, 0, 8], "to": [16, 16, 8], "faces": [
+                    "north": ["texture": "#plant", "tintindex": 0],
+                    "south": ["texture": "#plant", "tintindex": 0]]]]]),
+            "assets/minecraft/blockstates/short_grass.json": ItemPictureFixture.json([
+                "variants": ["": ["model": "test:block/plant"]]])])
+        defer { fixture.remove() }
+        let root = try world(chunks: [chunk(palette: [.string("minecraft:grass_block"), .string("minecraft:air"), .string("minecraft:short_grass")],
+            blocks: { _, y, _ in y == 15 ? 2 : y > 11 ? 1 : 0 }, biomes: { _, y, _ in y > 11 ? 1 : 0 })])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root), library = try fixture.library()
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), gameAssets: library)
+        renderer.biomeColors = try await library.biomeColors(in: world)
+        let tile = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
+        #expect(try ItemPictureFixture.pixels(tile.full.image).color(4, 4) == [127, 0, 128, 255])
+        let surface = try #require(tile.detail)
+        #expect(surface.heights[4 * 512 + 4] == 11)
+        let detail = try #require(try await MapDetailRenderer.render(.init(x: 0, z: 0), surface: surface,
+            assets: library, heightScale: nil, usesSavedLighting: false))
+        #expect(try ItemPictureFixture.pixels(detail.image).color(72, 72) == [127, 0, 128, 255])
+        renderer.cutawayY = 12
+        #expect(try await pixels(renderer).color(4, 4) == [255, 0, 0, 255])
+        await library.close()
+    }
+
     @Test func leavesAndVinesUseFoliageWhileSpruceKeepsItsFixedTint() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
@@ -930,6 +960,9 @@ import Testing
 
     private func fixture(extraFiles: [String: Data] = [:]) throws -> ItemPictureFixture {
         var files: [String: Data] = [:]
+        files["assets/minecraft/blockstates/water.json"] = try ItemPictureFixture.json([
+            "variants": ["": ["model": "test:block/empty"]]])
+        files["assets/test/models/block/empty.json"] = try ItemPictureFixture.json(["elements": []])
         files["data/test/worldgen/biome/a.json"] = try definition(grass: 0xff0000, foliage: 0x00ff00, water: 0x0000ff)
         files["data/test/worldgen/biome/b.json"] = try definition(grass: 0x0000ff, foliage: 0xffff00, water: 0x00ff00)
         files["data/test/worldgen/biome/climate.json"] = try ItemPictureFixture.json([
