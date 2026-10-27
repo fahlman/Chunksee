@@ -9,6 +9,7 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
     var possibleBiomes: [String: [String]] = [:]
     var notableBlocks = NotableBlock.Catalog(tags: [:])
     var structureGroups = StructureGroup.Catalog(tags: [:])
+    var placeGroups = PlaceGroup.Catalog(tags: [:])
     var trading: TradingDefinitions?
 
     static func read(_ world: World, assets: GameAssets?) throws -> Self {
@@ -20,6 +21,8 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
         result.notableBlocks = NotableBlock.Catalog(tags: (try? world.tags(for: NotableBlock.tagIDs, in: "block", assets: assets)) ?? [:])
         result.structureGroups = StructureGroup.Catalog(tags: (try? world.tags(for: StructureGroup.tagIDs,
             in: "worldgen/structure", assets: assets)) ?? [:])
+        result.placeGroups = PlaceGroup.Catalog(tags: (try? world.tags(for: PlaceGroup.tagIDs,
+            in: "point_of_interest_type", assets: assets)) ?? [:])
         result.trading = try? world.tradingDefinitions(assets: assets)
         for dimension in world.dimensions() {
             result.possibleBiomes[dimension.id] = try? world.possibleBiomes(in: dimension.id, assets: assets)

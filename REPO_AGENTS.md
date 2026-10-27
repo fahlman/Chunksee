@@ -150,6 +150,15 @@ the region facts cache and terrain tiles do not contain these presentation group
 LayerVisibility records explicit structure-group visibility, giving groups missing from an older
 settings schema their defaults. The legacy shown-only list migrates using its fixed historical
 group schema, preserving previous choices while making the new Abandoned Camps group visible.
+PlaceGroup.Catalog uses the world's composed point-of-interest tags for workstation and bee-home
+families. Missing, damaged, empty or replacing tags never fall back to a profession inventory;
+unmatched saved points remain in Other Places. Individual bed, bell, portal, lodestone and
+lightning-rod display choices take precedence, and overlapping families follow sidebar order.
+WorldDefinitions owns the catalog; each immutable RegionReader carries it into the shared
+DimensionContent projection used by the sidebar, search and map. Resource changes replace those
+projections using the existing refresh path and cached facts; grouping is not serialized into
+the region archive. Kit still owns portal-block merging, so family tags cannot duplicate portals.
+Custom bee homes keep their own readable names rather than being called a Bee Nest.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
 than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
 Find Player Names uses a settings gear because it opens Settings. Storage uses an archive box,

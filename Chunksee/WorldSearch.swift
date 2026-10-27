@@ -76,7 +76,7 @@ nonisolated struct DimensionContent: Sendable {
         part.formats = shared.formats
         part.structures.sort { $0.id < $1.id }
         part.creatures = creatures.sorted { $0.id < $1.id }
-        part.places = PlacePresentation.markers(from: shared.pointsOfInterest, portals: shared.portals)
+        part.places = PlacePresentation.markers(from: shared.pointsOfInterest, portals: shared.portals, groups: reader.placeGroups)
             + shared.spawners.map(PlaceMarker.init) + shared.containers.compactMap { PlaceMarker(unopened: $0) }
         part.biomeAreas = BiomePresentation.areas(from: shared.biomeAreas)
         return part

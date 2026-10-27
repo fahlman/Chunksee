@@ -125,12 +125,15 @@ enum StructureTestWorld {
         PointOfInterest(type: type, x: x, y: y, z: z, freeTickets: tickets)
     }
 
-    @Test func groupsNamesAndClaims() {
-        #expect(PlaceGroup.group(for: "minecraft:librarian") == .workstation)
-        #expect(PlaceGroup.group(for: "minecraft:meeting") == .bell)
-        #expect(PlaceGroup.group(for: "minecraft:beehive") == .beeNest)
+    @Test func groupsNamesAndClaims() throws {
+        let groups = try PlaceTagFixture.catalog([
+            "acquirable_job_site": ["minecraft:librarian"], "bee_home": ["minecraft:beehive"]
+        ])
+        #expect(groups.group(for: "minecraft:librarian") == .workstation)
+        #expect(groups.group(for: "minecraft:meeting") == .bell)
+        #expect(groups.group(for: "minecraft:beehive") == .beeNest)
         #expect(PlaceGroup.portal.isShownByDefault && !PlaceGroup.bed.isShownByDefault)
-        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name == "Librarian’s Workstation")
+        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0), groups: groups).name == "Librarian’s Workstation")
         let claimedBed = PlaceMarker(poi("minecraft:home", 0, 64, 0, tickets: 0))
         #expect(claimedBed.isClaimed && claimedBed.name == "Villager’s Bed")
         #expect(!PlaceMarker(poi("minecraft:meeting", 0, 64, 0, tickets: 0)).isClaimed)  // only beds and workstations

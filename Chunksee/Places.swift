@@ -57,20 +57,41 @@ nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
     /// 11,296 spawners in Ryan's Realm), so they start hidden.
     var isShownByDefault: Bool { [.portal, .bell, .lodestone].contains(self) }
 
-    static let professions = ["armorer", "butcher", "cartographer", "cleric", "farmer", "fisherman", "fletcher",
-                              "leatherworker", "librarian", "mason", "shepherd", "toolsmith", "weaponsmith"]
+    private var tagID: String? {
+        switch self {
+        case .workstation: "minecraft:acquirable_job_site"
+        case .beeNest: "minecraft:bee_home"
+        default: nil
+        }
+    }
 
-    static func group(for type: String) -> PlaceGroup {
-        guard let name = ReadableName.vanillaPath(type) else { return .other }
-        switch name {
-        case "nether_portal": return .portal
-        case "meeting": return .bell
-        case "lodestone": return .lodestone
-        case "home": return .bed
-        case "bee_nest", "beehive": return .beeNest
-        case "lightning_rod": return .lightningRod
-        case _ where professions.contains(name): return .workstation
-        default: return .other
+    static var tagIDs: Set<String> { Set(allCases.compactMap(\.tagID)) }
+
+    /// Presentation families use the world's composed POI tags. Unavailable membership does
+    /// not turn into a second content inventory; every ungrouped saved record stays visible.
+    struct Catalog: Sendable, Equatable {
+        private var byID: [String: PlaceGroup] = [:]
+
+        init(tags: [String: GameTag]) {
+            // Keep one marker per saved point. Overlap follows the existing sidebar order.
+            for group in PlaceGroup.allCases {
+                guard let tag = group.tagID.flatMap({ tags[$0] }) else { continue }
+                for member in tag.members where byID[member.id] == nil { byID[member.id] = group }
+            }
+        }
+
+        func group(for type: String) -> PlaceGroup {
+            guard let id = Identifier(type)?.description else { return .other }
+            // These single-type display choices precede families. In particular, Kit already
+            // groups portal blocks, so a tag must not create a second marker for each block.
+            switch id {
+            case "minecraft:nether_portal": return .portal
+            case "minecraft:meeting": return .bell
+            case "minecraft:lodestone": return .lodestone
+            case "minecraft:home": return .bed
+            case "minecraft:lightning_rod": return .lightningRod
+            default: return byID[id] ?? .other
+            }
         }
     }
 }
@@ -100,9 +121,14 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         case .lodestone: return String(localized: "Lodestone")
         case .bed: return isClaimed ? String(localized: "Villager’s Bed") : String(localized: "Bed")
         case .workstation:
-            let job = base.prefix(1).uppercased() + base.dropFirst()
+            let job = ReadableName.from(type)
             return String(localized: "\(job)’s Workstation")
-        case .beeNest: return base == "beehive" ? String(localized: "Beehive") : String(localized: "Bee Nest")
+        case .beeNest:
+            switch ReadableName.vanillaPath(type) {
+            case "beehive": return String(localized: "Beehive")
+            case "bee_nest": return String(localized: "Bee Nest")
+            default: return ReadableName.from(type)
+            }
         case .lightningRod: return String(localized: "Lightning Rod")
         // Named by its mob, not its surroundings: a zombie spawner may be in a monster room or
         // placed by a player, so the player judges from the map (Ryan, 2026-10-13).
@@ -112,10 +138,10 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         }
     }
 
-    init(_ poi: PointOfInterest) {
+    init(_ poi: PointOfInterest, groups: PlaceGroup.Catalog = .init(tags: [:])) {
         id = "\(poi.type)@\(poi.x),\(poi.y),\(poi.z)"
         type = poi.type
-        group = PlaceGroup.group(for: poi.type)
+        group = groups.group(for: poi.type)
         position = MapCoordinates.center(of: CGPoint(x: poi.x, y: poi.z))
         y = poi.y
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
@@ -155,9 +181,10 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
 
 /// Native place projections of the shared dimension index's points and grouped portals.
 nonisolated enum PlacePresentation {
-    static func markers(from blocks: [PointOfInterest], portals: [NetherPortal]) -> [PlaceMarker] {
+    static func markers(from blocks: [PointOfInterest], portals: [NetherPortal],
+                        groups: PlaceGroup.Catalog = .init(tags: [:])) -> [PlaceMarker] {
         // Portal blocks become one place per portal (ChunkseeKit owns the grouping rule).
-        let others = blocks.filter { PlaceGroup.group(for: $0.type) != .portal }.map(PlaceMarker.init)
+        let others = blocks.filter { groups.group(for: $0.type) != .portal }.map { PlaceMarker($0, groups: groups) }
         return (others + portals.map(PlaceMarker.init)).sorted { $0.id < $1.id }
     }
 }

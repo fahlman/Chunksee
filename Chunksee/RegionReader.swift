@@ -14,6 +14,7 @@ actor RegionReader {
     nonisolated let scanOptions: RegionScanOptions
     nonisolated let notableBlocks: NotableBlock.Catalog
     nonisolated let structureGroups: StructureGroup.Catalog
+    nonisolated let placeGroups: PlaceGroup.Catalog
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
@@ -21,12 +22,14 @@ actor RegionReader {
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
          options: RegionScanOptions = RegionReader.options(),
          notableBlocks: NotableBlock.Catalog = .init(tags: [:]),
-         structureGroups: StructureGroup.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
+         structureGroups: StructureGroup.Catalog = .init(tags: [:]),
+         placeGroups: PlaceGroup.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
         self.scanOptions = options
         self.notableBlocks = notableBlocks
         self.structureGroups = structureGroups
+        self.placeGroups = placeGroups
         self.read = read
     }
 

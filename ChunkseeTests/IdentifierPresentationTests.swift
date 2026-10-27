@@ -20,7 +20,7 @@ import Testing
     @Test func customAndUnfamiliarNamesStayVisibleWithoutBecomingVanillaGroups() {
         #expect(ReadableName.from("mod:deep_caves") == "Deep Caves")
         #expect(StructureGroup.Catalog(tags: [:]).group(for: "mod:village_plains") == .other)
-        #expect(PlaceGroup.group(for: "mod:home") == .other)
+        #expect(PlaceGroup.Catalog(tags: [:]).group(for: "mod:home") == .other)
         #expect(BlockColors.color(for: "mod:air") != nil)
         #expect(!BlockColors.isWater("mod:water"))
         #expect(ReadableName.from("mod:minecraft:home") == "Mod:minecraft:home")
