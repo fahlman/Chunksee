@@ -683,7 +683,7 @@ enum StructureTestWorld {
         await session.waitUntilClosed()
     }
 
-    @Test func sessionListsDrawnMapsAndShowsOne() async throws {
+    @Test func sessionListsAllReadableMapsAndShowsAnAvailableOne() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let maps = world.appendingPathComponent("data/minecraft/maps")
@@ -699,7 +699,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.
-        #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 6])
+        #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 4, 5, 6])
         let nether = try #require(session.presentation.inGameMaps.first { $0.id == 6 })
         #expect(session.routing.availability(of: Coordinates(CGPoint(x: nether.centerX, y: nether.centerZ)),
                                             in: nether.dimension) == .missingDimension)
