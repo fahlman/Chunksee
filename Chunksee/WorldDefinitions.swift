@@ -8,6 +8,7 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
     var enchantments: [String: EnchantmentDefinition] = [:]
     var possibleBiomes: [String: [String]] = [:]
     var notableBlocks = NotableBlock.Catalog(tags: [:])
+    var leafTag: GameTag?
     var structureGroups = StructureGroup.Catalog(tags: [:])
     var placeGroups = PlaceGroup.Catalog(tags: [:])
     var trading: TradingDefinitions?
@@ -18,7 +19,9 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
         // A damaged resource category cannot hide independently readable game facts.
         result.dimensionSettings = (try? world.dimensionSettings(assets: assets)) ?? [:]
         result.enchantments = (try? world.enchantmentDefinitions(assets: assets)) ?? [:]
-        result.notableBlocks = NotableBlock.Catalog(tags: (try? world.tags(for: NotableBlock.tagIDs, in: "block", assets: assets)) ?? [:])
+        let blockTags = (try? world.tags(for: NotableBlock.tagIDs.union(["minecraft:leaves"]), in: "block", assets: assets)) ?? [:]
+        result.notableBlocks = NotableBlock.Catalog(tags: blockTags)
+        result.leafTag = blockTags["minecraft:leaves"]
         result.structureGroups = StructureGroup.Catalog(tags: (try? world.tags(for: StructureGroup.tagIDs,
             in: "worldgen/structure", assets: assets)) ?? [:])
         result.placeGroups = PlaceGroup.Catalog(tags: (try? world.tags(for: PlaceGroup.tagIDs,
