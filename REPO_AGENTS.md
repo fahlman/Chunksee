@@ -1573,10 +1573,25 @@ WorldGameAssets injects the snapshot through the SwiftUI environment. Search cap
 snapshot, includes its identity in shared-query reuse, and rejects results from retired names.
 This does not change world parsing, scan membership, map rendering or cache formats.
 
-Effects, merchant ranks, statistics, vanilla advancement titles, notable-block search labels,
+Effects, merchant ranks, statistics, notable-block search labels,
 game modes and difficulty use the game’s keys. Statistics retain their saved values and Kit-owned
 units. The existing notable-block groups choose representative block IDs solely for their labels;
 their membership remains Kit’s runtime tag catalog. The game supplies no structure or cat-variant
 names, so their fallback preserves ID word order. Loot-table labels derive from saved paths, with
 no special renames. Old-format guidance uses the saved version name, when available, without a
 version number in the UI string. No game language files are redistributed.
+
+PlayerRecords asks Kit for the five displayed completed advancements' actual display titles,
+using enabled world packs over the selected game jar. It never guesses a translation key from
+an advancement ID. Saved progress, dates and counts remain independent of unavailable titles;
+the readable ID is their fallback. Definitions reread fresh world metadata off the main actor.
+The existing WorldResources definition generation restarts an open player's read on game/pack
+changes and rejects obsolete results. A refresh retains that player's progress while old titles
+become unavailable immediately; selecting a different player clears the previous records.
+
+GameText lays out Kit's interpreted literal, sequence and translated title components using the
+same GameNames language snapshot as the rest of the window. Minecraft's substitution semantics
+accept `%s`, numbered `%n$s` and `%%`; malformed templates retain the whole template. Numeric
+arguments use Java's decimal/scientific presentation. No game-file parser is added here. Layout
+is bounded to 65,536 visits/fragments, 128 interpreted levels, and 16 MiB each of output and
+visited translation templates. A title that exceeds those bounds uses its readable ID.

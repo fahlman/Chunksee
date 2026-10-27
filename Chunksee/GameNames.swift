@@ -30,13 +30,8 @@ nonisolated struct GameNames: Sendable {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
     }
 
-    func advancement(_ id: String) -> String {
-        // Vanilla's titles use this language-key convention. An unrelated namespace must not
-        // borrow a vanilla title just because its saved path happens to match.
-        if let path = ReadableName.vanillaPath(id),
-           let title = language?["advancements.\(path.replacingOccurrences(of: "/", with: ".")).title"] {
-            return title
-        }
+    func advancement(_ id: String, title: TextComponent.Content? = nil) -> String {
+        if let title, let text = GameText.string(title, translation: { language?[$0] }) { return text }
         return ReadableName.from(id)
     }
 

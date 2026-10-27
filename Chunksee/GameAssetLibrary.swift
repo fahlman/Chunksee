@@ -158,6 +158,11 @@ actor GameAssetLibrary {
         assets?.language(locale, minecraftDirectory: minecraftDirectory)
     }
 
+    func advancementDefinitions(in world: World, for identifiers: Set<String>) throws -> [String: AdvancementDefinition] {
+        try checkAvailable()
+        return try world.advancementDefinitions(for: identifiers, assets: assets)
+    }
+
     /// The source owner retires this reader even when hidden tabs still retain the actor.
     /// Actor isolation lets a current synchronous draw finish before releasing its archive.
     func close() {
