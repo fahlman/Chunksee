@@ -6,18 +6,29 @@ import Observation
 /// Reads retain their access until they finish, even when Settings removes the folder.
 @Observable
 final class MinecraftResources {
+    enum Change { case source, artwork }
+
     private(set) var generation = UUID()
+    var usesGameArtwork: Bool {
+        didSet {
+            guard usesGameArtwork != oldValue else { return }
+            defaults.set(usesGameArtwork, forKey: Self.artworkKey)
+            for observer in observers.values { observer(.artwork) }
+        }
+    }
     var folder: URL? { access?.url }
     private(set) var access: WorldReadAccess?
     private let defaults: UserDefaults
     private let work = BackgroundWork()
     @ObservationIgnored private lazy var reads = work.makeScope()
     private var libraries = GameAssetLibraries()
-    @ObservationIgnored private var observers: [UUID: () -> Void] = [:]
+    @ObservationIgnored private var observers: [UUID: (Change) -> Void] = [:]
     private static let bookmarkKey = "minecraftFolderBookmark"
+    private static let artworkKey = "usesGameArtwork"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
+        usesGameArtwork = defaults.object(forKey: Self.artworkKey) as? Bool ?? true
         guard let data = defaults.data(forKey: Self.bookmarkKey) else { return }
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
@@ -36,15 +47,15 @@ final class MinecraftResources {
         let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                                              includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(bookmark, forKey: Self.bookmarkKey)
-        for observer in observers.values { observer() }
+        for observer in observers.values { observer(.source) }
     }
 
     func forget() {
         retire()
-        for observer in observers.values { observer() }
+        for observer in observers.values { observer(.source) }
     }
 
-    func observeChanges(_ action: @escaping () -> Void) -> UUID {
+    func observeChanges(_ action: @escaping (Change) -> Void) -> UUID {
         let id = UUID()
         observers[id] = action
         return id

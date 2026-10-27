@@ -88,6 +88,7 @@ final class WorldResources {
     // The view accessor must observe both its initial source guard and the later loaded library.
     private var gameAssetSource: WorldGameAssetSource?
     private var gameAssets: GameAssetLibrary?
+    private var gameArtwork: GameAssetLibrary? { names.minecraft.usesGameArtwork ? gameAssets : nil }
     private(set) var biomeColors: MapBiomeColors?
     @ObservationIgnored private var biomeReadGeneration = 0
     @ObservationIgnored private var needsBiomeReload = false
@@ -98,8 +99,8 @@ final class WorldResources {
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
     @ObservationIgnored var readPlayers: @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0, enchantments: $1) }
-    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary?, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
-        try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3)
+    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary?, MapBiomeColors?, Bool, Bool) async throws -> MapBiomeColors = {
+        try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3, usesArtwork: $4)
     }
 
     private final class WeakSession {
@@ -151,7 +152,12 @@ final class WorldResources {
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
-        assetObserver = names.minecraft.observeChanges { [weak self] in self?.refreshGameAssets() }
+        assetObserver = names.minecraft.observeChanges { [weak self] change in
+            switch change {
+            case .source: self?.refreshGameAssets()
+            case .artwork: self?.refreshGameArtwork()
+            }
+        }
         refreshBiomeColors(reload: true)
         refreshLighting()
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
@@ -200,7 +206,7 @@ final class WorldResources {
 
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
-        session.map?.setGameAssets(gameAssets, biomeColors: biomeColors)
+        session.map?.setGameAssets(gameArtwork, biomeColors: biomeColors)
         darkSpotsVisibilityChanged()
         session.map?.setSavedLighting(session.selectedDimensionID.flatMap { lighting[$0] })
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
@@ -265,7 +271,22 @@ final class WorldResources {
 
     func gameAssetLibrary(for source: WorldGameAssetSource) -> GameAssetLibrary? {
         guard !isClosed, source == gameAssetSource, source.generation == names.minecraft.generation else { return nil }
-        return gameAssets
+        return gameArtwork
+    }
+
+    /// Artwork policy retires drawing results immediately, including hidden tabs. Definitions,
+    /// saved facts and their work retain the selected game library and source identity.
+    private func refreshGameArtwork() {
+        guard !isClosed else { return }
+        biomeColors = nil
+        updateGameArtwork()
+        refreshBiomeColors(reload: true)
+    }
+
+    private func updateGameArtwork() {
+        for session in sessions.values.compactMap(\.value) {
+            session.map?.setGameAssets(gameArtwork, biomeColors: biomeColors)
+        }
     }
 
     nonisolated struct DefinitionSnapshot: Sendable {
@@ -342,27 +363,27 @@ final class WorldResources {
         biomeWork.cancel()
         let read = readBiomeColors, world = world, previous = biomeColors
         let reload = needsBiomeReload
+        let usesArtwork = names.minecraft.usesGameArtwork
         biomeWork.start(priority: nil) { [weak self] in
             guard !Task.isCancelled else { return }
-            let updated = try? await read(world, library, previous, reload)
+            let updated = try? await read(world, library, previous, reload, usesArtwork)
             guard !Task.isCancelled, let self, !self.isClosed,
                   self.biomeReadGeneration == generation, self.gameAssets?.identity == library?.identity else { return }
             // A transient unreadable save keeps its last good colors. A successful empty
             // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
             if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
-            for session in self.sessions.values.compactMap(\.value) {
-                session.map?.setGameAssets(library, biomeColors: self.biomeColors)
-            }
+            self.updateGameArtwork()
         }
     }
 
     @concurrent nonisolated static func readBiomeColors(_ world: World, library: GameAssetLibrary?,
-                                                       previous: MapBiomeColors?, reload: Bool) async throws -> MapBiomeColors {
+                                                       previous: MapBiomeColors?, reload: Bool,
+                                                       usesArtwork: Bool = true) async throws -> MapBiomeColors {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        let sourceKey = library?.sourceKey ?? "no-game-files"
+        let sourceKey = library?.biomeSourceKey(usesArtwork: usesArtwork) ?? "no-game-files"
         if !reload, let previous, try previous.matchesMetadata(current, assetSourceKey: sourceKey) { return previous }
-        if let library { return try await library.biomeColors(in: current) }
+        if let library { return try await library.biomeColors(in: current, usesArtwork: usesArtwork) }
         return try MapBiomeColors.read(in: current, assetSourceKey: sourceKey, assets: nil)
     }
 

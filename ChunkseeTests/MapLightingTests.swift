@@ -123,7 +123,7 @@ import Testing
         await map.waitUntilIdle(); await map.waitForTopBlocks()
         let tile = try #require(map.tiles[region]), viewport = map.viewport, top = map.topBlock(at: CGPoint(x: 8, y: 8))
         resources.readPlayers = { _, _ in Issue.record("Clock-only saves must not read players"); return nil }
-        resources.readBiomeColors = { _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
+        resources.readBiomeColors = { _, _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
         let updated = try lighting(sun: 60)
         resources.readLighting = { _, _ in ["minecraft:overworld": updated] }
         resources.worldChanged([url.appendingPathComponent("data/minecraft/world_clocks.dat")])

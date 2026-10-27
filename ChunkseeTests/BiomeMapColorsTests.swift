@@ -252,7 +252,7 @@ import Testing
         let library = try fixture.library()
         let snapshot = try await library.biomeColors(in: resources.world)
         let gate = AsyncReadGate<MapBiomeColors>()
-        resources.readBiomeColors = { _, _, _, _ in await gate.read("initial") }
+        resources.readBiomeColors = { _, _, _, _, _ in await gate.read("initial") }
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source)
         resources.setGameAssets(library, source: source)
@@ -265,7 +265,7 @@ import Testing
         #expect(first.map?.currentRenderer.biomeColors?.sourceKey == snapshot.sourceKey)
         #expect(second.map?.currentRenderer.biomeColors?.sourceKey == snapshot.sourceKey)
         resources.refreshDelay = .zero
-        resources.readBiomeColors = { _, _, _, _ in await gate.read("late") }
+        resources.readBiomeColors = { _, _, _, _, _ in await gate.read("late") }
         resources.worldChanged([url.appendingPathComponent("datapacks")])
         await gate.waitForRequest("late")
         resources.close()
@@ -294,13 +294,13 @@ import Testing
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)
         let gate = AsyncReadGate<MapBiomeColors>()
-        resources.readBiomeColors = { _, _, _, _ in await gate.read("pack") }
+        resources.readBiomeColors = { _, _, _, _, _ in await gate.read("pack") }
         try pack(at: url, grass: 0x0000ff) // Same enabled pack list, different color content.
         resources.worldChanged([url.appendingPathComponent("datapacks/override/data/test/worldgen/biome/a.json")])
         await gate.waitForRequest("pack")
-        resources.readBiomeColors = { world, library, previous, reload in
+        resources.readBiomeColors = { world, library, previous, reload, usesArtwork in
             _ = await gate.read("metadata")
-            return try await WorldResources.readBiomeColors(world, library: library, previous: previous, reload: reload)
+            return try await WorldResources.readBiomeColors(world, library: library, previous: previous, reload: reload, usesArtwork: usesArtwork)
         }
         resources.worldChanged([url.appendingPathComponent("level.dat")])
         await gate.waitForRequest("metadata")

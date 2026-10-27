@@ -29,7 +29,7 @@ struct ChunkseeApp: App {
             CommandGroup(replacing: .newItem) {}
             SidebarCommands()
             InspectorCommands()
-            WorldCommands()
+            WorldCommands(minecraft: model.names.minecraft)
             HelpCommands()
         }
 

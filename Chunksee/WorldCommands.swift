@@ -64,6 +64,7 @@ extension FocusedValues {
 
 /// Map and navigation commands always target the front document, including from its sidebar.
 struct WorldCommands: Commands {
+    @Bindable var minecraft: MinecraftResources
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
@@ -115,6 +116,7 @@ struct WorldCommands: Commands {
                 .disabled(session?.map?.style == .height)
             }
             .disabled(session?.map == nil)
+            Toggle("Use Game Artwork", isOn: $minecraft.usesGameArtwork)
             Menu("Lighting") {
                 ForEach(MapLightingMode.allCases, id: \.self) { mode in
                     Toggle(isOn: Binding {

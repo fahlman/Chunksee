@@ -353,14 +353,21 @@ actor GameAssetLibrary {
 
     /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels
     /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
-    func biomeColors(in world: World) throws -> MapBiomeColors {
+    func biomeColors(in world: World, usesArtwork: Bool = true) throws -> MapBiomeColors {
         try checkAvailable()
         var maps: [Identifier: ItemTexture] = [:]
-        for name in ["grass", "foliage", "dry_foliage"] {
-            try Task.checkCancellation()
-            if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
+        if usesArtwork {
+            for name in ["grass", "foliage", "dry_foliage"] {
+                try Task.checkCancellation()
+                if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
+            }
         }
-        return try MapBiomeColors.read(in: world, assetSourceKey: sourceKey, assets: assets, colorMaps: maps)
+        return try MapBiomeColors.read(in: world, assetSourceKey: biomeSourceKey(usesArtwork: usesArtwork),
+                                      assets: assets, colorMaps: maps)
+    }
+
+    nonisolated func biomeSourceKey(usesArtwork: Bool) -> String {
+        usesArtwork ? sourceKey : sourceKey + "|no-artwork"
     }
 
     func nightLighting(in world: World) throws -> [String: MonsterSpawnLight] {

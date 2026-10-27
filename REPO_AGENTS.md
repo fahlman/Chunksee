@@ -1282,6 +1282,17 @@ across Remove/rechoose and close a registry containing two files. The native reg
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
 pictures in the still-open documents.
 
+MinecraftResources also owns the app-wide `usesGameArtwork` preference, on by default and
+remembered independently of folder access. View's Use Game Artwork toggle has no shortcut and
+remains available without a document. WorldResources gives picture consumers the selected library
+only while artwork is enabled and updates every attached map, including hidden tabs. Disabling
+artwork immediately retires texture colors, close-up images and image-derived biome outlines;
+the existing fallback renderer/cache keys and SF Symbols take over. Turning it back on restores
+the same library without reopening the world. A separate biome snapshot identity distinguishes
+data-only colors from colors using the game's PNG colormaps, and canceled reads cannot restore
+old image colors. Game definitions, tags, names, lighting, trading, readers and saved map pixels
+retain their existing owners and stay available throughout the change.
+
 GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
 APIs. Kit 0.66.1 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
 ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
