@@ -22,6 +22,7 @@ actor GameAssetLibrary {
         let blockColors = NSCache<BlockKey, ColorEntry>()
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let textureColors = NSCache<NSString, ColorEntry>()
+        let blockDefinitions = NSCache<NSString, DefinitionEntry>()
 
         init() {
             models.countLimit = 512
@@ -37,15 +38,19 @@ actor GameAssetLibrary {
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
             textureColors.countLimit = 256
+            blockDefinitions.countLimit = 4096
+            blockDefinitions.totalCostLimit = 1024 * 1024
         }
     }
 
     nonisolated private final class ModelEntry {
         let item: AssetItem?
+        let isMissing: Bool
         let tints: [[AssetItem.Tint]]
 
-        init(_ item: AssetItem?) {
+        init(_ item: AssetItem?, isMissing: Bool = false) {
             self.item = item
+            self.isMissing = isMissing
             // Geometry is inspected once off-main, not on every warm lookup or inventory visit.
             tints = item?.parts.map { part in
                 let used: Set<Int>
@@ -88,7 +93,15 @@ actor GameAssetLibrary {
     }
     nonisolated private final class TextureEntry {
         let texture: ItemTexture?
-        init(_ texture: ItemTexture?) { self.texture = texture }
+        let isMissing: Bool
+        init(_ texture: ItemTexture?, isMissing: Bool = false) {
+            self.texture = texture
+            self.isMissing = isMissing
+        }
+    }
+    nonisolated private final class DefinitionEntry {
+        let present: Bool?
+        init(_ present: Bool?) { self.present = present }
     }
 
     /// Kit owns every saved fact that can choose a model. Keep that complete value in both
@@ -165,6 +178,7 @@ actor GameAssetLibrary {
         caches.blockColors.removeAllObjects()
         caches.blockTextures.removeAllObjects()
         caches.textureColors.removeAllObjects()
+        caches.blockDefinitions.removeAllObjects()
     }
 
     nonisolated func cachedTextureColor(_ id: String) -> MapColor? {
@@ -264,8 +278,11 @@ actor GameAssetLibrary {
             if let cached = caches.blockColors.object(forKey: key) { entry = cached }
             else {
                 let color: MapColor?
-                if let model = material(for: request.state).model {
-                    color = try GameModelRenderer.topColor(model, tint: { tint($0, for: request) }, texture: texture)
+                let material = material(for: request.state)
+                if let model = material.model {
+                    color = try GameModelRenderer.topColor(model, tint: { tint($0, for: request) }, texture: blockTexture)
+                } else if material.modelIsMissing {
+                    color = try GameModelRenderer.missingTopColor()
                 } else { color = nil }
                 entry = ColorEntry(color)
                 caches.blockColors.setObject(entry, forKey: key, cost: 128 + request.state.description.utf8.count + request.tints.count * 16)
@@ -286,15 +303,17 @@ actor GameAssetLibrary {
     func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) throws -> [ItemTexture?] {
         try checkAvailable()
         guard requests.count <= 256, indices.count == 256, positions.count == 256 else { return [] }
-        let models = requests.map { material(for: $0.state).model }
+        let materials = requests.map { material(for: $0.state) }
         return try positions.enumerated().map { index, position in
             try Task.checkCancellation()
             let paletteIndex = Int(indices[index])
-            guard let position, requests.indices.contains(paletteIndex),
-                  let alternatives = models[paletteIndex]?.selectedAlternatives(at: position) else { return nil }
+            guard let position, requests.indices.contains(paletteIndex) else { return nil }
+            let material = materials[paletteIndex]
+            guard let alternatives = material.modelIsMissing ? [] : material.model?.selectedAlternatives(at: position) else { return nil }
             let request = requests[paletteIndex], key = BlockPictureKey(request, alternatives: alternatives)
             if let cached = caches.blockTextures.object(forKey: key) { return cached.texture }
-            let image = try GameModelRenderer.topTexture(alternatives, tint: { tint($0, for: request) }, texture: texture)
+            let image = try material.modelIsMissing ? GameModelRenderer.missingTopTexture()
+                : GameModelRenderer.topTexture(alternatives, tint: { tint($0, for: request) }, texture: blockTexture)
             caches.blockTextures.setObject(TextureEntry(image), forKey: key, cost: key.cost + (image?.pixels.count ?? 1))
             return image
         }
@@ -321,7 +340,14 @@ actor GameAssetLibrary {
     private func material(for state: BlockState) -> MapBlockMaterial {
         let key = BlockKey(state)
         if let cached = caches.blockMaterials.object(forKey: key) { return cached }
-        let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state))
+        let material: MapBlockMaterial
+        do {
+            material = MapBlockMaterial(state: state, model: try assets?.readBlockModel(for: state))
+        } catch AssetReadError.missingModel {
+            material = MapBlockMaterial(state: state, model: nil, modelIsMissing: true)
+        } catch {
+            material = MapBlockMaterial(state: state, model: nil)
+        }
         let cost = material.model?.parts.reduce(1) { total, part in
             total + part.alternatives.reduce(0) { $0 + Self.modelCost($1.model) }
         } ?? 1
@@ -372,7 +398,7 @@ actor GameAssetLibrary {
     /// A miss performs no I/O or decoding; the ordinary actor path handles it.
     nonisolated func cachedPicture(for stack: ItemStack) -> CGImage? {
         guard let selection = stack.itemModelSelection,
-              let entry = caches.models.object(forKey: ItemKey(selection)), entry.item != nil,
+              let entry = caches.models.object(forKey: ItemKey(selection)), entry.item != nil || entry.isMissing,
               let colors = entry.colors(for: stack, version: version, texture: {
                   caches.textures.object(forKey: $0.description as NSString)?.texture
               }) else { return nil }
@@ -386,18 +412,23 @@ actor GameAssetLibrary {
         let entry: ModelEntry
         if let cached = caches.models.object(forKey: key) { entry = cached }
         else {
-            entry = ModelEntry(assets.itemModel(for: selection))
+            do { entry = ModelEntry(try assets.readItemModel(for: selection)) }
+            catch AssetReadError.missingModel { entry = ModelEntry(nil, isMissing: true) }
+            catch { entry = ModelEntry(nil) }
             let cost = entry.cost + key.cost
             if cost <= caches.models.totalCostLimit {
                 caches.models.setObject(entry, forKey: key, cost: cost)
             }
         }
-        guard let item = entry.item else { return nil }
+        guard entry.item != nil || entry.isMissing else { return nil }
         guard let colors = entry.colors(for: stack, version: version, texture: texture) else { return nil }
         try Task.checkCancellation()
         let imageKey = ItemKey(selection, colors: colors)
         if let image = caches.images.object(forKey: imageKey) { return image }
-        guard let image = try GameModelRenderer.render(item, colors: colors, texture: itemTexture) else { return nil }
+        let rendered: CGImage?
+        if let item = entry.item { rendered = try GameModelRenderer.render(item, colors: colors, texture: itemTexture) }
+        else { rendered = try GameModelRenderer.missingItem() }
+        guard let image = rendered else { return nil }
         try Task.checkCancellation()
         let cost = image.bytesPerRow * image.height + imageKey.cost
         if cost <= caches.images.totalCostLimit {
@@ -409,25 +440,78 @@ actor GameAssetLibrary {
     /// Atlas sprites have their own identity: a generated item sprite must neither replace
     /// a direct colormap read nor bypass a later atlas source with the same resource name.
     private func itemTexture(_ id: Identifier) -> ItemTexture? {
-        let key = ("items|" + id.description) as NSString
+        drawingTexture(id, atlas: "minecraft:items")
+    }
+
+    private func blockTexture(_ id: Identifier) -> ItemTexture? {
+        drawingTexture(id, atlas: "minecraft:blocks")
+    }
+
+    private func drawingTexture(_ id: Identifier, atlas: String) -> ItemTexture? {
+        let key = (atlas + "|" + id.description) as NSString
         if let cached = caches.textures.object(forKey: key) { return cached.texture }
         let decoded: ItemTexture?
-        if let source = assets?.palettedTexture(id.description, in: "minecraft:items") {
-            if let base = assets?.texture(source.texture.description),
-               let key = assets?.texture(source.paletteKey.description),
-               let palette = assets?.texture(source.palette.description) {
-                decoded = ItemTexture(png: base, paletteKey: key, palette: palette)
-            } else { decoded = nil }
-        } else { decoded = texture(id) }
+        do {
+            if let source = try assets?.readPalettedTexture(id.description, in: atlas) {
+                do {
+                    if let base = try assets?.readTexture(source.texture.description),
+                       let key = try assets?.readTexture(source.paletteKey.description),
+                       let palette = try assets?.readTexture(source.palette.description) {
+                        decoded = ItemTexture(png: base, paletteKey: key, palette: palette)
+                    } else { decoded = nil }
+                } catch AssetReadError.missingTexture { decoded = GameModelRenderer.missingTexture }
+                catch { decoded = nil }
+            } else {
+                let entry = rawTexture(id)
+                decoded = entry.isMissing ? GameModelRenderer.missingTexture : entry.texture
+            }
+        } catch {
+            // A plain PNG may still be readable. Its absence proves nothing about an atlas
+            // whose selected source could not be interpreted, so it never earns a checkerboard.
+            decoded = texture(id)
+        }
         caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
         return decoded
     }
 
     private func texture(_ id: Identifier) -> ItemTexture? {
+        rawTexture(id).texture
+    }
+
+    /// Colormaps and mob-color samples require real pixels, never the missing-art marker.
+    private func rawTexture(_ id: Identifier) -> TextureEntry {
         let key = id.description as NSString
-        if let cached = caches.textures.object(forKey: key) { return cached.texture }
-        let decoded = assets?.texture(id.description).flatMap(ItemTexture.init(png:))
-        caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
-        return decoded
+        if let cached = caches.textures.object(forKey: key) { return cached }
+        let entry: TextureEntry
+        do {
+            let data = try assets?.readTexture(id.description)
+            entry = TextureEntry(data.flatMap(ItemTexture.init(png:)))
+        }
+        catch AssetReadError.missingTexture { entry = TextureEntry(nil, isMissing: true) }
+        catch { entry = TextureEntry(nil) }
+        caches.textures.setObject(entry, forKey: key, cost: entry.texture?.pixels.count ?? 1)
+        return entry
+    }
+
+    /// Resource presence is independent of whether a model can be drawn. Query one batch for
+    /// the readout's already-decoded columns; nil never means that the game rejects a block.
+    func blockDefinitions(for ids: Set<String>) throws -> [String: Bool] {
+        try checkAvailable()
+        var result: [String: Bool] = [:]
+        for id in ids {
+            try Task.checkCancellation()
+            let key = id as NSString
+            let entry: DefinitionEntry
+            if let cached = caches.blockDefinitions.object(forKey: key) { entry = cached }
+            else {
+                entry = DefinitionEntry(assets?.containsBlockDefinition(id))
+                let cost = 64 + id.utf8.count
+                if cost <= caches.blockDefinitions.totalCostLimit {
+                    caches.blockDefinitions.setObject(entry, forKey: key, cost: cost)
+                }
+            }
+            result[id] = entry.present
+        }
+        return result
     }
 }

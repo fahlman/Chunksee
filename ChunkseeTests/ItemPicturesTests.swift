@@ -270,7 +270,9 @@ import UniformTypeIdentifiers
         let otherLibrary = try fixture.library()
         #expect(otherLibrary.cachedPicture(for: red) == nil)
         #expect(try ItemPictureFixture.pixels(redImage).color(56, 56) != ItemPictureFixture.pixels(blueImage).color(56, 56))
-        #expect(try await library.picture(for: ItemStack(id: "test:unknown")) == nil)
+        let missing = ItemStack(id: "test:unknown")
+        let missingImage = try #require(try await library.picture(for: missing))
+        #expect(library.cachedPicture(for: missing) === missingImage)
         #expect(try await library.picture(for: ItemStack(id: "test:special")) == nil)
         #expect(library.cachedPicture(for: ItemStack(id: "test:special")) == nil)
     }
@@ -340,7 +342,6 @@ import UniformTypeIdentifiers
             .compound(["!minecraft:item_model": .compound([:]), "minecraft:item_model": .string(ordinary.id)]),
             .compound(["minecraft:item_model": .int(1)]),
             .compound(["minecraft:item_model": .string("Bad Model")]),
-            .compound(["minecraft:item_model": .string("test:missing")]),
             .compound(["minecraft:item_model": .string("test:special")]),
             .int(1)
         ]
@@ -351,6 +352,11 @@ import UniformTypeIdentifiers
             #expect(library.cachedPicture(for: stack) == nil)
             #expect(library.cachedPicture(for: ordinary) === image)
         }
+        let missing = ItemStack(id: ordinary.id, components: .compound(["minecraft:item_model": .string("test:missing")]))
+        let marker = try #require(try await library.picture(for: missing))
+        #expect(marker !== image)
+        #expect(library.cachedPicture(for: missing) === marker)
+        #expect(library.cachedPicture(for: ordinary) === image)
     }
 
     @Test(arguments: [ColorScheme.light, .dark])

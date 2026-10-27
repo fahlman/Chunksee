@@ -9,12 +9,61 @@ nonisolated enum GameModelRenderer {
     static let size = 64
     static let blockTextureSide = 16
 
+    /// The missing-image presentation chosen in #430, matching MissingTextureAtlasSprite.
+    /// Only confirmed absent resources use this image; unreadable/unsupported art stays unavailable.
+    static let missingTexture: ItemTexture = {
+        let side = 16
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        for y in 0..<side {
+            for x in 0..<side {
+                let offset = (y * side + x) * 4
+                let magenta: UInt8 = (x < side / 2) != (y < side / 2) ? 248 : 0
+                pixels[offset] = magenta
+                pixels[offset + 2] = magenta
+                pixels[offset + 3] = 255
+            }
+        }
+        return ItemTexture(width: side, height: side, pixels: pixels)
+    }()
+
     private struct Face {
         let points: [SIMD3<Float>]
         let uv: [SIMD2<Float>]
         let texture: ItemTexture
         let color: SIMD3<Float>
         var depth: Float { points.reduce(0) { $0 + $1.z } / 4 }
+    }
+
+    /// MissingCuboidModel is a full cube with no item transform. It goes through the same
+    /// projection, lighting, rasterization and visible-pixel averaging as readable models.
+    private static func missingFaces(top: Bool) -> [Face] {
+        AssetModel.Direction.allCases.compactMap { direction in
+            let points = vertices(for: direction, from: .zero, to: .init(repeating: 16)).map { vertex in
+                let point = vertex / 16 - 0.5
+                return top ? SIMD3(point.x, -point.z, point.y) : point
+            }
+            let normal = simd_cross(points[1] - points[0], points[3] - points[0])
+            guard normal.z > 0.000001 else { return nil }
+            return Face(points: points, uv: [SIMD2(0, 0), SIMD2(0, 1), SIMD2(1, 1), SIMD2(1, 0)],
+                        texture: missingTexture,
+                        color: .init(repeating: top ? 1 : lighting(normal: simd_normalize(normal), emission: 0)))
+        }
+    }
+
+    static func missingItem() throws -> CGImage? {
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        try draw(missingFaces(top: false), into: &pixels)
+        return CGImage.rgba(pixels, width: size, height: size)
+    }
+
+    static func missingTopColor() throws -> MapColor? {
+        try topColor(choices: [[(faces: missingFaces(top: true), weight: 1)]])
+    }
+
+    static func missingTopTexture() throws -> ItemTexture {
+        var pixels = [UInt8](repeating: 0, count: blockTextureSide * blockTextureSide * 4)
+        try draw(missingFaces(top: true), into: &pixels, side: blockTextureSide)
+        return ItemTexture(width: blockTextureSide, height: blockTextureSide, pixels: pixels)
     }
 
     static func render(_ item: AssetItem, colors: [[UInt32]],
@@ -137,6 +186,10 @@ nonisolated enum GameModelRenderer {
             }
             choices.append(options)
         }
+        return try topColor(choices: choices)
+    }
+
+    private static func topColor(choices: [[(faces: [Face], weight: Double)]]) throws -> MapColor? {
         guard choices.reduce(0, { $0 + ($1.map { $0.faces.count }.max() ?? 0) }) <= 4096 else { return nil }
         var sum = SIMD3<Double>.zero, alpha = 0.0
         func accumulate(_ part: Int, faces: [Face], weight: Double) throws {

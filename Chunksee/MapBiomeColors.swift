@@ -144,11 +144,13 @@ nonisolated final class MapBlockMaterial: Sendable {
 
     let state: BlockState
     let model: AssetBlock?
+    let modelIsMissing: Bool
     let biomeTints: [BiomeTint]
 
-    init(state: BlockState, model: AssetBlock?) {
+    init(state: BlockState, model: AssetBlock?, modelIsMissing: Bool = false) {
         self.state = state
         self.model = model
+        self.modelIsMissing = modelIsMissing
         let indices = Set(model?.parts.flatMap { part in
             part.alternatives.flatMap { alternative -> [Int] in
                 switch alternative.model.geometry {

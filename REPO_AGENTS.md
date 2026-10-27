@@ -1409,6 +1409,18 @@ their headings and location presentation; a carried pet never displays its old m
 
 ### Texture-derived map colors
 
+GameAssetLibrary retains Kit's typed missing-resource evidence. Only confirmed absent models or
+textures use GameModelRenderer's shared missing-image cube/pattern, including item pictures,
+averaged map colors and close-up pixels. Atlas interpretation must finish before an absent PNG
+can establish a missing sprite. Unreadable images, unsupported formats, unresolved state and
+unavailable atlas context retain the prior fallback; colormaps and mob-color samples never use
+the marker as real color data. Tile renderer version 29 invalidates earlier fallback pixels.
+Block information uses the selected jar's independent definition-presence query. The existing
+hover readout and centered accessibility description explain absent definitions conditionally:
+resource absence alone cannot prove whether another running/modded game would replace the block
+with air. Selecting different game files retires those cached readouts; no game files means no
+notice. Saved blocks and their coordinates remain visible.
+
 Normal and Water Depth land colors share the selected version's GameAssetLibrary with item
 pictures. The existing column scan chooses the surface and shallow-water floor once. Each reached
 palette entry is resolved once per chunk, and columns reuse its color by index. Warm immutable
