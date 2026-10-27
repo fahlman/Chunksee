@@ -311,7 +311,7 @@ final class WorldResources {
             self.index.replace(readers: readers, firstDimension: self.activeDimensionID)
             for session in self.sessions.values.compactMap(\.value) {
                 guard let id = session.selectedDimensionID else { continue }
-                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id])
+                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id], water: updated.definitions.water)
                 session.heatMap.replaceReader(self.readers[id])
             }
             self.backgroundWork.start(priority: .utility) {

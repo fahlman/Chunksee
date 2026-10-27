@@ -9,8 +9,10 @@ nonisolated struct MapSurfaceContext: Equatable, Sendable {
     let buildHeight: Int?
     let ceilingY: Int?
     let biomeSampleY: Int?
+    let water: GameTag?
 
-    init(settings: DimensionSettings?) {
+    init(settings: DimensionSettings?, water: GameTag? = nil) {
+        self.water = water
         dimensionType = settings?.type
         buildHeight = settings?.type?.height
         if let type = settings?.type, !type.hasCeiling {
@@ -28,5 +30,9 @@ nonisolated struct MapSurfaceContext: Equatable, Sendable {
         // Without a resolved type/generator there is no known ceiling plane.
         ceilingY = nil
         biomeSampleY = nil
+    }
+
+    var waterKey: String? {
+        water.map { CacheKey.hash($0.members.map(\.id).sorted().joined(separator: "\n")) }
     }
 }
