@@ -6,7 +6,7 @@ import Testing
 @Suite(.isolatedStores) struct GameTextTests {
     // Expected values were read from Minecraft's TranslatableContents in the installed 26.3
     // jar (SHA-1 e877b6a07acd633fb3bb475002175cec036e7b87), using synthetic strings only.
-    // Reproduction and all raw output: advancement-title-names-evidence/text-probe-2.
+    // Reproduction and raw output: advancement-title-names-evidence/text-probe-3 (primitive types retained).
     @Test func translatedComponentsFollowMinecraftSubstitutions() throws {
         let cases: [(id: String, json: String, expected: String)] = [
             ("literal", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"Plain title\",\"with\":[]}", "Plain title"),
@@ -18,7 +18,7 @@ import Testing
             ("repeated", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"%1$s %1$s\",\"with\":[\"A\"]}", "A A"),
             ("unicode", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"Café %s 🐈\",\"with\":[\"森\"]}", "Café 森 🐈"),
             ("boolean", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"%s and %s\",\"with\":[true,false]}", "true and false"),
-            ("number", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"%s / %s\",\"with\":[1,1.5]}", "1.0 / 1.5"),
+            ("number", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"%s / %s\",\"with\":[1,1.5]}", "1 / 1.5"),
             ("nested", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"[%s]\",\"with\":[{\"translate\":\"chunksee.probe.inner\",\"fallback\":\"inner %s\",\"with\":[\"value\"]}]}", "[inner value]"),
             ("missing", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"Hello %s\",\"with\":[]}", "Hello %s"),
             ("out-of-range", "{\"translate\":\"chunksee.probe.missing\",\"fallback\":\"%2$s\",\"with\":[\"A\"]}", "%2$s"),
@@ -41,7 +41,8 @@ import Testing
         }
     }
 
-    @Test func numericArgumentsFollowMinecraftDoubleText() throws {
+    // Direct Double construction was verified separately in text-probe-2.
+    @Test func directDoubleArgumentsFollowMinecraftDoubleText() throws {
         let cases: [(number: String, expected: String)] = [
             ("0.0", "0.0"),
             ("-0.0", "-0.0"),
@@ -74,9 +75,85 @@ import Testing
             let number = try #require(Double(fixture.number))
             let direct = TextComponent.Content.translated(key: "test.number", fallback: "%s", arguments: [.number(number)])
             #expect(GameNames().advancement("test:title", title: direct) == fixture.expected, "Direct value: \(fixture.number)")
+
+        }
+    }
+
+    // StrictJsonParser -> PRIMITIVE_ARG_CODEC -> actual TranslatableContents; frozen outputs
+    // in text-number-precision-evidence/strict-primitive-probe-1. This includes the original
+    // JSON rounding regression and exact integers that cannot be represented by a Double.
+    @Test func jsonNumericArgumentsKeepTheGamesPrimitiveKind() throws {
+        let cases: [(number: String, expected: String)] = [
+            ("0.0", "0"),
+            ("-0.0", "0"),
+            ("1", "1"),
+            ("-1", "-1"),
+            ("0.1", "0.1"),
+            ("0.001", "0.001"),
+            ("0.0009999999999999998", "9.999999999999998E-4"),
+            ("0.0001", "1.0E-4"),
+            ("9999999", "9999999"),
+            ("10000000", "10000000"),
+            ("10000000.000000002", "1.0000000000000002E7"),
+            ("1e20", "1.0E20"),
+            ("1e23", "1.0E23"),
+            ("1.2345678901234567", "1.2345678901234567"),
+            ("1.7976931348623157e308", "1.7976931348623157E308"),
+            ("2.2250738585072014e-308", "2.2250738585072014E-308"),
+            ("4.9e-324", "4.9E-324"),
+            ("1e-323", "9.9E-324"),
+            ("1.5e-323", "1.5E-323"),
+            ("2e-323", "2.0E-323"),
+            ("-4.9e-324", "-4.9E-324"),
+            ("3.141592653589793", "3.141592653589793"),
+            ("9007199254740991", "9007199254740991"),
+            ("9007199254740992", "9007199254740992"),
+            ("1.2345e-100", "1.2345E-100"),
+            ("-1.2345e100", "-1.2345E100"),
+            ("1.0000000000000001110223024625156540423631668090820312500001", "1.0000000000000002"),
+            ("1.0000000000000001110223024625156540423631668090820312499999", "1.0"),
+            ("5.0", "5"),
+            ("9007199254740993", "9007199254740993"),
+            ("9223372036854775807", "9223372036854775807"),
+            ("-9223372036854775808", "-9223372036854775808"),
+            ("9223372036854775808", "9.223372E18"),
+            ("1e309", "Infinity"),
+            ("-1e309", "-Infinity"),
+            ("1e-999", "0.0"),
+            ("0.10000000149011612", "0.1"),
+            ("1e9999", "Infinity"),
+            ("1e-9999", "0.0"),
+            ("0e9999", "0"),
+            ("1.0e10000", "Infinity"),
+            ("1000e-3", "1"),
+            ("-1000e-3", "-1"),
+            ("-1e-999", "-0.0"),
+            ("1000000000000000000.01", "1.0E18"),
+        ]
+        for fixture in cases {
             let json = "{\"translate\":\"test.number\",\"fallback\":\"%s\",\"with\":[" + fixture.number + "]}"
             let title = try #require(TextComponent.content(json: Data(json.utf8)))
             #expect(GameNames().advancement("test:title", title: title) == fixture.expected, "\(fixture.number)")
+        }
+    }
+
+    @Test func nativeNumericArgumentsUseTheSuppliedFloatOrDoubleFormat() throws {
+        // Actual NbtOps + TranslatableContents outputs: nbt-primitive-probe-1.
+        let cases: [(NBT, String)] = [
+            (.byte(1), "1"), (.short(300), "300"), (.int(70_000), "70000"),
+            (.long(9_007_199_254_740_993), "9007199254740993"),
+            (.float(0.1), "0.1"), (.float(.leastNonzeroMagnitude), "1.4E-45"),
+            (.float(.leastNormalMagnitude), "1.1754944E-38"),
+            (.float(.greatestFiniteMagnitude), "3.4028235E38"),
+            (.float(.infinity), "Infinity"), (.float(.nan), "NaN"),
+            (.double(Double(Float(0.1))), "0.10000000149011612"),
+            (.double(.infinity), "Infinity"), (.double(.nan), "NaN"),
+            (.double(-0.0), "0.0"),
+        ]
+        for (tag, expected) in cases {
+            let nbt = NBT.compound(["translate": .string("test.number"), "fallback": .string("%s"), "with": .list([tag])])
+            let title = try #require(TextComponent.content(nbt))
+            #expect(GameNames().advancement("test:title", title: title) == expected)
         }
     }
 

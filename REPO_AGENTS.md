@@ -1592,6 +1592,8 @@ become unavailable immediately; selecting a different player clears the previous
 GameText lays out Kit's interpreted literal, sequence and translated title components using the
 same GameNames language snapshot as the rest of the window. Minecraft's substitution semantics
 accept `%s`, numbered `%n$s` and `%%`; malformed templates retain the whole template. Numeric
-arguments use Java's decimal/scientific presentation. No game-file parser is added here. Layout
+arguments retain Kit's integer/Float/Double distinction and use Java's corresponding
+decimal/scientific presentation; the app never guesses the kind from a rounded value.
+No game-file parser is added here. Layout
 is bounded to 65,536 visits/fragments, 128 interpreted levels, and 16 MiB each of output and
 visited translation templates. A title that exceeds those bounds uses its readable ID.

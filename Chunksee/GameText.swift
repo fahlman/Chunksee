@@ -63,6 +63,9 @@ nonisolated enum GameText {
                 case .argument(let index):
                     switch arguments[index] {
                     case .string(let value): try budget.append(value, to: &output)
+                    case .integer(let value): try budget.append(String(value), to: &output)
+                    case .float(let value):
+                        try budget.append(number(Double(value), shortest: String(value.magnitude)), to: &output)
                     case .number(let value): try budget.append(number(value), to: &output)
                     case .boolean(let value): try budget.append(value ? "true" : "false", to: &output)
                     case .component(let value):
@@ -117,9 +120,10 @@ nonisolated enum GameText {
         return result
     }
 
-    /// Java's Double text uses shortest round-trip digits, a two-digit minimum for choosing
+    /// Java's floating text uses shortest round-trip digits for the supplied primitive kind,
+    /// a two-digit minimum for choosing
     /// tiny scientific values, fixed notation in [1e-3, 1e7), and an uppercase exponent.
-    private static func number(_ value: Double) -> String {
+    private static func number(_ value: Double, shortest: String? = nil) -> String {
         guard value.isFinite else { return value.isNaN ? "NaN" : (value.sign == .minus ? "-Infinity" : "Infinity") }
         let sign = value.sign == .minus ? "-" : ""
         guard value != 0 else { return sign + "0.0" }
@@ -133,7 +137,7 @@ nonisolated enum GameText {
             return (digits, point - 1 + (parts.count == 2 ? Int(parts[1])! : 0))
         }
 
-        var valueText = decimal(String(value.magnitude))
+        var valueText = decimal(shortest ?? String(value.magnitude))
         if valueText.digits.count == 1 {
             // At subnormal magnitudes the nearest two-digit decimal can differ from adding
             // a zero to Swift's one-digit shortest string (5e-324 becomes Java's 4.9E-324).
