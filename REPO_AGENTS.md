@@ -357,6 +357,17 @@ global rows and in-game map overlays remain. The shared map callback announces a
 deselection through Apple's accessibility API; other focus contexts keep their own Escape.
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
+WorldResources owns the saved version and the comparison with its current selected game library.
+WorldVersionNotice compares the supplied data versions and displays their supplied names; absent
+saved data versions do not produce a newer-world notice. A successful metadata refresh updates
+the saved version, and source-generation checks reject retired game files. The non-blocking map
+banner is remembered once per version pair in WorldSettings, shared across dimension documents;
+World Info keeps the notice while the comparison applies. Neither presentation gates any reads.
+The comparison uses the game-data reader, so turning artwork off does not hide it.
+Notice text accepts the column's proposed height: forcing its ideal vertical size inflates
+the native split view's minimum height during layout. Window tests check the actual split-view
+and notice bounds through source changes, resizing, inspector visibility and dismissal.
+
 EquipmentPresentation orders all filled saved slots, including unfamiliar player slots; a mob's
 saved equipment, appearance and collar do not require an owner. WorldDetails keeps every readable
 in-game map. DimensionPresentation routes records with missing or unavailable dimensions to the
