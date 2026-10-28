@@ -104,18 +104,21 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
 
     private(set) var chunks: [Int: Chunk] = [:]
     private(set) var estimatedBytes = 0
+    private var firstOmittedIndex = 1024
     var isEmpty: Bool { chunks.isEmpty }
 
     /// A deterministic prefix remains detailed if an unusually varied region exceeds the
     /// budget. Completion order cannot change what is kept; all other columns stay flat.
     mutating func insert(_ chunk: Chunk, at index: Int) {
-        guard (0..<1024).contains(index) else { return }
+        guard (0..<firstOmittedIndex).contains(index) else { return }
         if let old = chunks[index] { estimatedBytes -= 64 + old.estimatedBytes }
         chunks[index] = chunk
         estimatedBytes += 64 + chunk.estimatedBytes
         while estimatedBytes > Self.maximumRetainedBytes, let last = chunks.keys.max(),
               let removed = chunks.removeValue(forKey: last) {
             estimatedBytes -= 64 + removed.estimatedBytes
+            // A later, smaller chunk must not fill space beyond the rejected prefix.
+            firstOmittedIndex = min(firstOmittedIndex, last)
         }
     }
 
@@ -147,6 +150,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
     private struct Stored: Codable {
         let materials: [Material]
         let chunks: [StoredChunk]
+        let firstOmittedIndex: Int
     }
 
     private static func encodeIndices(_ values: [UInt16]) -> Data {
@@ -234,7 +238,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
         }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        guard let data = try? encoder.encode(Stored(materials: materials, chunks: stored)),
+        guard let data = try? encoder.encode(Stored(materials: materials, chunks: stored, firstOmittedIndex: firstOmittedIndex)),
               data.count <= Self.maximumEncodedBytes else { return nil }
         return data
     }
@@ -244,13 +248,15 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
         guard data.count <= maximumEncodedBytes,
               let stored = try? PropertyListDecoder().decode(Stored.self, from: data),
               stored.chunks.count <= 1024, stored.materials.count < Int(noMaterial),
+              (0...1024).contains(stored.firstOmittedIndex),
               stored.materials.allSatisfy({ $0.colorShade.isFinite && (0...1).contains($0.colorShade)
                   && $0.request.tints.count <= 4096 }) else { return nil }
         let costs = stored.materials.map(\.estimatedBytes)
         guard costs.reduce(0, +) <= maximumRetainedBytes else { return nil }
         var result = Self()
+        result.firstOmittedIndex = stored.firstOmittedIndex
         for chunk in stored.chunks {
-            guard (0..<1024).contains(chunk.index), result.chunks[chunk.index] == nil,
+            guard (0..<stored.firstOmittedIndex).contains(chunk.index), result.chunks[chunk.index] == nil,
                   !chunk.materials.isEmpty, chunk.materials.count <= maximumChunkBytes,
                   chunk.materials.count.isMultiple(of: 2), chunk.indices.count == 512 else { return nil }
             let references = decodeIndices(chunk.materials), indices = decodeIndices(chunk.indices)

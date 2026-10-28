@@ -18,8 +18,8 @@ actor GameDataLibrary {
         init(_ present: Bool?) { self.present = present }
     }
 
-    /// NSCache synchronizes warm lookups of immutable entries. The lock serializes misses
-    /// from this actor and job-scoped coverage readers, and drains them before retirement.
+    /// NSCache synchronizes renderer lookups of immutable entries. The shared reader locks
+    /// both hits and misses from this actor and coverage jobs, draining them before retirement.
     nonisolated private final class Materials: @unchecked Sendable {
         let values = NSCache<Key, MapBlockMaterial>()
         private let retired = Mutex(false)

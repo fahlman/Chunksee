@@ -1876,8 +1876,8 @@ the existing chunk, region and encoded budgets. Each region/readout obtains an i
 reader from its selected library. Its existing off-main chunk walk resolves only reached palette
 entries, avoiding model reads for buried blocks. A bounded Mutex-protected value cache shares each
 miss. Model geometry comes through GameDataLibrary's job-scoped material reader and its one bounded
-cache; GameArtworkLibrary owns texture reads and measured pixel coverage. A material miss is locked
-while it reads and publishes its immutable result, so retirement drains it before clearing the cache
+cache; GameArtworkLibrary owns texture reads and measured pixel coverage. The material reader locks
+both hits and misses, so retirement drains it before clearing the cache
 and retained readers cannot refill it. Coverage can take the material lock while holding its own
 lock; neither lock path awaits or calls back into the other owner. The source owner retires artwork
 before data. Region/readout publication checks both sources. Artwork changes also retire cached
@@ -1885,7 +1885,10 @@ readouts because their highest visible layer can change; definitions and the wor
 available. No-artwork scans remain synchronous. Overlay headers and layer
 material/height pairs use compact little-endian data
 beside the existing compact indices, with bounded decoding and validation of flags, columns,
-materials and heights. Cache version 37 invalidates earlier pixels and sidecar formats.
+materials and heights. The region budget remembers its first omitted chunk index, so later, smaller
+completions cannot fill space past that prefix. The sidecar preserves and validates this boundary;
+mixed-size completion orders retain identical data. Cache version 37 invalidates earlier pixels
+and sidecar formats.
 More than 256 partial layers in one column use the first visible block's flat fallback, bounding
 transient scan storage before those detail budgets apply. Columns without usable ground use that
 same fallback. No second world read is needed to draw retained layers at close zoom.

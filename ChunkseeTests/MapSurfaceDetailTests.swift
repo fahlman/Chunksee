@@ -42,7 +42,7 @@ import Testing
         #expect(MapSurfaceDetail.decoded(Data([0, 1, 2])) == nil)
         #expect(MapSurfaceDetail.decoded(Data(repeating: 0, count: MapSurfaceDetail.maximumEncodedBytes + 1)) == nil)
         let original = try #require(PropertyListSerialization.propertyList(from: bytes, format: nil) as? [String: Any])
-        for mutation in 0..<7 {
+        for mutation in 0..<11 {
             var archive = original
             var records = try #require(archive["chunks"] as? [[String: Any]])
             switch mutation {
@@ -52,7 +52,11 @@ import Testing
             case 3: records[0]["indices"] = Data(repeating: 0x80, count: 512)
             case 4: records[0]["materials"] = Data([0])
             case 5: records[0]["materials"] = Data([255, 255])
-            default: archive["materials"] = []
+            case 6: archive["materials"] = []
+            case 7: archive["firstOmittedIndex"] = -1
+            case 8: archive["firstOmittedIndex"] = 1025
+            case 9: archive["firstOmittedIndex"] = 1023
+            default: archive.removeValue(forKey: "firstOmittedIndex")
             }
             archive["chunks"] = records
             let bad = try PropertyListSerialization.data(fromPropertyList: archive, format: .binary, options: 0)
