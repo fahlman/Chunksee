@@ -76,6 +76,11 @@ actor GameDataLibrary {
         }
     }
 
+    func advancementDefinitions(in world: World, for identifiers: Set<String>) throws -> [String: AdvancementDefinition] {
+        try checkAvailable()
+        return try world.advancementDefinitions(for: identifiers, assets: assets)
+    }
+
     /// Kit owns the game's entity-to-egg relationship; the ordinary item path draws it.
     func spawnEgg(for species: String) throws -> ItemStack? {
         try checkAvailable()
