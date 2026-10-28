@@ -246,7 +246,8 @@ older scan envelopes.
 | `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
-| `GameAssetLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
+| `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
+| `GameArtworkLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
@@ -1265,13 +1266,13 @@ disk cache; ordinary player and region refreshes replace them.
 MinecraftResources owns the existing `minecraftFolderBookmark` and read-only access lease for both
 names and pictures. It restores existing choices without a second preference. Reads retain the
 lease until completion; choosing/removing the folder cancels its asset scope and changes source
-generation so old results cannot publish. GameAssetLibraries enumerates installed jars and uses
+generation so old results cannot publish. GameResourceLibraries enumerates installed jars and uses
 Kit's version metadata to select the newest declared release; if none is installed, it uses the
 newest readable version of any kind. Build time orders known dates, with data version as a fallback
 when dates are unavailable. World version never gates selection. File stamps are checked before
 and after reads. Each jar is capped at 128 MiB; the registry retains small version metadata and weak
-references to live GameAssetLibrary actors. It retains at most the best uncached archive while
-choosing a source. One file shares its actor across worlds.
+references to live GameResourceLibrary source handles. It retains at most the best uncached archive
+while choosing a source. One file shares its separate data and artwork actors across worlds.
 
 A changed folder generation retires the previous registry through MinecraftResources' background
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
@@ -1285,7 +1286,25 @@ across Remove/rechoose and close a registry containing two files. The native reg
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
 pictures in the still-open documents.
 
-GameAssetLibrary resolves definitions/models and saved dye/potion colors through published Kit
+MinecraftResources owns the app-wide `usesGameArtwork` preference, on by default and remembered
+independently of folder access. View's Use Game Artwork toggle has no shortcut and remains
+available without a document. Only MinecraftResources can expose a source's artwork capability;
+WorldResources injects that optional GameArtworkLibrary into pictures and every attached map,
+including hidden tabs. GameDataLibrary separately owns definitions, lighting and model geometry.
+The map retains its data reader when artwork is unavailable. PNG textures, colormaps and all
+pictures can be read only through GameArtworkLibrary; data-only readers have no such methods.
+Material geometry and its bounded cache have one owner in GameDataLibrary.
+
+Disabling artwork immediately retires texture colors and close-up images. Biome snapshots drop
+colormap pixels while retaining numeric definitions and their water colors, avoiding an empty
+outline frame. The palette and SF Symbols supply picture fallbacks. Typed GameResourceSource
+values keep data identity and artwork availability distinct in biome and tile cache identities;
+TileCache version 28 retires earlier pixels. No default artwork-policy Boolean or string suffix
+can enable art accidentally. Canceled reads cannot restore old image colors. Turning artwork
+back on reuses the selected source without reopening the world. Definitions, tags, names,
+lighting, trading, readers and saved map pixels keep their existing owners throughout.
+
+GameArtworkLibrary resolves picture models and saved dye/potion colors through published Kit
 APIs. Kit 0.66.1 owns saved model-reference, trim-material, custom-model-data and banner-design selection through
 ItemStack.itemModelSelection. Both cold and warm lookups use immutable native cache keys containing
 that entire Hashable selection; image keys also include resolved tints. The app does not reconstruct
@@ -1339,7 +1358,7 @@ Kit supplies the verified 26.3 shield geometry, translations used to separate co
 parts and, in 0.57.1, the half-turns used by the straw bed. They use the same item renderer, skin
 decoding and memory caches, with no app-side model table. Synthetic pixel tests exercise both
 bed layouts and their texture orientation, plus the shield's front plate/back handle through
-GameAssetLibrary and native bed icons in both appearances. Kit 0.66.1 resolves saved shield designs
+GameArtworkLibrary and native bed icons in both appearances. Kit 0.66.1 resolves saved shield designs
 into ordered dyed material overlays on the same plate/handle geometry. ItemTexture composites
 the premultiplied pixels before projection, so the shared depth test still protects the nearer
 handle. Every face reuses one immutable composed skin. Base, layer sources and composed results
@@ -1403,7 +1422,7 @@ dimension and ignore a choice absent from the latest snapshot; selecting an indi
 its type clears a conflicting type filter. Selecting through a special group preserves that
 independent filter. The type inspector keeps counts and explains saved-position limitations.
 Mob symbols use Kit's generated sheep tints or an alpha-weighted representative color from the
-actual installed axolotl texture. GameAssetLibrary owns a bounded shared color cache alongside
+actual installed axolotl texture. GameArtworkLibrary owns a bounded shared color cache alongside
 its existing decoded textures and clears it on source retirement. Missing artwork leaves the
 normal untinted symbol; no replacement color table or bundled game pictures are used. Label text
 keeps native colors. VoiceOver names the saved variant for every tinted mob, including when its
@@ -1420,7 +1439,7 @@ their headings and location presentation; a carried pet never displays its old m
 
 ### Texture-derived map colors
 
-Normal and Water Depth land colors share the selected version's GameAssetLibrary with item
+Normal and Water Depth land colors share the selected version's GameArtworkLibrary with item
 pictures. The existing column scan chooses the surface and shallow-water floor once. Each reached
 palette entry is resolved once per chunk, and columns reuse its color by index. Warm immutable
 colors are read directly from the library's thread-safe cache; a miss goes through the actor in
@@ -1450,8 +1469,9 @@ Kit 0.66.1 supplies verified omitted 26.3 default properties to those same model
 the app neither edits saved states nor keeps a second registry of default properties.
 
 Biome colors use an immutable `MapBiomeColors` snapshot per WorldResources, shared by its
-dimension documents. The existing GameAssetLibrary actor loads Kit's complete registered-biome
-catalog and shares its decoded grass/foliage/dry-foliage colormaps with item pictures. Kit owns
+dimension documents. GameDataLibrary loads Kit's complete registered-biome catalog; an explicit
+GameArtworkLibrary capability supplies its shared decoded grass/foliage/dry-foliage colormaps
+when available. Numeric definition colors remain available without that capability. Kit owns
 all biome definitions, block tint associations, climate sampling and modifiers. The app chooses
 the biome at each displayed surface or shallow-water floor, applies upper-plant offsets and
 passes checked absolute X/Z to the swamp rule. With a saved seed, Kit's BiomeSampler chooses
@@ -1547,7 +1567,7 @@ retained only for visible close-up regions; zooming out releases them and their 
 MapModel's existing BackgroundWork owner tracks one sidecar load and one close-up chunk job at a time, keeping work
 still needed during panning and rejecting results after source/style/depth/filter/region changes
 or close. Only visible chunks are requested above the 800% threshold; completed chunk pictures
-have a 256-entry (about 65 MiB with normals) budget, retaining visible chunks in larger windows. GameAssetLibrary
+have a 256-entry (about 65 MiB with normals) budget, retaining visible chunks in larger windows. GameArtworkLibrary
 reuses selected-model pictures by state, tint and chosen model/transform, rather than by world
 position, in a shared 16 MiB cache. It uses the same decoded textures and clears pictures on source
 retirement. MapDetailRenderer applies the same MapRelief column calculation and filter shading;

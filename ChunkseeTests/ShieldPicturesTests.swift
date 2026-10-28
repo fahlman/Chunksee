@@ -82,7 +82,7 @@ import Testing
         let library = try fixture.library(), stack = Self.stack(base: "blue", layers: [Self.layer("left", color: "red")])
         _ = try #require(try await library.picture(for: stack))
         let renderer = ImageRenderer(content: ItemIcon(item: stack)
-            .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+            .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, appearance))
         renderer.scale = 4
         let pixels = try ItemPictureFixture.pixels(try #require(renderer.cgImage))
         #expect(pixels.color(30, 40) == [176, 46, 38, 255])

@@ -316,3 +316,18 @@ nonisolated enum GameModelRenderer {
         }
     }
 }
+
+extension GameModelRenderer {
+    nonisolated static func modelCost(_ model: AssetModel) -> Int {
+        func materialCost(_ material: AssetModel.Material) -> Int {
+            128 + material.texture.description.utf8.count
+                + material.overlays.reduce(0) { $0 + 64 + $1.texture.description.utf8.count }
+        }
+        switch model.geometry {
+        case .layers(let layers): return layers.reduce(0) { $0 + materialCost($1.material) }
+        case .elements(let elements):
+            return elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + materialCost($1.material) } }
+        }
+    }
+
+}
