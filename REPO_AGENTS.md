@@ -1086,10 +1086,13 @@ reached palette entry during the existing Kit column traversal. Hidden blocks ar
 visible blocks use the shared yellow highlight and others dim. No second terrain scan is added.
 
 View > Show/Hide Blocks uses a native SwiftUI sheet with a searchable saved-palette catalog,
-individual Show/Hide/Highlight choices, a name-based Hide Leaves shortcut, Reset, Cancel and Apply.
-Editing the draft never redraws the live map; Apply commits it once. The leaf shortcut selects IDs
-ending in `_leaves`, not Minecraft's tag membership. Every exact ID remains editable. Saved choices
-remain listed after their last catalog entry disappears. Names in palettes are not occupancy claims.
+individual Show/Hide/Highlight choices, a tag-based Hide Leaves shortcut, Reset, Cancel and Apply.
+Editing the draft never redraws the live map; Apply commits it once. WorldDefinitions reads
+`minecraft:leaves` through Kit's shared block-tag query, including enabled pack overrides. The
+shortcut selects tagged IDs in the sheet's catalog; unavailable or empty membership disables it.
+Tag refreshes update the shortcut without changing explicit choices or replacing region readers.
+Every exact ID remains editable. Saved choices remain listed after their last catalog entry
+disappears. Names in palettes are not occupancy claims.
 Kit 0.54.0 added the dimension catalog through RegionIndex.paletteBlockIDs; the app requires
 0.54.1 for its bounded archive-reader fix.
 Its RegionFacts interpretation version 7 invalidates older catalog-less scan archives once;

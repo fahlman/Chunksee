@@ -324,10 +324,13 @@ final class WorldResources {
             // Keep the last coherent snapshot during a transient unreadable save. Never pair
             // new region definitions with players whose maximum used the previous definitions.
             guard let players else { return }
-            let previous = self.details.definitions
+            var previous = self.details.definitions
             self.details.definitions = updated.definitions
             self.details.borders = updated.borders
             self.playerRoster.publish(players)
+            // Leaf membership only supplies a sheet shortcut. Publishing it must not replace
+            // readers or rescan regions; existing explicit block choices remain unchanged.
+            previous.leafTag = updated.definitions.leafTag
             guard previous != updated.definitions else { return }
             let retired = self.index.readers
             let readers = retired.map { reader in
