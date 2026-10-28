@@ -32,7 +32,9 @@ nonisolated struct TileCache: Sendable {
     /// 25: close-up data preserves nighttime status and shares saved-time drawing inputs.
     /// 26: neighboring biomes remain available when unrelated block palettes are malformed.
     /// 28: artwork availability is typed separately from game data and biome colors.
-    static let rendererVersion = 28
+    /// 33: shared game JSON numeric conversion and repeated-member interpretation.
+    /// 34: combine the game-data/artwork boundary with the corrected game JSON reader.
+    static let rendererVersion = 34
 
     let directory: URL
 

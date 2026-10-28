@@ -553,6 +553,18 @@
           }
         }
       }
+    },
+    "Level %lld" : {
+      "comment" : "Fallback villager rank when the installed game has no name for this saved level. The number is the saved level."
+    },
+    "Older World Format" : {
+      "comment" : "Heading when the world format cannot be displayed and the save has no Minecraft version name."
+    },
+    "Saved by Minecraft %@" : {
+      "comment" : "Heading for an older world format. The placeholder is the Minecraft version name recorded in the save."
+    },
+    "This world uses a format Chunksee cannot display. To update it, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again." : {
+      "comment" : "Guidance for upgrading a world whose saved terrain format cannot be displayed. The command names refer to Minecraft controls."
     }
   },
   "version" : "1.0"

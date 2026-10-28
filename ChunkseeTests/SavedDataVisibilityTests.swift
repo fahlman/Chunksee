@@ -75,7 +75,7 @@ import Testing
                 header: { Text("Saved Wolf") }, location: { EmptyView() })
         }.formStyle(.grouped))
         #expect(text.contains("Equipment") && text.contains("Head") && text.contains("Diamond Helmet"))
-        #expect(text.contains("Appearance") && text.contains(PetDetailText.appearance(appearance, species: creature.id)))
+        #expect(text.contains("Appearance") && text.contains(PetDetailText.appearance(appearance)))
         #expect(text.contains("Collar Color") && text.contains(PetDetailText.name(collar)))
         #expect(!text.contains("Tamed By"))
         session.close(); await session.waitUntilClosed()

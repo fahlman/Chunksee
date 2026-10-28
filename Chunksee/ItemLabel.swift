@@ -96,15 +96,19 @@ struct WorldGameAssets: ViewModifier {
         let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
+        let preferredLanguage: String
     }
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
         let source = WorldGameAssetSource(generation: resources.generation)
+        let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
             .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world))) {
+            .environment(\.gameNames, world.gameNames)
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
+                world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()
             }
     }

@@ -6,7 +6,7 @@ import Testing
 @Suite(.isolatedStores)
 struct SavedQueryWorkTests {
     private func request() -> SearchRequest {
-        SearchRequest(queries: ["saved"], index: SearchIndex(), players: [], playerNames: [:])
+        SearchRequest(queries: ["saved"], index: SearchIndex(), players: [], playerNames: [:], gameNames: .unavailable)
     }
     private func sources() -> SearchSources {
         SearchSources(names: [:], playerSnapshot: PlayerSnapshot([]), indexRevision: 0)

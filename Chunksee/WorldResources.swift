@@ -65,6 +65,20 @@ final class WorldResources {
     private let biomeWork: BackgroundWork.Scope
     private let definitionsWork: BackgroundWork.Scope
     private let assetWork: BackgroundWork.Scope
+    private let languageWork: BackgroundWork.Scope
+    private var languageNames = GameNames.unavailable
+    private var languagePreference = GameLanguageChoice.preferredLanguage
+    @ObservationIgnored private var languageRequest: LanguageRequest?
+    @ObservationIgnored private var languageGeneration = UUID()
+    @ObservationIgnored var readLanguage: @Sendable (GameDataLibrary, String, URL?) async -> GameLanguage? = {
+        await $0.language($1, minecraftDirectory: $2)
+    }
+
+    private struct LanguageRequest: Equatable {
+        let source: UUID
+        let library: UUID?
+        let preference: String
+    }
     @ObservationIgnored private var assetObserver: UUID?
     @ObservationIgnored private var assetReadGeneration = 0
     @ObservationIgnored private var isAssetReadPending = false
@@ -129,6 +143,7 @@ final class WorldResources {
         biomeWork = backgroundWork.makeScope()
         definitionsWork = backgroundWork.makeScope()
         assetWork = backgroundWork.makeScope()
+        languageWork = backgroundWork.makeScope()
         nightLightWork = backgroundWork.makeScope()
         lightingWork = backgroundWork.makeScope()
         access = snapshot.access
@@ -227,6 +242,7 @@ final class WorldResources {
         biomeReadGeneration += 1
         biomeWork.cancel()
         gameAssets = nil
+        refreshGameLanguage()
         biomeColors = nil
         lighting = [:]
         for session in sessions.values.compactMap(\.value) {
@@ -254,7 +270,10 @@ final class WorldResources {
             guard !Task.isCancelled, let self, !self.isClosed,
                   self.assetReadGeneration == generation, minecraft.generation == source.generation else { return }
             self.isAssetReadPending = false
+            let unchanged = self.gameAssets?.identity == library?.identity
             self.setGameAssets(library, source: source)
+            // A newly installed language object need not change the selected jar.
+            if unchanged { self.refreshGameLanguage(reload: true) }
         }
     }
 
@@ -264,6 +283,7 @@ final class WorldResources {
         biomeReadGeneration += 1
         biomeWork.cancel()
         gameAssets = library
+        refreshGameLanguage()
         biomeColors = nil
         for session in sessions.values.compactMap(\.value) { session.map?.setGameResources(data: nil, artwork: nil) }
         refreshBiomeColors(reload: true)
@@ -290,6 +310,35 @@ final class WorldResources {
     private func updateGameArtwork() {
         for session in sessions.values.compactMap(\.value) {
             session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
+        }
+    }
+
+    var gameNames: GameNames {
+        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return GameNames.unavailable }
+        return languageNames
+    }
+
+    func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
+        guard !isClosed else { return }
+        if let preferredLanguage { languagePreference = preferredLanguage }
+        let request = LanguageRequest(source: names.minecraft.generation, library: gameData?.identity, preference: languagePreference)
+        guard reload || request != languageRequest else { return }
+        let sourceChanged = request != languageRequest
+        languageWork.cancel()
+        languageRequest = request
+        languageGeneration = UUID()
+        // A background reread of the same source must not blank visible names or searches.
+        if sourceChanged { languageNames = GameNames.unavailable }
+        guard let library = gameData else { return }
+        let generation = languageGeneration, read = readLanguage, folder = names.minecraft.folder
+        languageWork.start(priority: .utility) { [weak self] in
+            let language = await read(library, request.preference, folder)
+            guard !Task.isCancelled, let self, !self.isClosed, self.languageGeneration == generation,
+                  self.languageRequest == request, self.names.minecraft.generation == request.source,
+                  self.gameData?.identity == request.library else { return }
+            if !self.languageNames.hasSameContents(as: language) {
+                self.languageNames = GameNames(language)
+            }
         }
     }
 
@@ -575,6 +624,7 @@ final class WorldResources {
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         gameAssets = nil
+        languageNames = GameNames.unavailable
         biomeColors = nil
         nightLighting = nil
         lighting = [:]
@@ -665,7 +715,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork, definitionsWork, assetWork])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork, definitionsWork, assetWork, languageWork])
         await index.waitForProjection()
     }
 

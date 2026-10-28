@@ -67,6 +67,15 @@ actor GameDataLibrary {
         }
     }
 
+    func language(_ preference: String, minecraftDirectory: URL?) -> GameLanguage? {
+        guard !Task.isCancelled, let assets else { return nil }
+        let choices = assets.languageCodes(minecraftDirectory: minecraftDirectory)
+        return GameLanguageChoice.language(for: preference, available: choices) { code in
+            guard !Task.isCancelled else { return nil }
+            return assets.language(code, minecraftDirectory: minecraftDirectory)
+        }
+    }
+
     func definitions(in world: World) throws -> WorldDefinitions {
         try checkAvailable()
         return try WorldDefinitions.read(world, assets: assets)

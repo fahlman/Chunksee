@@ -16,7 +16,7 @@ struct SearchWorkTests {
         let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]),
                                 names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
-                                execute: { await gate.read($0.queries[0]) })
+                                execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await model.waitForIndex()
         model.text = "old"
         await gate.waitForRequest("old")
@@ -51,7 +51,7 @@ struct SearchWorkTests {
         func document(_ key: String) -> SearchModel {
             SearchModel(readers: [], work: work, playerRoster: players, names: names,
                         singleplayerUUID: nil, firstDimension: nil, savedSearches: saved,
-                        execute: { _ in await gate.read(key) }, indexStore: index)
+                        execute: { _ in await gate.read(key) }, indexStore: index, gameNames: { .unavailable })
         }
         let first = document("first"), second = document("second")
         first.text = "query"
