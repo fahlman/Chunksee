@@ -4,6 +4,7 @@ import SwiftUI
 /// Item rows and compact inventory slots use one picture and fallback path.
 struct ItemIcon: View {
     let item: ItemStack
+    var fallbackSymbol: String?
     @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, image: CGImage)?
 
@@ -16,7 +17,7 @@ struct ItemIcon: View {
         let request = Request(library: pictures?.identity, item: item)
         let image = loaded?.request == request ? loaded?.image : pictures?.cachedPicture(for: item)
         ItemGraphic(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item),
-                    image: image)
+                    image: image, fallbackSymbol: fallbackSymbol)
             .task(id: request) {
                 guard loaded?.request != request, let pictures else { return }
                 let resolved: CGImage?
@@ -33,6 +34,7 @@ struct ItemGraphic: View {
     let id: String
     let isEnchanted: Bool
     let image: CGImage?
+    var fallbackSymbol: String?
 
     var body: some View {
         Group {
@@ -41,6 +43,8 @@ struct ItemGraphic: View {
                     .resizable()
                     .interpolation(.none)
                     .aspectRatio(contentMode: .fit)
+            } else if let fallbackSymbol {
+                Image(systemName: fallbackSymbol)
             } else {
                 Image(systemName: ItemAppearance.symbol(for: id))
                     .font(.body)

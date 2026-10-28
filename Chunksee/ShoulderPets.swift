@@ -65,7 +65,8 @@ struct ShoulderPetsSection: View {
             Section("On Shoulders") {
                 ForEach(pets) { pet in
                     CreatureDetailSections(session: session, creature: pet.creature) {
-                        Label(pet.name, systemImage: "pawprint.fill")
+                        InspectorHeading(title: Text(pet.name), symbol: CreatureGroup.pet.symbol,
+                                         picture: .mob(pet.creature.id))
                     } location: {
                         if pet.location == nil {
                             Text("Location unknown").foregroundStyle(.secondary)
