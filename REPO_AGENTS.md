@@ -1883,11 +1883,13 @@ lock; neither lock path awaits or calls back into the other owner. The source ow
 before data. Region/readout publication checks both sources. Artwork changes also retire cached
 readouts because their highest visible layer can change; definitions and the world reader remain
 available. No-artwork scans remain synchronous. Overlay headers and layer
-material/height pairs use compact little-endian data
+material/height pairs stay in one compact little-endian buffer per chunk, both in memory and
+on disk. Borrowed layer views avoid a retained array per column; the buffer's byte count and
+allocation overhead contribute to the unchanged detail budgets. The data lives
 beside the existing compact indices, with bounded decoding and validation of flags, columns,
 materials and heights. The region budget remembers its first omitted chunk index, so later, smaller
 completions cannot fill space past that prefix. The sidecar preserves and validates this boundary;
-mixed-size completion orders retain identical data. Cache version 37 invalidates earlier pixels
+mixed-size completion orders retain identical data. Cache version 38 invalidates earlier pixels
 and sidecar formats.
 More than 256 partial layers in one column use the first visible block's flat fallback, bounding
 transient scan storage before those detail budgets apply. Columns without usable ground use that

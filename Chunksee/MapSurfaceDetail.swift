@@ -30,27 +30,83 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
             let baseColor: UInt32
             let isWater: Bool
             /// Top to bottom, matching the one terrain traversal.
-            let layers: [Layer]
+            let layers: Layers
+        }
 
-            var estimatedBytes: Int { 64 + layers.count * 16 }
+        struct Layers: RandomAccessCollection, Sendable, Equatable {
+            fileprivate let data: Data
+            fileprivate let offset: Int
+            let count: Int
+
+            var startIndex: Int { 0 }
+            var endIndex: Int { count }
+            func index(after i: Int) -> Int { i + 1 }
+            func index(before i: Int) -> Int { i - 1 }
+
+            subscript(i: Int) -> Layer {
+                precondition(i >= 0 && i < count)
+                return Layer(material: MapSurfaceDetail.value(UInt16.self, in: data, at: offset + i * 6),
+                             y: MapSurfaceDetail.value(Int32.self, in: data, at: offset + i * 6 + 2))
+            }
+
+            static func == (lhs: Self, rhs: Self) -> Bool {
+                lhs.count == rhs.count && lhs.elementsEqual(rhs)
+            }
+        }
+
+        /// Keep the sidecar's packed representation in memory too. Iteration borrows the
+        /// shared buffer, without retaining a separate array for every layered column.
+        struct Overlays: Sequence, Sendable, Equatable {
+            fileprivate let data: Data
+            let count: Int
+            var isEmpty: Bool { count == 0 }
+            var underestimatedCount: Int { count }
+            var estimatedBytes: Int { isEmpty ? 0 : 64 + data.count }
+
+            func makeIterator() -> Iterator { Iterator(data: data) }
+
+            struct Iterator: IteratorProtocol {
+                fileprivate let data: Data
+                fileprivate var offset = 0
+
+                mutating func next() -> Overlay? {
+                    guard offset < data.count else { return nil }
+                    let count = Int(MapSurfaceDetail.value(UInt16.self, in: data, at: offset + 2))
+                    defer { offset += 8 + count * 6 }
+                    return Overlay(column: MapSurfaceDetail.value(UInt8.self, in: data, at: offset),
+                        baseColor: MapSurfaceDetail.value(UInt32.self, in: data, at: offset + 4),
+                        isWater: MapSurfaceDetail.value(UInt8.self, in: data, at: offset + 1) == 1,
+                        layers: Layers(data: data, offset: offset + 8, count: count))
+                }
+            }
         }
 
         let materials: [Material]
         let indices: [UInt16]
-        let overlays: [Overlay]
+        let overlays: Overlays
         let estimatedBytes: Int
 
         init?(columns: [RegionTileRenderer.Column?], requests: [MapBlockColorRequest], indices source: [Int?],
               layerIndices: [[Int]] = Array(repeating: [], count: 256), style: MapStyle = .normal) {
             guard columns.count == 256, source.count == 256, layerIndices.count == 256 else { return nil }
+            var overlayCapacity = 0
+            for case let column? in columns where column.surfaceEmphasis != .highlighted && !column.layers.isEmpty {
+                guard column.layers.count <= RegionTileRenderer.maximumColumnLayers else { return nil }
+                overlayCapacity += 8 + column.layers.count * 6
+            }
             struct Key: Hashable {
                 let request: Int
                 let shade: Double
                 let emphasis: MapBlockFilter.Emphasis
             }
             var palette: [Material] = [], indices = [UInt16](repeating: noMaterial, count: 256)
-            var overlays: [Overlay] = [], bytes = 512
+            var overlays = Data(capacity: min(overlayCapacity, maximumChunkBytes)), overlayCount = 0
+            var bytes = 512 + (overlayCapacity == 0 ? 0 : 64)
             var known: [Key: UInt16] = [:]
+            func append<T: FixedWidthInteger>(_ value: T) {
+                var value = value.littleEndian
+                withUnsafeBytes(of: &value) { overlays.append(contentsOf: $0) }
+            }
             func material(_ source: Int, shade: Double, emphasis: MapBlockFilter.Emphasis) -> UInt16? {
                 guard requests.indices.contains(source) else { return nil }
                 let key = Key(request: source, shade: shade, emphasis: emphasis)
@@ -73,32 +129,34 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
                 }
                 guard !column.layers.isEmpty else { continue }
                 guard column.layers.count == layerIndices[i].count else { return nil }
-                var layers: [Layer] = []
+                bytes += 8 + column.layers.count * 6
+                guard bytes <= maximumChunkBytes else { return nil }
+                let color = style == .waterDepth && column.waterDepth > 0
+                    ? MapStylePalette.waterColor(depth: column.waterDepth) : RegionTileRenderer.baseColor(for: column)
+                append(UInt8(i))
+                append(UInt8(column.waterDepth > 0 ? 1 : 0))
+                append(UInt16(column.layers.count))
+                append(UInt32(color.red) << 16 | UInt32(color.green) << 8 | UInt32(color.blue))
                 for (layer, source) in zip(column.layers, layerIndices[i]) {
                     guard let index = material(source, shade: 1, emphasis: column.surfaceEmphasis),
                           let y = Int32(exactly: layer.y), y != RegionTileRenderer.Canvas.noHeight else { return nil }
-                    layers.append(Layer(material: index, y: y))
+                    append(index)
+                    append(y)
                 }
-                let color = style == .waterDepth && column.waterDepth > 0
-                    ? MapStylePalette.waterColor(depth: column.waterDepth) : RegionTileRenderer.baseColor(for: column)
-                let overlay = Overlay(column: UInt8(i), baseColor: UInt32(color.red) << 16 | UInt32(color.green) << 8 | UInt32(color.blue),
-                                      isWater: column.waterDepth > 0, layers: layers)
-                bytes += overlay.estimatedBytes
-                guard bytes <= maximumChunkBytes else { return nil }
-                overlays.append(overlay)
+                overlayCount += 1
             }
             guard !palette.isEmpty else { return nil }
             materials = palette
             self.indices = indices
-            self.overlays = overlays
+            self.overlays = Overlays(data: overlays, count: overlayCount)
             estimatedBytes = bytes
         }
 
-        fileprivate init(materials: [Material], indices: [UInt16], overlays: [Overlay], materialBytes: Int) {
+        fileprivate init(materials: [Material], indices: [UInt16], overlays: Overlays, materialBytes: Int) {
             self.materials = materials
             self.indices = indices
             self.overlays = overlays
-            estimatedBytes = indices.count * 2 + materialBytes + overlays.reduce(0) { $0 + $1.estimatedBytes }
+            estimatedBytes = indices.count * 2 + materialBytes + overlays.estimatedBytes
         }
     }
 
@@ -163,33 +221,15 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
         }
     }
 
-    /// The same small record repeats for every visible layer. Packed fields avoid building
-    /// and compressing thousands of property-list dictionaries for those records.
-    private static func encodeOverlays(_ overlays: [Chunk.Overlay]) -> Data {
-        var data = Data()
-        data.reserveCapacity(overlays.reduce(0) { $0 + 8 + $1.layers.count * 6 })
-        func append<T: FixedWidthInteger>(_ value: T) {
-            var value = value.littleEndian
-            withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
-        }
-        for overlay in overlays {
-            append(overlay.column)
-            append(UInt8(overlay.isWater ? 1 : 0))
-            append(UInt16(overlay.layers.count))
-            append(overlay.baseColor)
-            for layer in overlay.layers {
-                append(layer.material)
-                append(layer.y)
-            }
-        }
-        return data
+    private static func value<T: FixedWidthInteger>(_ type: T.Type, in data: Data, at offset: Int) -> T {
+        data.withUnsafeBytes { T(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: T.self)) }
     }
 
-    private static func decodeOverlays(_ data: Data, materialCount: Int) -> [Chunk.Overlay]? {
-        guard data.count <= maximumChunkBytes else { return nil }
+    private static func decodeOverlays(_ data: Data, materialCount: Int) -> Chunk.Overlays? {
+        guard data.isEmpty || data.count + 64 <= maximumChunkBytes else { return nil }
         return data.withUnsafeBytes { bytes in
-            var offset = 0, retainedBytes = 0
-            var columns: Set<UInt8> = [], result: [Chunk.Overlay] = []
+            var offset = 0, count = 0
+            var columns: Set<UInt8> = []
             func read<T: FixedWidthInteger>(_ type: T.Type) -> T? {
                 let size = MemoryLayout<T>.size
                 guard size <= bytes.count - offset else { return nil }
@@ -197,23 +237,18 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
                 return T(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: T.self))
             }
             while offset < bytes.count {
-                guard result.count < 256, let column = read(UInt8.self), columns.insert(column).inserted,
+                guard count < 256, let column = read(UInt8.self), columns.insert(column).inserted,
                       let flags = read(UInt8.self), flags <= 1,
-                      let count = read(UInt16.self), count > 0, Int(count) <= RegionTileRenderer.maximumColumnLayers,
+                      let layerCount = read(UInt16.self), layerCount > 0, Int(layerCount) <= RegionTileRenderer.maximumColumnLayers,
                       let color = read(UInt32.self), color <= 0xffffff,
-                      Int(count) * 6 <= bytes.count - offset else { return nil }
-                retainedBytes += 64 + Int(count) * 16
-                guard retainedBytes <= maximumChunkBytes else { return nil }
-                var layers: [Chunk.Layer] = []
-                layers.reserveCapacity(Int(count))
-                for _ in 0..<count {
+                      Int(layerCount) * 6 <= bytes.count - offset else { return nil }
+                for _ in 0..<layerCount {
                     guard let material = read(UInt16.self), Int(material) < materialCount,
                           let y = read(Int32.self), y != RegionTileRenderer.Canvas.noHeight else { return nil }
-                    layers.append(Chunk.Layer(material: material, y: y))
                 }
-                result.append(Chunk.Overlay(column: column, baseColor: color, isWater: flags == 1, layers: layers))
+                count += 1
             }
-            return result
+            return Chunk.Overlays(data: data, count: count)
         }
     }
 
@@ -234,7 +269,7 @@ nonisolated struct MapSurfaceDetail: Sendable, Equatable {
                 }
             }
             stored.append(StoredChunk(index: index, materials: Self.encodeIndices(references),
-                                      indices: Self.encodeIndices(chunk.indices), overlays: Self.encodeOverlays(chunk.overlays)))
+                                      indices: Self.encodeIndices(chunk.indices), overlays: chunk.overlays.data))
         }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
