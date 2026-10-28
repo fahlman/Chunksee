@@ -74,13 +74,15 @@ import Testing
         defer { fixture.remove() }
         let resources = MinecraftResources(defaults: TestDefaults.make())
         resources.choose(fixture.root)
-        let library = try #require(await resources.library())
+        let source = try #require(await resources.library())
+        let library = try #require(resources.artwork(for: source))
         #expect(try await library.mapColors(for: [BlockState("test:new")]).count == 1)
         resources.forget()
         await resources.waitUntilIdle()
         await #expect(throws: CancellationError.self) { try await library.mapColors(for: [BlockState("test:new")]) }
         resources.choose(fixture.root)
-        let replacement = try #require(await resources.library())
+        let next = try #require(await resources.library())
+        let replacement = try #require(resources.artwork(for: next))
         #expect(replacement.identity != library.identity && replacement.sourceKey == library.sourceKey)
         #expect(try await replacement.mapColors(for: [BlockState("test:new")]).count == 1)
         resources.forget()
@@ -98,7 +100,7 @@ import Testing
         let cache = TileCache(directory: url.appendingPathComponent("tiles"))
         let baseline = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
         var colored = baseline
-        colored.gameAssets = library
+        colored.gameData = library.data; colored.gameArtwork = library
         let original = try #require(try await baseline.tile(for: position))
         let image = try #require(try await colored.tile(for: position))
         let hit = try #require(try await colored.tile(for: position))
@@ -118,9 +120,9 @@ import Testing
         #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
         let regionFile = dimension.regionURL(.terrain, x: 0, z: 0)
         let fallback = try #require(TileCache.key(for: position, regionFile: regionFile))
-        let source = try #require(TileCache.key(for: position, regionFile: regionFile, colorSource: library.sourceKey))
+        let source = try #require(TileCache.key(for: position, regionFile: regionFile, colorSource: library.sourceKey, gameSource: .init(data: library.data, artwork: library)))
         #expect(fallback.fileName != source.fileName && cache.load(source) != nil)
-        #expect(TileCache.key(for: position, regionFile: regionFile, style: .height, colorSource: library.sourceKey)
+        #expect(TileCache.key(for: position, regionFile: regionFile, style: .height, colorSource: library.sourceKey, gameSource: .init(data: library.data, artwork: library))
             == TileCache.key(for: position, regionFile: regionFile, style: .height))
         await library.close()
         await #expect(throws: CancellationError.self) { try await colored.tile(for: position) }
@@ -134,11 +136,12 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
-            await gate.read(renderer.gameAssets == nil ? "fallback" : "assets")
+            await gate.read(renderer.gameArtwork == nil ? "fallback" : "assets")
         })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
         await gate.waitForRequest("fallback")
-        map.setGameAssets(try fixture.library())
+        let artwork = try fixture.library()
+        map.setGameResources(data: artwork.data, artwork: artwork)
         await gate.waitForRequest("assets")
         let good = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
         await gate.finish("assets", with: .init(full: good, preview: good))

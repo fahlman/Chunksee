@@ -103,7 +103,7 @@ import Testing
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
         let definitions = resources.details.definitions
         let reader = RegionReader(dimension: dimension, cache: .off,
-            options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id]), definitions: definitions), notableBlocks: definitions.notableBlocks)
+            options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id], water: nil), definitions: definitions), notableBlocks: definitions.notableBlocks)
         let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
         let incremental = try #require(resources.index.index.dimensions[dimension.id])

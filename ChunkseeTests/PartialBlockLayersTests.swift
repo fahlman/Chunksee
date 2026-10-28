@@ -24,8 +24,72 @@ import Testing
         #expect(try await assets.mapColors(for: [BlockState("test:flower")]) == [MapColor(0xff0000)])
         await assets.close()
         #expect(states.map(coverage) == Array(repeating: .unavailable, count: states.count))
-        #expect(assets.cachedMapMaterials(for: states) == nil)
+        #expect(assets.data.cachedMapMaterials(for: [states[0]]) != nil)
+        await assets.data.close()
+        #expect(assets.data.cachedMapMaterials(for: states) == nil)
         await #expect(throws: CancellationError.self) { try await assets.mapCoverageReader() }
+    }
+
+    @Test func retainedMaterialReadersShareDataAndStopWhenThatSourceCloses() async throws {
+        let fixture = try fixture()
+        defer { fixture.remove() }
+        let artwork = try fixture.library(), data = artwork.data
+        let state = BlockState("test:torch"), unused = BlockState("test:wall")
+        let read = try await data.mapMaterialReader()
+        let materials = await withTaskGroup(of: MapBlockMaterial?.self) { group in
+            for _ in 0..<16 { group.addTask { read(state) } }
+            var result: [MapBlockMaterial?] = []
+            for await material in group { result.append(material) }
+            return result
+        }
+        let shared = try #require(try await data.mapMaterials(for: [state]).first)
+        #expect(materials.allSatisfy { $0 === shared })
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return read(unused)
+        }
+        #expect(await cancelled.value == nil)
+        #expect(data.cachedMapMaterials(for: [unused]) == nil)
+        await data.close()
+        #expect(read(state) == nil && read(unused) == nil)
+        #expect(data.cachedMapMaterials(for: [state]) == nil)
+        await #expect(throws: CancellationError.self) { try await data.mapMaterialReader() }
+        await artwork.close()
+    }
+
+    @Test func artworkChangesRefreshCoverageWithoutReplacingGameData() async throws {
+        let fixture = try fixture(), root = try world([15: "minecraft:torch"])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.choose(fixture.root)
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources), map = try #require(session.map)
+        resources.refreshGameAssets()
+        await resources.waitForRefresh()
+        let point = CGPoint(x: 8, y: 8), data = try #require(map.currentRenderer.gameData)
+        let reader = resources.readers["minecraft:overworld"]
+        map.loadTopBlocks(at: point)
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: point)?.id == "test:ground")
+
+        names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        await map.waitForTopBlocks()
+        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect(map.topBlock(at: point)?.id == "minecraft:torch")
+        #expect(map.topBlock(at: point)?.hasGameDefinition == true)
+
+        names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        await map.waitForTopBlocks()
+        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect(map.topBlock(at: point)?.id == "test:ground")
+        session.close()
+        await session.waitUntilClosed()
+        names.minecraft.forget()
+        await names.minecraft.waitUntilIdle()
     }
 
     @Test func buriedModelsAreReadOnlyWhenTheCutawayReachesThem() async throws {
@@ -33,14 +97,14 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library()
-        var renderer = RegionTileRenderer(dimension: dimension, gameAssets: assets)
+        var renderer = RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets)
         let surface = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         #expect(try ItemPictureFixture.pixels(surface.full.image).color(8, 8) == [0, 255, 0, 255])
-        #expect(assets.cachedMapMaterials(for: [BlockState("test:torch")]) == nil)
+        #expect(assets.data.cachedMapMaterials(for: [BlockState("test:torch")]) == nil)
         renderer.cutawayY = 5
         let cutaway = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         #expect(try ItemPictureFixture.pixels(cutaway.full.image).color(8, 8) == [4, 251, 0, 255])
-        #expect(assets.cachedMapMaterials(for: [BlockState("test:torch")]) != nil)
+        #expect(assets.data.cachedMapMaterials(for: [BlockState("test:torch")]) != nil)
     }
 
     @Test(arguments: ["test:torch", "test:wall", "test:flower"])
@@ -49,7 +113,7 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library()
-        let renderer = RegionTileRenderer(dimension: dimension, gameAssets: assets)
+        let renderer = RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets)
         let tile = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         let surface = try #require(tile.detail), chunk = try #require(surface.detail.chunks[0])
         #expect(surface.heights[8 * 512 + 8] == 12)
@@ -78,7 +142,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library(), region = RegionPosition(x: 0, z: 0)
         let renderer = RegionTileRenderer(dimension: dimension, cache: TileCache(directory: root.appendingPathComponent("tiles")),
-            savesInBackground: false, gameAssets: assets)
+            savesInBackground: false, gameData: assets.data, gameArtwork: assets)
         let cold = try #require(try await renderer.tile(for: region))
         let hit = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(cold.full.image).bytes == ItemPictureFixture.pixels(hit.full.image).bytes)
@@ -102,7 +166,7 @@ import Testing
             defer { try? FileManager.default.removeItem(at: root) }
             let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
             let file = try #require(try dimension.region(x: 0, z: 0))
-            let renderer = RegionTileRenderer(dimension: dimension, gameAssets: assets)
+            let renderer = RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets)
             let readout = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0)?[0])
             #expect(readout.id == (id == "minecraft:barrier" ? "test:ground" : id))
             if id == "minecraft:chest" || id == "test:ground" { #expect(readout.y == 15) }
@@ -119,7 +183,7 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library()
-        let tile = try #require(try await RegionTileRenderer(dimension: dimension, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let tile = try #require(try await RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets).tile(for: .init(x: 0, z: 0)))
         let detail = try #require(tile.detail?.detail), encoded = try #require(detail.encoded())
         #expect(MapSurfaceDetail.decoded(encoded) == detail)
         let payload = try #require(try PropertyListSerialization.propertyList(from: encoded, format: nil) as? [String: Any])
@@ -147,7 +211,7 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library()
-        let renderer = RegionTileRenderer(dimension: dimension, gameAssets: assets)
+        let renderer = RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets)
         let tile = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         let surface = try #require(tile.detail)
         let detail = try #require(try await MapDetailRenderer.render(.init(x: 0, z: 0), surface: surface,
@@ -155,7 +219,7 @@ import Testing
         let waterRoot = try world([14: "minecraft:water", 13: "minecraft:water"])
         defer { try? FileManager.default.removeItem(at: waterRoot) }
         let waterDimension = try #require(try World(contentsOf: waterRoot).dimension("overworld"))
-        let water = try #require(try await RegionTileRenderer(dimension: waterDimension, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let water = try #require(try await RegionTileRenderer(dimension: waterDimension, gameData: assets.data, gameArtwork: assets).tile(for: .init(x: 0, z: 0)))
         let waterPixel = try ItemPictureFixture.pixels(water.full.image).color(8, 8)
         let pixels = try ItemPictureFixture.pixels(detail.image)
         #expect(pixels.color(137, 137) == waterPixel)
@@ -168,7 +232,7 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0)), assets = try fixture.library()
-        var renderer = RegionTileRenderer(dimension: dimension, blockFilter: .init(hiddenIDs: ["test:torch"]), gameAssets: assets)
+        var renderer = RegionTileRenderer(dimension: dimension, blockFilter: .init(hiddenIDs: ["test:torch"]), gameData: assets.data, gameArtwork: assets)
         let wall = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         #expect(try ItemPictureFixture.pixels(wall.full.image).color(8, 8) == [0, 191, 64, 255])
         let top = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0)?[136])
@@ -200,7 +264,7 @@ import Testing
         let saved = try World(contentsOf: root), assets = try fixture.library()
         let dimension = try #require(saved.dimension("overworld")), game = try #require(try GameAssets(contentsOf: fixture.jar))
         let context = MapSurfaceContext(settings: nil, water: try WorldDefinitions.read(saved, assets: game).water)
-        let renderer = RegionTileRenderer(dimension: dimension, surfaceContext: context, gameAssets: assets)
+        let renderer = RegionTileRenderer(dimension: dimension, surfaceContext: context, gameData: assets.data, gameArtwork: assets)
         let file = try #require(try dimension.region(x: 0, z: 0))
         let top = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0)?[136])
         #expect(top.id == "minecraft:oak_fence" && top.y == 15 && top.waterDepth == 3)
@@ -209,7 +273,7 @@ import Testing
         let detail = try #require(try await MapDetailRenderer.render(.init(x: 0, z: 0), surface: surface,
             assets: assets, heightScale: nil, usesSavedLighting: false))
         let waterDimension = try #require(try World(contentsOf: waterRoot).dimension("overworld"))
-        let waterTile = try #require(try await RegionTileRenderer(dimension: waterDimension, surfaceContext: context, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let waterTile = try #require(try await RegionTileRenderer(dimension: waterDimension, surfaceContext: context, gameData: assets.data, gameArtwork: assets).tile(for: .init(x: 0, z: 0)))
         let pixels = try ItemPictureFixture.pixels(detail.image)
         let water = try ItemPictureFixture.pixels(waterTile.full.image).color(8, 8)
         #expect(pixels.color(129, 129) == water)
@@ -220,7 +284,7 @@ import Testing
         let fixture = try fixture(), root = try world([15: "test:ground"])
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld")), assets = try fixture.library()
-        let tile = try #require(try await RegionTileRenderer(dimension: dimension, gameAssets: assets).tile(for: .init(x: 0, z: 0)))
+        let tile = try #require(try await RegionTileRenderer(dimension: dimension, gameData: assets.data, gameArtwork: assets).tile(for: .init(x: 0, z: 0)))
         let surface = try #require(tile.detail)
         #expect(surface.heights[8 * 512 + 8] == 15)
         #expect(surface.detail.chunks[0]?.overlays.isEmpty == true)
@@ -234,7 +298,7 @@ import Testing
     @Test func excessiveTranslucentTowersKeepAVisibleFlatSurface() throws {
         let sections = (0..<20).map { Fixtures.section(y: $0, palette: [.string("test:torch")], indices: []) }
         let chunk = try Chunk(nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3, sections: sections))
-        var colors = RegionTileRenderer.ColorSections(chunk, coverage: {
+        var colors = RegionTileRenderer.ColorSections(chunk, filter: MapBlockFilter(), water: nil, coverage: {
             $0 == BlockState("test:torch") ? .partial(opacity: 1 / 64) : .unavailable
         })
         let columns = colors.topColumns()
@@ -275,7 +339,7 @@ import Testing
         try block("test:lily", [top("lily", to: [16, 1, 16])])
         try block("test:flower", [["from": [0, 0, 8], "to": [16, 16, 8], "faces": [
             "north": ["texture": "#flower", "uv": [0, 0, 16, 16]], "south": ["texture": "#flower", "uv": [0, 0, 16, 16]]]]])
-        for id in ["minecraft:barrier", "minecraft:chest", "minecraft:water", "test:empty"] { try block(id, []) }
+        for id in ["minecraft:barrier", "minecraft:chest", "minecraft:water", "test:empty", "minecraft:torch"] { try block(id, []) }
         files["assets/minecraft/textures/block/water_still.png"] = try ItemPictureFixture.png(Array(repeating: [UInt8](arrayLiteral: 0, 0, 128, 128), count: 4).flatMap { $0 })
         return try ItemPictureFixture(extraFiles: files)
     }

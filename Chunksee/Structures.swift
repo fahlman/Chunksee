@@ -177,19 +177,8 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
 
     var position: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
 
-    /// "Plains Village", "Stronghold", "Ocean Ruin Cold" and so on, from the id. Minecraft's own
-    /// names live in its language files, which can't be redistributed.
-    var name: String {
-        var words = ReadableName.from(structureID).split(separator: " ").map(String.init)
-        // Variants come last in ids ("village_plains", "ocean_ruin_cold"); English puts them first.
-        let variants: Set<String> = ["Plains", "Desert", "Savanna", "Snowy", "Taiga", "Cold", "Warm", "Ocean",
-                                     "Jungle", "Mountain", "Swamp", "Nether", "Beached", "Mesa"]
-        if words.count >= 2, let last = words.last, variants.contains(last) {
-            words.removeLast()
-            words.insert(last, at: 0)
-        }
-        return words.joined(separator: " ")
-    }
+    /// The game has no structure-name language keys; keep the saved ID's word order.
+    var name: String { ReadableName.from(structureID) }
 
     init(_ start: StructureStart, groups: StructureGroup.Catalog = .init(tags: [:])) {
         id = "\(start.id)@\(start.chunkX),\(start.chunkZ)"

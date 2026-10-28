@@ -20,7 +20,7 @@ import Testing
                      read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension(dimensionID))
-        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id], water: nil)
         if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
                                      cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
         return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)
@@ -189,7 +189,7 @@ import Testing
         MapClipboard.copy(playerHit.position, y: playerHit.y, on: map, to: board)
         #expect(board.string(forType: .string) == "-9 -13 -6")
         content.players = []   // a hidden player leaves the inventory pin as the copy target
-        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player]) { _ in .named("Player") }
+        content.hits = WorldSearch.search("diamond", in: SearchIndex(), players: [player], gameNames: .unavailable) { _ in .named("Player") }
         let pin = try #require(content.hits.first)
         #expect(pin.source == .inventory(player.uuid))
         let hit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))

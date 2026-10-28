@@ -7,23 +7,27 @@ typealias NotableBlock = ChunkseeIndex.NotableBlock
 typealias BlockDeposit = NotableBlock.Deposit
 
 extension NotableBlock {
-    nonisolated var name: String {
+    // These are the existing presentation groups' representative blocks, not a membership
+    // catalog. Membership still comes from the world's tags in ChunkseeIndex.
+    private nonisolated var nameID: String {
         switch self {
-        case .diamond: String(localized: "Diamond Ore")
-        case .emerald: String(localized: "Emerald Ore")
-        case .gold: String(localized: "Gold Ore")
-        case .netherGold: String(localized: "Nether Gold Ore")
-        case .lapis: String(localized: "Lapis Lazuli Ore")
-        case .ancientDebris: String(localized: "Ancient Debris")
-        case .spawner: String(localized: "Spawner")
-        case .trialSpawner: String(localized: "Trial Spawner")
-        case .buddingAmethyst: String(localized: "Budding Amethyst")
+        case .diamond: "minecraft:diamond_ore"
+        case .emerald: "minecraft:emerald_ore"
+        case .gold: "minecraft:gold_ore"
+        case .netherGold: "minecraft:nether_gold_ore"
+        case .lapis: "minecraft:lapis_ore"
+        case .ancientDebris: "minecraft:ancient_debris"
+        case .spawner: "minecraft:spawner"
+        case .trialSpawner: "minecraft:trial_spawner"
+        case .buddingAmethyst: "minecraft:budding_amethyst"
         }
     }
 
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.name(nameID, in: "block") }
+
     /// The text `block:` searches match: the name and every id.
-    nonisolated func searchText(in catalog: NotableBlock.Catalog?) -> String {
-        ([name] + (catalog?.ids(for: self) ?? []).sorted()).joined(separator: " ")
+    nonisolated func searchText(in catalog: NotableBlock.Catalog?, gameNames: GameNames) -> String {
+        ([name(in: gameNames), nameID] + (catalog?.ids(for: self) ?? []).sorted()).joined(separator: " ")
     }
 }
 

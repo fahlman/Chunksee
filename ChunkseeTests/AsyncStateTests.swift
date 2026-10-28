@@ -171,11 +171,9 @@ import Testing
 
 @Suite(.isolatedStores) struct InspectorReadLifetimeTests {
     @Test func thePreviousPlayerCannotReplaceTheCurrentPlayersRecords() async throws {
-        let url = try TestWorld.make(chunks: [])
-        defer { try? FileManager.default.removeItem(at: url) }
-        let world = try World(contentsOf: url), first = UUID(), second = UUID()
+        let first = UUID(), second = UUID()
         let gate = AsyncReadGate<PlayerRecords>()
-        let model = PlayerRecordsModel(world: world, work: BackgroundWork(), read: { uuid, _ in await gate.read(uuid.uuidString) })
+        let model = PlayerRecordsModel(work: BackgroundWork(), read: { uuid, _ in await gate.read(uuid.uuidString) })
         let oldRead = Task { await model.load(first, name: nil) }
         await gate.waitForRequest(first.uuidString)
         let currentRead = Task { await model.load(second, name: nil) }
@@ -203,7 +201,7 @@ import Testing
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
-                                 firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) })
+                                 firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         await gate.finish("saved", with: ["saved": [hit("Saved")]])
         await search.waitForSearch()
@@ -237,7 +235,7 @@ import Testing
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
-                                 firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) })
+                                 firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         search.text = "first"
         await gate.waitForRequest("first")
@@ -261,7 +259,7 @@ import Testing
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: saved,
-                                 execute: { await gate.read("\($0.queries[0])-\($0.players.count)") })
+                                 execute: { await gate.read("\($0.queries[0])-\($0.players.count)") }, gameNames: { .unavailable })
         search.text = "query"
         for query in ["saved", "query"] {
             await gate.waitForRequest("\(query)-0")
@@ -287,7 +285,7 @@ import Testing
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
-                                 execute: { await gate.read($0.queries[0]) })
+                                 execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         search.text = "old"
         await gate.waitForRequest("old")
         search.text = "new"
@@ -310,7 +308,7 @@ import Testing
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: nil, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
-                                 execute: { await gate.read($0.playerNames[uuid]!.text) })
+                                 execute: { await gate.read($0.playerNames[uuid]!.text) }, gameNames: { .unavailable })
         search.text = "diamond"
         await gate.waitForRequest(unknown)
         await names.lookUp([uuid])

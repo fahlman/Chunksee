@@ -152,8 +152,8 @@ enum StructureTagFixture {
         resources.names.minecraft.forget()
         #expect(try await groups() == ["minecraft:village_plains": .village, "test:hill_fort": .other,
                                       "test:camp": .other, "test:unknown": .other])
-        let hits = WorldSearch.search("structure:village", in: resources.index.index, players: []) { _ in .named("") }
-        #expect(hits.map(\.title) == ["Plains Village"])
+        let hits = WorldSearch.search("structure:village", in: resources.index.index, players: [], gameNames: .unavailable) { _ in .named("") }
+        #expect(hits.map(\.title) == ["Village Plains"])
         let refreshed = try await markers()
         #expect(refreshed.map(\.id) == original.map(\.id))
         #expect(refreshed.map(\.bounds) == original.map(\.bounds) && refreshed.map(\.y) == original.map(\.y))

@@ -61,12 +61,13 @@ import Testing
             "equipment": .compound([
                 "head": item("minecraft:golden_helmet", name: "Aurum", wear: true),
                 "offhand": item("minecraft:torch", count: 64), "chest": item("minecraft:iron_chestplate", count: 0),
-                "unknown": item("minecraft:apple"),
+                "unknown": item("minecraft:apple"), "storage": item("minecraft:chest"),
+                "custom:extra": item("minecraft:diamond"),
             ]),
         ]))
-        let equipped = EquipmentPresentation.rows(EquipmentPresentation.items(for: player))
-        #expect(equipped.map(\.slot) == ["head", "mainhand", "offhand"])
-        #expect(equipped.map { ItemAppearance.name(of: $0.item) } == ["Golden Helmet “Aurum”", "Iron Pickaxe “Miner”", "64 Torch"])
+        let equipped = EquipmentPresentation.rows(player.equippedItems)
+        #expect(equipped.map(\.slot) == ["head", "mainhand", "offhand", "storage", "custom:extra", "unknown"])
+        #expect(equipped.map { ItemAppearance.name(of: $0.item) } == ["Golden Helmet “Aurum”", "Iron Pickaxe “Miner”", "64 Torch", "Chest", "Diamond", "Apple"])
         #expect(EquipmentPresentation.rows(["body": ItemStack(id: "minecraft:wolf_armor", count: 0)]).isEmpty)
         #expect(ItemAppearance.durability(.init(remaining: 1500, maximum: 1561), locale: english) == "Durability: 1,500 of 1,561")
     }

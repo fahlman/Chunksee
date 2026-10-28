@@ -6,7 +6,8 @@ import Testing
 @Suite(.isolatedStores) struct PlayerEffectPresentationTests {
     private let english = Locale(identifier: "en_US")
 
-    @Test func decodedEffectsUseTheirOwnNamesAndPreserveCommandLevels() throws {
+    @Test func decodedEffectsUseTheirOwnNamesAndPreserveCommandLevels() async throws {
+        let names = try await GameNameFixture.names()
         let entries: [(String, String)] = [
             ("minecraft:unluck", "Bad Luck"), ("minecraft:dolphins_grace", "Dolphin’s Grace"),
             ("minecraft:hero_of_the_village", "Hero of the Village"),
@@ -18,16 +19,15 @@ import Testing
                 .compound(["id": .string(id), "amplifier": .byte(0), "duration": .int(1680)])
             } + [.compound(["id": .string("minecraft:resistance"), "amplifier": .byte(-1), "duration": .int(-1)])]),
         ]))
-        #expect(player.activeEffects.map { PlayerEffectText.name($0, locale: english) }
+        #expect(player.activeEffects.map { PlayerEffectText.name($0, gameNames: names, locale: english) }
                 == entries.map(\.1) + ["Resistance 256"])
         for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
-            let style = PlayerEffectText.NameStyle().locale(locale)
-            #expect(player.activeEffects.map { style.format($0) } == entries.map(\.1) + ["Resistance 256"])
+            #expect(player.activeEffects.map { PlayerEffectText.name($0, gameNames: names, locale: locale) } == entries.map(\.1) + ["Resistance 256"])
         }
         let legacy = PlayerInfo(uuid: UUID(), nbt: .compound([
             "ActiveEffects": .list([.compound(["Id": .byte(27), "Amplifier": .byte(1), "Duration": .int(1680)])]),
         ]))
-        #expect(PlayerEffectText.name(try #require(legacy.activeEffects.first), locale: english) == "Bad Luck II")
+        #expect(PlayerEffectText.name(try #require(legacy.activeEffects.first), gameNames: names, locale: english) == "Bad Luck II")
         #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
         #expect(TradeText.enchantmentName("minecraft:mending", level: 1) == "Mending")
     }

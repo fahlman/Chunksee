@@ -89,7 +89,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let library = try fixture.library(), region = RegionPosition(x: 0, z: 0)
-        let renderer = RegionTileRenderer(dimension: dimension, cache: nil, gameAssets: library)
+        let renderer = RegionTileRenderer(dimension: dimension, cache: nil, gameData: library.data, gameArtwork: library)
         let tile = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(tile.full.image).color(8, 8) == [124, 0, 124, 255])
         let surface = try #require(tile.detail)
@@ -105,8 +105,53 @@ import Testing
         await library.close()
     }
 
+    @Test func choosingGameFilesPreservesMissingTexturesAndDataAcrossArtworkChanges() async throws {
+        let fixture = try fixture(), root = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
+            palette: ["test:missing_texture", "test:no_definition"], index: { x, _, _ in x < 8 ? 0 : 1 })])
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.choose(fixture.root)
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources), map = try #require(session.map)
+        resources.refreshGameAssets()
+        await resources.waitForRefresh()
+        let region = RegionPosition(x: 0, z: 0), point = CGPoint(x: 12, y: 8)
+        let data = try #require(map.currentRenderer.gameData), reader = resources.readers["minecraft:overworld"]
+        let original = try #require(try await map.currentRenderer.tile(for: region))
+        let pixels = try ItemPictureFixture.pixels(original.full.image)
+        #expect(pixels.color(4, 8) == [124, 0, 124, 255])
+        #expect(pixels.color(12, 8) == [124, 0, 124, 255])
+        map.loadTopBlocks(at: point)
+        await map.waitForTopBlocks()
+        let notice = try #require(map.blockDefinitionNotice(for: map.topBlock(at: point)))
+        #expect(map.topBlock(at: CGPoint(x: 4, y: 8))?.hasGameDefinition == true)
+
+        names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        #expect(map.currentRenderer.gameData === data && map.currentRenderer.gameArtwork == nil)
+        #expect(resources.readers["minecraft:overworld"] === reader)
+        #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == notice)
+        let fallback = try #require(try await map.currentRenderer.tile(for: region))
+        let expected = try #require(BlockColors.color(for: "test:missing_texture"))
+        #expect(try ItemPictureFixture.pixels(fallback.full.image).color(4, 8) == [expected.red, expected.green, expected.blue, 255])
+
+        names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        let restored = try #require(try await map.currentRenderer.tile(for: region))
+        #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == pixels.bytes)
+        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == notice)
+        session.close()
+        await session.waitUntilClosed()
+        names.minecraft.forget()
+        await names.minecraft.waitUntilIdle()
+    }
+
     @Test func blockInformationUsesDefinitionEvidenceAndRefreshesWhenGameFilesChange() async throws {
-        let absent = try fixture(), present = try fixture(extra: [
+        let absent = try fixture(extra: ["version.json": ItemPictureFixture.json(["id": "Selected Game", "world_version": 5023])]),
+            present = try fixture(extra: [
             "assets/test/blockstates/no_definition.json": ItemPictureFixture.json(["variants": ["": ["model": "test:block/gone"]]])
         ])
         defer { absent.remove(); present.remove() }
@@ -118,22 +163,42 @@ import Testing
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: point, cacheDirectory: nil)
         defer { map.close() }
         let absentLibrary = try absent.library(), presentLibrary = try present.library()
-        map.setGameAssets(absentLibrary)
+        map.setGameResources(data: absentLibrary.data, artwork: absentLibrary)
         await map.waitForTopBlocks()
         let block = try #require(map.topBlock(at: point))
         #expect(block.id == "test:no_definition" && block.hasGameDefinition == false)
-        #expect(MapView.accessibilityReadout(map: map, content: .init()).contains(MapView.blockDefinitionNote))
-        map.setGameAssets(presentLibrary)
+        let notice = try #require(map.blockDefinitionNotice(for: block))
+        #expect(notice.label() == "Minecraft Selected Game doesn't recognize this block")
+        #expect(MapView.accessibilityReadout(map: map, content: .init()).contains(notice.accessibilityLabel()))
+        map.setGameResources(data: absentLibrary.data, artwork: nil)
+        await map.waitForTopBlocks()
+        #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == notice)
+        map.setGameResources(data: presentLibrary.data, artwork: presentLibrary)
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: point)?.hasGameDefinition == true)
-        #expect(!MapView.accessibilityReadout(map: map, content: .init()).contains(MapView.blockDefinitionNote))
+        #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == nil)
+        #expect(!MapView.accessibilityReadout(map: map, content: .init()).contains(notice.accessibilityLabel()))
         map.loadTopBlocks(at: point)
-        map.setGameAssets(nil)
+        map.setGameResources(data: nil, artwork: nil)
         await map.waitForTopBlocks()
         #expect(map.topBlock(at: point)?.hasGameDefinition == nil)
         #expect(map.topBlock(at: point)?.id == "test:no_definition")
         await absentLibrary.close()
         await presentLibrary.close()
+    }
+
+    @Test func noticeUsesSelectedMetadataAndItsApprovedUnnamedFallback() {
+        let named = BlockDefinitionNotice(gameName: "  Selected Release  ")
+        #expect(named.label() == "Minecraft Selected Release doesn't recognize this block")
+        #expect(named.help() == "Minecraft Selected Release would remove it when this area loads.")
+        #expect(named.accessibilityLabel() == "Minecraft Selected Release doesn't recognize this block. It would remove it when this area loads.")
+        let unnamedVersions: [String?] = [nil, "", " "]
+        for name in unnamedVersions {
+            let unnamed = BlockDefinitionNotice(gameName: name)
+            #expect(unnamed.label() == "Minecraft doesn't recognize this block")
+            #expect(unnamed.help() == "Minecraft would remove it when this area loads.")
+            #expect(unnamed.accessibilityLabel() == "Minecraft doesn't recognize this block. It would remove it when this area loads.")
+        }
     }
 
     private func fixture(atlas: Int = 2, extra: [String: Data] = [:]) throws -> ItemPictureFixture {

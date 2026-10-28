@@ -55,14 +55,15 @@ final class MapModel {
     @ObservationIgnored private var detailRegionsWanted: Set<RegionPosition> = []
     @ObservationIgnored private var detailLoadsAttempted: Set<RegionPosition> = []
     @ObservationIgnored private var detailLoadJob: (region: RegionPosition, id: UUID, task: Task<Void, Never>)?
-    typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameAssetLibrary, MapHeightScale?, Bool) async throws -> MapTileImage?
+    typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameArtworkLibrary, MapHeightScale?, Bool) async throws -> MapTileImage?
     typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> MapSurfaceDetail.Surface?
     @ObservationIgnored private let renderDetail: DetailRenderer
     @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
     private var renderer: RegionTileRenderer
-    private var gameAssets: GameAssetLibrary?
+    private var gameData: GameDataLibrary?
+    private var gameArtwork: GameArtworkLibrary?
     private var biomeColors: MapBiomeColors?
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
     var currentRenderer: RegionTileRenderer {
@@ -73,7 +74,8 @@ final class MapModel {
         current.usesSavedLighting = lighting != nil
         current.blockFilter = blockFilter
         current.darkSpots = darkSpots
-        current.gameAssets = style == .height ? nil : gameAssets
+        current.gameData = style == .height ? nil : gameData
+        current.gameArtwork = style == .height ? nil : gameArtwork
         current.biomeColors = style == .height ? nil : biomeColors
         return current
     }
@@ -319,7 +321,7 @@ final class MapModel {
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = tile.full
-            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameAssets != nil, style != .height {
+            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style != .height {
                 detailSurfaces[region] = tile.detail
             }
         } else if wasStale {
@@ -401,7 +403,8 @@ final class MapModel {
         cancel()
         shadowHeights = [:]
         shadowImages = [:]
-        gameAssets = nil
+        gameData = nil
+        gameArtwork = nil
         biomeColors = nil
         nightLighting = nil
     }
@@ -410,7 +413,7 @@ final class MapModel {
 
     private func requestDetail(visibleIn size: CGSize) {
         guard !isClosed else { return }
-        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameAssets != nil && style != .height
+        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameArtwork != nil && style != .height
         detailRegionsWanted = enabled
             ? Set(viewport.visibleRegions(in: size, among: availableRegions).filter { tiles[$0] != nil && !stale.contains($0) }) : []
         detailSurfaces = detailSurfaces.filter { detailRegionsWanted.contains($0.key) }
@@ -426,7 +429,7 @@ final class MapModel {
         let visible = Set(detailSurfaces.flatMap { region, surface in
             MapDetailRenderer.visibleChunks(in: surface, region: region, viewport: viewport, size: size)
         })
-        let needed = gameAssets == nil ? [] : visible.filter {
+        let needed = gameArtwork == nil ? [] : visible.filter {
             !stale.contains($0.region) && !detailAttempted.contains($0)
         }
         if let job = detailJob, !needed.contains(job.chunk) {
@@ -494,7 +497,7 @@ final class MapModel {
     }
 
     private func startDetail() {
-        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameAssets else { return }
+        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork else { return }
         let chunk = detailQueue.removeFirst()
         guard let surface = detailSurfaces[chunk.region] else { return }
         let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
@@ -591,7 +594,7 @@ final class MapModel {
         var chunks = Set<ChunkPosition>()
         if let hoveredChunk { chunks.insert(hoveredChunk) }
         // The centered accessibility readout needs definition evidence without a mouse hover.
-        if showsDarkSpots || gameAssets != nil, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
+        if showsDarkSpots || gameData != nil, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
         return chunks
     }
 
@@ -599,8 +602,13 @@ final class MapModel {
         var renderer = currentRenderer
         // Height style skips artwork when drawing, but selected-game definition evidence
         // still belongs in block information. This renderer is used only for readouts.
-        renderer.gameAssets = gameAssets
+        renderer.gameData = gameData
         return renderer
+    }
+
+    func blockDefinitionNotice(for block: RegionTileRenderer.TopBlock?) -> BlockDefinitionNotice? {
+        guard block?.hasGameDefinition == false else { return nil }
+        return BlockDefinitionNotice(gameName: gameData?.version.id)
     }
 
     /// Reads the pointer's chunk off the main actor, sharing a pending/cached center read.
@@ -664,7 +672,7 @@ final class MapModel {
               let blocks = try? await renderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ)
         else { return nil }
         var annotated = blocks
-        if let library = renderer.gameAssets,
+        if let library = renderer.gameData,
            let definitions = try? await library.blockDefinitions(for: Set(blocks.compactMap { $0?.id })) {
             for index in annotated.indices {
                 if let id = annotated[index]?.id { annotated[index]?.hasGameDefinition = definitions[id] }
@@ -711,7 +719,7 @@ final class MapModel {
         surfaceChanged()
     }
 
-    func setDimensionSettings(_ settings: DimensionSettings?, water: GameTag? = nil) {
+    func setDimensionSettings(_ settings: DimensionSettings?, water: GameTag?) {
         let context = MapSurfaceContext(settings: settings, water: water)
         let scale = MapHeightScale(settings: settings)
         guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
@@ -835,17 +843,18 @@ final class MapModel {
         }
     }
 
-    /// The source owner shares this exact library with pictures. Swapping it cancels old
-    /// renders; stable file keys let a reselected unchanged jar reuse its correct disk tiles.
-    func setGameAssets(_ library: GameAssetLibrary?, biomeColors: MapBiomeColors? = nil) {
-        let biomeColors = library == nil ? nil : biomeColors
-        guard !isClosed, gameAssets?.identity != library?.identity || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
-        let definitionsChanged = gameAssets?.identity != library?.identity
-        gameAssets = library
+    /// Data remains connected when artwork changes. Retire old drawing requests and keys
+    /// without changing the selected world facts or their immutable reader.
+    func setGameResources(data: GameDataLibrary?, artwork: GameArtworkLibrary?, biomeColors: MapBiomeColors? = nil) {
+        guard !isClosed, gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
+                || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
+        let readoutsChanged = gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
+        gameData = data
+        gameArtwork = artwork
         self.biomeColors = biomeColors
-        if definitionsChanged { resetTopBlockReads() }
+        if readoutsChanged { resetTopBlockReads() }
         if style != .height { reloadTiles() }
-        if definitionsChanged { updateTopBlockReads() }
+        if readoutsChanged { updateTopBlockReads() }
     }
 
     private func reloadTiles() {
