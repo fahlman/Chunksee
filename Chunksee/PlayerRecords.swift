@@ -7,16 +7,27 @@ import SwiftUI
 nonisolated struct PlayerRecords: Sendable {
     var statistics: PlayerStatistics?
     var advancements: [AdvancementProgress] = []
+    var advancementDefinitions: [String: AdvancementDefinition] = [:]
+    var definitionGeneration: Int?
 
     /// Reads both files off the main actor. Statistics from before 1.7.6 are stored under the
     /// player's name, so `name` is tried when there's no file for the UUID.
     @concurrent
-    static func load(from world: World, uuid: UUID, name: String?) async -> PlayerRecords {
+    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary?) async -> PlayerRecords {
         var records = PlayerRecords()
         guard !Task.isCancelled else { return records }
         records.statistics = (try? world.statistics(for: uuid)) ?? name.flatMap { try? world.statistics(forName: $0) }
         guard !Task.isCancelled else { return records }
         records.advancements = ((try? world.advancements(for: uuid)) ?? nil) ?? []
+        // Only displayed titles need definitions. Progress/counts remain independent
+        // of missing game files, malformed titles or unavailable live game context.
+        let identifiers = Set(records.displayedAdvancements.map(\.id))
+        guard !Task.isCancelled, !identifiers.isEmpty, let current = try? World(contentsOf: world.url) else { return records }
+        if let library {
+            records.advancementDefinitions = (try? await library.advancementDefinitions(in: current, for: identifiers)) ?? [:]
+        } else {
+            records.advancementDefinitions = (try? current.advancementDefinitions(for: identifiers, assets: nil)) ?? [:]
+        }
         return records
     }
 
@@ -24,6 +35,8 @@ nonisolated struct PlayerRecords: Sendable {
     var completedAdvancements: [AdvancementProgress] {
         advancements.filter { $0.isDone && !$0.isRecipe }.sorted { ($0.completed ?? .distantPast) > ($1.completed ?? .distantPast) }
     }
+
+    var displayedAdvancements: [AdvancementProgress] { Array(completedAdvancements.prefix(5)) }
 
     /// The largest counts in a category, e.g. the most-mined blocks.
     func top(_ category: String, count: Int = 5) -> [StatisticRow] {
@@ -57,8 +70,13 @@ nonisolated struct PlayerRecords: Sendable {
         gameNames.name(id, in: "stat")
     }
 
-    static func advancementName(_ id: String, gameNames: GameNames) -> String {
-        gameNames.advancement(id)
+    static func advancementName(_ id: String, title: TextComponent.Content?, gameNames: GameNames) -> String {
+        gameNames.advancement(id, title: title)
+    }
+
+    func title(for id: String, generation: Int) -> TextComponent.Content? {
+        guard definitionGeneration == generation, let identifier = Identifier(id) else { return nil }
+        return advancementDefinitions[identifier.description]?.title
     }
 
     /// Every statistic as a row, for the sortable table.
@@ -80,20 +98,22 @@ final class PlayerRecordsModel {
     private(set) var records: PlayerRecords?
     @ObservationIgnored private var generation = UUID()
     private let work: BackgroundWork.Scope
-    private let read: @Sendable (UUID, String?) async -> PlayerRecords
+    private let read: @Sendable (UUID, String?) async -> PlayerRecords?
 
-    init(world: World, work: BackgroundWork, read: (@Sendable (UUID, String?) async -> PlayerRecords)? = nil) {
+    init(work: BackgroundWork, read: @escaping @Sendable (UUID, String?) async -> PlayerRecords?) {
         self.work = work.makeScope()
-        self.read = read ?? { await PlayerRecords.load(from: world, uuid: $0, name: $1) }
+        self.read = read
     }
 
     func load(_ uuid: UUID, name: String?) async {
         guard !work.isClosed, !Task.isCancelled else { return }
+        let previous = self.uuid == uuid ? records : nil
         cancel()
         self.uuid = uuid
+        records = previous
         let id = generation, read = read
         guard let task = work.start(priority: nil, operation: { [weak self] in
-            let records = await read(uuid, name)
+            guard let records = await read(uuid, name) else { return }
             guard !Task.isCancelled, let self, self.generation == id, self.uuid == uuid else { return }
             self.records = records
         }) else { return }
@@ -186,6 +206,7 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 /// Statistics and advancements sections of the player inspector.
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
+    let definitionGeneration: Int
     @Environment(\.gameNames) private var gameNames
     @Binding var showsAllStatistics: Bool
 
@@ -204,8 +225,9 @@ struct PlayerRecordsSections: View {
             let completed = records.completedAdvancements
             if !completed.isEmpty {
                 Section {
-                    ForEach(completed.prefix(5), id: \.id) { advancement in
-                        LabeledContent(PlayerRecords.advancementName(advancement.id, gameNames: gameNames)) {
+                    ForEach(records.displayedAdvancements, id: \.id) { advancement in
+                        LabeledContent(PlayerRecords.advancementName(advancement.id,
+                            title: records.title(for: advancement.id, generation: definitionGeneration), gameNames: gameNames)) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }

@@ -82,10 +82,13 @@ final class WorldResources {
     @ObservationIgnored private var assetObserver: UUID?
     @ObservationIgnored private var assetReadGeneration = 0
     @ObservationIgnored private var isAssetReadPending = false
-    @ObservationIgnored private var definitionReadGeneration = 0
+    private(set) var definitionReadGeneration = 0
     @ObservationIgnored private var isDefinitionReadPending = false
     @ObservationIgnored var readDefinitions: @Sendable (World, GameDataLibrary?) async throws -> DefinitionSnapshot = {
         try await WorldResources.readDefinitions($0, library: $1)
+    }
+    @ObservationIgnored var readPlayerRecords: @Sendable (World, UUID, String?, GameDataLibrary?) async -> PlayerRecords = {
+        await PlayerRecords.load(from: $0, uuid: $1, name: $2, library: $3)
     }
     private let nightLightWork: BackgroundWork.Scope
     @ObservationIgnored private var nightLighting: [String: MonsterSpawnLight]?
@@ -373,6 +376,16 @@ final class WorldResources {
         let definitions: WorldDefinitions
         let borders: [String: WorldBorder]
         let savedVersion: SavedMinecraftVersion
+    }
+
+    func playerRecords(for uuid: UUID, name: String?) async -> PlayerRecords? {
+        guard !isClosed, !Task.isCancelled else { return nil }
+        let generation = definitionReadGeneration, library = gameData, source = names.minecraft.generation
+        var records = await readPlayerRecords(world, uuid, name, library)
+        guard !Task.isCancelled, !isClosed, generation == definitionReadGeneration,
+              source == names.minecraft.generation, gameData?.identity == library?.identity else { return nil }
+        records.definitionGeneration = generation
+        return records
     }
 
     private func refreshDefinitions() {
