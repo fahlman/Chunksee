@@ -1483,6 +1483,12 @@ The sidebar's width modifiers belong to the `NavigationSplitView` column root (t
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
 frame/native split item both enforce a 180-point minimum. Native resizing remains in charge.
 
+WorldView owns the navigation content's 640-by-420 minimum, also used while a document opens.
+Its frame precedes the inspector modifier, so SwiftUI adds the inspector's minimum to the
+navigation content and can grow a small window when the inspector opens. Regression tests shrink
+first and then open the inspector, with and without the newer-world banner, checking the resulting
+native columns without a second test-driven resize.
+
 Time Spent uses `RegionFacts.inhabitedTimes`, including legacy `Level` chunks whose terrain
 cannot be rendered. Region-file URLs use `Dimension.regionURL` for terrain, entities and POI;
 spawn navigation uses the library's paired saved position and dimension.

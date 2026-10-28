@@ -16,7 +16,8 @@ struct ChunkseeApp: App {
     var body: some Scene {
         DocumentGroup { (document: WorldDocument) in
             WorldDocumentView(document: document)
-                .frame(minWidth: 640, minHeight: 420)
+                .frame(minWidth: WorldView.minimumContentSize.width,
+                       minHeight: WorldView.minimumContentSize.height)
         } makeReadableDocument: { configuration, _ in
             WorldDocument(configuration: configuration, model: model)
         }

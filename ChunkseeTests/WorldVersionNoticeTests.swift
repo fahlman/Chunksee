@@ -206,6 +206,63 @@ import Testing
         session.close(); await session.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test(arguments: [false, true])
+    func inspectorOpensAfterWindowReachesMinimum(_ showsNotice: Bool) async throws {
+        let root = try TestWorld.make(chunks: []), game = try game(6_000)
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        try saveVersion(6_001, in: root)
+        let resources = try await resources(root, defaults: TestDefaults.make())
+        let session = WorldSession(resources: resources)
+        defer { session.close() }
+        if showsNotice {
+            resources.names.minecraft.choose(game.root)
+            await resources.waitForRefresh()
+        }
+        #expect((resources.newerWorldBanner != nil) == showsNotice)
+        let controller = NSHostingController(rootView: WorldView(session: session)
+            .environment(\.locale, Locale(identifier: "en_US")))
+        let window = NSWindow(contentViewController: controller)
+        window.isReleasedWhenClosed = false
+        window.setContentSize(CGSize(width: 1200, height: 800))
+        window.orderFront(nil)
+        defer { window.close() }
+        controller.view.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let minimum = controller.view.fittingSize
+        #expect(minimum.width <= 659 && minimum.height <= 456)
+        // Reproduce the native resize-first order from #476, respecting the closed columns'
+        // minimum. Opening first and shrinking afterwards misses the constraint-loop crash.
+        window.setContentSize(CGSize(width: max(659, minimum.width), height: max(456, minimum.height)))
+        controller.view.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        await withCheckedContinuation { continuation in
+            withAnimation(.default, completionCriteria: .removed) {
+                session.selection.inspector = .world
+            } completion: { continuation.resume() }
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+
+        func splitViews(in view: NSView) -> [NSSplitView] {
+            let own = (view as? NSSplitView).map { [$0] } ?? []
+            return own + view.subviews.flatMap { splitViews(in: $0) }
+        }
+        let content = try #require(window.contentView)
+        let splits = splitViews(in: content)
+        let items = splits.flatMap { ($0.delegate as? NSSplitViewController)?.splitViewItems ?? [] }
+        let inspector = try #require(items.first { $0.behavior == .inspector })
+        #expect(!inspector.isCollapsed)
+        #expect(inspector.viewController.view.frame.width >= 320)
+        // Inspect the result without resizing it again: the window must make room on its own.
+        for split in splits {
+            for view in [split] + split.arrangedSubviews {
+                let bounds = view.convert(view.bounds, to: content)
+                #expect(content.bounds.insetBy(dx: -1, dy: -1).contains(bounds))
+            }
+        }
+        session.close(); await session.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
+    }
+
     @Test(arguments: [ColorScheme.light, .dark])
     func noticeKeepsTheNativeSplitViewInsideTheWindow(_ colorScheme: ColorScheme) async throws {
         let root = try TestWorld.make(chunks: []), game = try game(6_000)
@@ -216,8 +273,7 @@ import Testing
         defer { session.close() }
         let controller = NSHostingController(rootView: WorldView(session: session)
             .environment(\.locale, Locale(identifier: "en_US"))
-            .environment(\.colorScheme, colorScheme)
-            .frame(minWidth: 640, minHeight: 420))
+            .environment(\.colorScheme, colorScheme))
         let window = NSWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
         window.setContentSize(CGSize(width: 1200, height: 800))

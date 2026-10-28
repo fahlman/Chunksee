@@ -4,6 +4,8 @@ import ChunkseeIndex
 import SwiftUI
 
 struct WorldView: View {
+    static let minimumContentSize = CGSize(width: 640, height: 420)
+
     @Bindable var session: WorldSession
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -243,6 +245,9 @@ struct WorldView: View {
         .sheet(item: $annotations.portalDraft) { draft in
             PortalPlanView(session: session, draft: draft)
         }
+        // Keep the navigation content's minimum separate from the inspector, so SwiftUI can
+        // grow a small window when the inspector opens instead of squeezing its split columns.
+        .frame(minWidth: Self.minimumContentSize.width, minHeight: Self.minimumContentSize.height)
         .inspector(isPresented: inspectorShown) {
             WorldInspector(session: session)
                 // Capped so a wide row can't push the inspector past the window's edge.
