@@ -49,9 +49,9 @@ import Testing
         try saveClock(0)
         let resources = try await resources(url, defaults: TestDefaults.make())
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
-        let library = try fixture.library()
+        let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
+        resources.prepareGameAssets(source); resources.setGameAssets(game, source: source)
         await resources.waitForRefresh()
         #expect(first.map?.savedLighting?.saved.sunAngle == 0 && second.map?.savedLighting?.saved.sunAngle == 0)
         try saveClock(50); resources.worldChanged([clockFile]); await resources.waitForRefresh()
@@ -123,7 +123,7 @@ import Testing
         await map.waitUntilIdle(); await map.waitForTopBlocks()
         let tile = try #require(map.tiles[region]), viewport = map.viewport, top = map.topBlock(at: CGPoint(x: 8, y: 8))
         resources.readPlayers = { _, _ in Issue.record("Clock-only saves must not read players"); return nil }
-        resources.readBiomeColors = { _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
+        resources.readBiomeColors = { _, _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
         let updated = try lighting(sun: 60)
         resources.readLighting = { _, _ in ["minecraft:overworld": updated] }
         resources.worldChanged([url.appendingPathComponent("data/minecraft/world_clocks.dat")])

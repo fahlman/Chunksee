@@ -31,7 +31,8 @@ nonisolated struct TileCache: Sendable {
     /// 24: combine saved-time lighting and optional nighttime-light cache data.
     /// 25: close-up data preserves nighttime status and shares saved-time drawing inputs.
     /// 26: neighboring biomes remain available when unrelated block palettes are malformed.
-    static let rendererVersion = 27
+    /// 28: artwork availability is typed separately from game data and biome colors.
+    static let rendererVersion = 28
 
     let directory: URL
 
@@ -46,6 +47,7 @@ nonisolated struct TileCache: Sendable {
         var heightScale: MapHeightScale? = nil
         var filterKey: String? = nil
         var colorSource: String? = nil
+        var gameSource = GameResourceSource.unavailable
         var biomeSource: String? = nil
         var nightLight: String? = nil
 
@@ -54,7 +56,7 @@ nonisolated struct TileCache: Sendable {
                 ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
             let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
             let biomes = biomeSource.map { "biomes\($0)." } ?? ""
-            let colors = colorSource.map { "assets\($0)." } ?? "fallback."
+            let colors = "source\(gameSource.cacheKey)." + (colorSource.map { "colors\($0)." } ?? "fallback.")
             let light = nightLight.map { "light\($0)." } ?? ""
             return "\(prefix)\(light)\(colors)\(biomes)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
@@ -111,13 +113,14 @@ nonisolated struct TileCache: Sendable {
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, biomeSource: String? = nil, darkSpots: DarkSpots? = nil) -> Key? {
+                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, gameSource: GameResourceSource = .unavailable, biomeSource: String? = nil, darkSpots: DarkSpots? = nil) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
         // Explicit slices never use heightmaps or the normal view below a roof.
         return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
                    buildHeight: cutawayY == nil ? context.buildHeight : nil,
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
                    style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource,
+                   gameSource: style == .height ? .unavailable : gameSource,
                    biomeSource: style == .height ? nil : biomeSource, nightLight: darkSpots?.cacheKey)
     }
 
@@ -156,7 +159,7 @@ nonisolated struct TileCache: Sendable {
 
     func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard key.colorSource != nil, key.style != .height,
+        guard case .game = key.gameSource.artwork, key.colorSource != nil, key.style != .height,
               (key.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
               surface.heights.count == count, let detail = surface.detail.encoded() else { return }
         var bytes = Data(capacity: count * (key.nightLight == nil ? 4 : 5) + detail.count)

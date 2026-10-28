@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Use Game Artwork" : {
+      "comment" : "App-wide View menu toggle: use pictures and texture colors from the chosen game files. Game data and saved map pictures remain available when off."
+    },
     "Saved Dimension" : {
       "comment" : "Map inspector label for the original saved dimension value when it cannot be resolved to a dimension."
     },

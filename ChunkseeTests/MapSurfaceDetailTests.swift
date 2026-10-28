@@ -98,7 +98,8 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
-        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2, colorSource: "test-assets")
+        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2, colorSource: "test-assets",
+            gameSource: .init(data: "test-assets", artwork: .game("test-assets")))
         var surface = RegionTileRenderer.Canvas()
         surface.detail.insert(try chunk(), at: 0)
         surface.heights[0] = 12
@@ -134,7 +135,8 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NightDetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
-        let ordinary = TileCache.Key(region: .init(x: -1, z: -1), fileSize: 1, modified: 2, colorSource: "test-assets")
+        let ordinary = TileCache.Key(region: .init(x: -1, z: -1), fileSize: 1, modified: 2, colorSource: "test-assets",
+            gameSource: .init(data: "test-assets", artwork: .game("test-assets")))
         var night = ordinary
         night.nightLight = "unknown"
         var surface = RegionTileRenderer.Canvas()
