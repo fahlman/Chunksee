@@ -42,7 +42,9 @@ struct WorldVersionNoticeText: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Label("Newer Minecraft World", systemImage: "info.circle").fontWeight(.medium)
-            Text(notice.message(locale: locale)).fixedSize(horizontal: false, vertical: true)
+            // A forced ideal height inflates the split view's minimum size while it
+            // measures narrow columns, pushing every column outside the window.
+            Text(notice.message(locale: locale))
         }
         .accessibilityElement(children: .combine)
     }

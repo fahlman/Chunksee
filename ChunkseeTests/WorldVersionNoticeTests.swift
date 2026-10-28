@@ -1,11 +1,14 @@
+import AppKit
+import ApplicationServices
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
 import Observation
+import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
-@Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldVersionNoticeTests {
+@Suite(.isolatedStores, .serialized, .timeLimit(.minutes(1))) struct WorldVersionNoticeTests {
     private func saved(_ number: Int?, name: String? = "Saved Snapshot") throws -> SavedMinecraftVersion {
         var fields: [String: NBT] = [:]
         if let number { fields["DataVersion"] = .int(Int32(number)) }
@@ -194,6 +197,109 @@ import Testing
         map.requestTiles(visibleIn: .init(width: 128, height: 128))
         await map.waitForRenders()
         #expect(map.tiles[.init(x: 0, z: 0)] != nil)
+        session.close(); await session.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
+    }
+
+    @Test(arguments: [ColorScheme.light, .dark])
+    func noticeKeepsTheNativeSplitViewInsideTheWindow(_ colorScheme: ColorScheme) async throws {
+        let root = try TestWorld.make(chunks: []), game = try game(6_000)
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        try saveVersion(6_001, in: root)
+        let resources = try await resources(root, defaults: TestDefaults.make())
+        let session = WorldSession(resources: resources)
+        defer { session.close() }
+        let controller = NSHostingController(rootView: WorldView(session: session)
+            .environment(\.locale, Locale(identifier: "en_US"))
+            .environment(\.colorScheme, colorScheme)
+            .frame(minWidth: 640, minHeight: 420))
+        let window = NSWindow(contentViewController: controller)
+        window.isReleasedWhenClosed = false
+        window.setContentSize(CGSize(width: 1200, height: 800))
+        window.orderFront(nil)
+        defer { window.close() }
+        func splitViews(in view: NSView) -> [NSSplitView] {
+            let own = (view as? NSSplitView).map { [$0] } ?? []
+            return own + view.subviews.flatMap { splitViews(in: $0) }
+        }
+        let content = try #require(window.contentView)
+
+        func frames(of node: AnyObject) -> [(label: String, frame: CGRect)] {
+            let label = node.accessibilityLabel?() ?? ""
+            // Static text is an AX value; controls expose their name as a label.
+            let selector = NSSelectorFromString("accessibilityValue")
+            let object = node as? NSObject
+            let value = object?.responds(to: selector) == true
+                ? object?.perform(selector)?.takeUnretainedValue() as? String : nil
+            let frame = node.accessibilityFrame?() ?? .zero
+            let children = node.accessibilityChildren?() ?? []
+            return [(label.isEmpty ? value ?? "" : label, frame)] + children.flatMap { frames(of: $0 as AnyObject) }
+        }
+        func checkLayout(size: CGSize, banner: Bool, notice: Bool) async throws {
+            let minimum = controller.view.fittingSize
+            // setContentSize bypasses the native resize minimum. Respect the columns' width
+            // instead of forcing an impossible layout, but reject the notice's old tall minimum.
+            #expect(minimum.height <= size.height)
+            window.setContentSize(CGSize(width: max(size.width, minimum.width), height: size.height))
+            controller.view.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            // Activate SwiftUI's lazy AX tree through the existing isolated test host.
+            // The main actor must remain free to answer the native request.
+            let activation = await Task.detached {
+                var windows: CFTypeRef?
+                return AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &windows).rawValue
+            }.value
+            try #require(activation == AXError.success.rawValue)
+            let splits = splitViews(in: content)
+            #expect(!splits.isEmpty)
+            for split in splits {
+                let bounds = split.convert(split.bounds, to: content)
+                #expect(content.bounds.insetBy(dx: -1, dy: -1).contains(bounds))
+            }
+            let nativeFrames = frames(of: content)
+            let notices = nativeFrames.filter { $0.label.hasPrefix("Newer Minecraft World") }
+            let dismiss = nativeFrames.filter { $0.label == "Dismiss Notice" }
+            #expect(!notices.isEmpty == notice)
+            #expect(!dismiss.isEmpty == banner)
+            let screenBounds = window.convertToScreen(content.convert(content.bounds, to: nil)).insetBy(dx: -1, dy: -1)
+            for row in notices + dismiss {
+                #expect(row.frame.width > 0 && row.frame.height > 0)
+                #expect(screenBounds.contains(row.frame), "Notice bounds at \(size): \(row.label)")
+            }
+        }
+        let regular = CGSize(width: 1200, height: 800)
+        func showInspector(_ shown: Bool) async {
+            await withCheckedContinuation { continuation in
+                withAnimation(.default, completionCriteria: .removed) {
+                    session.selection.inspector = shown ? .world : nil
+                } completion: { continuation.resume() }
+            }
+        }
+        for shown in [false, true] {
+            try await checkLayout(size: regular, banner: false, notice: false)
+            await showInspector(shown)
+            for size in [regular, CGSize(width: 900, height: 600), CGSize(width: 640, height: 420)] {
+                try await checkLayout(size: size, banner: false, notice: false)
+            }
+        }
+        try await checkLayout(size: regular, banner: false, notice: false)
+        await showInspector(false)
+        resources.names.minecraft.choose(game.root)
+        await resources.waitForRefresh()
+        #expect(resources.newerWorldBanner != nil)
+        for showsInspector in [false, true] {
+            try await checkLayout(size: regular, banner: true, notice: true)
+            await showInspector(showsInspector)
+            for size in [regular, CGSize(width: 900, height: 600), CGSize(width: 640, height: 420)] {
+                try await checkLayout(size: size, banner: true, notice: true)
+            }
+        }
+        resources.names.minecraft.forget()
+        try await checkLayout(size: regular, banner: false, notice: false)
+        resources.names.minecraft.choose(game.root)
+        await resources.waitForRefresh()
+        try await checkLayout(size: regular, banner: true, notice: true)
+        resources.dismissNewerWorldNotice(try #require(resources.newerWorldBanner))
+        try await checkLayout(size: regular, banner: false, notice: true)
         session.close(); await session.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
     }
 }
