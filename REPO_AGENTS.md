@@ -113,12 +113,12 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 2026-10-27 Ryan asked to "unwind the code to its core" and build from the foundation instead of
 layering features. He chose to restructure in place, app first, with ChunkseeKit changing only
 where the app needs it. Until a rebuilding step below lands, the Modules notes describe today's
-code. New work must fit this structure. A change that contradicts it needs Ryan's approval first.
+code. Once Ryan approves this structure, new work must fit it, and a change that contradicts it
+needs his approval first.
 
 ### Layers
 
-Dependencies point down. Each layer depends only on layers above it in this list, through their
-public interfaces.
+Each layer depends only on layers above it in this list, through their public interfaces.
 
 1. **Kit** (ChunkseeKit, ChunkseeIndex) reads saves and game files, owns every format rule and
    code-only game fact, and publishes a reader version for each kind of fact the app caches:
@@ -134,8 +134,22 @@ public interfaces.
    - **One loader:** each part comes from one shared loader type (`RefreshLoader`, extended as
      needed), whose inputs are declared: the world's file changes plus the game-data and artwork
      identities.
-   - **The loader owns staleness:** cancellation, "latest result wins", and a declared choice to
-     keep or clear the last value when its inputs change.
+   - **Two refresh contracts, both owned by the loader:**
+     - *Same-source changes,* such as a world save, coalesce. A running pass finishes and
+       publishes its progress, and changes arriving meanwhile are merged into the next pass
+       instead of restarting it: changed regions are unioned, and a complete refresh dominates
+       subsets. Producers that build incrementally, such as the region index and slime chunks,
+       keep their own merge rules and read only what is missing.
+     - *Source replacement,* meaning a new game-data or artwork identity or new region readers
+       and definitions, rejects every result from the old source and cancels its work where
+       appropriate.
+   - **Last values:** each part declares whether it keeps or clears its last value when its
+     inputs change. Refreshing the same player keeps their records; selecting another clears
+     them.
+   - **Independent where independent:** one observable owner is not an all-or-nothing barrier.
+     Independent parts publish on their own; game data is available without waiting for biome
+     colors, for example. Only related values, such as the index and its player projection,
+     publish together. Readers stay available while their source lives.
    - **Views observe:** sessions and views read the snapshot; nothing pushes values into maps by
      hand.
 4. **Map presentation** (`MapModel`). Each dimension's map has one presentation value: style,
@@ -180,13 +194,17 @@ Each step is one PR that preserves behavior unless Ryan agreed otherwise. It is 
 real path and reviewed by the other agent. A paired copied-world timing comparison is required
 when the renderer or region reads change. The findings are from the audit on #469.
 
-1. **Game data and artwork:** #466 (approved).
+1. **Game data and artwork:** #466, merged as `560e4e7f`.
 2. **One world-snapshot loader.**
-   - **Moves:** the six hand-written `WorldResources` refreshes and the coalescers in
-     `SlimeChunks.swift` and `WorldIndexStore.swift` move onto the shared loader. Sessions observe
-     instead of receiving pushes, and the duplicate library-identity checks go.
-   - **Fixes:** saved lighting kept after a game-file reread (L2), statistics blanking on each
-     save (L5), and maps receiving game files only through the biome-color read (L4).
+   - **Moves:** the six hand-written `WorldResources` refreshes, plus the scheduling and
+     stale-result checks of the coalescers in `SlimeChunks.swift` and `WorldIndexStore.swift`,
+     move onto the shared loader. The coalescers' pending-change merge and progressive
+     publication stay with them, under the same-source contract above. Sessions observe instead
+     of receiving pushes, and the duplicate library-identity checks go.
+   - **Fixes:** saved lighting kept after a game-file reread (L2), and maps receiving game files
+     only through the biome-color read (L4).
+   - **Adopts:** #467's retention of a player's records on a same-player refresh (L5) becomes
+     the loader's declared keep-last-value behavior.
 3. **Cache identity.**
    - **Kit side:** Kit publishes the reader versions above.
    - **App side:** tile, Dark Spots and biome-color keys use typed whole values.
