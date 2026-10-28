@@ -9,7 +9,7 @@ final class MapModel {
     let dimension: ChunkseeKit.Dimension
     var viewport: MapViewport {
         didSet {
-            if showsDarkSpots, Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
+            if Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
                 updateTopBlockReads()
             }
         }
@@ -593,8 +593,22 @@ final class MapModel {
     private var readoutChunks: Set<ChunkPosition> {
         var chunks = Set<ChunkPosition>()
         if let hoveredChunk { chunks.insert(hoveredChunk) }
-        if showsDarkSpots, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
+        // The centered accessibility readout needs definition evidence without a mouse hover.
+        if showsDarkSpots || gameData != nil, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
         return chunks
+    }
+
+    private var readoutRenderer: RegionTileRenderer {
+        var renderer = currentRenderer
+        // Height style skips artwork when drawing, but selected-game definition evidence
+        // still belongs in block information. This renderer is used only for readouts.
+        renderer.gameData = gameData
+        return renderer
+    }
+
+    func blockDefinitionNotice(for block: RegionTileRenderer.TopBlock?) -> BlockDefinitionNotice? {
+        guard block?.hasGameDefinition == false else { return nil }
+        return BlockDefinitionNotice(gameName: gameData?.version.id)
     }
 
     /// Reads the pointer's chunk off the main actor, sharing a pending/cached center read.
@@ -624,7 +638,7 @@ final class MapModel {
 
     private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        let renderer = currentRenderer, cached = readoutRegion, read = readTopBlocksFor
+        let renderer = readoutRenderer, cached = readoutRegion, read = readTopBlocksFor
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }
@@ -659,7 +673,15 @@ final class MapModel {
                                                        context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter,
                                                        darkSpots: renderer.darkSpots)
         else { return nil }
-        return (file, blocks)
+        var annotated = blocks
+        if let library = renderer.gameData,
+           let definitions = try? await library.blockDefinitions(for: Set(blocks.compactMap { $0?.id })) {
+            for index in annotated.indices {
+                if let id = annotated[index]?.id { annotated[index]?.hasGameDefinition = definitions[id] }
+            }
+        }
+        guard !Task.isCancelled else { return nil }
+        return (file, annotated)
     }
 
     /// The game saved these regions, so what was read from them may be out of date. A read elsewhere
@@ -733,13 +755,17 @@ final class MapModel {
         if showsDarkSpots { surfaceChanged(coordinatesChanged: false) }
     }
 
-    private func surfaceChanged(coordinatesChanged: Bool = true) {
+    private func resetTopBlockReads() {
         readoutWork.cancel()
-        if coordinatesChanged { coordinateWork.cancel() }
         activeTopBlockReads = [:]
         topBlocks = [:]
         topBlockOrder = []
         readoutRegion = nil
+    }
+
+    private func surfaceChanged(coordinatesChanged: Bool = true) {
+        resetTopBlockReads()
+        if coordinatesChanged { coordinateWork.cancel() }
         reloadTiles()
         updateTopBlockReads()
     }
@@ -824,10 +850,13 @@ final class MapModel {
     func setGameResources(data: GameDataLibrary?, artwork: GameArtworkLibrary?, biomeColors: MapBiomeColors? = nil) {
         guard !isClosed, gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
                 || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
+        let definitionsChanged = gameData?.identity != data?.identity
         gameData = data
         gameArtwork = artwork
         self.biomeColors = biomeColors
+        if definitionsChanged { resetTopBlockReads() }
         if style != .height { reloadTiles() }
+        if definitionsChanged { updateTopBlockReads() }
     }
 
     private func reloadTiles() {

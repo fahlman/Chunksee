@@ -44,6 +44,9 @@ struct MapView: View {
         let zoomPercentage = ZoomPercentage.text(map.viewport.scale)
         let position = String(localized: "Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)")
         var descriptions = [position]
+        if let notice = map.blockDefinitionNotice(for: map.topBlock(at: map.viewport.center)) {
+            descriptions.append(notice.accessibilityLabel())
+        }
         if let seed = content.slimeSeed, let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) { descriptions.append(slime) }
         if map.showsDarkSpots {
             descriptions.append(String(localized: "Dark Spots shown. \(DarkSpots.explanation)"))
@@ -342,6 +345,11 @@ struct MapView: View {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 let block = Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots ? map.topBlock(at: hoverBlock) : nil
                 CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
+                if let notice = map.blockDefinitionNotice(for: block) {
+                    Label(notice.label(locale: locale), systemImage: "questionmark.square.dashed")
+                        .help(notice.help(locale: locale))
+                        .accessibilityLabel(notice.accessibilityLabel(locale: locale))
+                }
                 if let light = block?.nightLight { Text(light.description) }
                 if let seed = content.slimeSeed, let description = SlimeChunks.description(at: hoverBlock, seed: seed) {
                     Text(description)

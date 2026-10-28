@@ -15,9 +15,10 @@ import Testing
         let states = [BlockState("test:new"), upright, sideways, turned,
             BlockState("test:log"), BlockState("test:missing"), BlockState("test:occluded")]
         let colors = try await library.mapColors(for: states)
-        // South turns up at X 90°; north at X 270°. Missing states keep their slot as nil.
+        // South turns up at X 90°; north at X 270°. An incomplete state stays unavailable;
+        // a confirmed absent model gets the missing-image average.
         #expect(colors == [MapColor(0xff0000), MapColor(0xff0000), MapColor(0xffffff),
-                           MapColor(0x00ff00), nil, nil, MapColor(0x0000ff)])
+                           MapColor(0x00ff00), nil, MapColor(0x7c007c), MapColor(0x0000ff)])
         #expect(try await library.mapColors(for: states) == colors)
     }
 
@@ -59,10 +60,10 @@ import Testing
         let states = [BlockState("test:new"), BlockState("test:missing"), BlockState("test:new")]
         #expect(library.cachedMapColors(for: states) == nil)
         let colors = try await library.mapColors(for: states)
-        #expect(colors == [MapColor(0xff0000), nil, MapColor(0xff0000)])
+        #expect(colors == [MapColor(0xff0000), MapColor(0x7c007c), MapColor(0xff0000)])
         #expect(library.cachedMapColors(for: states) == colors)
         #expect(library.cachedMapColors(for: states + [BlockState("test:unrequested")]) == nil)
-        #expect(library.cachedMapColors(for: [BlockState("test:missing")]) == [nil])
+        #expect(library.cachedMapColors(for: [BlockState("test:missing")]) == [MapColor(0x7c007c)])
         await library.close()
         #expect(library.cachedMapColors(for: states) == nil)
         await #expect(throws: CancellationError.self) { try await library.mapColors(for: states) }

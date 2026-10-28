@@ -205,7 +205,7 @@ nonisolated final class GameResourceLibrary: Sendable {
     var sourceKey: String { data.sourceKey }
     var version: GameAssets.Version { data.version }
 
-    init(assets: GameAssets, sourceKey: String, readTexture: @escaping GameArtworkLibrary.TextureRead = { $0.texture($1) }) {
+    init(assets: GameAssets, sourceKey: String, readTexture: @escaping GameArtworkLibrary.TextureRead = GameArtworkLibrary.readGameTexture) {
         data = GameDataLibrary(assets: assets, sourceKey: sourceKey)
         artwork = GameArtworkLibrary(assets: assets, data: data, readTexture: readTexture)
     }

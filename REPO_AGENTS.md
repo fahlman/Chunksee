@@ -1702,6 +1702,19 @@ their headings and location presentation; a carried pet never displays its old m
 
 ### Texture-derived map colors
 
+GameDataLibrary retains Kit's typed missing-model evidence; GameArtworkLibrary owns missing textures. Only confirmed absent models or
+textures use GameModelRenderer's shared missing-image cube/pattern, including item pictures,
+averaged map colors and close-up pixels. Atlas interpretation must finish before an absent PNG
+can establish a missing sprite. Unreadable images, unsupported formats, unresolved state and
+unavailable atlas context retain the prior fallback; colormaps and mob-color samples never use
+the marker as real color data. Tile renderer version 36 invalidates earlier fallback pixels.
+Block information uses GameDataLibrary's independent definition-presence query, even with artwork
+off. The hover and centered accessibility readouts use the version-scoped wording Ryan chose on
+2026-10-28, recorded on #459 in comments 6468949977 and 6476084157. The version name comes from
+the selected game metadata, with the approved unnamed fallback when unavailable. This does not
+claim to prove the registry of another running or modded game. Selecting different game files
+retires the cached readouts; no game files means no notice. Saved blocks stay visible.
+
 Normal and Water Depth land colors share the selected version's GameArtworkLibrary with item
 pictures. The existing column scan chooses the surface and shallow-water floor once. Each reached
 palette entry is resolved once per chunk, and columns reuse its color by index. Warm immutable

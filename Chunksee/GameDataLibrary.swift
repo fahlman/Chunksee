@@ -9,6 +9,12 @@ actor GameDataLibrary {
     nonisolated let sourceKey: String
     private var assets: GameAssets?
     private nonisolated let materials = Materials()
+    private let blockDefinitions = NSCache<NSString, DefinitionEntry>()
+
+    nonisolated private final class DefinitionEntry {
+        let present: Bool?
+        init(_ present: Bool?) { self.present = present }
+    }
 
     /// NSCache synchronizes access; entries are immutable and only the actor inserts them.
     nonisolated private final class Materials: @unchecked Sendable {
@@ -30,11 +36,14 @@ actor GameDataLibrary {
         self.assets = assets
         self.sourceKey = sourceKey
         version = assets.version
+        blockDefinitions.countLimit = 4096
+        blockDefinitions.totalCostLimit = 1024 * 1024
     }
 
     func close() {
         assets = nil
         materials.values.removeAllObjects()
+        blockDefinitions.removeAllObjects()
     }
 
     func checkAvailable() throws {
@@ -58,7 +67,14 @@ actor GameDataLibrary {
             try Task.checkCancellation()
             let key = Key(state)
             if let cached = materials.values.object(forKey: key) { return cached }
-            let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state))
+            let material: MapBlockMaterial
+            do {
+                material = MapBlockMaterial(state: state, model: try assets?.readBlockModel(for: state))
+            } catch AssetReadError.missingModel {
+                material = MapBlockMaterial(state: state, model: nil, modelIsMissing: true)
+            } catch {
+                material = MapBlockMaterial(state: state, model: nil)
+            }
             let cost = material.model?.parts.reduce(1) { total, part in
                 total + part.alternatives.reduce(0) { $0 + GameModelRenderer.modelCost($1.model) }
             } ?? 1
@@ -79,6 +95,28 @@ actor GameDataLibrary {
     func advancementDefinitions(in world: World, for identifiers: Set<String>) throws -> [String: AdvancementDefinition] {
         try checkAvailable()
         return try world.advancementDefinitions(for: identifiers, assets: assets)
+    }
+
+    /// Presence is a data fact, independent of whether artwork can be drawn or is enabled.
+    /// A nil answer never means that the game rejects the saved block.
+    func blockDefinitions(for ids: Set<String>) throws -> [String: Bool] {
+        try checkAvailable()
+        var result: [String: Bool] = [:]
+        for id in ids {
+            try Task.checkCancellation()
+            let key = id as NSString
+            let entry: DefinitionEntry
+            if let cached = blockDefinitions.object(forKey: key) { entry = cached }
+            else {
+                entry = DefinitionEntry(assets?.containsBlockDefinition(id))
+                let cost = 64 + id.utf8.count
+                if cost <= blockDefinitions.totalCostLimit {
+                    blockDefinitions.setObject(entry, forKey: key, cost: cost)
+                }
+            }
+            result[id] = entry.present
+        }
+        return result
     }
 
     /// Kit owns the game's entity-to-egg relationship; the ordinary item path draws it.

@@ -748,6 +748,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var y: Int
         var waterDepth: Int
         var nightLight: DarkSpots.Status?
+        var hasGameDefinition: Bool?
     }
 
     /// Presentation resolved once per reached palette entry. Kit owns the saved-block traversal;

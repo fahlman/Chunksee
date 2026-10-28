@@ -291,6 +291,18 @@ import Testing
     private func waterFixture(alpha: UInt8?) throws -> ItemPictureFixture {
         var files = ["data/minecraft/tags/fluid/water.json": try ItemPictureFixture.json([
             "values": ["minecraft:water", "minecraft:flowing_water"]])]
+        // This pack tests opacity, not absent models. Give its floor real pixels and its
+        // fluid-bearing states explicit empty geometry so they retain the water palette.
+        for name in ["sand", "water", "kelp", "seagrass", "oak_stairs", "tube_coral"] {
+            files["assets/minecraft/blockstates/\(name).json"] = try ItemPictureFixture.json([
+                "variants": ["": ["model": "minecraft:block/" + name]]])
+            files["assets/minecraft/models/block/\(name).json"] = try ItemPictureFixture.json(["elements": []])
+        }
+        files["assets/minecraft/models/block/sand.json"] = try ItemPictureFixture.json([
+            "textures": ["top": "minecraft:block/sand"],
+            "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": ["up": ["texture": "#top"]]]]])
+        files["assets/minecraft/textures/block/sand.png"] = try ItemPictureFixture.png(
+            Array(repeating: [UInt8(219), 211, 160, 255], count: 4).flatMap { $0 })
         if let alpha {
             // The opaque second frame must not influence the first-frame opacity.
             let first: [UInt8] = [0, 0, 0, alpha], second: [UInt8] = [0, 0, 0, 255]
