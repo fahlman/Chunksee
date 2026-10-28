@@ -35,7 +35,7 @@ import Testing
         let short = try Chunk(nbt: Fixtures.chunk(x: 0, z: 0, sections: [
             Fixtures.section(y: 0, palette: [stone]),
         ], extra: ["yPos": .int(0)]))
-        var shortColors = RegionTileRenderer.ColorSections(short)
+        var shortColors = RegionTileRenderer.ColorSections(short, filter: MapBlockFilter(), water: nil)
         let clipped = shortColors.topColumns(from: .height(127), underCeiling: true)
         #expect(clipped.allSatisfy { $0?.y == 10 })
 
@@ -45,7 +45,7 @@ import Testing
             Fixtures.section(y: 0, palette: [stone]),
             Fixtures.section(y: 3, palette: [stone]),
         ], extra: ["yPos": .int(0)]))
-        var gappedColors = RegionTileRenderer.ColorSections(gapped)
+        var gappedColors = RegionTileRenderer.ColorSections(gapped, filter: MapBlockFilter(), water: nil)
         let belowGap = gappedColors.topColumns(from: .height(30), underCeiling: true)
         #expect(belowGap.allSatisfy { $0?.y == 15 })
         let dark = BlockColors.color(for: "minecraft:netherrack")?.shaded(0.6)
