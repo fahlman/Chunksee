@@ -177,6 +177,7 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: content, portalStatus: { session.presentation.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
+                    .safeAreaInset(edge: .top, spacing: 0) { WorldVersionBanner(resources: session.resources) }
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
                     .onChange(of: map.blendsBiomeColors) { session.saveView() }

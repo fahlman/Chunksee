@@ -85,7 +85,8 @@ struct WorldInfoView: View {
     var body: some View {
         Form {
             Section {
-                if let version = level.versionName { LabeledContent("Minecraft Version", value: version) }
+                if let version = session.resources.savedVersion.name { LabeledContent("Minecraft Version", value: version) }
+                if let notice = session.resources.newerWorldNotice { WorldVersionNoticeText(notice: notice) }
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = session.presentation.worldSpawn {

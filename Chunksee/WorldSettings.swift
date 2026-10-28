@@ -51,6 +51,18 @@ final class WorldSettings {
 
     var lastDimension: String? { stored["dimension"] as? String }
 
+    func hasShownVersionNotice(_ id: String) -> Bool {
+        (stored["shownVersionNotices"] as? [String] ?? []).contains(id)
+    }
+
+    func recordVersionNotice(_ id: String) {
+        var saved = stored
+        var shown = Set(saved["shownVersionNotices"] as? [String] ?? [])
+        guard shown.insert(id).inserted else { return }
+        saved["shownVersionNotices"] = shown.sorted()
+        defaults.set(saved, forKey: key)
+    }
+
     func viewport(for dimension: String) -> MapViewport? {
         guard let view = (stored["views"] as? [String: [Double]])?[dimension], view.count == 3,
               view[2].isFinite, view[2] > 0 else { return nil }
