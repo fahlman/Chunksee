@@ -130,6 +130,7 @@ saved data versions do not produce a newer-world notice. A successful metadata r
 the saved version, and source-generation checks reject retired game files. The non-blocking map
 banner is remembered once per version pair in WorldSettings, shared across dimension documents;
 World Info keeps the notice while the comparison applies. Neither presentation gates any reads.
+The comparison uses the game-data reader, so turning artwork off does not hide it.
 Notice text accepts the column's proposed height: forcing its ideal vertical size inflates
 the native split view's minimum height during layout. Window tests check the actual split-view
 and notice bounds through source changes, resizing, inspector visibility and dismissal.

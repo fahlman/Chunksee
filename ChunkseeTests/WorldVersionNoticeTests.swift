@@ -77,8 +77,14 @@ import Testing
         var iterator = updates.makeAsyncIterator()
         #expect(await iterator.next(isolation: #isolation) == true)
         #expect(resources.newerWorldNotice?.gameName == "Selected Release")
+        let notice = try #require(resources.newerWorldNotice)
+        for usesArtwork in [false, true] {
+            resources.names.minecraft.usesGameArtwork = usesArtwork
+            await resources.waitForRefresh()
+            #expect(resources.newerWorldNotice == notice)
+        }
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        let oldLibrary = try #require(resources.gameAssetLibrary(for: source))
+        let oldLibrary = try #require(await resources.names.minecraft.library())
         resources.names.minecraft.choose(newer.root)
         await resources.waitForRefresh()
         #expect(resources.newerWorldNotice == nil)

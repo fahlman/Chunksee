@@ -294,9 +294,9 @@ final class WorldResources {
     }
 
     var newerWorldNotice: WorldVersionNotice? {
-        let source = WorldGameAssetSource(generation: names.minecraft.generation)
-        guard let library = gameAssetLibrary(for: source) else { return nil }
-        return WorldVersionNotice(saved: savedVersion, game: library.version)
+        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation,
+              let data = gameData else { return nil }
+        return WorldVersionNotice(saved: savedVersion, game: data.version)
     }
 
     var newerWorldBanner: WorldVersionNotice? {
