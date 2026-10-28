@@ -31,9 +31,9 @@ nonisolated struct MapColor: Equatable, Sendable {
 /// Top-down map colors for blocks. This is presentation, so it lives in the app, not ChunkseeKit.
 nonisolated enum BlockColors {
     /// The map color for a block ID, or `nil` for blocks the map sees through (air, glass panes, light).
-    static func color(for id: String) -> MapColor? {
+    static func color(for id: String, usesGameCoverage: Bool = false) -> MapColor? {
         let name = ReadableName.vanillaPath(id) ?? id
-        if transparent.contains(name) { return nil }
+        if !usesGameCoverage, transparent.contains(name) { return nil }
         if let exact = exact[name] { return MapColor(exact) }
         // Literal search avoids rebuilding Swift's grapheme search state for each family.
         // Keep grapheme matching for unfamiliar Unicode names; the rules themselves are ASCII.
@@ -55,6 +55,7 @@ nonisolated enum BlockColors {
         return path == "water" || path == "bubble_column"
     }
 
+    /// Preserve the old presentation only when model coverage is unavailable for the world.
     private static let transparent: Set<String> = [
         "air", "cave_air", "void_air", "light", "barrier", "structure_void",
     ]

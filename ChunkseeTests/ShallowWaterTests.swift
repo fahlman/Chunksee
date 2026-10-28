@@ -19,7 +19,10 @@ import Testing
         let pixels = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         // Synthetic art is deliberately different from Minecraft's installed opacity.
         let expected: [[UInt8]] = [[114, 159, 236, 255], [104, 144, 217, 255], [55, 95, 174, 255], [35, 65, 125, 255]]
-        for x in expected.indices { #expect(pixel(pixels, x: x * 16 + 5, z: 5) == expected[x]) }
+        for x in expected.indices {
+            let actual = pixel(pixels, x: x * 16 + 5, z: 5)
+            #expect(actual == expected[x])
+        }
         await library.close()
     }
 
@@ -122,7 +125,8 @@ import Testing
             #expect(columns.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
             #expect(hover.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
             if x < 4 {
-                #expect(pixel(normal, x: x * 16 + 5, z: 5) == [104, 144, 217, 255])
+                let actual = pixel(normal, x: x * 16 + 5, z: 5)
+                #expect(actual == [104, 144, 217, 255])
                 let color = MapStylePalette.waterColor(depth: 5)
                 #expect(pixel(depth, x: x * 16 + 5, z: 5) == [color.red, color.green, color.blue, 255])
             } else {
@@ -303,6 +307,13 @@ import Testing
             "elements": [["from": [0, 0, 0], "to": [16, 16, 16], "faces": ["up": ["texture": "#top"]]]]])
         files["assets/minecraft/textures/block/sand.png"] = try ItemPictureFixture.png(
             Array(repeating: [UInt8(219), 211, 160, 255], count: 4).flatMap { $0 })
+        // The upper stair must remain a visible solid surface when coverage is measured.
+        files["assets/minecraft/blockstates/oak_stairs.json"] = try ItemPictureFixture.json(["variants": [
+            "half=bottom": ["model": "minecraft:block/oak_stairs"],
+            "half=top": ["model": "minecraft:block/oak_stairs_top"]]])
+        files["assets/minecraft/models/block/oak_stairs_top.json"] = try ItemPictureFixture.json([
+            "textures": ["top": "minecraft:block/sand"],
+            "elements": [["from": [0, 8, 0], "to": [16, 16, 16], "faces": ["up": ["texture": "#top"]]]]])
         if let alpha {
             // The opaque second frame must not influence the first-frame opacity.
             let first: [UInt8] = [0, 0, 0, alpha], second: [UInt8] = [0, 0, 0, 255]

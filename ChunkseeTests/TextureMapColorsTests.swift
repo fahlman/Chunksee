@@ -160,6 +160,8 @@ import Testing
             let parts = id.split(separator: ":")
             try json("assets/\(parts[0])/blockstates/\(parts[1]).json", object)
         }
+        try block("minecraft:barrier", ["variants": ["": ["model": "test:block/empty"]]])
+        try json("assets/test/models/block/empty.json", ["elements": []])
         for id in ["new", "clear", "animated", "occluded"] {
             try block("test:" + id, ["variants": ["": ["model": id == "new" ? "test:item/cube" : "test:block/" + id]]])
         }

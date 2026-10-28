@@ -1,9 +1,10 @@
 import ChunkseeKit
 import CoreGraphics
 import Foundation
+import Synchronization
 
 /// Artwork capability for one live jar, with bounded picture and map-color caches. All decode/drawing
-/// work is serial off-main; scrolling requests already drawn items without repeating that work.
+/// work stays off-main; scrolling requests already drawn items without repeating that work.
 actor GameArtworkLibrary {
     nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
@@ -11,18 +12,23 @@ actor GameArtworkLibrary {
     typealias TextureRead = @Sendable (GameAssets, String) throws -> Data?
     nonisolated static let readGameTexture: TextureRead = { try $0.readTexture($1) }
     private var assets: GameAssets?
-    private let readTexture: TextureRead
+    private nonisolated let readTexture: TextureRead
     nonisolated let data: GameDataLibrary
     private nonisolated let caches = Caches()
 
     /// NSCache synchronizes get/set/eviction (Foundation's documented thread-safety contract).
-    /// Values are immutable, and limits are configured
-    /// before publication; only the actor inserts entries. Synchronous readers never decode.
+    /// Coverage misses use a Mutex to share one computation and synchronize retirement.
+    /// Job-scoped coverage readers retain immutable Sendable GameAssets; their synchronous
+    /// texture reads use these same thread-safe caches and immutable cached values. Models
+    /// come through GameDataLibrary's shared, retirement-aware material reader.
+    /// Values are immutable and limits are configured before publication. The actor and
+    /// synchronized coverage misses insert entries; other synchronous readers only look up.
     nonisolated private final class Caches: @unchecked Sendable {
         let models = NSCache<ItemKey, ModelEntry>()
         let textures = NSCache<NSString, TextureEntry>()
         let images = NSCache<ItemKey, CGImage>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
+        let blockCoverage = Mutex(CoverageValues())
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let water = NSCache<NSString, WaterAppearance>()
         let textureColors = NSCache<NSString, ColorEntry>()
@@ -99,6 +105,25 @@ actor GameArtworkLibrary {
             self.isMissing = isMissing
         }
     }
+    /// Coverage is tiny value data. The shared lock also prevents concurrent misses from
+    /// decoding the same model and makes retirement wait for its final cache writes.
+    nonisolated private struct CoverageValues: Sendable {
+        var retired = false
+        var values: [BlockState: MapBlockCoverage] = [:]
+        var bytes = 0
+
+        mutating func insert(_ coverage: MapBlockCoverage, for state: BlockState) {
+            guard values[state] == nil else { return }
+            let cost = 128 + state.description.utf8.count + state.properties.count * 64
+            guard cost <= 2 * 1024 * 1024 else { return }
+            if values.count >= 4096 || bytes + cost > 2 * 1024 * 1024 {
+                values.removeAll(keepingCapacity: true)
+                bytes = 0
+            }
+            values[state] = coverage
+            bytes += cost
+        }
+    }
 
     /// Kit owns every saved fact that can choose a model. Keep that complete value in both
     /// caches instead of rebuilding a partial identity from selected fields in the app.
@@ -167,9 +192,12 @@ actor GameArtworkLibrary {
     }
 
     /// The source owner retires this reader even when hidden tabs still retain the actor.
-    /// Actor isolation lets a current synchronous draw finish before releasing its archive.
+    /// Actor isolation and the coverage lock drain current reads before clearing their caches.
     func close() {
         assets = nil
+        // Drain any synchronous coverage miss before clearing the caches it can populate.
+        // Retained readers cannot start another miss or refill these caches afterwards.
+        caches.blockCoverage.withLock { $0 = CoverageValues(retired: true) }
         caches.models.removeAllObjects()
         caches.textures.removeAllObjects()
         caches.images.removeAllObjects()
@@ -326,11 +354,52 @@ actor GameArtworkLibrary {
         return nil
     }
 
+    /// Resolve only palette entries reached by the chunk's existing walk. Preparing every
+    /// palette first also decodes models for buried blocks that will never be displayed.
+    /// The caller stays off the main actor and validates this source before publishing.
+    func mapCoverageReader() async throws -> @Sendable (BlockState) -> MapBlockCoverage {
+        let readMaterial = try await data.mapMaterialReader()
+        try checkAvailable()
+        let assets = assets
+        return { [self] state in coverage(for: state, assets: assets, readMaterial: readMaterial) }
+    }
+
+    private nonisolated func coverage(for state: BlockState, assets: GameAssets?,
+                                     readMaterial: GameDataLibrary.MaterialRead) -> MapBlockCoverage {
+        caches.blockCoverage.withLock { cache in
+            guard !cache.retired, !Task.isCancelled else { return .unavailable }
+            if let cached = cache.values[state] { return cached }
+            let coverage: MapBlockCoverage
+            let material = state.isAir == true ? nil : readMaterial(state)
+            if state.isAir == true {
+                coverage = .none
+            } else if material?.modelIsMissing == true {
+                // A placeholder picture cannot establish the real shape or override fluid
+                // facts. Ordinary missing blocks still stop the scan and draw that picture.
+                coverage = .unavailable
+            } else if let model = material?.model,
+                      let appearance = try? GameModelRenderer.topAppearance(model, tint: { _ in 0xffffff }, texture: {
+                          drawingTexture($0, atlas: "minecraft:blocks", assets: assets)
+                      }) {
+                if appearance.opacity == 0 {
+                    // An empty model cannot rule out geometry supplied by a block-entity renderer.
+                    coverage = state.hasBlockEntityRenderer == false ? .none : .unavailable
+                } else {
+                    coverage = appearance.covers ? .covers : .partial(opacity: appearance.opacity)
+                }
+            } else { coverage = .unavailable }
+            guard !Task.isCancelled else { return .unavailable }
+            cache.insert(coverage, for: state)
+            return coverage
+        }
+    }
+
     /// One batch for a chunk's retained palette. Kit chooses each position's actual variants;
     /// the same source, model, tint, decoded texture and rasterizer owners draw their pixels.
     func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) async throws -> [ItemTexture?] {
         try checkAvailable()
-        guard requests.count <= 256, indices.count == 256, positions.count == 256 else { return [] }
+        guard requests.count < Int(UInt16.max), indices.count == positions.count,
+              indices.count <= 256 + MapSurfaceDetail.maximumChunkBytes / 16 else { return [] }
         let materials = try await data.mapMaterials(for: requests.map(\.state))
         try checkAvailable()
         return try positions.enumerated().map { index, position in
@@ -413,33 +482,37 @@ actor GameArtworkLibrary {
     }
 
     private func drawingTexture(_ id: Identifier, atlas: String) -> ItemTexture? {
+        drawingTexture(id, atlas: atlas, assets: assets)
+    }
+
+    private nonisolated func drawingTexture(_ id: Identifier, atlas: String, assets: GameAssets?) -> ItemTexture? {
         let key = (atlas + "|" + id.description) as NSString
         if let cached = caches.textures.object(forKey: key) { return cached.texture }
         let decoded: ItemTexture?
         do {
             if let source = try assets?.readPalettedTexture(id.description, in: atlas) {
                 do {
-                    if let base = try textureData(source.texture.description),
-                       let key = try textureData(source.paletteKey.description),
-                       let palette = try textureData(source.palette.description) {
+                    if let base = try textureData(source.texture.description, assets: assets),
+                       let key = try textureData(source.paletteKey.description, assets: assets),
+                       let palette = try textureData(source.palette.description, assets: assets) {
                         decoded = ItemTexture(png: base, paletteKey: key, palette: palette)
                     } else { decoded = nil }
                 } catch AssetReadError.missingTexture { decoded = GameModelRenderer.missingTexture }
                 catch { decoded = nil }
             } else {
-                let entry = rawTexture(id)
+                let entry = rawTexture(id, assets: assets)
                 decoded = entry.isMissing ? GameModelRenderer.missingTexture : entry.texture
             }
         } catch {
             // A plain PNG may still be readable. Its absence proves nothing about an atlas
             // whose selected source could not be interpreted, so it never earns a checkerboard.
-            decoded = texture(id)
+            decoded = rawTexture(id, assets: assets).texture
         }
         caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
         return decoded
     }
 
-    private func textureData(_ id: String) throws -> Data? {
+    private nonisolated func textureData(_ id: String, assets: GameAssets?) throws -> Data? {
         guard let assets else { return nil }
         return try readTexture(assets, id)
     }
@@ -450,11 +523,15 @@ actor GameArtworkLibrary {
 
     /// Colormaps and mob-color samples require real pixels, never the missing-art marker.
     private func rawTexture(_ id: Identifier) -> TextureEntry {
+        rawTexture(id, assets: assets)
+    }
+
+    private nonisolated func rawTexture(_ id: Identifier, assets: GameAssets?) -> TextureEntry {
         let key = id.description as NSString
         if let cached = caches.textures.object(forKey: key) { return cached }
         let entry: TextureEntry
         do {
-            let data = try textureData(id.description)
+            let data = try textureData(id.description, assets: assets)
             entry = TextureEntry(data.flatMap(ItemTexture.init(png:)))
         }
         catch AssetReadError.missingTexture { entry = TextureEntry(nil, isMissing: true) }

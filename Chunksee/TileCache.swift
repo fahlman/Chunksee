@@ -37,7 +37,9 @@ nonisolated struct TileCache: Sendable {
     /// 34: combine the game-data/artwork boundary with the corrected game JSON reader.
     /// 35: game-derived water-bearing states and texture opacity for shallow-water floors.
     /// 36: confirmed missing artwork shares the game pattern across map and item pictures.
-    static let rendererVersion = 36
+    /// 37: model coverage, underlying terrain and compact partial-block detail layers.
+    /// 38: packed retained layers preserve close-up detail within the existing memory budget.
+    static let rendererVersion = 38
 
     let directory: URL
 

@@ -1,9 +1,11 @@
 import ChunkseeKit
 import Foundation
+import Synchronization
 
 /// Definitions and model geometry remain available independently of whether artwork is enabled.
 /// The immutable archive is shared with the artwork reader; only this actor owns material data.
 actor GameDataLibrary {
+    typealias MaterialRead = @Sendable (BlockState) -> MapBlockMaterial?
     nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
     nonisolated let sourceKey: String
@@ -16,12 +18,43 @@ actor GameDataLibrary {
         init(_ present: Bool?) { self.present = present }
     }
 
-    /// NSCache synchronizes access; entries are immutable and only the actor inserts them.
+    /// NSCache synchronizes renderer lookups of immutable entries. The shared reader locks
+    /// both hits and misses from this actor and coverage jobs, draining them before retirement.
     nonisolated private final class Materials: @unchecked Sendable {
         let values = NSCache<Key, MapBlockMaterial>()
+        private let retired = Mutex(false)
         init() {
             values.countLimit = 512
             values.totalCostLimit = 16 * 1024 * 1024
+        }
+
+        func read(_ state: BlockState, assets: GameAssets) -> MapBlockMaterial? {
+            retired.withLock { retired in
+                guard !retired, !Task.isCancelled else { return nil }
+                let key = Key(state)
+                if let cached = values.object(forKey: key) { return cached }
+                let material: MapBlockMaterial
+                do {
+                    material = MapBlockMaterial(state: state, model: try assets.readBlockModel(for: state))
+                } catch AssetReadError.missingModel {
+                    material = MapBlockMaterial(state: state, model: nil, modelIsMissing: true)
+                } catch {
+                    material = MapBlockMaterial(state: state, model: nil)
+                }
+                guard !Task.isCancelled else { return nil }
+                let cost = material.model?.parts.reduce(1) { total, part in
+                    total + part.alternatives.reduce(0) { $0 + GameModelRenderer.modelCost($1.model) }
+                } ?? 1
+                values.setObject(material, forKey: key, cost: cost + material.biomeTints.count * 32)
+                return material
+            }
+        }
+
+        func close() {
+            retired.withLock {
+                $0 = true
+                values.removeAllObjects()
+            }
         }
     }
 
@@ -42,7 +75,7 @@ actor GameDataLibrary {
 
     func close() {
         assets = nil
-        materials.values.removeAllObjects()
+        materials.close()
         blockDefinitions.removeAllObjects()
     }
 
@@ -62,25 +95,19 @@ actor GameDataLibrary {
     }
 
     func mapMaterials(for states: [BlockState]) throws -> [MapBlockMaterial] {
-        try checkAvailable()
+        let read = try mapMaterialReader()
         return try states.map { state in
-            try Task.checkCancellation()
-            let key = Key(state)
-            if let cached = materials.values.object(forKey: key) { return cached }
-            let material: MapBlockMaterial
-            do {
-                material = MapBlockMaterial(state: state, model: try assets?.readBlockModel(for: state))
-            } catch AssetReadError.missingModel {
-                material = MapBlockMaterial(state: state, model: nil, modelIsMissing: true)
-            } catch {
-                material = MapBlockMaterial(state: state, model: nil)
-            }
-            let cost = material.model?.parts.reduce(1) { total, part in
-                total + part.alternatives.reduce(0) { $0 + GameModelRenderer.modelCost($1.model) }
-            } ?? 1
-            materials.values.setObject(material, forKey: key, cost: cost + material.biomeTints.count * 32)
+            guard let material = read(state) else { throw CancellationError() }
             return material
         }
+    }
+
+    /// A job reads only states reached by its column walk, through the same material owner.
+    /// The immutable archive stays retained, but retirement prevents subsequent reads or writes.
+    func mapMaterialReader() throws -> MaterialRead {
+        try checkAvailable()
+        guard let assets else { throw CancellationError() }
+        return { [materials] state in materials.read(state, assets: assets) }
     }
 
     func language(_ preference: String, minecraftDirectory: URL?) -> GameLanguage? {

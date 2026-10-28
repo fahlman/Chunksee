@@ -42,7 +42,7 @@ import Testing
         #expect(MapSurfaceDetail.decoded(Data([0, 1, 2])) == nil)
         #expect(MapSurfaceDetail.decoded(Data(repeating: 0, count: MapSurfaceDetail.maximumEncodedBytes + 1)) == nil)
         let original = try #require(PropertyListSerialization.propertyList(from: bytes, format: nil) as? [String: Any])
-        for mutation in 0..<7 {
+        for mutation in 0..<11 {
             var archive = original
             var records = try #require(archive["chunks"] as? [[String: Any]])
             switch mutation {
@@ -52,7 +52,11 @@ import Testing
             case 3: records[0]["indices"] = Data(repeating: 0x80, count: 512)
             case 4: records[0]["materials"] = Data([0])
             case 5: records[0]["materials"] = Data([255, 255])
-            default: archive["materials"] = []
+            case 6: archive["materials"] = []
+            case 7: archive["firstOmittedIndex"] = -1
+            case 8: archive["firstOmittedIndex"] = 1025
+            case 9: archive["firstOmittedIndex"] = 1023
+            default: archive.removeValue(forKey: "firstOmittedIndex")
             }
             archive["chunks"] = records
             let bad = try PropertyListSerialization.data(fromPropertyList: archive, format: .binary, options: 0)
@@ -92,6 +96,64 @@ import Testing
         let data = try #require(forward.encoded())
         #expect(data.count <= MapSurfaceDetail.maximumEncodedBytes)
         #expect(MapSurfaceDetail.decoded(data) == forward)
+    }
+
+    @Test func mixedSizeDetailKeepsOnePrefixForEveryCompletionOrder() throws {
+        let requests = (0..<256).map { MapBlockColorRequest(state: .init("minecraft:material_\($0)_" + String(repeating: "a", count: 100))) }
+        let columns = [RegionTileRenderer.Column?](repeating: .init(y: 1, color: MapColor(0x808080), waterDepth: 0), count: 256)
+        let large = try #require(MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: (0..<256).map(Optional.some)))
+        let small = try chunk()
+        let inputs = (0..<1024).map { $0.isMultiple(of: 3) ? small : large }
+        var expected: [Int] = [], expectedBytes = 0
+        for (index, chunk) in inputs.enumerated() {
+            let cost = 64 + chunk.estimatedBytes
+            if expectedBytes + cost > MapSurfaceDetail.maximumRetainedBytes { break }
+            expected.append(index)
+            expectedBytes += cost
+        }
+        #expect(!expected.isEmpty && expected.count < inputs.count)
+        let orders = [Array(0..<1024), Array((0..<1024).reversed()),
+                      Array(stride(from: 0, to: 1024, by: 2)) + Array(stride(from: 1, to: 1024, by: 2))]
+        for order in orders {
+            var detail = MapSurfaceDetail()
+            for index in order { detail.insert(inputs[index], at: index) }
+            #expect(detail.chunks.keys.sorted() == expected)
+            #expect(detail.estimatedBytes == expectedBytes)
+            for index in expected { #expect(detail.chunks[index] == inputs[index]) }
+            let bytes = try #require(detail.encoded())
+            #expect(MapSurfaceDetail.decoded(bytes) == detail)
+        }
+    }
+
+    @Test func ordinaryLayeredTerrainKeepsCloseUpDetailAcrossTheWholeRegion() throws {
+        let requests = ["test:ground", "test:upper", "test:lower"].map {
+            MapBlockColorRequest(state: .init($0))
+        }
+        var column = RegionTileRenderer.Column(y: 62, color: MapColor(0x345678), waterDepth: 0)
+        column.layers = [
+            .init(entry: .init(section: 0, palette: 1), y: 64, color: MapColor(0x789abc),
+                  opacity: 0.5, emphasis: .ordinary),
+            .init(entry: .init(section: 0, palette: 2), y: 63, color: MapColor(0x456789),
+                  opacity: 0.5, emphasis: .ordinary)
+        ]
+        let chunk = try #require(MapSurfaceDetail.Chunk(
+            columns: Array(repeating: column, count: 256), requests: requests,
+            indices: Array(repeating: 0, count: 256),
+            layerIndices: Array(repeating: [1, 2], count: 256)))
+        var detail = MapSurfaceDetail()
+        for index in 0..<1024 { detail.insert(chunk, at: index) }
+        #expect(detail.chunks.count == 1024)
+        #expect(detail.estimatedBytes <= MapSurfaceDetail.maximumRetainedBytes)
+        let data = try #require(detail.encoded())
+        let restored = try #require(MapSurfaceDetail.decoded(data))
+        #expect(restored == detail)
+        let last = try #require(restored.chunks[1023])
+        #expect(last.overlays.count == 256)
+        for overlay in last.overlays {
+            #expect(overlay.layers.map(\.y) == [64, 63])
+            #expect(overlay.layers.map { last.materials[Int($0.material)].request.state.id }
+                == ["test:upper", "test:lower"])
+        }
     }
 
     @Test func ordinaryTerrainCacheIsIndependentOfMissingOrMalformedDetail() throws {

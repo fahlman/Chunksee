@@ -669,9 +669,7 @@ final class MapModel {
         guard let file = cached.flatMap({ $0.x == region.x && $0.z == region.z ? $0 : nil })
                 ?? (try? renderer.dimension.region(x: region.x, z: region.z)) ?? nil,
               !Task.isCancelled,
-              let blocks = RegionTileRenderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ,
-                                                       context: renderer.surfaceContext, cutawayY: renderer.cutawayY, blockFilter: renderer.blockFilter,
-                                                       darkSpots: renderer.darkSpots)
+              let blocks = try? await renderer.topBlocks(in: file, localX: chunk.localX, localZ: chunk.localZ)
         else { return nil }
         var annotated = blocks
         if let library = renderer.gameData,
@@ -850,13 +848,13 @@ final class MapModel {
     func setGameResources(data: GameDataLibrary?, artwork: GameArtworkLibrary?, biomeColors: MapBiomeColors? = nil) {
         guard !isClosed, gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
                 || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
-        let definitionsChanged = gameData?.identity != data?.identity
+        let readoutsChanged = gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
         gameData = data
         gameArtwork = artwork
         self.biomeColors = biomeColors
-        if definitionsChanged { resetTopBlockReads() }
+        if readoutsChanged { resetTopBlockReads() }
         if style != .height { reloadTiles() }
-        if definitionsChanged { updateTopBlockReads() }
+        if readoutsChanged { updateTopBlockReads() }
     }
 
     private func reloadTiles() {
