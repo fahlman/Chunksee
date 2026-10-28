@@ -56,7 +56,7 @@ import Testing
                                          "Loot: example:chests/simple_dungeon"])
         #expect(markers.allSatisfy { $0.group == .unopenedLoot && $0.y == 30 })
         let index = SearchIndex.overworld(DimensionContent(placePoints: PointMarkers(markers)))
-        let matches = WorldSearch.search("place:example:chests/simple_dungeon", in: index, players: []) { _ in .named("") }
+        let matches = WorldSearch.search("place:example:chests/simple_dungeon", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
         #expect(matches.map(\.title) == ["Loot: example:chests/simple_dungeon"])
         #expect(matches.first?.y == 30)
     }

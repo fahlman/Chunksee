@@ -24,10 +24,9 @@ extension NotableBlock {
     }
 
     nonisolated func name(in gameNames: GameNames) -> String { gameNames.name(nameID, in: "block") }
-    nonisolated var name: String { name(in: GameNames()) }
 
     /// The text `block:` searches match: the name and every id.
-    nonisolated func searchText(in catalog: NotableBlock.Catalog?, gameNames: GameNames = GameNames()) -> String {
+    nonisolated func searchText(in catalog: NotableBlock.Catalog?, gameNames: GameNames) -> String {
         ([name(in: gameNames), nameID] + (catalog?.ids(for: self) ?? []).sorted()).joined(separator: " ")
     }
 }

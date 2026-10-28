@@ -8,7 +8,7 @@ nonisolated struct SearchRequest: Sendable {
     var index: SearchIndex
     var players: [PlayerInfo]
     var playerNames: [UUID: PlayerPresentation.Name]
-    var gameNames = GameNames()
+    var gameNames: GameNames
 }
 
 /// The world index and published query results. Views read snapshots; they never scan a world.
@@ -54,7 +54,7 @@ final class SearchModel {
     init(readers: [RegionReader], work: BackgroundWork, playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
-         indexStore: WorldIndexStore? = nil, gameNames: @escaping @MainActor () -> GameNames = { GameNames() }) {
+         indexStore: WorldIndexStore? = nil, gameNames: @escaping @MainActor () -> GameNames) {
         self.work = work.makeScope()
         self.ownsIndex = indexStore == nil
         self.indexStore = indexStore ?? WorldIndexStore(readers: readers, work: work, firstDimension: firstDimension, playerRoster: playerRoster)

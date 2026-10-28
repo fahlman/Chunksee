@@ -4,7 +4,7 @@ import SwiftUI
 /// Item rows and compact inventory slots use one picture and fallback path.
 struct ItemIcon: View {
     let item: ItemStack
-    @Environment(\.gameAssetLibrary) private var pictures
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, image: CGImage)?
 
     private struct Request: Equatable {
@@ -76,14 +76,14 @@ struct ItemLabel: View {
     }
 }
 
-private struct GameAssetLibraryKey: EnvironmentKey {
-    nonisolated static let defaultValue: GameAssetLibrary? = nil
+private struct GameArtworkLibraryKey: EnvironmentKey {
+    nonisolated static let defaultValue: GameArtworkLibrary? = nil
 }
 
 extension EnvironmentValues {
-    var gameAssetLibrary: GameAssetLibrary? {
-        get { self[GameAssetLibraryKey.self] }
-        set { self[GameAssetLibraryKey.self] = newValue }
+    var gameArtworkLibrary: GameArtworkLibrary? {
+        get { self[GameArtworkLibraryKey.self] }
+        set { self[GameArtworkLibraryKey.self] = newValue }
     }
 }
 
@@ -92,23 +92,23 @@ extension EnvironmentValues {
 struct WorldGameAssets: ViewModifier {
     let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.locale) private var locale
     private struct Request: Equatable {
         let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
-        let locale: String
+        let preferredLanguage: String
     }
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
         let source = WorldGameAssetSource(generation: resources.generation)
+        let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
-            .environment(\.gameAssetLibrary, world.gameAssetLibrary(for: source))
-            .environment(\.gameNames, world.gameNames(for: locale))
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), locale: locale.identifier)) {
+            .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
+            .environment(\.gameNames, world.gameNames)
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
-                world.refreshGameLanguage(locale: locale)
+                world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()
             }
     }

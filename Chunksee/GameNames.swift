@@ -8,7 +8,11 @@ nonisolated struct GameNames: Sendable {
     let identity: UUID?
     private let language: GameLanguage?
 
-    init(_ language: GameLanguage? = nil) {
+    /// The deliberate state before a language is readable or after its source is retired.
+    /// Callers must supply this state explicitly rather than silently defaulting to it.
+    static let unavailable = GameNames(nil)
+
+    init(_ language: GameLanguage?) {
         self.language = language
         identity = language == nil ? nil : UUID()
     }
@@ -49,5 +53,5 @@ nonisolated struct GameNames: Sendable {
 }
 
 extension EnvironmentValues {
-    @Entry var gameNames = GameNames()
+    @Entry var gameNames = GameNames.unavailable
 }

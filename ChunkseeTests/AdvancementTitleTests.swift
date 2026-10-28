@@ -10,9 +10,9 @@ import Testing
     private func game(title: String = "Actual %s") throws -> ItemPictureFixture {
         try ItemPictureFixture(extraFiles: [
             "assets/minecraft/lang/en_us.json": ItemPictureFixture.json([
-                "test.diamond": title, "advancements.story.mine_diamond.title": "Wrong guessed key",
+                "language.code": "en_us", "test.diamond": title, "advancements.story.mine_diamond.title": "Wrong guessed key",
             ]),
-            "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json(["test.diamond": "Vrais %s"]),
+            "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json(["language.code": "fr_fr", "test.diamond": "Vrais %s"]),
             "data/minecraft/advancement/story/mine_diamond.json": Data(#"{"display":{"title":{"translate":"test.diamond","with":["diamonds"]}}}"#.utf8),
             "data/test/advancement/literal.json": Data(#"{"display":{"title":{"text":"Literal title","extra":["!"]}}}"#.utf8),
             "data/test/advancement/dynamic.json": Data(#"{"display":{"title":{"selector":"@s"}}}"#.utf8),
@@ -69,7 +69,7 @@ import Testing
     @Test func titlesComeFromDefinitionsAndNeverFilterSavedProgress() async throws {
         let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library()
+        let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library().data
         let records = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
         let names = GameNames(await library.language("fr_FR", minecraftDirectory: game.root))
         #expect(records.advancements.count == 7 && records.completedAdvancements.count == 5)
@@ -92,7 +92,7 @@ import Testing
     @Test func packChangesUseFreshMetadataWithoutReplacingTheSavedWorld() async throws {
         let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library()
+        let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library().data
         _ = try pack(at: root, enabled: true)
         let packed = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
         #expect(packed.title(for: diamond, generation: nil) == .literal("Pack title"))
@@ -113,12 +113,36 @@ import Testing
         var entries: [String: Any] = [diamond: ["done": true, "criteria": ["found": "2026-10-20 12:00:00 +0000"]]]
         for index in 0..<4096 { entries["test:extra_\(index)"] = ["done": true, "criteria": [:]] }
         try write(ItemPictureFixture.json(entries), to: root.appendingPathComponent("advancements/\(player.uuidString.lowercased()).json"))
-        let library = try game.library()
+        let library = try game.library().data
         let records = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library)
         #expect(records.completedAdvancements.count == 4097)
         #expect(records.completedAdvancements.first?.id == diamond)
         #expect(records.title(for: diamond, generation: nil) != nil)
         await library.close()
+    }
+
+    @Test func titlesAndProgressRemainAvailableWhenArtworkChanges() async throws {
+        let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        _ = try progress(at: root, player: player)
+        let world = try await resources(root, game: game)
+        defer { world.close() }
+        world.refreshGameLanguage(preferredLanguage: "en_US")
+        await world.waitForRefresh()
+        let original = try #require(await world.playerRecords(for: player, name: nil))
+        let generation = world.definitionReadGeneration, namesIdentity = world.gameNames.identity
+        for usesArtwork in [false, true, false] {
+            world.names.minecraft.usesGameArtwork = usesArtwork
+            await world.waitForRefresh()
+            let records = try #require(await world.playerRecords(for: player, name: nil))
+            #expect(world.definitionReadGeneration == generation && world.gameNames.identity == namesIdentity)
+            #expect(records.advancements == original.advancements && records.statistics == original.statistics)
+            #expect(PlayerRecords.advancementName(diamond, title: records.title(for: diamond, generation: generation),
+                                                 gameNames: world.gameNames) == "Actual diamonds")
+        }
+        world.close()
+        await world.waitUntilClosed()
+        await world.names.minecraft.waitUntilIdle()
     }
 
     @Test func obsoleteReadsCannotPublishAfterSourcePackOrWorldChanges() async throws {

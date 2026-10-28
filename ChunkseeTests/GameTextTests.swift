@@ -37,7 +37,7 @@ import Testing
         ]
         for fixture in cases {
             let title = try #require(TextComponent.content(json: Data(fixture.json.utf8)))
-            #expect(GameNames().advancement("test:title", title: title) == fixture.expected, "\(fixture.id)")
+            #expect(GameNames.unavailable.advancement("test:title", title: title) == fixture.expected, "\(fixture.id)")
         }
     }
 
@@ -74,7 +74,7 @@ import Testing
         for fixture in cases {
             let number = try #require(Double(fixture.number))
             let direct = TextComponent.Content.translated(key: "test.number", fallback: "%s", arguments: [.number(number)])
-            #expect(GameNames().advancement("test:title", title: direct) == fixture.expected, "Direct value: \(fixture.number)")
+            #expect(GameNames.unavailable.advancement("test:title", title: direct) == fixture.expected, "Direct value: \(fixture.number)")
 
         }
     }
@@ -133,7 +133,7 @@ import Testing
         for fixture in cases {
             let json = "{\"translate\":\"test.number\",\"fallback\":\"%s\",\"with\":[" + fixture.number + "]}"
             let title = try #require(TextComponent.content(json: Data(json.utf8)))
-            #expect(GameNames().advancement("test:title", title: title) == fixture.expected, "\(fixture.number)")
+            #expect(GameNames.unavailable.advancement("test:title", title: title) == fixture.expected, "\(fixture.number)")
         }
     }
 
@@ -153,33 +153,33 @@ import Testing
         for (tag, expected) in cases {
             let nbt = NBT.compound(["translate": .string("test.number"), "fallback": .string("%s"), "with": .list([tag])])
             let title = try #require(TextComponent.content(nbt))
-            #expect(GameNames().advancement("test:title", title: title) == expected)
+            #expect(GameNames.unavailable.advancement("test:title", title: title) == expected)
         }
     }
 
     @Test func literalEmptySequenceAndMissingTranslationsKeepTheirMeaning() throws {
         let json = #"[{"text":"First ","extra":[{"translate":"missing.key","fallback":"fallback %s","with":["value"]}]},{"text":" / "},{"translate":"another.key"}]"#
         let title = try #require(TextComponent.content(json: Data(json.utf8)))
-        #expect(GameNames().advancement("test:title", title: title) == "First fallback value / another.key")
-        #expect(GameNames().advancement("test:title", title: .literal("")) == "")
-        #expect(GameNames().advancement("test:missing_title") == "Missing Title")
+        #expect(GameNames.unavailable.advancement("test:title", title: title) == "First fallback value / another.key")
+        #expect(GameNames.unavailable.advancement("test:title", title: .literal("")) == "")
+        #expect(GameNames.unavailable.advancement("test:missing_title") == "Missing Title")
     }
 
     @Test func validMaximumDepthRendersAndExpansionStopsAtItsBudget() throws {
         var json: Any = "End"
         for _ in 0..<63 { json = ["text": "", "extra": [json]] }
         let title = try #require(TextComponent.content(json: JSONSerialization.data(withJSONObject: json)))
-        #expect(GameNames().advancement("test:title", title: title) == "End")
+        #expect(GameNames.unavailable.advancement("test:title", title: title) == "End")
 
         // A tiny component can multiply its nested argument exponentially.
         var repeated: TextComponent.Content = .literal("x")
         for _ in 0..<20 {
             repeated = .translated(key: "test.repeated", fallback: "%1$s%1$s", arguments: [.component(repeated)])
         }
-        #expect(GameNames().advancement("test:title", title: repeated) == "Title")
+        #expect(GameNames.unavailable.advancement("test:title", title: repeated) == "Title")
         let large = String(repeating: "x", count: 1024 * 1024)
         let expanded = TextComponent.Content.translated(key: "test.large", fallback: String(repeating: "%1$s", count: 17),
             arguments: [.string(large)])
-        #expect(GameNames().advancement("test:title", title: expanded) == "Title")
+        #expect(GameNames.unavailable.advancement("test:title", title: expanded) == "Title")
     }
 }

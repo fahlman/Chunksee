@@ -33,12 +33,12 @@ import Testing
             "Dimension": .string("minecraft:overworld"), "Pos": .list([.double(1), .double(64), .double(2)]),
             "EnderItems": .list([item("minecraft:diamond", 5)]),
         ]))
-        let hits = WorldSearch.search("diamond", in: index, players: [player]) { _ in .named("fahlman") }
+        let hits = WorldSearch.search("diamond", in: index, players: [player], gameNames: .unavailable) { _ in .named("fahlman") }
         #expect(hits.map(\.count) == [67, 5])   // chest (3 + 64 in the shulker box), then the ender chest
         #expect(hits[0].title == "Chest" && hits[0].detail == "67 Diamond")
         #expect(hits[0].position == CGPoint(x: 10.5, y: -4.5))
         #expect(hits[1].title == "fahlman’s ender chest" && hits[1].position == nil)
-        #expect(WorldSearch.search("  ", in: index, players: [player]) { _ in .named("") }.isEmpty)
+        #expect(WorldSearch.search("  ", in: index, players: [player], gameNames: .unavailable) { _ in .named("") }.isEmpty)
     }
 
     @Test func itemSummaryKeepsDifferentKindsWithTheSameLabelSeparate() throws {
@@ -96,7 +96,7 @@ import Testing
             "Inventory": .list([item("minecraft:diamond", 1)]), "EnderItems": .list([item("minecraft:diamond", 2)]),
         ]))
         let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: uuid,
-                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults))
+                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults), gameNames: { .unavailable })
         search.text = "diamond"
         await search.waitForSearch()
         #expect(Set(search.results.map(\.title)) == ["Your inventory", "Your ender chest"])
@@ -158,10 +158,10 @@ import Testing
             ChunkDeposit(chunk: ChunkPosition(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
         }.sorted { $0.deposit.count > $1.deposit.count }
         let index = SearchIndex.overworld(DimensionContent(blocks: deposits))
-        let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }
+        let hits = WorldSearch.search("block:diamond", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
         #expect(hits.count == WorldSearch.blockResultLimit)
         #expect(hits.first?.count == WorldSearch.blockResultLimit + 500 && hits.last?.count == 501)
-        #expect(WorldSearch.search("block:emerald", in: index, players: []) { _ in .named("") }.isEmpty)
+        #expect(WorldSearch.search("block:emerald", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.isEmpty)
     }
 
     @Test func signsAndBooksMatchTheirText() throws {
@@ -178,12 +178,12 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: chunk),
                                 signs: Sign.signs(inChunk: chunk)))
         // Saved text matches across a sign's sides; only its displayed caption trims blank space.
-        let hits = WorldSearch.search("desert village", in: index, players: []) { _ in .named("") }
+        let hits = WorldSearch.search("desert village", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
         #expect(hits.map(\.title).sorted() == ["Lectern", "Sign"])
         #expect(hits.first { $0.source == .sign }?.detail == "East / Northeast / to / Desert / Village")
         #expect(hits.first { $0.title == "Lectern" }?.detail == "1 Written Book “Travels” by fahlman")
-        #expect(WorldSearch.search("written book", in: index, players: []) { _ in .named("") }.map(\.title) == ["Lectern"])
-        #expect(WorldSearch.search("exit", in: index, players: []) { _ in .named("") }.map(\.title) == ["Hanging Sign"])
+        #expect(WorldSearch.search("written book", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.map(\.title) == ["Lectern"])
+        #expect(WorldSearch.search("exit", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.map(\.title) == ["Hanging Sign"])
     }
 
     @Test func sessionIndexesAndSearchesAWorld() async throws {
@@ -344,7 +344,7 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(structures: [village],
                                 placePoints: PointMarkers([bed]),
                                 mobTypes: MobTypes([wolf, cat, farmer])))
-        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: [], gameNames: .unavailable) { _ in .named("") } }
         #expect(search("structure:village").map(\.title) == ["Village Plains"])
         #expect(search("structure:village_plains").count == 1)
         #expect(search("structure:village").first?.source == .layer(.structure(.village), markerID: village.id))
@@ -384,10 +384,10 @@ import Testing
         ])))
         let marker = try #require(CreatureMarker(librarian, dimension: "minecraft:overworld"))
         let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
-        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: []) { _ in .named("") } }
+        func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: [], gameNames: .unavailable) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
-        #expect(VillagerText.inspectorProfession(librarian) == "Librarian, Level 5")
+        #expect(VillagerText.inspectorProfession(librarian, gameNames: .unavailable) == "Librarian, Level 5")
         #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
         #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))
@@ -409,7 +409,7 @@ import Testing
     }
 
     @Test func biomePrefixSearchesBiomeAreasLargestFirst() {
-        let hits = WorldSearch.search("biome:pale garden", in: index(), players: []) { _ in .named("") }
+        let hits = WorldSearch.search("biome:pale garden", in: index(), players: [], gameNames: .unavailable) { _ in .named("") }
         #expect(hits.map(\.count) == [6, 4])
         #expect(hits.allSatisfy { hit in
             guard case .layer(.biome(let group), _) = hit.source else { return false }
@@ -417,11 +417,11 @@ import Testing
         })
         #expect(hits.first?.detail == "6 chunks")
         // The id works too, the prefix ignores case, and other searches don't list biomes.
-        #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: []) { _ in .named("") }.count == 2)
-        #expect(WorldSearch.search("biome:plains", in: index(), players: []) { _ in .named("") }.map(\.title) == ["Plains"])
-        #expect(WorldSearch.search("pale garden", in: index(), players: []) { _ in .named("") }.isEmpty)
+        #expect(WorldSearch.search("Biome:pale_garden", in: index(), players: [], gameNames: .unavailable) { _ in .named("") }.count == 2)
+        #expect(WorldSearch.search("biome:plains", in: index(), players: [], gameNames: .unavailable) { _ in .named("") }.map(\.title) == ["Plains"])
+        #expect(WorldSearch.search("pale garden", in: index(), players: [], gameNames: .unavailable) { _ in .named("") }.isEmpty)
         // A filter on its own lists everything of its kind.
-        #expect(WorldSearch.search("biome:", in: index(), players: []) { _ in .named("") }.count == 3)
+        #expect(WorldSearch.search("biome:", in: index(), players: [], gameNames: .unavailable) { _ in .named("") }.count == 3)
     }
 
     @Test func choosingABiomeResultOutlinesTheBiome() async throws {

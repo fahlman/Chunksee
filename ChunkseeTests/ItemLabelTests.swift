@@ -24,7 +24,7 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(containers: ItemContainer.containers(inChunk: .compound([
             "block_entities": .list([container]),
         ]))))
-        let hit = try #require(WorldSearch.search("keepsake", in: index, players: []) { _ in .named("") }.first)
+        let hit = try #require(WorldSearch.search("keepsake", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.first)
         #expect(hit.title == "Chest “Supplies”")
         #expect(hit.detail == "5 Diamond “Keepsake”, 1 Emerald “Keepsake”")
         #expect(hit.count == 6)
@@ -60,7 +60,7 @@ import Testing
         let marker = try #require(CreatureMarker(creature, dimension: "minecraft:overworld"))
         let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
         for word in ["token", "voucher", "excalibur", "sharpness", "diamond sword"] {
-            let hit = try #require(WorldSearch.search("trade:\(word)", in: index, players: []) { _ in .named("") }.first)
+            let hit = try #require(WorldSearch.search("trade:\(word)", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.first)
             #expect(hit.detail == "1 Diamond Sword “Excalibur” (Sharpness V) for 24 Emerald “Token” + 1 Book “Voucher”")
         }
     }

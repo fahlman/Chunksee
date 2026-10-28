@@ -13,7 +13,7 @@ nonisolated struct PlayerRecords: Sendable {
     /// Reads both files off the main actor. Statistics from before 1.7.6 are stored under the
     /// player's name, so `name` is tried when there's no file for the UUID.
     @concurrent
-    static func load(from world: World, uuid: UUID, name: String?, library: GameAssetLibrary? = nil) async -> PlayerRecords {
+    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary? = nil) async -> PlayerRecords {
         var records = PlayerRecords()
         guard !Task.isCancelled else { return records }
         records.statistics = (try? world.statistics(for: uuid)) ?? name.flatMap { try? world.statistics(forName: $0) }
@@ -64,11 +64,11 @@ nonisolated struct PlayerRecords: Sendable {
         return primary + distances
     }
 
-    static func travelName(_ id: String, gameNames: GameNames = GameNames()) -> String {
+    static func travelName(_ id: String, gameNames: GameNames) -> String {
         gameNames.name(id, in: "stat")
     }
 
-    static func advancementName(_ id: String, title: TextComponent.Content? = nil, gameNames: GameNames = GameNames()) -> String {
+    static func advancementName(_ id: String, title: TextComponent.Content? = nil, gameNames: GameNames) -> String {
         gameNames.advancement(id, title: title)
     }
 
@@ -152,8 +152,6 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     var category: String {
         categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
     }
-
-    var name: String { name(in: GameNames()) }
 
     func name(in gameNames: GameNames) -> String {
         switch categoryID {
