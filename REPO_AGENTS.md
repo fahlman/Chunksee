@@ -107,6 +107,116 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     TileCache version 25 combines saved-time lighting, optional nighttime status and deferred
     close-up texture data, and invalidates colors drawn before the compact-default fix.
 
+## Foundation structure
+
+**Status:** a proposed target, coordinated on #469; it is not yet approved by Ryan. On
+2026-10-27 Ryan asked to "unwind the code to its core" and build from the foundation instead of
+layering features. He chose to restructure in place, app first, with ChunkseeKit changing only
+where the app needs it. Until a rebuilding step below lands, the Modules notes describe today's
+code. New work must fit this structure. A change that contradicts it needs Ryan's approval first.
+
+### Layers
+
+Dependencies point down. Each layer depends only on layers above it in this list, through their
+public interfaces.
+
+1. **Kit** (ChunkseeKit, ChunkseeIndex) reads saves and game files, owns every format rule and
+   code-only game fact, and publishes a reader version for each kind of fact the app caches:
+   terrain and surface, light, assets and region facts. The app never parses files.
+2. **Game files** (`MinecraftResources` and the game-data and artwork libraries). One owner
+   chooses the Minecraft folder and decides whether artwork is used. It always hands out game
+   data: definitions, tags, model geometry, lighting rules and numeric biome data. It hands out
+   the artwork capability (textures, colormaps and pictures) only while Use Game Artwork is on.
+   Nothing else decides that policy (#466).
+3. **World snapshot** (`WorldResources`). Each open world has one observable snapshot of what
+   its windows show: definitions, lighting, night lighting, biome colors, players and version
+   notices.
+   - **One loader:** each part comes from one shared loader type (`RefreshLoader`, extended as
+     needed), whose inputs are declared: the world's file changes plus the game-data and artwork
+     identities.
+   - **The loader owns staleness:** cancellation, "latest result wins", and a declared choice to
+     keep or clear the last value when its inputs change.
+   - **Views observe:** sessions and views read the snapshot; nothing pushes values into maps by
+     hand.
+4. **Map presentation** (`MapModel`). Each dimension's map has one presentation value: style,
+   depth, block filter, lighting mode, shadows, biome blending and overlays.
+   - **Chosen, not shown:** it records what the user chose and is saved as one per-dimension
+     record. What can be shown now (Height only with a known height scale, for example) is
+     derived from that choice plus availability and never written back.
+   - **Styles declare what they use:** each style states which inputs it uses, such as material
+     colors, lighting, shadows and close-up detail, so that rule is decided once.
+   - **One drawing input:** one value derived from the presentation and the snapshot feeds the
+     screen, Copy/Share and area export.
+5. **Windows, menus and views** show the snapshot and the map presentation, and send user input
+   to the owner of each setting. They never read files, build cache keys or decide rules.
+
+### Caches
+
+The caches are `TileCache`, `ScanCache` and the in-memory tiles. Each belongs to the code that
+produces its output: region reads for scan facts, the renderer for tiles.
+
+- **Typed keys:** each cache's owner builds its key from typed values of every input that changes
+  its output, including Kit's reader versions, the game-data and artwork identities, and the
+  presentation values the output depends on. Whole Kit values are used, never hand-copied fields.
+- **The app's version covers only the app:** no hand-maintained counter stands in for a Kit or
+  game-file input; the app's renderer version covers only its own drawing code.
+- **A test enforces it:** a fixed-output test fails when output changes without a key change.
+- **In-memory tiles carry their key,** and a tile whose key no longer matches is dropped. Today
+  each `MapModel` setter decides for itself whether to reload. The audit found no bug there, but
+  nothing enforces it.
+
+### Rules for every change
+
+- A setting, policy or mode has one owner, and its consumers receive the result, not a flag to
+  check. A cross-cutting rule left to convention, a flag that defaults to the unsafe choice, or
+  two handles told apart only by name is a required review finding.
+- There is one copy of the latest-result rule, of each setting's default, and of each style's
+  inputs.
+- A step that moves a rule to its owner deletes the code it replaces in the same PR.
+
+### Rebuilding steps
+
+Each step is one PR that preserves behavior unless Ryan agreed otherwise. It is tested on the
+real path and reviewed by the other agent. A paired copied-world timing comparison is required
+when the renderer or region reads change. The findings are from the audit on #469.
+
+1. **Game data and artwork:** #466 (approved).
+2. **One world-snapshot loader.**
+   - **Moves:** the six hand-written `WorldResources` refreshes and the coalescers in
+     `SlimeChunks.swift` and `WorldIndexStore.swift` move onto the shared loader. Sessions observe
+     instead of receiving pushes, and the duplicate library-identity checks go.
+   - **Fixes:** saved lighting kept after a game-file reread (L2), statistics blanking on each
+     save (L5), and maps receiving game files only through the biome-color read (L4).
+3. **Cache identity.**
+   - **Kit side:** Kit publishes the reader versions above.
+   - **App side:** tile, Dark Spots and biome-color keys use typed whole values.
+   - **Fixes:** #471 and C1–C4.
+4. **Map presentation value.**
+   - **Moves:** chosen versus effective settings, one saved record, one drawing input, and
+     style inputs declared once.
+   - **Fixes:** #470 and M2–M4.
+5. **One notification path.** `MinecraftResources` publishes through Observation only (L3). This
+   comes once steps 2 and 4 have removed the hand-written pushes.
+
+Step 2 comes before 3 and 4 because the loader's declared inputs are what the cache keys and the
+presentation build on.
+
+**Pause:** feature work stays paused until these steps land, including #472 and
+fahlman/ChunkseeKit#232 item 2. The Phase 0 PRs listed on #469 land first.
+
+### Already sound
+
+These parts keep their current design; steps reuse them rather than replace them.
+
+- **Lifetimes:** `BackgroundWork` scopes own task lifetime, cancellation and draining.
+- **Map rendering:** `MapModel`'s job and revision checks, and the single
+  `RegionTileRenderer.scan` that tiles, hover, copied coordinates, portals, close-ups and export
+  share.
+- **Map items:** the shared `MapScene` for drawing, picking, accessibility and export.
+- **File identity:** stamps and ScanCache fingerprints.
+- **Block filter keys:** derived from the resolved IDs.
+- **App-wide settings:** each already has one owner.
+
 ## Modules
 
 VisibilityCommand owns the shared Show/Hide label, binding and action. Compact eye buttons show
