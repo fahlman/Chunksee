@@ -91,6 +91,8 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var mob: String?
     /// The saved table identifies the unopened loot; it does not predict the future items.
     var lootTable: String?
+    /// The saved block location is absent for entity loot containers and grouped locations.
+    var blockPosition: BlockPosition?
 
     var name: String {
         let base = ReadableName.identifierPath(type)
@@ -118,6 +120,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         group = PlaceGroup.group(for: poi.type)
         position = MapCoordinates.center(of: CGPoint(x: poi.x, y: poi.z))
         y = poi.y
+        blockPosition = BlockPosition(blockX: poi.x, blockY: poi.y, blockZ: poi.z)
         isClaimed = poi.freeTickets == 0 && (group == .bed || group == .workstation)
     }
 
@@ -128,6 +131,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         group = .spawner
         position = MapCoordinates.center(of: CGPoint(x: spawner.x, y: spawner.z))
         y = spawner.y
+        blockPosition = BlockPosition(blockX: spawner.x, blockY: spawner.y, blockZ: spawner.z)
         isClaimed = false
         mob = spawner.mob
     }
@@ -142,6 +146,9 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         y = container.y
         isClaimed = false
         lootTable = container.lootTable
+        if !container.isEntity {
+            blockPosition = BlockPosition(blockX: container.x, blockY: container.y, blockZ: container.z)
+        }
     }
 
     /// One place for a whole Nether portal, at the center of its blocks.
@@ -150,6 +157,7 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
         id = "portal@\(portal.entry.x),\(portal.entry.y),\(portal.entry.z)"
         position = CGPoint(x: portal.centerX, y: portal.centerZ)
         self.portal = portal
+        blockPosition = nil
     }
 }
 

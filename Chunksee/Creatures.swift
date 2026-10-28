@@ -86,7 +86,8 @@ struct CreatureDetailView: View {
     var body: some View {
         Form {
             CreatureDetailSections(session: session, creature: marker.creature) {
-                InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol)
+                InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol,
+                                 picture: .mob(marker.creature.id))
             } location: {
                 LocationRow(session: session,
                             destination: MapDestination(coordinates: Coordinates(marker.position, y: marker.creature.y),

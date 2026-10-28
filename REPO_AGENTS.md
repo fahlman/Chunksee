@@ -966,6 +966,17 @@ version 3 rereads cached containers for UUIDs; the app adds no second cache or f
 InspectorHeading supplies the selected item's icon, headline and accessibility heading for
 creature, player, portal, in-game map, World Info and Storage panels. World Info and Storage
 share their symbol with the sidebar. The native Form/Table bodies keep their own layouts.
+Heading pictures reuse ItemIcon and the optional GameArtworkLibrary capability. GameDataLibrary
+reads Kit's mob-to-egg and block-to-item relationships; in-game maps use the filled-map item.
+Turning artwork off restores symbols without removing those data relationships. PlaceMarker retains
+an actual block coordinate only for block-based places; moving loot containers and grouped
+portals do not infer a block from their marker position. WorldResources reads the selected
+block through Dimension.block off-main, registers that read with BackgroundWork, and drains
+it before releasing world access. The heading request checks the world, dimension, index
+revision, location and selected-library identity, and cancellation discards late results.
+Pictures are decorative and keep a 20-point slot; unavailable pictures retain the concept's
+symbol and accessible title. Player headings retain their symbol because no actual player
+skin is available. Sidebar rows and map markers keep their shared symbols.
 ItemAppearance.mapSymbol supplies the same filled map glyph for inventory navigation items,
 the in-game-map inspector and map share preview. BiomeGroup owns the filled leaf used by its
 sidebar groups and the biome search kind; callers do not keep separate copies of those symbols.

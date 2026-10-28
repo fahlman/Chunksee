@@ -76,6 +76,17 @@ actor GameDataLibrary {
         }
     }
 
+    /// Kit owns the game's entity-to-egg relationship; the ordinary item path draws it.
+    func spawnEgg(for species: String) throws -> ItemStack? {
+        try checkAvailable()
+        return assets?.spawnEggItemID(for: species).map { ItemStack(id: $0.description) }
+    }
+
+    func blockItem(for block: BlockState) throws -> ItemStack? {
+        try checkAvailable()
+        return assets?.blockItemID(for: block.id).map { ItemStack(id: $0.description) }
+    }
+
     func definitions(in world: World) throws -> WorldDefinitions {
         try checkAvailable()
         return try WorldDefinitions.read(world, assets: assets)

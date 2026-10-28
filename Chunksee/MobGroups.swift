@@ -82,7 +82,8 @@ struct MobTypeDetails: View {
                 Text("These positions come from the last save. Mobs may move or disappear when the world is played.")
                     .foregroundStyle(.secondary)
             } header: {
-                InspectorHeading(title: Text(kind.name), symbol: CreatureGroup.mob.symbol)
+                InspectorHeading(title: Text(kind.name), symbol: CreatureGroup.mob.symbol,
+                                 picture: .mob(kind.id))
             }
             Section("Appearances") {
                 Picker("Show on Map", selection: Binding {
