@@ -105,7 +105,7 @@ struct WorldGameAssets: ViewModifier {
         let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
             .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
-            .environment(\.gameNames, world.gameNames(for: preferredLanguage))
+            .environment(\.gameNames, world.gameNames)
             .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
                 world.refreshGameLanguage(preferredLanguage: preferredLanguage)

@@ -1605,6 +1605,11 @@ Kit's effective-language equality preserves that identity when the contents are 
 language object still publishes new names and refreshes saved searches in every attached window.
 WorldGameAssets injects the snapshot through the SwiftUI environment. Search captures the same
 snapshot, includes its identity in shared-query reuse, and rejects results from retired names.
+Both use WorldResources.gameNames, including while a replacement language is loading. Naming
+functions and search requests require an explicit snapshot; GameNames.unavailable denotes the
+deliberate no-language state. No convenience accessor silently substitutes fallback names.
+Language reads use GameDataLibrary and remain available when Use Game Artwork is off; changing
+artwork leaves the language publication and shared searches intact.
 Language selection does not change world parsing or scan membership. The Kit 0.78.0 adoption
 uses RegionFacts interpretation 28 and tile renderer version 34 to discard saved projections
 and pictures from the earlier JSON numeric/member interpretation.

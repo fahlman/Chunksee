@@ -243,17 +243,17 @@ import Testing
 
 @Suite(.isolatedStores) struct PlayerRecordsTests {
     @Test func namesRankingsAndDistances() {
-        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm") == "Aviate One Cm")
-        #expect(PlayerRecords.travelName("minecraft:boat_one_cm") == "Boat One Cm")
-        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond") == "Story Mine Diamond")
+        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
+        #expect(PlayerRecords.travelName("minecraft:boat_one_cm", gameNames: .unavailable) == "Boat One Cm")
+        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond", gameNames: .unavailable) == "Story Mine Diamond")
         let records = PlayerRecords(statistics: PlayerStatistics(values: [
             "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
         ]))
         #expect(records.distances.map(\.name) == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
         #expect(records.distances.first?.value == 2_087_548_000)
-        #expect(records.top("minecraft:mined", count: 2).map(\.name) == ["Dirt", "Stone"])
-        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name == "Walk One Cm" })
+        #expect(records.top("minecraft:mined", count: 2).map { $0.name(in: .unavailable) } == ["Dirt", "Stone"])
+        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name(in: .unavailable) == "Walk One Cm" })
     }
 
     @Test func summaryAndTableShareReadableStatistics() throws {

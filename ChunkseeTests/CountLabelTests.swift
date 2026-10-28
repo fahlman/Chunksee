@@ -35,7 +35,7 @@ import Testing
                 ChunkDeposit(chunk: ChunkPosition(x: 0, z: 0),
                              deposit: BlockDeposit(block: .diamond, count: count, minY: -64, maxY: -49)),
             ]))
-            let hits = WorldSearch.search("block:diamond", in: index, players: []) { _ in .named("") }
+            let hits = WorldSearch.search("block:diamond", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
             #expect(hits.first?.detail == "\(number) \(count == 1 ? "block" : "blocks") · Y -64 to -49")
         }
     }

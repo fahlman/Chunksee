@@ -53,11 +53,11 @@ nonisolated struct PlayerRecords: Sendable {
         return primary + distances
     }
 
-    static func travelName(_ id: String, gameNames: GameNames = GameNames()) -> String {
+    static func travelName(_ id: String, gameNames: GameNames) -> String {
         gameNames.name(id, in: "stat")
     }
 
-    static func advancementName(_ id: String, gameNames: GameNames = GameNames()) -> String {
+    static func advancementName(_ id: String, gameNames: GameNames) -> String {
         gameNames.advancement(id)
     }
 
@@ -134,8 +134,6 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     var category: String {
         categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
     }
-
-    var name: String { name(in: GameNames()) }
 
     func name(in gameNames: GameNames) -> String {
         switch categoryID {

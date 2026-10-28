@@ -68,7 +68,7 @@ enum GameNameFixture {
         #expect(mob.name(in: names) == "A Game-Supplied Mob")
         let unfamiliarCategory = StatisticRow(categoryID: "test:custom_kind", statisticID: item.statisticID, value: 3)
         #expect(unfamiliarCategory.name(in: names) == "Unfamiliar Item")
-        #expect(GameNames().name("test:new_path/new_name", in: "effect") == "New Path New Name")
+        #expect(GameNames.unavailable.name("test:new_path/new_name", in: "effect") == "New Path New Name")
     }
 
     @Test func namesWithoutGameKeysKeepTheSavedWordsAndOrder() {
@@ -101,7 +101,7 @@ enum GameNameFixture {
         defer { world.close() }
         world.refreshGameLanguage(preferredLanguage: "en_US")
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
-        _ = withObservationTracking { world.gameNames(for: "en_US") } onChange: {
+        _ = withObservationTracking { world.gameNames } onChange: {
             continuation.yield(true)
         }
         world.refreshGameAssets()
@@ -109,25 +109,25 @@ enum GameNameFixture {
         continuation.finish()
         var iterator = updates.makeAsyncIterator()
         #expect(await iterator.next(isolation: #isolation) == true)
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Bad Luck")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
-        #expect(world.gameNames(for: "en_US").identity == nil)
+        #expect(world.gameNames.identity == nil)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
         world.refreshGameLanguage(preferredLanguage: "en_US")
         await world.waitForRefresh()
         world.names.minecraft.choose(replacement.root)
-        #expect(world.currentGameNames.identity == nil)
+        #expect(world.gameNames.identity == nil)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Replacement Name")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Replacement Name")
         world.names.minecraft.forget()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Unluck")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Unluck")
         await world.waitForRefresh()
         world.names.minecraft.choose(game.root)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Bad Luck")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
         world.close()
-        #expect(world.currentGameNames.identity == nil)
+        #expect(world.gameNames.identity == nil)
         await world.waitUntilClosed()
         await world.names.minecraft.waitUntilIdle()
     }
@@ -150,13 +150,38 @@ enum GameNameFixture {
             await session.search.waitForSearch()
             #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
         }
+        let identity = world.gameNames.identity
+        for usesArtwork in [false, true, false] {
+            world.names.minecraft.usesGameArtwork = usesArtwork
+            await world.waitForRefresh()
+            #expect(world.gameNames.identity == identity)
+            #expect(NotableBlock.spawner.name(in: world.gameNames) == "Monster Spawner")
+            for session in [first, second] {
+                await session.search.waitForSearch()
+                #expect(session.search.results(for: "block:").map(\.title)
+                        == [NotableBlock.spawner.name(in: world.gameNames)])
+            }
+        }
+        let french = await (try game.library()).data.language("fr_FR", minecraftDirectory: game.root)
+        let gate = AsyncReadGate<GameLanguage?>()
+        world.readLanguage = { _, _, _ in await gate.read("language") }
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
         // Retired labels are ineligible even before Observation schedules the replacement query.
         #expect(first.search.results(for: "block:").isEmpty)
+        await gate.waitForRequest("language")
+        #expect(NotableBlock.spawner.name(in: world.gameNames) == "Spawner")
+        for session in [first, second] {
+            await session.search.waitForSearch()
+            #expect(session.search.results(for: "block:").map(\.title)
+                    == [NotableBlock.spawner.name(in: world.gameNames)])
+        }
+        await gate.finish("language", with: french)
         await world.waitForRefresh()
         for session in [first, second] {
             await session.search.waitForSearch()
             #expect(session.search.results(for: "block:").map(\.title) == ["Générateur de monstres"])
+            #expect(session.search.results(for: "block:").map(\.title)
+                    == [NotableBlock.spawner.name(in: world.gameNames)])
         }
         world.names.minecraft.forget()
         #expect(second.search.results(for: "block:").isEmpty)
@@ -185,21 +210,21 @@ enum GameNameFixture {
         await world.waitForRefresh()
         await world.index.waitForIndex()
         for session in sessions { await session.search.waitForSearch() }
-        let loaded = world.currentGameNames
+        let loaded = world.gameNames
         let gate = AsyncReadGate<GameLanguage?>(), library = try game.library()
         let reread = await library.data.language("en_US", minecraftDirectory: game.root)
         world.readLanguage = { _, _, _ in await gate.read("reread") }
         world.refreshGameAssets()
         await gate.waitForRequest("reread")
-        #expect(world.currentGameNames.identity == loaded.identity)
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Bad Luck")
+        #expect(world.gameNames.identity == loaded.identity)
+        #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
         for session in sessions {
             #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
             #expect(!session.search.isSearching)
         }
         await gate.finish("reread", with: reread)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.identity == loaded.identity)
+        #expect(world.gameNames.identity == loaded.identity)
         for session in sessions {
             #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
             #expect(!session.search.isSearching)
@@ -209,8 +234,8 @@ enum GameNameFixture {
         world.readLanguage = { _, _, _ in changed }
         world.refreshGameAssets()
         await world.waitForRefresh()
-        #expect(world.currentGameNames.identity != loaded.identity)
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
+        #expect(world.gameNames.identity != loaded.identity)
+        #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
         for session in sessions {
             await session.search.waitForSearch()
             #expect(session.search.results(for: "block:").map(\.title) == ["Générateur de monstres"])
@@ -235,15 +260,15 @@ enum GameNameFixture {
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
         await gate.waitForRequest("fr_FR")
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
-        _ = withObservationTracking { world.currentGameNames } onChange: { continuation.yield(true) }
+        _ = withObservationTracking { world.gameNames } onChange: { continuation.yield(true) }
         await gate.finish("fr_FR", with: french)
         var iterator = updates.makeAsyncIterator()
         #expect(await iterator.next(isolation: #isolation) == true)
         continuation.finish()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
         await gate.finish("en_US", with: english)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.name("unluck", in: "effect") == "Malchance")
+        #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
         world.close()
         await world.waitUntilClosed()
         await world.names.minecraft.waitUntilIdle()
@@ -260,7 +285,7 @@ enum GameNameFixture {
         if close { world.close() } else { world.names.minecraft.forget() }
         await gate.finish("held", with: language)
         await world.waitForRefresh()
-        #expect(world.currentGameNames.identity == nil)
+        #expect(world.gameNames.identity == nil)
         world.close()
         await world.waitUntilClosed()
         await world.names.minecraft.waitUntilIdle()

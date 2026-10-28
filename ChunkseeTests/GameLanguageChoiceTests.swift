@@ -27,7 +27,7 @@ import Testing
     @Test func regionalAndScriptPreferencesUseInstalledGameTranslations() async throws {
         let game = try game()
         defer { game.remove() }
-        let library = try game.library()
+        let library = try game.library().data
         for (preference, expected) in [
             ("de-DE", "de_de"), ("de-US", "de_de"), ("de-AT", "de_de"),
             ("es-US", "es_mx"), ("es-419", "es_mx"), ("es-ES", "es_es"),

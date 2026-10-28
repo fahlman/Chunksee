@@ -9,7 +9,7 @@ nonisolated enum VillagerText {
         return ReadableName.from(profession)
     }
 
-    static func inspectorProfession(_ creature: Creature, definitions: TradingDefinitions? = nil, gameNames: GameNames = GameNames()) -> String? {
+    static func inspectorProfession(_ creature: Creature, definitions: TradingDefinitions? = nil, gameNames: GameNames) -> String? {
         guard let villager = creature.villager else { return nil }
         let name: String
         if let profession = professionName(villager) {
@@ -25,7 +25,7 @@ nonisolated enum VillagerText {
         return String(localized: "\(name), \(level)")
     }
 
-    static func levelName(_ level: Int?, gameNames: GameNames = GameNames()) -> String? {
+    static func levelName(_ level: Int?, gameNames: GameNames) -> String? {
         guard let level else { return nil }
         return gameNames.name(key: "merchant.level.\(level)", fallback: String(localized: "Level \(level)"))
     }

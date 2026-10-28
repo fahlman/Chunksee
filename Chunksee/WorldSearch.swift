@@ -192,7 +192,7 @@ nonisolated enum WorldSearch {
 
     /// One layer's markers matching every word (all of them with no words): biome areas largest
     /// first, everything else by id.
-    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex, gameNames: GameNames = GameNames()) -> [SearchHit] {
+    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex, gameNames: GameNames) -> [SearchHit] {
         let hits: [SearchHit]
         switch filter {
         case .structure: hits = layerHits(index.structures, query: query, y: \.y) { .structure($0.group) }
@@ -306,7 +306,7 @@ nonisolated enum WorldSearch {
     }
 
     /// Places matching the query text, most items first. `name(of:)` names players.
-    static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo], gameNames: GameNames = GameNames(),
+    static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo], gameNames: GameNames,
                        name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
         let query = SearchQuery(text)
         if let filter = query.filter {

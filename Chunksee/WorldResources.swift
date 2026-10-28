@@ -64,7 +64,7 @@ final class WorldResources {
     private let definitionsWork: BackgroundWork.Scope
     private let assetWork: BackgroundWork.Scope
     private let languageWork: BackgroundWork.Scope
-    private var languageNames = GameNames()
+    private var languageNames = GameNames.unavailable
     private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private var languageRequest: LanguageRequest?
     @ObservationIgnored private var languageGeneration = UUID()
@@ -310,13 +310,9 @@ final class WorldResources {
         }
     }
 
-    var currentGameNames: GameNames {
-        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return GameNames() }
+    var gameNames: GameNames {
+        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return GameNames.unavailable }
         return languageNames
-    }
-
-    func gameNames(for preferredLanguage: String) -> GameNames {
-        languagePreference == preferredLanguage ? currentGameNames : GameNames()
     }
 
     func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
@@ -329,7 +325,7 @@ final class WorldResources {
         languageRequest = request
         languageGeneration = UUID()
         // A background reread of the same source must not blank visible names or searches.
-        if sourceChanged { languageNames = GameNames() }
+        if sourceChanged { languageNames = GameNames.unavailable }
         guard let library = gameData else { return }
         let generation = languageGeneration, read = readLanguage, folder = names.minecraft.folder
         languageWork.start(priority: .utility) { [weak self] in
@@ -599,7 +595,7 @@ final class WorldResources {
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         gameAssets = nil
-        languageNames = GameNames()
+        languageNames = GameNames.unavailable
         biomeColors = nil
         nightLighting = nil
         lighting = [:]

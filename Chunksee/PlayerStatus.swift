@@ -34,7 +34,7 @@ struct PlayerEffectsSection: View {
 }
 
 nonisolated enum PlayerEffectText {
-    static func name(_ effect: StatusEffect, gameNames: GameNames = GameNames(), locale: Locale = .current) -> String {
+    static func name(_ effect: StatusEffect, gameNames: GameNames, locale: Locale = .current) -> String {
         let base = gameNames.name(effect.id, in: "effect")
         guard effect.level > 1 else { return base }
         return String(localized: "\(base) \(LevelText.numeral(effect.level))", locale: locale)
