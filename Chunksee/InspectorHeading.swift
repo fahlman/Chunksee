@@ -6,7 +6,7 @@ struct InspectorHeading: View {
     let title: Text
     let symbol: String
     var picture: Picture?
-    @Environment(\.gameAssetLibrary) private var pictures
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, item: ItemStack?)?
 
     enum Picture: Equatable {
@@ -36,7 +36,7 @@ struct InspectorHeading: View {
         .task(id: request) {
             guard case .mob(let species) = picture, let pictures,
                   loaded?.request != request else { return }
-            let item = try? await pictures.spawnEgg(for: species)
+            let item = try? await pictures.data.spawnEgg(for: species)
             if !Task.isCancelled { loaded = (request, item) }
         }
     }

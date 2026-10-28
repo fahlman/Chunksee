@@ -17,11 +17,11 @@ import Testing
         let fixture = try ItemPictureFixture(dataVersion: 5024, extraFiles: files)
         defer { fixture.remove() }
         let library = try fixture.library()
-        let parrot = try #require(try await library.spawnEgg(for: "minecraft:parrot"))
-        let villager = try #require(try await library.spawnEgg(for: "minecraft:villager"))
-        let sign = try #require(try await library.blockItem(for: BlockState("minecraft:oak_wall_sign")))
-        let bed = try #require(try await library.blockItem(for: BlockState("minecraft:red_bed")))
-        let spawner = try #require(try await library.blockItem(for: BlockState("minecraft:spawner")))
+        let parrot = try #require(try await library.data.spawnEgg(for: "minecraft:parrot"))
+        let villager = try #require(try await library.data.spawnEgg(for: "minecraft:villager"))
+        let sign = try #require(try await library.data.blockItem(for: BlockState("minecraft:oak_wall_sign")))
+        let bed = try #require(try await library.data.blockItem(for: BlockState("minecraft:red_bed")))
+        let spawner = try #require(try await library.data.blockItem(for: BlockState("minecraft:spawner")))
         #expect(parrot.id == "minecraft:parrot_spawn_egg")
         #expect(villager.id == "minecraft:villager_spawn_egg")
         #expect(sign.id == "minecraft:oak_sign")
@@ -32,11 +32,11 @@ import Testing
             #expect(library.cachedPicture(for: item) === picture)
             #expect(try ItemPictureFixture.pixels(picture).color(8, 8) == [255, 0, 0, 255])
         }
-        #expect(try await library.spawnEgg(for: "minecraft:player") == nil)
-        #expect(try await library.spawnEgg(for: "test:mob_without_an_egg") == nil)
-        #expect(try await library.spawnEgg(for: "minecraft:zombie") == nil, "An unreadable egg definition keeps the concept symbol")
-        #expect(try await library.blockItem(for: BlockState("minecraft:nether_portal")) == nil)
-        #expect(try await library.blockItem(for: BlockState("test:unknown")) == nil)
+        #expect(try await library.data.spawnEgg(for: "minecraft:player") == nil)
+        #expect(try await library.data.spawnEgg(for: "test:mob_without_an_egg") == nil)
+        #expect(try await library.data.spawnEgg(for: "minecraft:zombie") == nil, "An unreadable egg definition keeps the concept symbol")
+        #expect(try await library.data.blockItem(for: BlockState("minecraft:nether_portal")) == nil)
+        #expect(try await library.data.blockItem(for: BlockState("test:unknown")) == nil)
         await library.close()
     }
 
@@ -46,9 +46,9 @@ import Testing
         let library = try fixture.library(), item = ItemStack(id: "test:flat")
         _ = try #require(try await library.picture(for: item))
         for appearance in [ColorScheme.light, .dark] {
-            func render(_ picture: InspectorHeading.Picture?, library: GameAssetLibrary?) throws -> ItemTexture {
+            func render(_ picture: InspectorHeading.Picture?, library: GameArtworkLibrary?) throws -> ItemTexture {
                 let renderer = ImageRenderer(content: InspectorHeading(title: Text("Heading"), symbol: "pawprint.fill", picture: picture)
-                    .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+                    .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, appearance))
                 renderer.scale = 4
                 let image = try #require(renderer.cgImage)
                 return try #require(ItemTexture(png: ItemPictureFixture.png(image)))
@@ -78,6 +78,46 @@ import Testing
         session.close()
         await session.waitUntilClosed()
         #expect(await session.resources.headingBlock(at: position, in: "minecraft:overworld") == nil)
+    }
+
+    @Test func artworkChoiceUpdatesTheHeadingOfAnOpenWorld() async throws {
+        let root = try TestWorld.make(chunks: []), fixture = try ItemPictureFixture()
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.choose(fixture.root)
+        let world = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil })
+        defer { world.close() }
+        world.refreshGameAssets()
+        await world.waitForRefresh()
+        let source = WorldGameAssetSource(generation: names.minecraft.generation)
+        let artwork = try #require(world.gameArtworkLibrary(for: source)), item = ItemStack(id: "test:flat")
+        _ = try #require(try await artwork.picture(for: item))
+
+        func render(_ picture: InspectorHeading.Picture?) throws -> ItemTexture {
+            let renderer = ImageRenderer(content: InspectorHeading(title: Text("Heading"), symbol: "pawprint.fill", picture: picture)
+                .modifier(WorldGameAssets(world: world)))
+            renderer.scale = 4
+            let image = try #require(renderer.cgImage)
+            return try #require(ItemTexture(png: ItemPictureFixture.png(image)))
+        }
+        let fallback = try render(nil), original = try render(.item(item))
+        #expect(original.pixels != fallback.pixels)
+        names.minecraft.usesGameArtwork = false
+        await world.waitForRefresh()
+        #expect(world.gameArtworkLibrary(for: source) == nil)
+        #expect(try render(.item(item)).pixels == fallback.pixels)
+        // The data owner remains live even though pictures are no longer exposed.
+        try await artwork.data.checkAvailable()
+        names.minecraft.usesGameArtwork = true
+        await world.waitForRefresh()
+        #expect(world.gameArtworkLibrary(for: source) === artwork)
+        #expect(try render(.item(item)).pixels == original.pixels)
+        world.close()
+        await world.waitUntilClosed()
+        names.minecraft.forget()
+        await names.minecraft.waitUntilIdle()
     }
 
     @Test func movingLootContainersHaveNoBlockPictureLocation() throws {

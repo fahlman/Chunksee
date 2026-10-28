@@ -29,7 +29,7 @@ nonisolated struct MobAppearance: Hashable, Sendable {
     }
 
     func name(for species: String) -> String {
-        isRecorded ? PetDetailText.appearance(saved, species: species) : String(localized: "Not recorded")
+        isRecorded ? PetDetailText.appearance(saved) : String(localized: "Not recorded")
     }
 
     fileprivate var ordering: [String] { [variant ?? "", markings ?? ""] + traits.flatMap { [$0.name, $0.value] } }

@@ -32,9 +32,9 @@ import Testing
             try #require(CreatureMarker(Creature(id: species, x: 0, y: 64, z: 0,
                 appearance: variant.map { CreatureAppearance(variant: $0) }), dimension: "minecraft:overworld"))
         }
-        func image(_ marker: CreatureMarker, library: GameAssetLibrary? = nil) throws -> [UInt8] {
+        func image(_ marker: CreatureMarker, library: GameArtworkLibrary? = nil) throws -> [UInt8] {
             let view = MobLocationLabel(marker: marker).font(.body).frame(width: 160, height: 28, alignment: .leading)
-                .environment(\.gameAssetLibrary, library).environment(\.colorScheme, scheme)
+                .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, scheme)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
             return try ItemPictureFixture.pixels(#require(renderer.cgImage)).bytes

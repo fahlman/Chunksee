@@ -115,6 +115,7 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
+    @Environment(\.gameNames) private var gameNames
     @Environment(\.locale) private var locale
     private var records: PlayerRecords? {
         session.selection.playerRecords.uuid == player.uuid ? session.selection.playerRecords.records : nil
@@ -197,15 +198,7 @@ struct PlayerDetailView: View {
         var saved: Date?
     }
 
-    private var gameMode: String {
-        switch player.gameMode {
-        case .survival: String(localized: "Survival")
-        case .creative: String(localized: "Creative")
-        case .adventure: String(localized: "Adventure")
-        case .spectator: String(localized: "Spectator")
-        case nil: String(localized: "Unknown")
-        }
-    }
+    private var gameMode: String { gameNames.gameMode(player.gameMode) }
 
     private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
         let location = saved.position

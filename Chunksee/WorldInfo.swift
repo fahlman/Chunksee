@@ -76,6 +76,7 @@ struct WorldInfoView: View {
     static let symbol = "info.circle.fill"
     let session: WorldSession
     @State private var showsSeed = false
+    @Environment(\.gameNames) private var gameNames
     @Environment(\.locale) private var locale
 
     private var level: LevelInfo { session.world.level }
@@ -84,7 +85,8 @@ struct WorldInfoView: View {
     var body: some View {
         Form {
             Section {
-                if let version = level.versionName { LabeledContent("Minecraft Version", value: version) }
+                if let version = session.resources.savedVersion.name { LabeledContent("Minecraft Version", value: version) }
+                if let notice = session.resources.newerWorldNotice { WorldVersionNoticeText(notice: notice) }
                 LabeledContent("Difficulty", value: difficulty)
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = session.presentation.worldSpawn {
@@ -173,8 +175,11 @@ struct WorldInfoView: View {
     }
 
     private var difficulty: String {
-        var text = level.difficulty.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? String(localized: "Unknown")
-        if level.isHardcore == true { text = String(localized: "\(text), hardcore") }
+        var text = level.difficulty.map { gameNames.name(key: "options.difficulty.\($0)", fallback: ReadableName.from($0)) } ?? String(localized: "Unknown")
+        if level.isHardcore == true {
+            let hardcore = gameNames.name(key: "options.difficulty.hardcore", fallback: ReadableName.from("hardcore"))
+            text = String(localized: "\(text), \(hardcore)")
+        }
         if level.difficultyLocked == true { text = String(localized: "\(text), locked") }
         return text
     }

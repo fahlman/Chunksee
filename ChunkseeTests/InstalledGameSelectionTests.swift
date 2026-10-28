@@ -34,7 +34,7 @@ import Testing
         _ = try install(["id": "earlier", "world_version": 8, "stable": false, "build_time": "2026-01-01T00:00:00Z"], as: "earlier", under: root)
         let latest = try install(["id": "newest", "world_version": 7, "build_time": "2026-02-01T00:00:00Z"], as: "newest", under: root)
         _ = try install(["id": "unreadable"], as: "bad", under: root)
-        let libraries = GameAssetLibraries()
+        let libraries = GameResourceLibraries()
         #expect(try await libraries.library(under: root)?.version.id == "newest")
         try Data([0xFF]).write(to: latest)
         #expect(try await libraries.library(under: root)?.version.id == "earlier")
@@ -46,7 +46,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try install(["id": "999", "world_version": 7], as: "z", under: root)
         _ = try install(["id": "1", "world_version": 8], as: "a", under: root)
-        let libraries = GameAssetLibraries()
+        let libraries = GameResourceLibraries()
         #expect(try await libraries.library(under: root)?.version.id == "1")
         await libraries.close()
     }

@@ -9,9 +9,9 @@ import Testing
     func defaultNamespaceUsesTheSameNamesAndGroups(prefix: String) throws {
         #expect(ReadableName.from(prefix + "diamond_sword") == "Diamond Sword")
         #expect(ItemAppearance.symbol(for: prefix + "diamond_sword") == ItemAppearance.symbol(for: "minecraft:diamond_sword"))
-        #expect(PlayerRecords.travelName(prefix + "aviate_one_cm") == "Elytra")
+        #expect(PlayerRecords.travelName(prefix + "aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
         #expect(WorldDetails.readableRule(prefix + "keep_inventory") == "Keep Inventory")
-        #expect(PetDetailText.name(prefix + "red_blue") == "Red and Blue")
+        #expect(PetDetailText.name(prefix + "red_blue") == "Red Blue")
         #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)
         let bed = PlaceMarker(PointOfInterest(type: prefix + "home", x: 1, y: 64, z: 2, freeTickets: 0))
         #expect(bed.group == .bed && bed.name == "Villager’s Bed")
@@ -87,7 +87,7 @@ import Testing
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
         let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, structureGroups: groups)).structures
-        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Plains Village")
+        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Village Plains")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 }

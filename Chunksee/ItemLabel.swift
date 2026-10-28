@@ -5,7 +5,7 @@ import SwiftUI
 struct ItemIcon: View {
     let item: ItemStack
     var fallbackSymbol: String?
-    @Environment(\.gameAssetLibrary) private var pictures
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, image: CGImage)?
 
     private struct Request: Equatable {
@@ -80,14 +80,14 @@ struct ItemLabel: View {
     }
 }
 
-private struct GameAssetLibraryKey: EnvironmentKey {
-    nonisolated static let defaultValue: GameAssetLibrary? = nil
+private struct GameArtworkLibraryKey: EnvironmentKey {
+    nonisolated static let defaultValue: GameArtworkLibrary? = nil
 }
 
 extension EnvironmentValues {
-    var gameAssetLibrary: GameAssetLibrary? {
-        get { self[GameAssetLibraryKey.self] }
-        set { self[GameAssetLibraryKey.self] = newValue }
+    var gameArtworkLibrary: GameArtworkLibrary? {
+        get { self[GameArtworkLibraryKey.self] }
+        set { self[GameArtworkLibraryKey.self] = newValue }
     }
 }
 
@@ -100,15 +100,19 @@ struct WorldGameAssets: ViewModifier {
         let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
+        let preferredLanguage: String
     }
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
         let source = WorldGameAssetSource(generation: resources.generation)
+        let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
-            .environment(\.gameAssetLibrary, world.gameAssetLibrary(for: source))
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world))) {
+            .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
+            .environment(\.gameNames, world.gameNames)
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
+                world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()
             }
     }

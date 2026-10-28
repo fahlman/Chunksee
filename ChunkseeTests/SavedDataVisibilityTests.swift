@@ -75,7 +75,7 @@ import Testing
                 header: { Text("Saved Wolf") }, location: { EmptyView() })
         }.formStyle(.grouped))
         #expect(text.contains("Equipment") && text.contains("Head") && text.contains("Diamond Helmet"))
-        #expect(text.contains("Appearance") && text.contains(PetDetailText.appearance(appearance, species: creature.id)))
+        #expect(text.contains("Appearance") && text.contains(PetDetailText.appearance(appearance)))
         #expect(text.contains("Collar Color") && text.contains(PetDetailText.name(collar)))
         #expect(!text.contains("Tamed By"))
         session.close(); await session.waitUntilClosed()
@@ -89,7 +89,7 @@ import Testing
         data["DataVersion"] = version.map { .int(Int32($0)) }
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound(data)]), to: root.appendingPathComponent("level.dat"))
         let world = try World(contentsOf: root)
-        let colors = try MapBiomeColors.read(in: world, assetSourceKey: "fixture", assets: nil)
+        let colors = try MapBiomeColors.read(in: world, source: .init(data: "fixture", artwork: .unavailable), assets: nil)
         let sampler = try #require(colors.sampler)
         let point = BlockPosition(blockX: 31, blockY: 63, blockZ: -1)
         #expect(sampler.cellOrigin(at: point) == BiomeSampler(seed: 123).cellOrigin(at: point))

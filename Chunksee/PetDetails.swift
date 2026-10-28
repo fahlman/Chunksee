@@ -9,7 +9,7 @@ struct PetDetailRows: View {
             LabeledContent("Sitting Order", value: sitting ? String(localized: "Sit") : String(localized: "Not ordered to sit"))
         }
         if let appearance = creature.appearance {
-            LabeledContent("Appearance", value: PetDetailText.appearance(appearance, species: creature.id))
+            LabeledContent("Appearance", value: PetDetailText.appearance(appearance))
         }
         if let color = creature.collarColor {
             LabeledContent("Collar Color", value: PetDetailText.name(color))
@@ -18,16 +18,9 @@ struct PetDetailRows: View {
 }
 
 nonisolated enum PetDetailText {
-    static func appearance(_ appearance: CreatureAppearance, species: String) -> String {
+    static func appearance(_ appearance: CreatureAppearance) -> String {
         var parts: [String] = []
-        let variant: String?
-        switch (species, appearance.variant) {
-        case ("minecraft:cat", "minecraft:black"): variant = String(localized: "Tuxedo")
-        case ("minecraft:cat", "minecraft:red"): variant = String(localized: "Ginger")
-        case ("minecraft:cat", "minecraft:all_black"): variant = String(localized: "Black")
-        default: variant = appearance.variant.map(name)
-        }
-        if let variant { parts.append(variant) }
+        if let variant = appearance.variant { parts.append(name(variant)) }
         if let markings = appearance.markings { parts.append(name(markings)) }
         for (key, value) in (appearance.traits ?? [:]).sorted(by: { $0.key < $1.key }) {
             parts.append(String(localized: "\(ReadableName.from(key)): \(name(value))"))
@@ -35,30 +28,5 @@ nonisolated enum PetDetailText {
         return parts.isEmpty ? String(localized: "Not recorded") : parts.formatted(.list(type: .and))
     }
 
-    static func name(_ id: String) -> String {
-        let key = ReadableName.vanillaPath(id) ?? id
-        return names[key] ?? ReadableName.from(id)
-    }
-
-    private static let names: [String: String] = [
-        "white": String(localized: "White"), "orange": String(localized: "Orange"),
-        "magenta": String(localized: "Magenta"), "light_blue": String(localized: "Light Blue"),
-        "yellow": String(localized: "Yellow"), "lime": String(localized: "Lime"),
-        "pink": String(localized: "Pink"), "gray": String(localized: "Gray"),
-        "light_gray": String(localized: "Light Gray"), "cyan": String(localized: "Cyan"),
-        "purple": String(localized: "Purple"), "blue": String(localized: "Blue"),
-        "brown": String(localized: "Brown"), "green": String(localized: "Green"),
-        "red": String(localized: "Red"), "black": String(localized: "Black"),
-        "pale": String(localized: "Pale"), "woods": String(localized: "Woods"),
-        "ashen": String(localized: "Ashen"), "chestnut": String(localized: "Chestnut"),
-        "rusty": String(localized: "Rusty"), "spotted": String(localized: "Spotted"),
-        "striped": String(localized: "Striped"), "snowy": String(localized: "Snowy"),
-        "tabby": String(localized: "Tabby"), "siamese": String(localized: "Siamese"),
-        "british_shorthair": String(localized: "British Shorthair"), "calico": String(localized: "Calico"),
-        "persian": String(localized: "Persian"), "ragdoll": String(localized: "Ragdoll"),
-        "jellie": String(localized: "Jellie"), "red_blue": String(localized: "Red and Blue"),
-        "yellow_blue": String(localized: "Yellow and Blue"), "creamy": String(localized: "Creamy"),
-        "dark_brown": String(localized: "Dark Brown"), "white_field": String(localized: "White Patches"),
-        "white_dots": String(localized: "White Spots"), "black_dots": String(localized: "Black Spots"),
-    ]
+    static func name(_ id: String) -> String { ReadableName.from(id) }
 }

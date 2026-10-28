@@ -107,6 +107,7 @@ struct CreatureDetailView: View {
 struct CreatureDetailSections<Header: View, Location: View>: View {
     let session: WorldSession
     let creature: Creature
+    @Environment(\.gameNames) private var gameNames
     @ViewBuilder var header: Header
     @ViewBuilder var location: Location
 
@@ -118,7 +119,7 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
             }
             PetDetailRows(creature: creature)
-            if let profession = VillagerText.inspectorProfession(creature, definitions: session.details.definitions.trading) {
+            if let profession = VillagerText.inspectorProfession(creature, definitions: session.details.definitions.trading, gameNames: gameNames) {
                 LabeledContent("Profession", value: profession)
             }
         } header: {

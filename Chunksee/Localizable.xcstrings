@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Use Game Artwork" : {
+      "comment" : "App-wide View menu toggle: use pictures and texture colors from the chosen game files. Game data and saved map pictures remain available when off."
+    },
     "Saved Dimension" : {
       "comment" : "Map inspector label for the original saved dimension value when it cannot be resolved to a dimension."
     },
@@ -9,6 +12,21 @@
     },
     "Saved Map Picture" : {
       "comment" : "Inspector section and accessibility label for an in-game map picture whose dimension is unavailable."
+    },
+    "Newer Minecraft World" : {
+      "comment" : "Title for the non-blocking comparison of a saved world's version with the selected game files."
+    },
+    "Dismiss Notice" : {
+      "comment" : "Accessible title of the version notice's close button. Dismissing the banner keeps the information in World Info."
+    },
+    "The version notice remains in World Info" : {
+      "comment" : "Help for dismissing the newer-world banner."
+    },
+    "This world was saved with Minecraft %@, which is newer than the selected Minecraft %@. Chunksee will show what it can read." : {
+      "comment" : "Non-blocking notice. The first name comes from the save; the second comes from the selected game files. Do not translate version names."
+    },
+    "This world was saved with a newer Minecraft version than the selected Minecraft %@. Chunksee will show what it can read." : {
+      "comment" : "Non-blocking notice when the save records a newer data version but no version name. The name comes from the selected game files."
     },
     "Mobs" : {
       "comment" : "Sidebar section listing only creature types with saved individuals in this dimension."
@@ -535,6 +553,18 @@
           }
         }
       }
+    },
+    "Level %lld" : {
+      "comment" : "Fallback villager rank when the installed game has no name for this saved level. The number is the saved level."
+    },
+    "Older World Format" : {
+      "comment" : "Heading when the world format cannot be displayed and the save has no Minecraft version name."
+    },
+    "Saved by Minecraft %@" : {
+      "comment" : "Heading for an older world format. The placeholder is the Minecraft version name recorded in the save."
+    },
+    "This world uses a format Chunksee cannot display. To update it, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again." : {
+      "comment" : "Guidance for upgrading a world whose saved terrain format cannot be displayed. The command names refer to Minecraft controls."
     }
   },
   "version" : "1.0"

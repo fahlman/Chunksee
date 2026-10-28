@@ -49,7 +49,7 @@ import UniformTypeIdentifiers
         #expect(library.cachedPicture(for: stack) === image)
         for appearance in [ColorScheme.light, .dark] {
             let renderer = ImageRenderer(content: ItemIcon(item: stack)
-                .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+                .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, appearance))
             renderer.scale = 4
             let native = try #require(renderer.cgImage)
             #expect(native.width == 80 && native.height == 80)
@@ -366,7 +366,7 @@ import UniformTypeIdentifiers
         _ = try #require(try await library.picture(for: overridden))
         // The native initial frame reads the warm cache before its asynchronous load task.
         let renderer = ImageRenderer(content: ItemIcon(item: overridden)
-            .environment(\.gameAssetLibrary, library).environment(\.colorScheme, colorScheme))
+            .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, colorScheme))
         renderer.scale = 4
         let pixels = try ItemPictureFixture.pixels(try #require(renderer.cgImage))
         #expect(pixels.color(10, 10) == [255, 0, 0, 255]) // Unchanged overlay.
@@ -380,7 +380,7 @@ import UniformTypeIdentifiers
         let stack = ItemStack(id: "test:flat")
         _ = try #require(try await library.picture(for: stack))
         // ImageRenderer captures the initial view without running its asynchronous load task.
-        let renderer = ImageRenderer(content: ItemIcon(item: stack).environment(\.gameAssetLibrary, library))
+        let renderer = ImageRenderer(content: ItemIcon(item: stack).environment(\.gameArtworkLibrary, library))
         renderer.scale = 4
         let image = try #require(renderer.cgImage)
         let pixels = try ItemPictureFixture.pixels(image)
@@ -487,47 +487,70 @@ import UniformTypeIdentifiers
         let first = try #require(await resources.library())
         let second = try #require(await resources.library())
         #expect(first === second)
+        let firstArtwork = try #require(resources.artwork(for: first)), secondArtwork = try #require(resources.artwork(for: second))
         let stack = ItemStack(id: "test:flat")
-        #expect(try await first.picture(for: stack) != nil)
-        #expect(second.cachedPicture(for: stack) != nil)
+        #expect(try await firstArtwork.picture(for: stack) != nil)
+        #expect(secondArtwork.cachedPicture(for: stack) != nil)
         let generation = resources.generation
         resources.forget()
         #expect(resources.generation != generation && resources.folder == nil)
         #expect(await resources.library() == nil)
         await resources.waitUntilIdle()
         // Retained inactive views cannot keep reading or warming the retired source.
-        #expect(first.cachedPicture(for: stack) == nil)
-        #expect(try await second.picture(for: stack) == nil)
+        #expect(firstArtwork.cachedPicture(for: stack) == nil)
+        #expect(try await secondArtwork.picture(for: stack) == nil)
         resources.choose(fixture.root)
         let reopened = try #require(await resources.library())
         #expect(first !== reopened)
-        #expect(try await reopened.picture(for: stack) != nil)
-        #expect(try await first.picture(for: stack) == nil)
+        let reopenedArtwork = try #require(resources.artwork(for: reopened))
+        #expect(try await reopenedArtwork.picture(for: stack) != nil)
+        #expect(try await firstArtwork.picture(for: stack) == nil)
         await resources.waitUntilIdle()
     }
 
     @Test func closingTheRegistryRetiresEveryRetainedLibraryAndCannotReopen() async throws {
         let firstFixture = try ItemPictureFixture(), secondFixture = try ItemPictureFixture()
         defer { firstFixture.remove(); secondFixture.remove() }
-        let libraries = GameAssetLibraries()
+        let libraries = GameResourceLibraries()
         let first = try #require(try await libraries.library(under: firstFixture.root))
         let second = try #require(try await libraries.library(under: secondFixture.root))
         #expect(first !== second)
+        let owner = MinecraftResources(defaults: TestDefaults.make())
+        let firstArtwork = try #require(owner.artwork(for: first)), secondArtwork = try #require(owner.artwork(for: second))
         let stack = ItemStack(id: "test:flat")
-        #expect(try await first.picture(for: stack) != nil)
-        #expect(try await second.picture(for: stack) != nil)
+        #expect(try await firstArtwork.picture(for: stack) != nil)
+        #expect(try await secondArtwork.picture(for: stack) != nil)
         await libraries.close()
-        for library in [first, second] {
+        for library in [firstArtwork, secondArtwork] {
             #expect(library.cachedPicture(for: stack) == nil)
             #expect(try await library.picture(for: stack) == nil)
         }
         #expect(try await libraries.library(under: firstFixture.root) == nil)
     }
 
+    @Test func removingPermissionRetiresReadersAfterTheirWorldHandleIsReleased() async throws {
+        let fixture = try ItemPictureFixture()
+        defer { fixture.remove() }
+        let owner = MinecraftResources(defaults: TestDefaults.make())
+        owner.choose(fixture.root)
+        var source: GameResourceLibrary? = await owner.library()
+        let data = try #require(source?.data), artwork = try #require(owner.artwork(for: source))
+        #expect(try await artwork.picture(for: .init(id: "test:flat")) != nil)
+        source = nil
+        var reopened: GameResourceLibrary? = await owner.library()
+        #expect(reopened?.data === data && owner.artwork(for: reopened) === artwork)
+        reopened = nil
+        owner.forget()
+        await owner.waitUntilIdle()
+        #expect(artwork.cachedPicture(for: .init(id: "test:flat")) == nil)
+        #expect(try await artwork.picture(for: .init(id: "test:flat")) == nil)
+        await #expect(throws: CancellationError.self) { try await data.mapMaterials(for: [.init("minecraft:stone")]) }
+    }
+
     @Test func changingTheJarDoesNotReuseItsOldPictures() async throws {
         let fixture = try ItemPictureFixture()
         defer { fixture.remove() }
-        let libraries = GameAssetLibraries()
+        let libraries = GameResourceLibraries()
         let first = try #require(try await libraries.library(under: fixture.root))
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: fixture.jar.path)
         let replacement = try #require(try await libraries.library(under: fixture.root))
@@ -675,7 +698,14 @@ struct ItemPictureFixture {
     }
 
     func remove() { try? FileManager.default.removeItem(at: root) }
-    func library() throws -> GameAssetLibrary { GameAssetLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: CacheKey.hash(jar.path)) }
+    func resources() throws -> GameResourceLibrary {
+        GameResourceLibrary(assets: try #require(try GameAssets(contentsOf: jar)), sourceKey: CacheKey.hash(jar.path))
+    }
+
+    func library() throws -> GameArtworkLibrary {
+        let assets = try #require(try GameAssets(contentsOf: jar))
+        return GameArtworkLibrary(assets: assets, data: GameDataLibrary(assets: assets, sourceKey: CacheKey.hash(jar.path)))
+    }
 
     static func json(_ object: Any) throws -> Data {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])

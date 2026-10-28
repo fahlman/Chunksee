@@ -40,6 +40,6 @@ import Testing
             #expect(style.format("minecraft:sharpness") == "Sharpness I")
             #expect(style.format("example:mending") == "Mending I")
         }
-        #expect(PlayerEffectText.name(StatusEffect(id: "minecraft:strength", amplifier: 0, durationTicks: 20)) == "Strength")
+        #expect(PlayerEffectText.name(StatusEffect(id: "minecraft:strength", amplifier: 0, durationTicks: 20), gameNames: .unavailable) == "Strength")
     }
 }

@@ -54,7 +54,7 @@ struct WorldInspector: View {
 private struct PlaceDetailView: View {
     let session: WorldSession
     let marker: PlaceMarker
-    @Environment(\.gameAssetLibrary) private var pictures
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, item: ItemStack?)?
 
     private struct Request: Equatable {
@@ -90,7 +90,7 @@ private struct PlaceDetailView: View {
                   let pictures, loaded?.request != request else { return }
             let block = await session.resources.headingBlock(at: position, in: dimension)
             guard !Task.isCancelled else { return }
-            let item = if let block { try? await pictures.blockItem(for: block) } else { nil as ItemStack? }
+            let item = if let block { try? await pictures.data.blockItem(for: block) } else { nil as ItemStack? }
             if !Task.isCancelled { loaded = (request, item) }
         }
     }
