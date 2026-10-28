@@ -20,7 +20,7 @@ import Testing
                      read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension(dimensionID))
-        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id])
+        let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id], water: nil)
         if let read { return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
                                      cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
         return MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)

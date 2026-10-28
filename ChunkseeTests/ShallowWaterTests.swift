@@ -6,6 +6,170 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct ShallowWaterTests {
+    @Test func textureOpacityLimitsTheFloorAndTheExistingShadeDimsIt() async throws {
+        let url = try waterWorld(depths: [1, 5, 15, 32])
+        let fixture = try waterFixture(alpha: 192)
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), library = try fixture.library()
+        let assets = try #require(try GameAssets(contentsOf: fixture.jar))
+        let context = MapSurfaceContext(settings: nil, water: try WorldDefinitions.read(world, assets: assets).water)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), surfaceContext: context)
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
+        let pixels = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
+        // Synthetic art is deliberately different from Minecraft's installed opacity.
+        let expected: [[UInt8]] = [[114, 159, 236, 255], [104, 144, 217, 255], [55, 95, 174, 255], [35, 65, 125, 255]]
+        for x in expected.indices { #expect(pixel(pixels, x: x * 16 + 5, z: 5) == expected[x]) }
+        await library.close()
+    }
+
+    @Test func missingWaterArtPreservesEveryExistingWaterPixel() async throws {
+        let url = try waterWorld(depths: [1, 5, 15, 32])
+        let fixture = try waterFixture(alpha: nil)
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        var renderer = RegionTileRenderer(dimension: dimension)
+        let fallback = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
+        let library = try fixture.library()
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
+        #expect(try await renderer.pixels(for: .init(x: 0, z: 0)) == fallback)
+        #expect(try await library.waterAppearance().opacity == nil)
+        await library.close()
+    }
+
+    @Test func opacityReadsTheFirstTextureFrameAndRetiresWithItsLibrary() async throws {
+        let fixture = try waterFixture(alpha: 64)
+        defer { fixture.remove() }
+        let library = try fixture.library()
+        #expect(library.cachedWaterAppearance == nil)
+        let first = try await library.waterAppearance()
+        #expect(first.opacity == 64.0 / 255)
+        #expect(library.cachedWaterAppearance === first)
+        #expect(try await library.waterAppearance() === first)
+        await library.close()
+        #expect(library.cachedWaterAppearance == nil)
+    }
+
+    @Test func artworkSwitchKeepsTheWaterFactsAndChangesOnlyItsPictureBlend() async throws {
+        let root = try waterWorld(depths: [5]), fixture = try waterFixture(alpha: 192)
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.choose(fixture.root)
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources), map = try #require(session.map)
+        resources.refreshGameAssets()
+        await resources.waitForRefresh()
+        let region = RegionPosition(x: 0, z: 0), context = map.currentRenderer.surfaceContext
+        let data = try #require(map.currentRenderer.gameData), reader = resources.readers["minecraft:overworld"]
+        #expect(context.water != nil && context.waterKey != nil)
+        let original = try #require(try await map.currentRenderer.pixels(for: region))
+        #expect(pixel(original, x: 5, z: 5) == [104, 144, 217, 255])
+
+        names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        #expect(map.currentRenderer.gameData === data && map.currentRenderer.gameArtwork == nil)
+        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        let fallback = try #require(try await map.currentRenderer.pixels(for: region))
+        #expect(pixel(fallback, x: 5, z: 5) == [150, 171, 193, 255])
+
+        names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        #expect(try await map.currentRenderer.pixels(for: region) == original)
+        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        session.close()
+        await session.waitUntilClosed()
+        names.minecraft.forget()
+        await names.minecraft.waitUntilIdle()
+    }
+
+    @Test func gameFluidFactsAgreeAcrossTheSurfaceHoverAndDepthStyle() async throws {
+        let states: [NBT] = [.compound(["Name": .string("minecraft:kelp")]),
+            .compound(["Name": .string("minecraft:seagrass")]),
+            .compound(["Name": .string("minecraft:oak_stairs"), "Properties": .compound(["waterlogged": .string("true")])]),
+            .compound(["Name": .string("minecraft:tube_coral")]),
+            .compound(["Name": .string("minecraft:oak_stairs"), "Properties": .compound([
+                "waterlogged": .string("true"), "half": .string("top")])])]
+        let chunks = states.enumerated().map { x, state in
+            let palette = ["minecraft:air", "minecraft:sand", "minecraft:water"].map {
+                NBT.compound(["Name": .string($0)])
+            } + [state]
+            let section = Fixtures.section(y: 0, palette: palette, indices: (0..<4096).map { index in
+                    let y = index / 256
+                    return y == 0 ? 1 : y == 3 || y == 5 ? 3 : y < 5 ? 2 : 0
+                })
+            return TestWorld.ChunkSpec(x: x, z: 0, nbt: Fixtures.chunk(x: x, z: 0,
+                dataVersion: SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
+        }
+        let url = try TestWorld.make(chunks: chunks), fixture = try waterFixture(alpha: 192)
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: url) }
+        let world = try World(contentsOf: url), assets = try #require(try GameAssets(contentsOf: fixture.jar))
+        let context = MapSurfaceContext(settings: nil, water: try WorldDefinitions.read(world, assets: assets).water)
+        let dimension = try #require(world.dimension("overworld")), file = try #require(try dimension.region(x: 0, z: 0))
+        let library = try fixture.library()
+        var renderer = RegionTileRenderer(dimension: dimension, surfaceContext: context)
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
+        let normal = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
+        renderer.style = .waterDepth
+        let depth = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
+        for x in states.indices {
+            let columns = try #require(RegionTileRenderer.columns(in: file, localX: x, localZ: 0, context: context))
+            let hover = try #require(RegionTileRenderer.topBlocks(in: file, localX: x, localZ: 0, context: context))
+            let expectedDepth = x == 4 ? 0 : 5
+            #expect(columns.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
+            #expect(hover.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
+            if x < 4 {
+                #expect(pixel(normal, x: x * 16 + 5, z: 5) == [104, 144, 217, 255])
+                let color = MapStylePalette.waterColor(depth: 5)
+                #expect(pixel(depth, x: x * 16 + 5, z: 5) == [color.red, color.green, color.blue, 255])
+            } else {
+                #expect(hover.allSatisfy { $0?.id == "minecraft:oak_stairs" })
+                #expect(pixel(normal, x: x * 16 + 5, z: 5) != [104, 144, 217, 255])
+            }
+        }
+        await library.close()
+    }
+
+    @Test func livePackWaterTagsRefreshTheMapAndItsDiskIdentityWithoutArtwork() async throws {
+        let url = try waterWorld(depths: [5])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let tagURL = url.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/fluid/water.json")
+        func write(_ values: [String]) throws {
+            try FileManager.default.createDirectory(at: tagURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try ItemPictureFixture.json(["replace": true, "values": values]).write(to: tagURL, options: .atomic)
+        }
+        try write(["minecraft:water", "minecraft:flowing_water"])
+        let defaults = TestDefaults.make()
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        resources.refreshDelay = .zero
+        let session = WorldSession(resources: resources), map = try #require(session.map)
+        let dimension = try #require(resources.world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
+        let original = map.currentRenderer.surfaceContext
+        let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: original))
+        #expect(original.water != nil && original.waterKey != nil)
+        try write([])
+        resources.worldChanged([tagURL])
+        await resources.waitForRefresh()
+        let empty = map.currentRenderer.surfaceContext
+        #expect(empty.water?.members.isEmpty == true && empty.waterKey != original.waterKey)
+        let changed = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: empty))
+        #expect(changed != key && changed.fileName != key.fileName)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: empty)?.allSatisfy { $0?.waterDepth == 0 } == true)
+        try FileManager.default.removeItem(at: tagURL)
+        resources.worldChanged([tagURL])
+        await resources.waitForRefresh()
+        let absent = map.currentRenderer.surfaceContext
+        #expect(absent.water == nil && absent.waterKey == nil)
+        #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: absent)?.allSatisfy { $0?.waterDepth == 5 } == true)
+        session.close()
+        await session.waitUntilClosed()
+    }
+
     @Test func shallowWaterShowsItsFloorAndDeepWaterKeepsItsColour() async throws {
         let depths = [1, 5, 16, 32]
         let url = try waterWorld(depths: depths)
@@ -92,7 +256,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: url.appendingPathComponent("test-tiles"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region)))
-        let old = cache.directory.appendingPathComponent("r.0.0.normal.surface.hunknown.cnone.\(key.fileSize).\(key.modified).v12.lzfse")
+        let old = cache.directory.appendingPathComponent(key.fileName.replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v34."))
         try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: old)
@@ -122,6 +286,19 @@ import Testing
                 dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
         }
         return try TestWorld.make(chunks: chunks)
+    }
+
+    private func waterFixture(alpha: UInt8?) throws -> ItemPictureFixture {
+        var files = ["data/minecraft/tags/fluid/water.json": try ItemPictureFixture.json([
+            "values": ["minecraft:water", "minecraft:flowing_water"]])]
+        if let alpha {
+            // The opaque second frame must not influence the first-frame opacity.
+            let first: [UInt8] = [0, 0, 0, alpha], second: [UInt8] = [0, 0, 0, 255]
+            let pixels = Array(repeating: first, count: 4).flatMap { $0 }
+                + Array(repeating: second, count: 4).flatMap { $0 }
+            files["assets/minecraft/textures/block/water_still.png"] = try ItemPictureFixture.png(pixels, width: 2, height: 4)
+        }
+        return try ItemPictureFixture(extraFiles: files)
     }
 
     private func pixel(_ pixels: [UInt8], x: Int, z: Int) -> [UInt8] {

@@ -721,8 +721,8 @@ final class MapModel {
         surfaceChanged()
     }
 
-    func setDimensionSettings(_ settings: DimensionSettings?) {
-        let context = MapSurfaceContext(settings: settings)
+    func setDimensionSettings(_ settings: DimensionSettings?, water: GameTag?) {
+        let context = MapSurfaceContext(settings: settings, water: water)
         let scale = MapHeightScale(settings: settings)
         guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
         renderer.surfaceContext = context

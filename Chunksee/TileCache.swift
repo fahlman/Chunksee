@@ -35,6 +35,7 @@ nonisolated struct TileCache: Sendable {
     /// 32: Kit's resource numbers use Minecraft's narrowing and Float conversion.
     /// 33: shared game JSON numeric conversion and repeated-member interpretation.
     /// 34: combine the game-data/artwork boundary with the corrected game JSON reader.
+    /// 35: game-derived water-bearing states and texture opacity for shallow-water floors.
     /// 36: confirmed missing artwork shares the game pattern across map and item pictures.
     static let rendererVersion = 36
 
@@ -54,6 +55,7 @@ nonisolated struct TileCache: Sendable {
         var gameSource = GameResourceSource.unavailable
         var biomeSource: String? = nil
         var nightLight: String? = nil
+        var waterSource: String? = nil
 
         var fileName: String {
             let view = cutawayY.map { "y\($0)" }
@@ -62,7 +64,8 @@ nonisolated struct TileCache: Sendable {
             let biomes = biomeSource.map { "biomes\($0)." } ?? ""
             let colors = "source\(gameSource.cacheKey)." + (colorSource.map { "colors\($0)." } ?? "fallback.")
             let light = nightLight.map { "light\($0)." } ?? ""
-            return "\(prefix)\(light)\(colors)\(biomes)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+            let water = waterSource.map { "water\($0)." } ?? ""
+            return "\(prefix)\(light)\(colors)\(biomes)\(water)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
@@ -125,7 +128,8 @@ nonisolated struct TileCache: Sendable {
                    ceilingY: cutawayY == nil ? context.ceilingY : nil,
                    style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource,
                    gameSource: style == .height ? .unavailable : gameSource,
-                   biomeSource: style == .height ? nil : biomeSource, nightLight: darkSpots?.cacheKey)
+                   biomeSource: style == .height ? nil : biomeSource, nightLight: darkSpots?.cacheKey,
+                   waterSource: context.waterKey)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {

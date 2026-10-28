@@ -9,6 +9,7 @@ actor GameArtworkLibrary {
     nonisolated let version: GameAssets.Version
     nonisolated let sourceKey: String
     typealias TextureRead = @Sendable (GameAssets, String) throws -> Data?
+    nonisolated static let readGameTexture: TextureRead = { try $0.readTexture($1) }
     private var assets: GameAssets?
     private let readTexture: TextureRead
     nonisolated let data: GameDataLibrary
@@ -23,6 +24,7 @@ actor GameArtworkLibrary {
         let images = NSCache<ItemKey, CGImage>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
+        let water = NSCache<NSString, WaterAppearance>()
         let textureColors = NSCache<NSString, ColorEntry>()
 
         init() {
@@ -36,6 +38,7 @@ actor GameArtworkLibrary {
             blockColors.totalCostLimit = 2 * 1024 * 1024
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
+            water.countLimit = 1
             textureColors.countLimit = 256
         }
     }
@@ -154,7 +157,7 @@ actor GameArtworkLibrary {
         }
     }
 
-    init(assets: GameAssets, data: GameDataLibrary, readTexture: @escaping TextureRead = { try $0.readTexture($1) }) {
+    init(assets: GameAssets, data: GameDataLibrary, readTexture: @escaping TextureRead = GameArtworkLibrary.readGameTexture) {
         self.readTexture = readTexture
         self.data = data
         let sourceKey = data.sourceKey
@@ -172,7 +175,37 @@ actor GameArtworkLibrary {
         caches.images.removeAllObjects()
         caches.blockColors.removeAllObjects()
         caches.blockTextures.removeAllObjects()
+        caches.water.removeAllObjects()
         caches.textureColors.removeAllObjects()
+    }
+
+    nonisolated final class WaterAppearance: Sendable {
+        let opacity: Double?
+        init(opacity: Double?) { self.opacity = opacity }
+    }
+
+    nonisolated var cachedWaterAppearance: WaterAppearance? { caches.water.object(forKey: "water") }
+
+    /// Match the other block pictures' first-frame policy; unreadable art keeps the map fallback.
+    func waterAppearance() throws -> WaterAppearance {
+        try checkAvailable()
+        if let cachedWaterAppearance { return cachedWaterAppearance }
+        let opacity: Double?
+        if let id = Identifier("minecraft:block/water_still"), let image = texture(id),
+           image.width > 0, image.height >= image.width, image.height % image.width == 0 {
+            let count = image.width * image.width
+            var alpha = 0
+            for row in 0..<image.width {
+                try Task.checkCancellation()
+                for pixel in (row * image.width)..<((row + 1) * image.width) {
+                    alpha += Int(image.pixels[pixel * 4 + 3])
+                }
+            }
+            opacity = Double(alpha) / Double(count * 255)
+        } else { opacity = nil }
+        let result = WaterAppearance(opacity: opacity)
+        caches.water.setObject(result, forKey: "water")
+        return result
     }
 
     nonisolated func cachedTextureColor(_ id: String) -> MapColor? {

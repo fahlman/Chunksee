@@ -1,6 +1,24 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Minecraft %@ doesn't recognize this block" : {
+      "comment" : "Block notice. The placeholder is the selected game files' version name; do not translate it."
+    },
+    "Minecraft doesn't recognize this block" : {
+      "comment" : "Block notice when the selected game files have no readable version name."
+    },
+    "Minecraft %@ would remove it when this area loads." : {
+      "comment" : "Help for the block notice. The placeholder is the selected game's version name; do not translate it."
+    },
+    "Minecraft would remove it when this area loads." : {
+      "comment" : "Help for the block notice when the selected game files have no readable version name."
+    },
+    "Minecraft %@ doesn't recognize this block. It would remove it when this area loads." : {
+      "comment" : "Spoken block notice. The placeholder is the selected game files' version name; do not translate it."
+    },
+    "Minecraft doesn't recognize this block. It would remove it when this area loads." : {
+      "comment" : "Spoken block notice when the selected game files have no readable version name."
+    },
     "Use Game Artwork" : {
       "comment" : "App-wide View menu toggle: use pictures and texture colors from the chosen game files. Game data and saved map pictures remain available when off."
     },
