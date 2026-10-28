@@ -2,13 +2,16 @@ import ChunkseeKit
 import CoreGraphics
 import Foundation
 
-/// One live jar's resources and bounded, shared picture and map-color caches. All decode/drawing
+/// Artwork capability for one live jar, with bounded picture and map-color caches. All decode/drawing
 /// work is serial off-main; scrolling requests already drawn items without repeating that work.
-actor GameAssetLibrary {
+actor GameArtworkLibrary {
     nonisolated let identity = UUID()
     nonisolated let version: GameAssets.Version
     nonisolated let sourceKey: String
+    typealias TextureRead = @Sendable (GameAssets, String) -> Data?
     private var assets: GameAssets?
+    private let readTexture: TextureRead
+    nonisolated let data: GameDataLibrary
     private nonisolated let caches = Caches()
 
     /// NSCache synchronizes get/set/eviction (Foundation's documented thread-safety contract).
@@ -18,7 +21,6 @@ actor GameAssetLibrary {
         let models = NSCache<ItemKey, ModelEntry>()
         let textures = NSCache<NSString, TextureEntry>()
         let images = NSCache<ItemKey, CGImage>()
-        let blockMaterials = NSCache<BlockKey, MapBlockMaterial>()
         let blockColors = NSCache<BlockKey, ColorEntry>()
         let blockTextures = NSCache<BlockPictureKey, TextureEntry>()
         let textureColors = NSCache<NSString, ColorEntry>()
@@ -32,8 +34,6 @@ actor GameAssetLibrary {
             blockTextures.totalCostLimit = 16 * 1024 * 1024
             blockColors.countLimit = 4096
             blockColors.totalCostLimit = 2 * 1024 * 1024
-            blockMaterials.countLimit = 512
-            blockMaterials.totalCostLimit = 16 * 1024 * 1024
             images.countLimit = 512
             images.totalCostLimit = 8 * 1024 * 1024
             textureColors.countLimit = 256
@@ -82,7 +82,7 @@ actor GameAssetLibrary {
         }
 
         var cost: Int {
-            let geometry = item?.parts.reduce(1) { $0 + GameAssetLibrary.modelCost($1.model) } ?? 1
+            let geometry = item?.parts.reduce(1) { $0 + GameModelRenderer.modelCost($1.model) } ?? 1
             return geometry + tints.reduce(0) { $0 + 24 + $1.count * MemoryLayout<AssetItem.Tint>.stride }
         }
     }
@@ -148,7 +148,10 @@ actor GameAssetLibrary {
         }
     }
 
-    init(assets: GameAssets, sourceKey: String) {
+    init(assets: GameAssets, data: GameDataLibrary, readTexture: @escaping TextureRead = { $0.texture($1) }) {
+        self.readTexture = readTexture
+        self.data = data
+        let sourceKey = data.sourceKey
         self.sourceKey = sourceKey
         self.assets = assets
         version = assets.version
@@ -161,7 +164,6 @@ actor GameAssetLibrary {
         caches.models.removeAllObjects()
         caches.textures.removeAllObjects()
         caches.images.removeAllObjects()
-        caches.blockMaterials.removeAllObjects()
         caches.blockColors.removeAllObjects()
         caches.blockTextures.removeAllObjects()
         caches.textureColors.removeAllObjects()
@@ -249,22 +251,24 @@ actor GameAssetLibrary {
 
     /// Results retain input order, including repeated states and unavailable colors. The
     /// renderer indexes them by palette entry instead of hashing full states for every column.
-    func mapColors(for states: [BlockState]) throws -> [MapColor?] {
-        try mapColors(requests: states.map { MapBlockColorRequest(state: $0) })
+    func mapColors(for states: [BlockState]) async throws -> [MapColor?] {
+        try await mapColors(requests: states.map { MapBlockColorRequest(state: $0) })
     }
 
-    func mapColors(requests: [MapBlockColorRequest]) throws -> [MapColor?] {
+    func mapColors(requests: [MapBlockColorRequest]) async throws -> [MapColor?] {
         try checkAvailable()
         var result: [MapColor?] = []
         result.reserveCapacity(requests.count)
-        for request in requests {
+        let materials = try await data.mapMaterials(for: requests.map(\.state))
+        try checkAvailable()
+        for (request, material) in zip(requests, materials) {
             try Task.checkCancellation()
             let key = BlockKey(request)
             let entry: ColorEntry
             if let cached = caches.blockColors.object(forKey: key) { entry = cached }
             else {
                 let color: MapColor?
-                if let model = material(for: request.state).model {
+                if let model = material.model {
                     color = try GameModelRenderer.topColor(model, tint: { tint($0, for: request) }, texture: texture)
                 } else { color = nil }
                 entry = ColorEntry(color)
@@ -283,10 +287,11 @@ actor GameAssetLibrary {
 
     /// One batch for a chunk's retained palette. Kit chooses each position's actual variants;
     /// the same source, model, tint, decoded texture and rasterizer owners draw their pixels.
-    func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) throws -> [ItemTexture?] {
+    func mapTextures(requests: [MapBlockColorRequest], indices: [UInt16], positions: [BlockPosition?]) async throws -> [ItemTexture?] {
         try checkAvailable()
         guard requests.count <= 256, indices.count == 256, positions.count == 256 else { return [] }
-        let models = requests.map { material(for: $0.state).model }
+        let models = try await data.mapMaterials(for: requests.map(\.state)).map(\.model)
+        try checkAvailable()
         return try positions.enumerated().map { index, position in
             try Task.checkCancellation()
             let paletteIndex = Int(indices[index])
@@ -300,72 +305,15 @@ actor GameAssetLibrary {
         }
     }
 
-    nonisolated func cachedMapMaterials(for states: [BlockState]) -> [MapBlockMaterial]? {
-        var result: [MapBlockMaterial] = []
-        result.reserveCapacity(states.count)
-        for state in states {
-            guard let entry = caches.blockMaterials.object(forKey: BlockKey(state)) else { return nil }
-            result.append(entry)
-        }
-        return result
-    }
-
-    func mapMaterials(for states: [BlockState]) throws -> [MapBlockMaterial] {
-        try checkAvailable()
-        return try states.map { state in
-            try Task.checkCancellation()
-            return material(for: state)
-        }
-    }
-
-    private func material(for state: BlockState) -> MapBlockMaterial {
-        let key = BlockKey(state)
-        if let cached = caches.blockMaterials.object(forKey: key) { return cached }
-        let material = MapBlockMaterial(state: state, model: assets?.blockModel(for: state))
-        let cost = material.model?.parts.reduce(1) { total, part in
-            total + part.alternatives.reduce(0) { $0 + Self.modelCost($1.model) }
-        } ?? 1
-        caches.blockMaterials.setObject(material, forKey: key, cost: cost + material.biomeTints.count * 32)
-        return material
-    }
-
-    private nonisolated static func modelCost(_ model: AssetModel) -> Int {
-        func materialCost(_ material: AssetModel.Material) -> Int {
-            128 + material.texture.description.utf8.count
-                + material.overlays.reduce(0) { $0 + 64 + $1.texture.description.utf8.count }
-        }
-        switch model.geometry {
-        case .layers(let layers): return layers.reduce(0) { $0 + materialCost($1.material) }
-        case .elements(let elements):
-            return elements.reduce(0) { $0 + 256 + $1.faces.values.reduce(0) { $0 + materialCost($1.material) } }
-        }
-    }
-
-    func lighting(in world: World) throws -> [String: MapLighting] {
-        try checkAvailable()
-        return try MapLighting.read(in: world, assets: assets)
-    }
-
-    func definitions(in world: World) throws -> WorldDefinitions {
-        try checkAvailable()
-        return try WorldDefinitions.read(world, assets: assets)
-    }
-
-    /// Reads world-specific metadata through Kit and shares the same decoded colormap pixels
-    /// used by item pictures. The caller owns the snapshot and its refresh lifetime.
-    func biomeColors(in world: World) throws -> MapBiomeColors {
+    /// Only this capability can decode colormap pixels. Data-only readers receive no maps.
+    func colorMaps() throws -> [Identifier: ItemTexture] {
         try checkAvailable()
         var maps: [Identifier: ItemTexture] = [:]
         for name in ["grass", "foliage", "dry_foliage"] {
             try Task.checkCancellation()
             if let id = Identifier(namespace: "minecraft", path: "colormap/" + name), let value = texture(id) { maps[id] = value }
         }
-        return try MapBiomeColors.read(in: world, assetSourceKey: sourceKey, assets: assets, colorMaps: maps)
-    }
-
-    func nightLighting(in world: World) throws -> [String: MonsterSpawnLight] {
-        try checkAvailable()
-        return try world.nightMonsterLighting(assets: assets)
+        return maps
     }
 
     /// A warm view can draw immediately, without a placeholder frame or an actor round trip.
@@ -413,9 +361,9 @@ actor GameAssetLibrary {
         if let cached = caches.textures.object(forKey: key) { return cached.texture }
         let decoded: ItemTexture?
         if let source = assets?.palettedTexture(id.description, in: "minecraft:items") {
-            if let base = assets?.texture(source.texture.description),
-               let key = assets?.texture(source.paletteKey.description),
-               let palette = assets?.texture(source.palette.description) {
+            if let base = textureData(source.texture.description),
+               let key = textureData(source.paletteKey.description),
+               let palette = textureData(source.palette.description) {
                 decoded = ItemTexture(png: base, paletteKey: key, palette: palette)
             } else { decoded = nil }
         } else { decoded = texture(id) }
@@ -423,10 +371,15 @@ actor GameAssetLibrary {
         return decoded
     }
 
+    private func textureData(_ id: String) -> Data? {
+        guard let assets else { return nil }
+        return readTexture(assets, id)
+    }
+
     private func texture(_ id: Identifier) -> ItemTexture? {
         let key = id.description as NSString
         if let cached = caches.textures.object(forKey: key) { return cached.texture }
-        let decoded = assets?.texture(id.description).flatMap(ItemTexture.init(png:))
+        let decoded = textureData(id.description).flatMap(ItemTexture.init(png:))
         caches.textures.setObject(TextureEntry(decoded), forKey: key, cost: decoded?.pixels.count ?? 1)
         return decoded
     }

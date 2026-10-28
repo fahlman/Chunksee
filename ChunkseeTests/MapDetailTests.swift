@@ -46,7 +46,7 @@ import Testing
         let cache = TileCache(directory: root.appendingPathComponent("tiles"))
         let assets = try fixture.library()
         var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
-        renderer.gameAssets = assets
+        renderer.gameData = assets.data; renderer.gameArtwork = assets
         let cold = try #require(try await renderer.tile(for: region))
         let hit = try #require(try await renderer.tile(for: region))
         #expect(hit.detail == nil) // ordinary cache hits never decode or retain close-up materials
@@ -82,7 +82,8 @@ import Testing
                           cacheDirectory: root.appendingPathComponent("tiles"),
                           readDetail: { _, _ in await gate.read(String(await numbers.next())) })
         defer { map.close() }
-        map.setGameAssets(try fixture.library())
+        let artwork = try fixture.library()
+        map.setGameResources(data: artwork.data, artwork: artwork)
         let size = CGSize(width: 64, height: 64)
         map.viewport.scale = 4
         map.requestTiles(visibleIn: size)
@@ -130,7 +131,7 @@ import Testing
         let assets = try fixture.library(), gate = AsyncReadGate<MapTileImage?>()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { chunk, _, _, _, _ in await gate.read("\(chunk.x),\(chunk.z)") })
-        map.setGameAssets(assets)
+        map.setGameResources(data: assets.data, artwork: assets)
         map.viewport.scale = 8
         let size = CGSize(width: 64, height: 64)
         map.requestTiles(visibleIn: size)
@@ -161,11 +162,11 @@ import Testing
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { _, _, assets, _, _ in await gate.read(assets.identity.uuidString) })
         defer { map.close() }
-        map.setGameAssets(first)
+        map.setGameResources(data: first.data, artwork: first)
         map.viewport.scale = 8
         map.requestTiles(visibleIn: CGSize(width: 64, height: 64))
         await gate.waitForRequest(first.identity.uuidString)
-        map.setGameAssets(second)
+        map.setGameResources(data: second.data, artwork: second)
         await gate.waitForCancellation(first.identity.uuidString)
         await gate.waitForRequest(second.identity.uuidString)
         let old = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
@@ -185,7 +186,8 @@ import Testing
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8))
         defer { map.close() }
-        map.setGameAssets(try fixture.library())
+        let artwork = try fixture.library()
+        map.setGameResources(data: artwork.data, artwork: artwork)
         let size = CGSize(width: 128, height: 128)
         map.viewport.scale = 4
         map.requestTiles(visibleIn: size)
@@ -230,7 +232,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library(), region = RegionPosition(x: -1, z: -1), chunk = ChunkPosition(x: -1, z: -1)
         var renderer = RegionTileRenderer(dimension: dimension)
-        renderer.gameAssets = assets
+        renderer.gameData = assets.data; renderer.gameArtwork = assets
         let tile = try #require(try await renderer.tile(for: region))
         let retained = try #require(tile.detail)
         var surface = RegionTileRenderer.Canvas(heights: retained.heights, detail: retained.detail)
@@ -265,7 +267,8 @@ import Testing
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           cacheDirectory: root.appendingPathComponent("tiles"))
         defer { map.close() }
-        map.setGameAssets(try fixture.library())
+        let artwork = try fixture.library()
+        map.setGameResources(data: artwork.data, artwork: artwork)
         map.setSavedLighting(try lighting(night: false))
         map.viewport.scale = 8
         let size = CGSize(width: 128, height: 128), chunk = ChunkPosition(x: -1, z: -1)
@@ -348,7 +351,7 @@ import Testing
         for x in [17, 49, 81] { #expect(ordinary[(65 * 128 + x) * 4] < 255) }
         #expect(ordinaryCopy != ordinaryContrastCopy)
         let assets = try fixture.library()
-        map.setGameAssets(assets)
+        map.setGameResources(data: assets.data, artwork: assets)
         await map.waitUntilIdle(); await map.waitForRenders()
         #expect(map.detailImages[chunk] === detail)
         // White detail over white terrain is unchanged before the shadow. Applying a mask to
@@ -374,7 +377,8 @@ import Testing
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
             renderDetail: { _, _, _, _, saved in await gate.read(saved ? "saved" : "daylight") })
         defer { map.close() }
-        map.setGameAssets(try fixture.library())
+        let artwork = try fixture.library()
+        map.setGameResources(data: artwork.data, artwork: artwork)
         map.setSavedLighting(try lighting(night: true))
         map.viewport.scale = 8
         map.requestTiles(visibleIn: CGSize(width: 64, height: 64))

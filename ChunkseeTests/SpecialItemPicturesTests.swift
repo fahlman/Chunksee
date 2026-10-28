@@ -146,7 +146,7 @@ import Testing
                                (Self.pot(front: "red", left: "blue"), red)] {
             _ = try #require(try await library.picture(for: stack))
             let renderer = ImageRenderer(content: ItemIcon(item: stack)
-                .environment(\.gameAssetLibrary, library).environment(\.colorScheme, appearance))
+                .environment(\.gameArtworkLibrary, library).environment(\.colorScheme, appearance))
             renderer.scale = 4
             let pixels = try ItemPictureFixture.pixels(#require(renderer.cgImage))
             #expect(Self.count(color, in: pixels) > 0)
