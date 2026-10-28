@@ -109,9 +109,10 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
 
 ## Foundation structure
 
-**Status:** agreed by Claude and Codex on #473. On 2026-10-28 Ryan said: "I approve whatever the two
-of you agree upon, but I want a real analyses of the plan by both of you." Both analyses and
-their reconciliation are on #473, and the audit findings they cite are on #469 and #473.
+**Status:** this text merged only after both Claude and Codex approved it on #473. On 2026-10-28
+Ryan said: "I approve whatever the two of you agree upon, but I want a real analyses of the plan by
+both of you." Both analyses and their reconciliation are on #473, and the audit findings they cite
+are on #469 and #473.
 - **Why:** on 2026-10-27 Ryan asked to "unwind the code to its core" and build from the foundation
   instead of layering features. He chose to restructure in place, app first, with ChunkseeKit
   changing where the app's foundation needs it.
@@ -124,17 +125,25 @@ Each layer depends only on layers above it in this list, through their public in
 
 1. **Kit** (ChunkseeKit, ChunkseeIndex) reads saves and game files and owns every format rule and
    code-only game fact.
-   - **One normalized chunk:** each save is normalized and upgraded once (layout, data-version
-     renames, block entities), and every reader consumes that result.
-   - **Fields read the game's way:** numbers, booleans and identifiers are read and normalized
-     through shared field readers that follow the game's own codecs, never chosen field by field.
+   - **One normalized chunk:** each save's layout, data-version renames and block entities are
+     normalized and upgraded once per read, and readers reuse that result.
+     - Independent facts stay readable when another part fails: containers, signs, spawners,
+       creatures and inhabited time still read when the terrain is malformed or unsupported.
+     - Selective reads and skipping keep working, raw-NBT APIs are unchanged, and nothing retains
+       a whole world eagerly.
+   - **Fields read the game's way:** each field declares the game codec that reads it (for example
+     widening integer reads versus Java's narrowing conversion) and uses the shared implementation
+     of that codec, including its missing and invalid behavior. An accessor is changed only on
+     evidence from that field's game reader, never by a global replacement.
    - **Published versions:** Kit publishes an interpretation version for each kind of fact the app
      caches: terrain and surface, light, assets and region facts. Each is owned beside its code.
      The release tool adds a digest of the generated facts each one uses, so a tool run that changes
      a covered fact changes the version.
-   - **Saved facts stay separate from resources:** facts that depend on data packs or game files
-     (such as maximum health with enchantment definitions) are worked out above the saved-facts
-     cache. They don't enter it.
+   - **Saved inputs, derived results:** where a fact combines saved data with data-pack or game-file
+     definitions (maximum health with enchantments, for example), the cache keeps the typed saved
+     inputs and Kit's resolver works out the result with the current definitions. A definition
+     change then needs no region reread. Parameterized scans may still cache their output under
+     their complete option identity.
 2. **Game files** (`MinecraftResources`, `GameDataLibrary` and `GameArtworkLibrary`, #466). One
    owner chooses the Minecraft folder and decides whether artwork is used.
    - **Always available:** game data, meaning definitions, tags, model geometry, lighting rules,
@@ -171,6 +180,12 @@ Each layer depends only on layers above it in this list, through their public in
      players that depend on them, or the index with its player projection.
    - **Views observe:** sessions and views read the snapshot; nothing pushes values into maps by
      hand. No refresh depends on a visible view receiving a change.
+   - **Per-window requests stay per window:** the world owns keyed shared results, never one global
+     selected player or active query.
+     - Two windows can show different players' records, and switching one doesn't clear the other.
+     - Editing one window's query doesn't restart unrelated saved queries, and closing one waiter
+       doesn't cancel work another still needs.
+     - Search keeps its coherent-publication guard.
    - **One world, one snapshot:** open worlds are registered under the world folder's persistent
      identity, not its path, so each world has exactly one snapshot.
    - **Names:** one naming service answers "what is this called" for every kind: items, blocks,
@@ -195,9 +210,11 @@ Each layer depends only on layers above it in this list, through their public in
 5. **Windows, menus and views** show the snapshot and the presentation, and send user input to the
    owner of each setting. They don't parse game files, start hidden reads while drawing, build
    cache keys or decide rules. Each window has:
-   - one selection value (the selected identity and any kept overlay);
-   - one inspector-visibility value;
-   - one set of highlighted targets that the map compares against;
+   - one selection value, the existing identity resolved through `SelectionModel`'s private
+     transition, with the kept in-game-map overlay preserved;
+   - one inspector-visibility value, so showing the inspector again keeps the selected row;
+   - one highlighted set *derived* from the selection, which the map compares against and nobody
+     edits separately;
    - one sheet value, so "a sheet is open" can't miss a sheet (#474).
 
 ### Caches
@@ -252,34 +269,42 @@ Each step is split into independently reviewable, behavior-preserving PRs.
 2. **Phase 0:** the near-done PRs listed on #469 land, each integrated onto #466 with its own
    review.
 3. **Cache identity.**
-   - **Kit:** the interpretation versions and release-tool digests, plus region facts without
-     resource-dependent results.
-   - **App:** typed tile, Dark Spots, biome-color and map-image keys.
+   - **Kit:** the interpretation versions and release-tool digests.
+   - **App:** typed tile, Dark Spots, biome-color and map-image keys, with map content identity
+     added before maps refresh.
    - **Done when:** no hand-kept number stands in for a Kit input, the fixed-output and
      hit-and-miss tests exist, and #471 is closed.
-4. **Kit normalization.**
-   - **Moves:** one normalized-and-upgraded chunk for every reader, plus shared field readers for
-     numbers, booleans and identifiers.
-   - **Done when:** no reader re-derives the layout or upgrades block entities itself, and the
-     known edge cases (counts, booleans and IDs) have tests.
+4. **Kit producer changes,** each a bounded Kit PR with its own paired read timing and
+   cache-compatibility evidence. Each lands before the app consumer that needs its new API, but none
+   is a prerequisite for steps 5a–5c.
+   - **a. Normalization:** one normalized chunk per read, plus field readers per declared codec.
+     **Done when:** no reader re-derives the layout or upgrades block entities itself. Records stay
+     readable with malformed or unsupported terrain, direct readers and region scans give equal
+     results, and the known codec edge cases have tests.
+   - **b. Health projection:** typed saved inputs in the facts cache, with the result resolved by
+     Kit. **Done when:** cold and warm caches give equal results, a changed definition recomputes
+     without rereading regions, and unknown health stays distinct from known.
 5. **World snapshot, in substeps.**
    - **a.** The whole-value `WorldResources` reads and their publications move onto the loader.
      **Done when:** the six read counters and the hand-written pushes into maps are gone, and L2
      has a regression test.
    - **b.** World Info facts, in-game maps and player records become snapshot parts, with #467's
-     record retention as the declared keep-last-value behavior.
+     record retention as the declared keep-last-value behavior and #463's saved-version update
+     kept. Records are keyed per selected player in each window.
    - **c.** One world per folder identity, with reread and move as source replacement.
      **Done when:** #475 is closed.
    - **d.** The index and slime-chunk scheduling adopt the loader through an interface that keeps
      their merge and progress algorithms. Search results and saved queries become a snapshot part.
    - **e.** The naming service, covering every kind.
-     **Done when:** no view or search builds its own name, and no names argument has a default.
+     **Done when:** no view or search builds its own name, and no names argument has a default. The
+     user's language preference, per-key English fallback and literal custom names are preserved.
 6. **Map presentation**, in two PRs: first the one saved record with its migration, then the
    drawing input and declared style inputs.
    - **Done when:** old preference fixtures reopen with their choices intact, chosen Height
      survives missing height metadata, and #470 is closed.
-7. **Window state:** one selection, visibility and highlight value, and one sheet value.
-   **Done when:** #474 is closed.
+7. **Window state:** one selection, visibility and derived-highlight value, and one sheet value.
+   **Done when:** #474 is closed, showing the inspector again keeps the selected row, and every
+   kind of selection highlights the same way whether the inspector is shown or hidden.
 8. **One notification path:** done consumer by consumer as each converts. `MinecraftResources`
    ends with Observation only.
 
@@ -295,16 +320,24 @@ These parts keep their current design; steps reuse them rather than replace them
   share.
 - **Map items:** the shared `MapScene` for drawing, picking, accessibility and export.
 - **Selection:** the one private `select` path, which stores an identity resolved against live data.
-- **Documents:** `DocumentGroup` owns windows and restoration, and `WorldDocument` applies
-  generations.
+- **Documents:**
+  - `DocumentGroup` owns windows and restoration;
+  - `WorldFolders` keeps a bookmark identity through moves;
+  - `AppModel` shares pending openings;
+  - `WorldDocument` checks apply generations.
 - **Kit:**
   - bounded NBT traversal;
   - the stale-rejecting RegionFacts archive;
   - the generated rename chain;
   - `WorldResourcePack` priority and containment;
   - provenance and proofs for generated facts.
-- **Search:** Kit's `SearchQuery` owns parsing and matching, and `WorldSearch.execute` is a pure,
-  cancellable function.
+- **Search:**
+  - Kit's `SearchQuery` owns parsing and matching;
+  - `WorldSearch.execute` is a pure, cancellable function;
+  - requests are built from coherent publications;
+  - saved-query work is shared per query and source, with waiters released individually.
+- **Kit's package boundary:** Index depends on core, never the reverse. `DimensionIndex` owns
+  reconciliation and keeps failure, deletion and successful empty replacement distinct.
 - **File identity:** stamps, ScanCache fingerprints, and block-filter keys from resolved IDs.
 
 ## Modules
