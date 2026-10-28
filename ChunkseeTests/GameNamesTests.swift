@@ -34,7 +34,7 @@ enum GameNameFixture {
     static func names(_ locale: String = "en_US") async throws -> GameNames {
         let game = try game()
         defer { game.remove() }
-        return GameNames(await (try game.library()).language(locale, minecraftDirectory: game.root))
+        return GameNames(await (try game.library()).data.language(locale, minecraftDirectory: game.root))
     }
 }
 
@@ -187,7 +187,7 @@ enum GameNameFixture {
         for session in sessions { await session.search.waitForSearch() }
         let loaded = world.currentGameNames
         let gate = AsyncReadGate<GameLanguage?>(), library = try game.library()
-        let reread = await library.language("en_US", minecraftDirectory: game.root)
+        let reread = await library.data.language("en_US", minecraftDirectory: game.root)
         world.readLanguage = { _, _, _ in await gate.read("reread") }
         world.refreshGameAssets()
         await gate.waitForRequest("reread")
@@ -205,7 +205,7 @@ enum GameNameFixture {
             #expect(!session.search.isSearching)
         }
         // A changed language object with the same jar still publishes new names.
-        let changed = await library.language("fr_FR", minecraftDirectory: game.root)
+        let changed = await library.data.language("fr_FR", minecraftDirectory: game.root)
         world.readLanguage = { _, _, _ in changed }
         world.refreshGameAssets()
         await world.waitForRefresh()
@@ -226,8 +226,8 @@ enum GameNameFixture {
         let world = try await resources(root, game: game), gate = AsyncReadGate<GameLanguage?>()
         defer { world.close() }
         let library = try game.library()
-        let english = await library.language("en_US", minecraftDirectory: game.root)
-        let french = await library.language("fr_FR", minecraftDirectory: game.root)
+        let english = await library.data.language("en_US", minecraftDirectory: game.root)
+        let french = await library.data.language("fr_FR", minecraftDirectory: game.root)
         world.readLanguage = { _, locale, _ in await gate.read(locale) }
         world.refreshGameLanguage(preferredLanguage: "en_US")
         world.refreshGameAssets()
@@ -253,7 +253,7 @@ enum GameNameFixture {
         let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let world = try await resources(root, game: game), gate = AsyncReadGate<GameLanguage?>()
-        let language = await (try game.library()).language("en_US", minecraftDirectory: game.root)
+        let language = await (try game.library()).data.language("en_US", minecraftDirectory: game.root)
         world.readLanguage = { _, _, _ in await gate.read("held") }
         world.refreshGameAssets()
         await gate.waitForRequest("held")

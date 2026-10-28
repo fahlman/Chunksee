@@ -26,15 +26,36 @@ import Testing
         #expect(first.cacheKey != MapBlockFilter(highlightedIDs: first.hiddenIDs).cacheKey)
     }
 
-    @Test func theLeafShortcutSelectsOnlyMatchingSavedNames() {
-        let catalog: Set<String> = [leaves, "minecraft:cherry_leaves", "example:blue_leaves", "example:leafy_rock", "minecraft:stone"]
-        let selected = MapBlockFilter.leafNames(in: catalog)
-        #expect(selected == [leaves, "minecraft:cherry_leaves", "example:blue_leaves"])
+    @Test func theLeafShortcutUsesGameMembershipAndOnlySavedNames() throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/leaves.json")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"replace":true,"values":["minecraft:oak_leaves","example:needles","example:retired_needles","minecraft:cherry_leaves",{"id":"example:absent","required":false}]}"#.utf8).write(to: file)
         let before = MapBlockFilter(hiddenIDs: ["minecraft:stone"], highlightedIDs: [leaves, "example:leafy_rock"])
+        let catalog: Set<String> = [leaves, "example:needles", "example:fake_leaves", "example:leafy_rock", "minecraft:stone"]
+        let definitions = try WorldDefinitions.read(World(contentsOf: root), assets: nil)
+        let selected = try #require(MapBlockFilter.leafIDs(in: catalog, tag: definitions.leafTag))
+        #expect(selected == [leaves, "example:needles"])
+        #expect(MapBlockFilter.leafIDs(in: catalog.union(["example:retired_needles"]), tag: definitions.leafTag)
+                == selected.union(["example:retired_needles"]))
         let hidden = before.choosing(.hide, for: selected)
         #expect(hidden.hiddenIDs == selected.union(["minecraft:stone"]))
         #expect(hidden.highlightedIDs == ["example:leafy_rock"])
         #expect(hidden.choosing(.show, for: selected).hiddenIDs == ["minecraft:stone"])
+    }
+
+    @Test func unavailableAndEmptyLeafTagsNeverGuessFromNames() throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root), catalog: Set<String> = [leaves, "example:blue_leaves"]
+        #expect(MapBlockFilter.leafIDs(in: catalog, tag: try WorldDefinitions.read(world, assets: nil).leafTag) == nil)
+        let file = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/leaves.json")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"replace":true,"values":[]}"#.utf8).write(to: file)
+        #expect(MapBlockFilter.leafIDs(in: catalog, tag: try WorldDefinitions.read(world, assets: nil).leafTag) == [])
+        try Data("damaged tag".utf8).write(to: file)
+        #expect(MapBlockFilter.leafIDs(in: catalog, tag: try WorldDefinitions.read(world, assets: nil).leafTag) == nil)
     }
 
     @Test func hidingCanopyAndWaterRevealsTheSameBlocksForDrawingAndReading() async throws {

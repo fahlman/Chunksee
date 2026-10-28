@@ -68,7 +68,7 @@ final class WorldResources {
     private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private var languageRequest: LanguageRequest?
     @ObservationIgnored private var languageGeneration = UUID()
-    @ObservationIgnored var readLanguage: @Sendable (GameAssetLibrary, String, URL?) async -> GameLanguage? = {
+    @ObservationIgnored var readLanguage: @Sendable (GameDataLibrary, String, URL?) async -> GameLanguage? = {
         await $0.language($1, minecraftDirectory: $2)
     }
 
@@ -82,7 +82,7 @@ final class WorldResources {
     @ObservationIgnored private var isAssetReadPending = false
     @ObservationIgnored private var definitionReadGeneration = 0
     @ObservationIgnored private var isDefinitionReadPending = false
-    @ObservationIgnored var readDefinitions: @Sendable (World, GameAssetLibrary?) async throws -> DefinitionSnapshot = {
+    @ObservationIgnored var readDefinitions: @Sendable (World, GameDataLibrary?) async throws -> DefinitionSnapshot = {
         try await WorldResources.readDefinitions($0, library: $1)
     }
     private let nightLightWork: BackgroundWork.Scope
@@ -90,18 +90,20 @@ final class WorldResources {
     @ObservationIgnored private var nightReadGeneration = 0
     @ObservationIgnored private var needsNightReload = true
     @ObservationIgnored private var isNightReadPending = false
-    @ObservationIgnored var readNightLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] = {
+    @ObservationIgnored var readNightLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
     }
     private let lightingWork: BackgroundWork.Scope
     @ObservationIgnored private var lightingReadGeneration = 0
     @ObservationIgnored private var lighting: [String: MapLighting] = [:]
-    @ObservationIgnored var readLighting: @Sendable (World, GameAssetLibrary?) async throws -> [String: MapLighting] = {
+    @ObservationIgnored var readLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
     }
     // The view accessor must observe both its initial source guard and the later loaded library.
     private var gameAssetSource: WorldGameAssetSource?
-    private var gameAssets: GameAssetLibrary?
+    private var gameAssets: GameResourceLibrary?
+    private var gameData: GameDataLibrary? { gameAssets?.data }
+    private var gameArtwork: GameArtworkLibrary? { names.minecraft.artwork(for: gameAssets) }
     private(set) var biomeColors: MapBiomeColors?
     @ObservationIgnored private var biomeReadGeneration = 0
     @ObservationIgnored private var needsBiomeReload = false
@@ -112,8 +114,8 @@ final class WorldResources {
     @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
     @ObservationIgnored var readPlayers: @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0, enchantments: $1) }
-    @ObservationIgnored var readBiomeColors: @Sendable (World, GameAssetLibrary?, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
-        try await WorldResources.readBiomeColors($0, library: $1, previous: $2, reload: $3)
+    @ObservationIgnored var readBiomeColors: @Sendable (World, GameDataLibrary?, GameArtworkLibrary?, MapBiomeColors?, Bool) async throws -> MapBiomeColors = {
+        try await WorldResources.readBiomeColors($0, data: $1, artwork: $2, previous: $3, reload: $4)
     }
 
     private final class WeakSession {
@@ -166,7 +168,12 @@ final class WorldResources {
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
-        assetObserver = names.minecraft.observeChanges { [weak self] in self?.refreshGameAssets() }
+        assetObserver = names.minecraft.observeChanges { [weak self] change in
+            switch change {
+            case .source: self?.refreshGameAssets()
+            case .artwork: self?.refreshGameArtwork()
+            }
+        }
         refreshBiomeColors(reload: true)
         refreshLighting()
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
@@ -215,7 +222,7 @@ final class WorldResources {
 
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
-        session.map?.setGameAssets(gameAssets, biomeColors: biomeColors)
+        session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
         darkSpotsVisibilityChanged()
         session.map?.setSavedLighting(session.selectedDimensionID.flatMap { lighting[$0] })
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
@@ -236,7 +243,7 @@ final class WorldResources {
         biomeColors = nil
         lighting = [:]
         for session in sessions.values.compactMap(\.value) {
-            session.map?.setGameAssets(nil)
+            session.map?.setGameResources(data: nil, artwork: nil)
             session.map?.setSavedLighting(nil)
         }
         refreshBiomeColors(reload: true)
@@ -267,7 +274,7 @@ final class WorldResources {
         }
     }
 
-    func setGameAssets(_ library: GameAssetLibrary?, source: WorldGameAssetSource) {
+    func setGameAssets(_ library: GameResourceLibrary?, source: WorldGameAssetSource) {
         guard !isClosed, source.generation == names.minecraft.generation,
               gameAssetSource == source, gameAssets?.identity != library?.identity else { return }
         biomeReadGeneration += 1
@@ -275,7 +282,7 @@ final class WorldResources {
         gameAssets = library
         refreshGameLanguage()
         biomeColors = nil
-        for session in sessions.values.compactMap(\.value) { session.map?.setGameAssets(nil) }
+        for session in sessions.values.compactMap(\.value) { session.map?.setGameResources(data: nil, artwork: nil) }
         refreshBiomeColors(reload: true)
         clearNightLighting()
         refreshNightLighting()
@@ -283,9 +290,24 @@ final class WorldResources {
         refreshDefinitions()
     }
 
-    func gameAssetLibrary(for source: WorldGameAssetSource) -> GameAssetLibrary? {
+    func gameArtworkLibrary(for source: WorldGameAssetSource) -> GameArtworkLibrary? {
         guard !isClosed, source == gameAssetSource, source.generation == names.minecraft.generation else { return nil }
-        return gameAssets
+        return gameArtwork
+    }
+
+    /// Artwork policy retires drawing results immediately, including hidden tabs. Definitions,
+    /// saved facts and their work retain the selected game library and source identity.
+    private func refreshGameArtwork() {
+        guard !isClosed else { return }
+        biomeColors = biomeColors?.removingArtwork()
+        updateGameArtwork()
+        refreshBiomeColors(reload: true)
+    }
+
+    private func updateGameArtwork() {
+        for session in sessions.values.compactMap(\.value) {
+            session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
+        }
     }
 
     var currentGameNames: GameNames {
@@ -300,7 +322,7 @@ final class WorldResources {
     func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
         guard !isClosed else { return }
         if let preferredLanguage { languagePreference = preferredLanguage }
-        let request = LanguageRequest(source: names.minecraft.generation, library: gameAssets?.identity, preference: languagePreference)
+        let request = LanguageRequest(source: names.minecraft.generation, library: gameData?.identity, preference: languagePreference)
         guard reload || request != languageRequest else { return }
         let sourceChanged = request != languageRequest
         languageWork.cancel()
@@ -308,13 +330,13 @@ final class WorldResources {
         languageGeneration = UUID()
         // A background reread of the same source must not blank visible names or searches.
         if sourceChanged { languageNames = GameNames() }
-        guard let library = gameAssets else { return }
+        guard let library = gameData else { return }
         let generation = languageGeneration, read = readLanguage, folder = names.minecraft.folder
         languageWork.start(priority: .utility) { [weak self] in
             let language = await read(library, request.preference, folder)
             guard !Task.isCancelled, let self, !self.isClosed, self.languageGeneration == generation,
                   self.languageRequest == request, self.names.minecraft.generation == request.source,
-                  self.gameAssets?.identity == request.library else { return }
+                  self.gameData?.identity == request.library else { return }
             if !self.languageNames.hasSameContents(as: language) {
                 self.languageNames = GameNames(language)
             }
@@ -330,7 +352,7 @@ final class WorldResources {
         guard !isClosed else { return }
         definitionReadGeneration += 1
         playerReadGeneration += 1
-        let generation = definitionReadGeneration, library = gameAssets, read = readDefinitions, world = world
+        let generation = definitionReadGeneration, library = gameData, read = readDefinitions, world = world
         let readPlayers = readPlayers
         definitionsWork.cancel()
         isDefinitionReadPending = true
@@ -343,15 +365,18 @@ final class WorldResources {
             let players = await readPlayers(world, updated.definitions.enchantments)
             guard !Task.isCancelled, let self, !self.isClosed,
                   self.definitionReadGeneration == generation,
-                  self.gameAssets?.identity == library?.identity else { return }
+                  self.gameData?.identity == library?.identity else { return }
             self.isDefinitionReadPending = false
             // Keep the last coherent snapshot during a transient unreadable save. Never pair
             // new region definitions with players whose maximum used the previous definitions.
             guard let players else { return }
-            let previous = self.details.definitions
+            var previous = self.details.definitions
             self.details.definitions = updated.definitions
             self.details.borders = updated.borders
             self.playerRoster.publish(players)
+            // Leaf membership only supplies a sheet shortcut. Publishing it must not replace
+            // readers or rescan regions; existing explicit block choices remain unchanged.
+            previous.leafTag = updated.definitions.leafTag
             guard previous != updated.definitions else { return }
             let retired = self.index.readers
             let readers = retired.map { reader in
@@ -374,7 +399,7 @@ final class WorldResources {
         }
     }
 
-    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameAssetLibrary?) async throws -> DefinitionSnapshot {
+    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> DefinitionSnapshot {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         let definitions: WorldDefinitions
@@ -388,35 +413,35 @@ final class WorldResources {
 
     private func refreshBiomeColors(reload: Bool) {
         guard !isClosed else { return }
-        let library = gameAssets
+        let library = gameData
         needsBiomeReload = needsBiomeReload || reload
         biomeReadGeneration += 1
         let generation = biomeReadGeneration
         biomeWork.cancel()
         let read = readBiomeColors, world = world, previous = biomeColors
         let reload = needsBiomeReload
+        let artwork = gameArtwork
         biomeWork.start(priority: nil) { [weak self] in
             guard !Task.isCancelled else { return }
-            let updated = try? await read(world, library, previous, reload)
+            let updated = try? await read(world, library, artwork, previous, reload)
             guard !Task.isCancelled, let self, !self.isClosed,
-                  self.biomeReadGeneration == generation, self.gameAssets?.identity == library?.identity else { return }
+                  self.biomeReadGeneration == generation, self.gameData?.identity == library?.identity else { return }
             // A transient unreadable save keeps its last good colors. A successful empty
             // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
             if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
-            for session in self.sessions.values.compactMap(\.value) {
-                session.map?.setGameAssets(library, biomeColors: self.biomeColors)
-            }
+            self.updateGameArtwork()
         }
     }
 
-    @concurrent nonisolated static func readBiomeColors(_ world: World, library: GameAssetLibrary?,
-                                                       previous: MapBiomeColors?, reload: Bool) async throws -> MapBiomeColors {
+    @concurrent nonisolated static func readBiomeColors(_ world: World, data: GameDataLibrary?,
+                                                       artwork: GameArtworkLibrary?, previous: MapBiomeColors?,
+                                                       reload: Bool) async throws -> MapBiomeColors {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        let sourceKey = library?.sourceKey ?? "no-game-files"
-        if !reload, let previous, try previous.matchesMetadata(current, assetSourceKey: sourceKey) { return previous }
-        if let library { return try await library.biomeColors(in: current) }
-        return try MapBiomeColors.read(in: current, assetSourceKey: sourceKey, assets: nil)
+        let source = GameResourceSource(data: data, artwork: artwork)
+        if !reload, let previous, try previous.matchesMetadata(current, source: source) { return previous }
+        if let data { return try await data.biomeColors(in: current, artwork: artwork) }
+        return try MapBiomeColors.read(in: current, source: source, assets: nil)
     }
 
     /// Optional gameplay light metadata is shared by all interested dimension tabs. Ordinary
@@ -449,13 +474,13 @@ final class WorldResources {
         needsNightReload = true
         guard !isClosed, sessions.values.contains(where: { $0.value?.map?.showsDarkSpots == true }) else { return }
         nightReadGeneration += 1
-        let generation = nightReadGeneration, library = gameAssets, read = readNightLighting, world = world
+        let generation = nightReadGeneration, library = gameData, read = readNightLighting, world = world
         nightLightWork.cancel()
         isNightReadPending = true
         nightLightWork.start(priority: nil) { [weak self] in
             let updated = try? await read(world, library)
             guard !Task.isCancelled, let self, !self.isClosed, self.nightReadGeneration == generation,
-                  self.gameAssets?.identity == library?.identity else { return }
+                  self.gameData?.identity == library?.identity else { return }
             self.isNightReadPending = false
             // Keep the last good value after a transient read error. A successful empty
             // projection clears removed/unsupported rules, including those from data packs.
@@ -471,12 +496,12 @@ final class WorldResources {
     private func refreshLighting() {
         guard !isClosed else { return }
         lightingReadGeneration += 1
-        let generation = lightingReadGeneration, library = gameAssets, read = readLighting, world = world
+        let generation = lightingReadGeneration, library = gameData, read = readLighting, world = world
         lightingWork.cancel()
         lightingWork.start(priority: nil) { [weak self] in
             let updated = try? await read(world, library)
             guard !Task.isCancelled, let self, !self.isClosed, generation == self.lightingReadGeneration,
-                  self.gameAssets?.identity == library?.identity, let updated else { return }
+                  self.gameData?.identity == library?.identity, let updated else { return }
             // A failed metadata read retains the last good clock. Successful unavailable data
             // clears it, so deleted packs or definitions cannot leave stale lighting behind.
             self.lighting = updated
@@ -486,14 +511,14 @@ final class WorldResources {
         }
     }
 
-    @concurrent nonisolated static func readNightLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MonsterSpawnLight] {
+    @concurrent nonisolated static func readNightLighting(_ world: World, library: GameDataLibrary?) async throws -> [String: MonsterSpawnLight] {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         if let library { return try await library.nightLighting(in: current) }
         return try current.nightMonsterLighting(assets: nil)
     }
 
-    @concurrent nonisolated static func readLighting(_ world: World, library: GameAssetLibrary?) async throws -> [String: MapLighting] {
+    @concurrent nonisolated static func readLighting(_ world: World, library: GameDataLibrary?) async throws -> [String: MapLighting] {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         if let library { return try await library.lighting(in: current) }
