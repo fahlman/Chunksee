@@ -121,6 +121,7 @@ struct MapScene {
         let area: BiomeArea
         let point: CGPoint
         let frame: CGRect
+        let color: MapColor
 
         var accessibleLocation: AccessibleMapLocation {
             AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
@@ -129,9 +130,8 @@ struct MapScene {
 
         func draw(in context: GraphicsContext, transform: CGAffineTransform) {
             // Transform the potentially large paths only for drawing, never for picking or AX.
-            let color = Color(BiomeColors.color(for: area.group.id))
             MapScene.drawArea(fill: area.chunks.applying(transform), outline: area.outline.applying(transform),
-                              color: color, in: context)
+                              color: Color(color), in: context)
         }
     }
 
@@ -156,7 +156,8 @@ struct MapScene {
             let frame = area.bounds.applying(transform)
             let point = viewport.viewPoint(for: area.position, in: size)
             guard frame.intersects(bounds) || accessibilityBounds.contains(point) else { return nil }
-            return BiomeItem(area: area, point: point, frame: frame)
+            return BiomeItem(area: area, point: point, frame: frame,
+                color: BiomeColors.color(for: area.group.id, game: content.biomeColors, at: area.position))
         } : []
         structures = content.structures.compactMap { marker in
             let outline = marker.bounds.applying(transform)

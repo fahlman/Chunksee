@@ -6,9 +6,10 @@ nonisolated struct SearchSources: Equatable, Sendable {
     var names: [UUID: PlayerPresentation.Name]
     var playerSnapshot: PlayerSnapshot
     var indexRevision: Int
+    var gameNamesID: UUID? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.indexRevision == rhs.indexRevision && lhs.playerSnapshot === rhs.playerSnapshot && lhs.names == rhs.names
+        lhs.indexRevision == rhs.indexRevision && lhs.playerSnapshot === rhs.playerSnapshot && lhs.names == rhs.names && lhs.gameNamesID == rhs.gameNamesID
     }
 }
 

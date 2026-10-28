@@ -19,7 +19,7 @@ struct MobLocationLabel: View {
 private struct MobTextureLabel: View {
     let marker: CreatureMarker
     let texture: String
-    @Environment(\.gameAssetLibrary) private var pictures
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, color: MapColor?)?
 
     private struct Request: Equatable {

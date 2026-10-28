@@ -9,20 +9,41 @@ struct WorldGameAssetSource: Equatable {
 /// different enabled data packs never become mutable state in the shared archive reader.
 nonisolated struct MapBiomeColors: Sendable {
     let sourceKey: String
-    let assetSourceKey: String
+    let source: GameResourceSource
     let dataVersion: Int?
     let enabledPacks: [String]
     let seed: Int64?
     let sampler: BiomeSampler?
     private let colors: [String: Biome]
+    private let definitions: [String: BiomeDefinition]
+    private let waterBiomes: Set<String>
 
-    init(world: World, assetSourceKey: String, definitions: [String: BiomeDefinition],
-         colorMaps: [Identifier: ItemTexture]) throws {
-        seed = try world.seed()
+    static func read(in world: World, source: GameResourceSource, assets: GameAssets?,
+                     colorMaps: [Identifier: ItemTexture] = [:]) throws -> Self {
+        let definitions = try world.biomeDefinitions(assets: assets)
+        let tags = (try? world.tags(for: ["minecraft:is_ocean", "minecraft:is_river"],
+                                   in: "worldgen/biome", assets: assets)) ?? [:]
+        try Task.checkCancellation()
+        return try Self(world: world, source: source, definitions: definitions,
+                        colorMaps: colorMaps, waterBiomes: Set(tags.values.flatMap { $0.members.map(\.id) }))
+    }
+
+    init(world: World, source: GameResourceSource, definitions: [String: BiomeDefinition],
+         colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String> = []) throws {
+        self.init(source: source, seed: try world.seed(), dataVersion: world.level.dataVersion,
+                  enabledPacks: world.level.enabledDataPacks, definitions: definitions,
+                  colorMaps: colorMaps, waterBiomes: waterBiomes)
+    }
+
+    private init(source: GameResourceSource, seed: Int64?, dataVersion: Int?, enabledPacks: [String],
+                 definitions: [String: BiomeDefinition], colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String>) {
+        self.seed = seed
         sampler = seed.map(BiomeSampler.init(seed:))
-        self.assetSourceKey = assetSourceKey
-        dataVersion = world.level.dataVersion
-        enabledPacks = world.level.enabledDataPacks
+        self.source = source
+        self.waterBiomes = waterBiomes
+        self.dataVersion = dataVersion
+        self.enabledPacks = enabledPacks
+        self.definitions = definitions
         colors = definitions.mapValues { Biome(definition: $0, colorMaps: colorMaps) }
         // Hash resolved values, not level.dat's timestamp: ordinary autosaves do not change
         // color meaning. Resource IDs cannot contain these field/record separators.
@@ -33,11 +54,34 @@ nonisolated struct MapBiomeColors: Sendable {
                     value.foliageColor.map(String.init) ?? "-", value.dryFoliageColor.map(String.init) ?? "-",
                     value.grassColorModifier.rawValue].joined(separator: "|")
         }
-        sourceKey = CacheKey.hash(assetSourceKey + "\nseed:" + (seed.map(String.init) ?? "unknown") + "\n" + rows.joined(separator: "\n"))
+        sourceKey = CacheKey.hash(source.cacheKey + "\nseed:" + (seed.map(String.init) ?? "unknown") + "\n" + rows.joined(separator: "\n"))
     }
 
-    func matchesMetadata(_ world: World, assetSourceKey: String) throws -> Bool {
-        guard self.assetSourceKey == assetSourceKey, dataVersion == world.level.dataVersion,
+    /// Retain data immediately when a toggle retires artwork; no archive or image read is needed.
+    func removingArtwork() -> Self {
+        Self(source: .init(data: source.data, artwork: .unavailable), seed: seed, dataVersion: dataVersion,
+             enabledPacks: enabledPacks, definitions: definitions, colorMaps: [:], waterBiomes: waterBiomes)
+    }
+
+    /// A map area uses one representative color, sampled at its saved representative point.
+    /// Water tags affect the live outline only, never the cached terrain color source key.
+    func outlineColor(for name: String, at position: CGPoint) -> MapColor? {
+        guard let id = Identifier(name)?.description, let biome = colors[id],
+              let point = MapCoordinates(point: position) else { return nil }
+        let rgb: UInt32?
+        if waterBiomes.contains(id) { rgb = biome.color(.water, x: point.x, z: point.z) }
+        else {
+            // Explicit overrides still work without artwork. If both land colormaps are
+            // unavailable, use this definition's known water color before inventing a hash.
+            rgb = biome.color(.grass, x: point.x, z: point.z)
+                ?? biome.color(.foliage, x: point.x, z: point.z)
+                ?? biome.color(.water, x: point.x, z: point.z)
+        }
+        return rgb.map(MapColor.init)
+    }
+
+    func matchesMetadata(_ world: World, source: GameResourceSource) throws -> Bool {
+        guard self.source == source, dataVersion == world.level.dataVersion,
               enabledPacks == world.level.enabledDataPacks else { return false }
         return seed == (try world.seed())
     }

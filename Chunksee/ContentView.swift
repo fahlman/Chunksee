@@ -161,9 +161,15 @@ struct WorldView: View {
         } detail: {
             if session.presentation.isSavedBeforeReadableFormat {
                 ContentUnavailableView {
-                    Label("Saved Before Minecraft 1.18", systemImage: "clock.arrow.circlepath")
+                    Label {
+                        if let version = session.world.level.versionName {
+                            Text("Saved by Minecraft \(version)")
+                        } else {
+                            Text("Older World Format")
+                        }
+                    } icon: { Image(systemName: "clock.arrow.circlepath") }
                 } description: {
-                    Text("Chunksee can show worlds saved by Minecraft 1.18 or later. To update this one, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again.")
+                    Text("This world uses a format Chunksee cannot display. To update it, select it in Minecraft’s world list and choose Upgrade and Play if Minecraft offers it, then return to the list. Select it again, choose Edit, then Optimize World, and open it here again.")
                 }
                 .navigationSubtitle(session.presentation.displayName)
             } else if let map = session.map {
@@ -171,6 +177,7 @@ struct WorldView: View {
                 MapView(session: session, map: map, content: content, portalStatus: { session.presentation.linkStatus(for: $0) },
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
+                    .safeAreaInset(edge: .top, spacing: 0) { WorldVersionBanner(resources: session.resources) }
                     .onChange(of: map.depth) { session.saveView() }
                     .onChange(of: map.style) { session.saveView() }
                     .onChange(of: map.blendsBiomeColors) { session.saveView() }

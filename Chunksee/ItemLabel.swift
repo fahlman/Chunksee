@@ -4,7 +4,8 @@ import SwiftUI
 /// Item rows and compact inventory slots use one picture and fallback path.
 struct ItemIcon: View {
     let item: ItemStack
-    @Environment(\.gameAssetLibrary) private var pictures
+    var fallbackSymbol: String?
+    @Environment(\.gameArtworkLibrary) private var pictures
     @State private var loaded: (request: Request, image: CGImage)?
 
     private struct Request: Equatable {
@@ -16,7 +17,7 @@ struct ItemIcon: View {
         let request = Request(library: pictures?.identity, item: item)
         let image = loaded?.request == request ? loaded?.image : pictures?.cachedPicture(for: item)
         ItemGraphic(id: item.id, isEnchanted: ItemAppearance.isEnchanted(item),
-                    image: image)
+                    image: image, fallbackSymbol: fallbackSymbol)
             .task(id: request) {
                 guard loaded?.request != request, let pictures else { return }
                 let resolved: CGImage?
@@ -33,6 +34,7 @@ struct ItemGraphic: View {
     let id: String
     let isEnchanted: Bool
     let image: CGImage?
+    var fallbackSymbol: String?
 
     var body: some View {
         Group {
@@ -41,6 +43,8 @@ struct ItemGraphic: View {
                     .resizable()
                     .interpolation(.none)
                     .aspectRatio(contentMode: .fit)
+            } else if let fallbackSymbol {
+                Image(systemName: fallbackSymbol)
             } else {
                 Image(systemName: ItemAppearance.symbol(for: id))
                     .font(.body)
@@ -76,14 +80,14 @@ struct ItemLabel: View {
     }
 }
 
-private struct GameAssetLibraryKey: EnvironmentKey {
-    nonisolated static let defaultValue: GameAssetLibrary? = nil
+private struct GameArtworkLibraryKey: EnvironmentKey {
+    nonisolated static let defaultValue: GameArtworkLibrary? = nil
 }
 
 extension EnvironmentValues {
-    var gameAssetLibrary: GameAssetLibrary? {
-        get { self[GameAssetLibraryKey.self] }
-        set { self[GameAssetLibraryKey.self] = newValue }
+    var gameArtworkLibrary: GameArtworkLibrary? {
+        get { self[GameArtworkLibraryKey.self] }
+        set { self[GameArtworkLibraryKey.self] = newValue }
     }
 }
 
@@ -96,15 +100,19 @@ struct WorldGameAssets: ViewModifier {
         let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
+        let preferredLanguage: String
     }
 
     func body(content: Content) -> some View {
         let resources = world.names.minecraft
         let source = WorldGameAssetSource(generation: resources.generation)
+        let preferredLanguage = GameLanguageChoice.preferredLanguage
         content
-            .environment(\.gameAssetLibrary, world.gameAssetLibrary(for: source))
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world))) {
+            .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
+            .environment(\.gameNames, world.gameNames)
+            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
+                world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()
             }
     }

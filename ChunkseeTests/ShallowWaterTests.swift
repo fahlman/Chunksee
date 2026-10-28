@@ -14,7 +14,8 @@ import Testing
         let assets = try #require(try GameAssets(contentsOf: fixture.jar))
         let context = MapSurfaceContext(settings: nil, water: try WorldDefinitions.read(world, assets: assets).water)
         var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), surfaceContext: context)
-        renderer.gameAssets = library
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
         let pixels = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         // Synthetic art is deliberately different from Minecraft's installed opacity.
         let expected: [[UInt8]] = [[114, 159, 236, 255], [104, 144, 217, 255], [55, 95, 174, 255], [35, 65, 125, 255]]
@@ -30,7 +31,8 @@ import Testing
         var renderer = RegionTileRenderer(dimension: dimension)
         let fallback = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         let library = try fixture.library()
-        renderer.gameAssets = library
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
         #expect(try await renderer.pixels(for: .init(x: 0, z: 0)) == fallback)
         #expect(try await library.waterAppearance().opacity == nil)
         await library.close()
@@ -47,6 +49,40 @@ import Testing
         #expect(try await library.waterAppearance() === first)
         await library.close()
         #expect(library.cachedWaterAppearance == nil)
+    }
+
+    @Test func artworkSwitchKeepsTheWaterFactsAndChangesOnlyItsPictureBlend() async throws {
+        let root = try waterWorld(depths: [5]), fixture = try waterFixture(alpha: 192)
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
+        names.minecraft.choose(fixture.root)
+        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources), map = try #require(session.map)
+        resources.refreshGameAssets()
+        await resources.waitForRefresh()
+        let region = RegionPosition(x: 0, z: 0), context = map.currentRenderer.surfaceContext
+        let data = try #require(map.currentRenderer.gameData), reader = resources.readers["minecraft:overworld"]
+        #expect(context.water != nil && context.waterKey != nil)
+        let original = try #require(try await map.currentRenderer.pixels(for: region))
+        #expect(pixel(original, x: 5, z: 5) == [104, 144, 217, 255])
+
+        names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        #expect(map.currentRenderer.gameData === data && map.currentRenderer.gameArtwork == nil)
+        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        let fallback = try #require(try await map.currentRenderer.pixels(for: region))
+        #expect(pixel(fallback, x: 5, z: 5) == [150, 171, 193, 255])
+
+        names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        #expect(try await map.currentRenderer.pixels(for: region) == original)
+        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        session.close()
+        await session.waitUntilClosed()
+        names.minecraft.forget()
+        await names.minecraft.waitUntilIdle()
     }
 
     @Test func gameFluidFactsAgreeAcrossTheSurfaceHoverAndDepthStyle() async throws {
@@ -74,7 +110,8 @@ import Testing
         let dimension = try #require(world.dimension("overworld")), file = try #require(try dimension.region(x: 0, z: 0))
         let library = try fixture.library()
         var renderer = RegionTileRenderer(dimension: dimension, surfaceContext: context)
-        renderer.gameAssets = library
+        renderer.gameData = library.data
+        renderer.gameArtwork = library
         let normal = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         renderer.style = .waterDepth
         let depth = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
@@ -219,7 +256,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: url.appendingPathComponent("test-tiles"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region)))
-        let old = cache.directory.appendingPathComponent(key.fileName.replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v27."))
+        let old = cache.directory.appendingPathComponent(key.fileName.replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v34."))
         try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: old)

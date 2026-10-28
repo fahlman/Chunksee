@@ -26,17 +26,22 @@ nonisolated struct RegionTileRenderer: Sendable {
     var blendsBiomeColors = false
     var heightScale: MapHeightScale?
     var blockFilter = MapBlockFilter()
-    var gameAssets: GameAssetLibrary?
+    var gameData: GameDataLibrary?
+    var gameArtwork: GameArtworkLibrary?
     var biomeColors: MapBiomeColors?
     var darkSpots: DarkSpots?
     /// Only preparation changes with this flag; saved clock values are drawing uniforms.
     var usesSavedLighting = false
 
+    var gameSource: GameResourceSource { GameResourceSource(data: gameData, artwork: gameArtwork) }
+
     private var currentBiomeColors: MapBiomeColors? {
-        biomeColors?.assetSourceKey == gameAssets?.sourceKey ? biomeColors : nil
+        guard let biomeColors, biomeColors.source.data == gameSource.data,
+              biomeColors.source.artwork == .unavailable || biomeColors.source.artwork == gameSource.artwork else { return nil }
+        return biomeColors
     }
     var colorSourceKey: String? {
-        guard let colors = currentBiomeColors else { return gameAssets?.sourceKey }
+        guard let colors = currentBiomeColors else { return gameData?.sourceKey }
         return colors.sourceKey + (blendsBiomeColors ? "." + BiomeBlending.cacheKey : "")
     }
 
@@ -99,7 +104,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         }
-        if style != .height { try await gameAssets?.checkAvailable() }
+        if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
         return canvas
     }
 
@@ -245,7 +250,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                 fillWorkers()
             }
         }
-        try await gameAssets?.checkAvailable()
+        try await gameData?.checkAvailable()
+        try await gameArtwork?.checkAvailable()
         return canvas
     }
 
@@ -310,7 +316,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// method would otherwise run on the main actor when called from the map model.
     @concurrent
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
-        if style != .height { try await gameAssets?.checkAvailable() }
+        if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         let key = cacheKey(for: region)
         var surface: Canvas?
@@ -347,7 +353,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         }
         return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
                             cacheWrite: cacheWrite,
-                            detail: scanned && gameAssets != nil && style != .height ? surface.detailSurface : nil,
+                            detail: scanned && gameArtwork != nil && style != .height ? surface.detailSurface : nil,
                             heights: style == .height ? nil : surface.heights)
     }
 
@@ -355,8 +361,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// sidecar (including disabled caching) uses the same renderer, never another block parser.
     @concurrent
     func detail(for region: RegionPosition) async throws -> MapSurfaceDetail.Surface? {
-        guard gameAssets != nil, style != .height else { return nil }
-        try await gameAssets?.checkAvailable()
+        guard gameArtwork != nil, style != .height else { return nil }
+        try await gameArtwork?.checkAvailable()
         let key = cacheKey(for: region)
         if let cache, let key, let detail = cache.loadDetail(key) { return detail }
         guard let surface = try await surface(for: region) else { return nil }
@@ -369,7 +375,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard cache != nil else { return nil }
         return TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
             context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter,
-            colorSource: style == .height ? nil : colorSourceKey, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
+            colorSource: style == .height ? nil : colorSourceKey, gameSource: gameSource, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade
@@ -457,7 +463,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     private func coloredColumns(in file: RegionFile, region: RegionPosition, localX: Int, localZ: Int) async throws -> ColoredChunk? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
-        guard style != .height, gameAssets != nil else { return ColoredChunk(columns: scanned.columns) }
+        guard style != .height, gameData != nil || currentBiomeColors != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
     }
@@ -466,7 +472,6 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
                                 neighbors: BiomeRows) async throws -> ColoredChunk {
-        guard let gameAssets else { return ColoredChunk(columns: scanned.columns) }
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
         let states = scanned.states
@@ -497,8 +502,12 @@ nonisolated struct RegionTileRenderer: Sendable {
         var requests = states.map { MapBlockColorRequest(state: $0) }
         if usesBiomeColors {
             let materials: [MapBlockMaterial]
-            if let cached = gameAssets.cachedMapMaterials(for: states) { materials = cached }
-            else { materials = try await gameAssets.mapMaterials(for: states) }
+            // The palette does not use model tint indices. Keep water's data color without
+            // preparing unused texture materials when the artwork capability is absent.
+            if gameArtwork == nil { materials = states.map { MapBlockMaterial(state: $0, model: nil) } }
+            else if let cached = gameData?.cachedMapMaterials(for: states) { materials = cached }
+            else if let gameData { materials = try await gameData.mapMaterials(for: states) }
+            else { materials = states.map { MapBlockMaterial(state: $0, model: nil) } }
             // Copy the small descriptors once per palette. Reading cached material objects
             // per column makes all workers contend on their shared reference counts.
             var tintRanges: [Range<Int>] = []
@@ -570,13 +579,14 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         let colors: [MapColor?]
-        if let cached = gameAssets.cachedMapColors(requests: requests) { colors = cached }
-        else { colors = try await gameAssets.mapColors(requests: requests) }
+        if let cached = gameArtwork?.cachedMapColors(requests: requests) { colors = cached }
+        else if let gameArtwork { colors = try await gameArtwork.mapColors(requests: requests) }
+        else { colors = Array(repeating: nil, count: requests.count) }
         let waterOpacity: Double?
-        if scanned.columns.contains(where: { ($0?.waterDepth ?? 0) > 0 }) {
-            let appearance: GameAssetLibrary.WaterAppearance
-            if let cached = gameAssets.cachedWaterAppearance { appearance = cached }
-            else { appearance = try await gameAssets.waterAppearance() }
+        if let gameArtwork, scanned.columns.contains(where: { ($0?.waterDepth ?? 0) > 0 }) {
+            let appearance: GameArtworkLibrary.WaterAppearance
+            if let cached = gameArtwork.cachedWaterAppearance { appearance = cached }
+            else { appearance = try await gameArtwork.waterAppearance() }
             waterOpacity = appearance.opacity
         } else { waterOpacity = nil }
         let columns: [Column?] = zip(scanned.columns, positions).enumerated().map { index, pair in
@@ -597,7 +607,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             return column
         }
         return ColoredChunk(columns: columns,
-                            detail: MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface)))
+                            detail: gameArtwork == nil ? nil : MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: positions.map(\.surface)))
     }
 
     /// Each coloring task owns these buffers. Kit still supplies cell selection and palette
@@ -775,7 +785,7 @@ nonisolated struct RegionTileRenderer: Sendable {
             return states.palette[entry.palette]
         }
 
-        init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter(), water: GameTag? = nil) {
+        init(_ chunk: Chunk, filter: MapBlockFilter, water: GameTag?) {
             self.chunk = chunk
             self.filter = filter
             self.water = water
