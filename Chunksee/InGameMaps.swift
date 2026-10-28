@@ -27,7 +27,7 @@ struct InGameMapRow: View {
     var body: some View {
         let availability = session.routing.availability(of: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)), in: map.dimension)
         LocationLabel(title: Text("Map #\(map.id)"), isDimmed: !availability.canNavigate) {
-            if let image = session.selection.image(for: map) {
+            if !map.isBlank, let image = session.selection.image(for: map) {
                 Image(decorative: image, scale: 1)
                     .interpolation(.none)
                     .resizable()
@@ -62,12 +62,28 @@ struct InGameMapDetailView: View {
                 LocationRow(title: Text("Center"), session: session,
                             destination: MapDestination(coordinates: Coordinates(CGPoint(x: map.centerX, y: map.centerZ)),
                                                         dimension: map.dimension), showsDimension: true)
+                if let savedDimension = map.unrecognizedDimension {
+                    LabeledContent("Saved Dimension", value: savedDimension).textSelection(.enabled)
+                }
                 LabeledContent("Scale", value: String(localized: "1 pixel for every \(CountedText.blocks.locale(locale).format(Double(map.blocksPerPixel)))", locale: locale))
+                if map.isBlank {
+                    Text("Nothing is drawn on this map.").foregroundStyle(.secondary)
+                }
                 if map.isLocked {
                     Label("Locked in a cartography table", systemImage: "lock.fill").foregroundStyle(.secondary)
                 }
             } header: {
-                InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol)
+                InspectorHeading(title: Text("Map #\(map.id)"), symbol: ItemAppearance.mapSymbol,
+                                 picture: .item(ItemStack(id: "minecraft:filled_map")))
+            }
+            // A saved picture remains useful when its dimension cannot be located on the map.
+            if !map.isBlank, !session.presentation.canShow(map), let image = session.selection.image(for: map) {
+                Section("Saved Map Picture") {
+                    Image(image, scale: 1, label: Text("Saved Map Picture"))
+                        .interpolation(.none)
+                        .resizable()
+                        .aspectRatio(1, contentMode: .fit)
+                }
             }
             if session.presentation.canShow(map) {
                 Section {

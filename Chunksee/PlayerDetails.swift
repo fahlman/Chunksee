@@ -115,6 +115,7 @@ nonisolated enum ItemAppearance {
 struct PlayerDetailView: View {
     let session: WorldSession
     let player: PlayerInfo
+    @Environment(\.gameNames) private var gameNames
     @Environment(\.locale) private var locale
     private var records: PlayerRecords? {
         session.selection.playerRecords.uuid == player.uuid ? session.selection.playerRecords.records : nil
@@ -168,7 +169,7 @@ struct PlayerDetailView: View {
                 }
             }
             PlayerEffectsSection(effects: player.activeEffects)
-            EquipmentSection(items: EquipmentPresentation.items(for: player))
+            EquipmentSection(items: player.equippedItems)
             LinkedPetsSection(session: session, playerID: player.uuid)
             ShoulderPetsSection(session: session, playerID: player.uuid)
             Section("Hotbar") {
@@ -180,10 +181,12 @@ struct PlayerDetailView: View {
             Section("Ender Chest") {
                 SlotGrid(slots: player.inventorySlots(in: .enderChest))
             }
-            PlayerRecordsSections(records: records, showsAllStatistics: $showsAllStatistics)
+            PlayerRecordsSections(records: records, definitionGeneration: session.resources.definitionReadGeneration,
+                                  showsAllStatistics: $showsAllStatistics)
         }
         .formStyle(.grouped)
-        .task(id: RecordRequest(uuid: player.uuid, name: session.names.name(for: player.uuid), saved: player.lastSaved)) {
+        .task(id: RecordRequest(uuid: player.uuid, name: session.names.name(for: player.uuid), saved: player.lastSaved,
+                               definitions: session.resources.definitionReadGeneration)) {
             await session.selection.playerRecords.load(player.uuid, name: session.names.name(for: player.uuid))
         }
         .sheet(isPresented: $showsAllStatistics) {
@@ -195,17 +198,10 @@ struct PlayerDetailView: View {
         var uuid: UUID
         var name: String?
         var saved: Date?
+        var definitions: Int
     }
 
-    private var gameMode: String {
-        switch player.gameMode {
-        case .survival: String(localized: "Survival")
-        case .creative: String(localized: "Creative")
-        case .adventure: String(localized: "Adventure")
-        case .spectator: String(localized: "Spectator")
-        case nil: String(localized: "Unknown")
-        }
-    }
+    private var gameMode: String { gameNames.gameMode(player.gameMode) }
 
     private func locationButton(_ saved: PlayerPresentation.Location) -> some View {
         let location = saved.position

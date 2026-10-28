@@ -23,7 +23,7 @@ import Testing
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let library = try fixture.library()
-        let colors = try await library.biomeColors(in: World(contentsOf: root))
+        let colors = try await library.data.biomeColors(in: World(contentsOf: root), artwork: library)
         for (id, rgb) in BiomeColors.table { #expect(BiomeColors.color(for: id, game: colors) == MapColor(rgb)) }
         #expect(BiomeColors.color(for: "test:land", game: colors) == MapColor(0x123456))
         #expect(BiomeColors.color(for: "test:ocean", game: colors) == MapColor(0x654321))
@@ -55,12 +55,12 @@ import Testing
                 size: CGSize(width: 100, height: 100)).biomeAreas.first).color
         }
         #expect(try color(first) == MapColor(0xff0000) && color(second) == MapColor(0xff0000))
-        #expect(first.map?.currentRenderer.biomeColors == nil) // Pack-only overlays do not alter terrain tiles.
+        #expect(first.map?.currentRenderer.biomeColors?.biome("test:land").color(.water, x: 0, z: 0) == 0x654321)
         let map = try #require(first.map)
         map.viewport = .init(center: CGPoint(x: 8, y: 8), scale: 4)
         map.requestTiles(visibleIn: CGSize(width: 100, height: 100), displayScale: 1)
         await map.waitForRenders()
-        let terrain = try #require(map.tiles[.init(x: 0, z: 0)]?.image)
+        let terrain = try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes
         let noArt = try #require(resources.biomeColors)
         #expect(BiomeColors.color(for: "test:foliage", game: noArt) == MapColor(0xabcdef))
         #expect(BiomeColors.color(for: "test:climate", game: noArt) == MapColor(0x654321))
@@ -70,16 +70,17 @@ import Testing
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x00ff00) && color(second) == MapColor(0x00ff00))
-        #expect(map.tiles[.init(x: 0, z: 0)]?.image === terrain)
+        await map.waitForRenders()
+        #expect(try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes == terrain)
 
         let fixture = try ItemPictureFixture(extraFiles: [
             "data/minecraft/tags/worldgen/biome/is_ocean.json": ItemPictureFixture.json(["values": ["test:land"]]),
         ])
         defer { fixture.remove() }
-        let library = try fixture.library()
+        let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.prepareGameAssets(source)
-        resources.setGameAssets(library, source: source)
+        resources.setGameAssets(game, source: source)
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x654321) && color(second) == MapColor(0x654321))
@@ -96,7 +97,7 @@ import Testing
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x00ff00) && color(second) == MapColor(0x00ff00))
-        #expect(first.map?.currentRenderer.biomeColors == nil)
+        #expect(first.map?.currentRenderer.biomeColors?.source.data == nil)
         try FileManager.default.removeItem(at: root.appendingPathComponent("datapacks/outline"))
         resources.worldChanged([root.appendingPathComponent("datapacks/outline")])
         await resources.waitForRefresh()
@@ -112,7 +113,7 @@ import Testing
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         try pack(at: root, grass: 0xff0000)
-        let colors = try MapBiomeColors.read(in: World(contentsOf: root), assetSourceKey: "test", assets: nil)
+        let colors = try MapBiomeColors.read(in: World(contentsOf: root), source: .init(data: "test", artwork: .unavailable), assets: nil)
         var content = MapContent()
         content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "test:land"])
         content.biomeColors = colors

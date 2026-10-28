@@ -23,27 +23,27 @@ import Testing
         return try #require(Creature(Fixtures.mob(fields)))
     }
 
-    @Test func savedDefaultsComeFromKitAndUnknownLevelsStayAbsent() throws {
-        let cases: [(Int32?, String)] = [(nil, "Farmer, Novice"), (0, "Farmer"), (6, "Farmer")]
+    @Test func savedDefaultsComeFromKitAndUnnamedLevelsStayVisible() throws {
+        let cases: [(Int32?, String)] = [(nil, "Farmer, Level 1"), (0, "Farmer, Level 0"), (6, "Farmer, Level 6")]
         for (level, expected) in cases {
             let saved = try creature(level: level)
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: []) { _ in .named("") }
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: [], gameNames: .unavailable) { _ in .named("") }
             #expect(villager.level == level.map(Int.init) ?? 1)
             #expect(marker.name == "Farmer")
             #expect(hits.map(\.title) == ["Farmer"])
-            #expect(VillagerText.inspectorProfession(saved) == expected)
+            #expect(VillagerText.inspectorProfession(saved, gameNames: .unavailable) == expected)
         }
     }
 
     @Test func everyKnownLevelIsInTheInspectorAndItemNamesStayShort() throws {
-        for (index, name) in ["Novice", "Apprentice", "Journeyman", "Expert", "Master"].enumerated() {
+        for (index, name) in ["Level 1", "Level 2", "Level 3", "Level 4", "Level 5"].enumerated() {
             let saved = try creature(level: Int32(index + 1))
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
-            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: []) { _ in .named("") }
+            let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: [], gameNames: .unavailable) { _ in .named("") }
             #expect(hits.map(\.title) == ["Farmer"])
-            #expect(VillagerText.inspectorProfession(saved) == "Farmer, \(name)")
+            #expect(VillagerText.inspectorProfession(saved, gameNames: .unavailable) == "Farmer, \(name)")
             #expect(marker.name == "Farmer")
         }
         var named = try creature(level: 2)
@@ -70,24 +70,24 @@ import Testing
                 "sell": .compound(["id": .string("minecraft:sand"), "count": .int(8)]),
             ])])]),
         ])))
-        #expect(VillagerText.inspectorProfession(trader) == nil)
+        #expect(VillagerText.inspectorProfession(trader, gameNames: .unavailable) == nil)
     }
 
     @Test func theInspectorDistinguishesUnknownProfessionsFromUnemployment() throws {
         let unknownProfessions: [String?] = [nil, "", "invalid value", "minecraft:"]
         for profession in unknownProfessions {
-            #expect(VillagerText.inspectorProfession(try creature(profession: profession)) == nil)
+            #expect(VillagerText.inspectorProfession(try creature(profession: profession), gameNames: .unavailable) == nil)
         }
         for profession in ["minecraft:none", "none", ":none"] {
-            #expect(VillagerText.inspectorProfession(try creature(profession: profession, offers: false)) == "None")
+            #expect(VillagerText.inspectorProfession(try creature(profession: profession, offers: false), gameNames: .unavailable) == "None")
         }
-        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:farmer", offers: false)) == "Farmer, Novice")
-        #expect(VillagerText.inspectorProfession(try creature(level: 5, profession: "minecraft:nitwit", offers: false)) == "Nitwit")
-        #expect(VillagerText.inspectorProfession(try creature(profession: "example:none", offers: false)) == "None, Novice")
-        #expect(VillagerText.inspectorProfession(try creature(profession: "example:beekeeper", offers: false)) == "Beekeeper, Novice")
+        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:farmer", offers: false), gameNames: .unavailable) == "Farmer, Level 1")
+        #expect(VillagerText.inspectorProfession(try creature(level: 5, profession: "minecraft:nitwit", offers: false), gameNames: .unavailable) == "Nitwit")
+        #expect(VillagerText.inspectorProfession(try creature(profession: "example:none", offers: false), gameNames: .unavailable) == "None, Level 1")
+        #expect(VillagerText.inspectorProfession(try creature(profession: "example:beekeeper", offers: false), gameNames: .unavailable) == "Beekeeper, Level 1")
         // Explicit command-edited offers can trade even for an ordinarily nontrading profession.
-        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:none")) == "None, Novice")
-        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:nitwit")) == "Nitwit, Novice")
-        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:none", kind: "minecraft:wandering_trader")) == nil)
+        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:none"), gameNames: .unavailable) == "None, Level 1")
+        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:nitwit"), gameNames: .unavailable) == "Nitwit, Level 1")
+        #expect(VillagerText.inspectorProfession(try creature(profession: "minecraft:none", kind: "minecraft:wandering_trader"), gameNames: .unavailable) == nil)
     }
 }

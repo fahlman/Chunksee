@@ -44,8 +44,8 @@ struct MapView: View {
         let zoomPercentage = ZoomPercentage.text(map.viewport.scale)
         let position = String(localized: "Centered on \(Coordinates.text(map.viewport.center)); zoom \(zoomPercentage); \(map.depth.accessibilityDescription)")
         var descriptions = [position]
-        if let block = map.topBlock(at: map.viewport.center), block.hasGameDefinition == false {
-            descriptions.append(Self.blockDefinitionNote)
+        if let notice = map.blockDefinitionNotice(for: map.topBlock(at: map.viewport.center)) {
+            descriptions.append(notice.accessibilityLabel())
         }
         if let seed = content.slimeSeed, let slime = SlimeChunks.description(at: map.viewport.center, seed: seed) { descriptions.append(slime) }
         if map.showsDarkSpots {
@@ -345,12 +345,10 @@ struct MapView: View {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 let block = Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots ? map.topBlock(at: hoverBlock) : nil
                 CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
-                if block?.hasGameDefinition == false {
-                    Label(String(localized: "Block absent from game files",
-                                 comment: "Short block-information notice; the selected game's resources do not include this saved block."),
-                          systemImage: "questionmark.square.dashed")
-                        .help(Self.blockDefinitionNote)
-                        .accessibilityHint(Self.blockDefinitionNote)
+                if let notice = map.blockDefinitionNotice(for: block) {
+                    Label(notice.label(locale: locale), systemImage: "questionmark.square.dashed")
+                        .help(notice.help(locale: locale))
+                        .accessibilityLabel(notice.accessibilityLabel(locale: locale))
                 }
                 if let light = block?.nightLight { Text(light.description) }
                 if let seed = content.slimeSeed, let description = SlimeChunks.description(at: hoverBlock, seed: seed) {
@@ -379,11 +377,6 @@ struct MapView: View {
 
     /// Blocks are named from 100% zoom, where a block is at least a point across.
     static func namesBlocks(at scale: CGFloat) -> Bool { scale >= 1 }
-
-    static var blockDefinitionNote: String {
-        String(localized: "The selected game files have no definition for this block. Minecraft may replace it with air if the game opening this world does not support it.",
-               comment: "Block information: absence from the selected resources does not prove that a modded game rejects the saved block.")
-    }
 
     /// "X 3307  Y 64  Z 938 · Sand · Desert": X, Y and Z together as Minecraft shows them, then the
     /// block and biome (Ryan, 2026-10-13). Without a block, only X and Z are known.

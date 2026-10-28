@@ -29,7 +29,7 @@ import Testing
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
             StructureMarker(start($0, chunk: (0, 0))).name
         }
-        #expect(names == ["Plains Village", "Cold Ocean Ruin", "Ocean Ruined Portal", "Beached Shipwreck", "Ancient City"])
+        #expect(names == ["Village Plains", "Ocean Ruin Cold", "Ruined Portal Ocean", "Shipwreck Beached", "Ancient City"])
     }
 
     @Test func boundsAndStrongholdPortalRoom() {
@@ -211,7 +211,7 @@ enum StructureTestWorld {
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
         #expect(marker.group == .villager && marker.name == "Librarian")
-        #expect(VillagerText.levelName(5) == "Master")
+        #expect(VillagerText.levelName(5, gameNames: .unavailable) == "Level 5")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
         #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == .mob)
@@ -683,7 +683,7 @@ enum StructureTestWorld {
         await session.waitUntilClosed()
     }
 
-    @Test func sessionListsDrawnMapsAndShowsOne() async throws {
+    @Test func sessionListsAllReadableMapsAndShowsAnAvailableOne() async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let maps = world.appendingPathComponent("data/minecraft/maps")
@@ -699,7 +699,7 @@ enum StructureTestWorld {
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         // The Nether map's dimension isn't in this world, so it's listed with the Overworld but can't be shown.
-        #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 6])
+        #expect(session.presentation.inGameMaps.map(\.id).sorted() == [3, 4, 5, 6])
         let nether = try #require(session.presentation.inGameMaps.first { $0.id == 6 })
         #expect(session.routing.availability(of: Coordinates(CGPoint(x: nether.centerX, y: nether.centerZ)),
                                             in: nether.dimension) == .missingDimension)
