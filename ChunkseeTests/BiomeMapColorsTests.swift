@@ -99,8 +99,8 @@ import Testing
             blocks: { _, y, _ in y == 15 ? 2 : y > 11 ? 1 : 0 }, biomes: { _, y, _ in y > 11 ? 1 : 0 })])
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), library = try fixture.library()
-        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), gameAssets: library)
-        renderer.biomeColors = try await library.biomeColors(in: world)
+        var renderer = RegionTileRenderer(dimension: try #require(world.dimension("overworld")), gameData: library.data, gameArtwork: library)
+        renderer.biomeColors = try await library.data.biomeColors(in: world, artwork: library)
         let tile = try #require(try await renderer.tile(for: .init(x: 0, z: 0)))
         #expect(try ItemPictureFixture.pixels(tile.full.image).color(4, 4) == [127, 0, 128, 255])
         let surface = try #require(tile.detail)
