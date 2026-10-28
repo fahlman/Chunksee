@@ -30,6 +30,8 @@ final class WorldResources {
     let access: WorldReadAccess
     let backgroundWork: BackgroundWork
     let world: World
+    private(set) var savedVersion: SavedMinecraftVersion
+    private var visibleNewerWorldNoticeID: String?
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
     private(set) var details: WorldDetails
@@ -131,6 +133,7 @@ final class WorldResources {
         lightingWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
+        savedVersion = SavedMinecraftVersion(snapshot.world.level)
         dimensionDocuments = snapshot.dimensionDocuments
         details = snapshot.details
         playerRoster = PlayerRoster(snapshot.players)
@@ -290,9 +293,34 @@ final class WorldResources {
         }
     }
 
+    var newerWorldNotice: WorldVersionNotice? {
+        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation,
+              let data = gameData else { return nil }
+        return WorldVersionNotice(saved: savedVersion, game: data.version)
+    }
+
+    var newerWorldBanner: WorldVersionNotice? {
+        guard let notice = newerWorldNotice,
+              visibleNewerWorldNoticeID == notice.id || !settings.hasShownVersionNotice(notice.id) else { return nil }
+        return notice
+    }
+
+    func presentNewerWorldNotice(_ notice: WorldVersionNotice) {
+        guard newerWorldBanner == notice else { return }
+        visibleNewerWorldNoticeID = notice.id
+        settings.recordVersionNotice(notice.id)
+    }
+
+    func dismissNewerWorldNotice(_ notice: WorldVersionNotice) {
+        guard newerWorldNotice == notice else { return }
+        settings.recordVersionNotice(notice.id)
+        visibleNewerWorldNoticeID = nil
+    }
+
     nonisolated struct DefinitionSnapshot: Sendable {
         let definitions: WorldDefinitions
         let borders: [String: WorldBorder]
+        let savedVersion: SavedMinecraftVersion
     }
 
     private func refreshDefinitions() {
@@ -314,6 +342,7 @@ final class WorldResources {
                   self.definitionReadGeneration == generation,
                   self.gameData?.identity == library?.identity else { return }
             self.isDefinitionReadPending = false
+            self.savedVersion = updated.savedVersion
             // Keep the last coherent snapshot during a transient unreadable save. Never pair
             // new region definitions with players whose maximum used the previous definitions.
             guard let players else { return }
@@ -355,7 +384,7 @@ final class WorldResources {
         var borders: [String: WorldBorder] = [:]
         for dimension in current.dimensions() { borders[dimension.id] = try? current.worldBorder(of: dimension) }
         try Task.checkCancellation()
-        return DefinitionSnapshot(definitions: definitions, borders: borders)
+        return DefinitionSnapshot(definitions: definitions, borders: borders, savedVersion: SavedMinecraftVersion(current.level))
     }
 
     private func refreshBiomeColors(reload: Bool) {
