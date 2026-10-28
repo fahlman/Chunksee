@@ -58,7 +58,7 @@ enum GameNameFixture {
         #expect(PlayerRecords.travelName("minecraft:aviate_one_cm", gameNames: names) == "Distance by Elytra")
         #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond",
             title: .translated(key: "advancements.story.mine_diamond.title", fallback: nil, arguments: []), gameNames: names) == "Diamonds!")
-        #expect(PlayerRecords.advancementName("example:story/mine_diamond", gameNames: names) == "Story Mine Diamond")
+        #expect(PlayerRecords.advancementName("example:story/mine_diamond", title: nil, gameNames: names) == "Story Mine Diamond")
         #expect(NotableBlock.diamond.name(in: names) == "Minerai de diamant")
         #expect(NotableBlock.spawner.name(in: names) == "Générateur de monstres")
         #expect(names.gameMode(.survival) == "Survival Mode")

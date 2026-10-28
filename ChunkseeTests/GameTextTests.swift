@@ -162,7 +162,7 @@ import Testing
         let title = try #require(TextComponent.content(json: Data(json.utf8)))
         #expect(GameNames.unavailable.advancement("test:title", title: title) == "First fallback value / another.key")
         #expect(GameNames.unavailable.advancement("test:title", title: .literal("")) == "")
-        #expect(GameNames.unavailable.advancement("test:missing_title") == "Missing Title")
+        #expect(GameNames.unavailable.advancement("test:missing_title", title: nil) == "Missing Title")
     }
 
     @Test func validMaximumDepthRendersAndExpansionStopsAtItsBudget() throws {

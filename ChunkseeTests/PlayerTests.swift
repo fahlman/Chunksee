@@ -245,7 +245,7 @@ import Testing
     @Test func namesRankingsAndDistances() {
         #expect(PlayerRecords.travelName("minecraft:aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
         #expect(PlayerRecords.travelName("minecraft:boat_one_cm", gameNames: .unavailable) == "Boat One Cm")
-        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond", gameNames: .unavailable) == "Story Mine Diamond")
+        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond", title: nil, gameNames: .unavailable) == "Story Mine Diamond")
         let records = PlayerRecords(statistics: PlayerStatistics(values: [
             "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
@@ -326,9 +326,9 @@ import Testing
         try Data(#"{"minecraft:story/mine_stone":{"criteria":{"get_stone":"2012-01-01 10:00:00 +0000"},"done":true},"minecraft:recipes/misc/x":{"criteria":{},"done":true},"DataVersion":5023}"#.utf8)
             .write(to: advancements.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
         let world = try World(contentsOf: worldURL)
-        let records = await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo")
+        let records = await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil)
         #expect(records.statistics?.playTime == 144_000)
         #expect(records.completedAdvancements.map(\.id) == ["minecraft:story/mine_stone"])
-        #expect(await PlayerRecords.load(from: world, uuid: UUID(), name: nil).statistics == nil)
+        #expect(await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).statistics == nil)
     }
 }

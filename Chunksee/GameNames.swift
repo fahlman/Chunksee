@@ -34,7 +34,7 @@ nonisolated struct GameNames: Sendable {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
     }
 
-    func advancement(_ id: String, title: TextComponent.Content? = nil) -> String {
+    func advancement(_ id: String, title: TextComponent.Content?) -> String {
         if let title, let text = GameText.string(title, translation: { language?[$0] }) { return text }
         return ReadableName.from(id)
     }

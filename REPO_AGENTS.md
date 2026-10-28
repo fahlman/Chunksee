@@ -1866,7 +1866,8 @@ names, so their fallback preserves ID word order. Loot-table labels derive from 
 no special renames. Old-format guidance uses the saved version name, when available, without a
 version number in the UI string. No game language files are redistributed.
 
-PlayerRecords asks Kit for the five displayed completed advancements' actual display titles,
+PlayerRecords owns the displayed advancements; both the definition reader and inspector use
+that one value. It asks Kit for those advancements' actual display titles,
 using enabled world packs over the selected game jar through GameDataLibrary, independently
 of the artwork setting. It never guesses a translation key from
 an advancement ID. Saved progress, dates and counts remain independent of unavailable titles;
@@ -1874,6 +1875,9 @@ the readable ID is their fallback. Definitions reread fresh world metadata off t
 The existing WorldResources definition generation restarts an open player's read on game/pack
 changes and rejects obsolete results. A refresh retains that player's progress while old titles
 become unavailable immediately; selecting a different player clears the previous records.
+Record reads require an explicit data library and the inspector model requires the world's
+guarded reader. Title presentation requires an explicit title and current definition generation;
+unpublished or retired definitions cannot bypass that check.
 
 GameText lays out Kit's interpreted literal, sequence and translated title components using the
 same GameNames language snapshot as the rest of the window. Minecraft's substitution semantics

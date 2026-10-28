@@ -21,7 +21,7 @@ final class SelectionModel {
 
     init(source: WorldSession) {
         self.source = source
-        playerRecords = PlayerRecordsModel(world: source.world, work: source.resources.backgroundWork,
+        playerRecords = PlayerRecordsModel(work: source.resources.backgroundWork,
             read: { [weak resources = source.resources] uuid, name in await resources?.playerRecords(for: uuid, name: name) })
     }
 

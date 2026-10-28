@@ -10,10 +10,8 @@ struct PlayerRecordsWorkTests {
     }
 
     @Test(.timeLimit(.minutes(1))) func samePlayerRefreshKeepsProgressButChangingPlayersClearsIt() async throws {
-        let url = try TestWorld.make(chunks: [])
-        defer { try? FileManager.default.removeItem(at: url) }
         let work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords?>(), numbers = ReadNumbers()
-        let model = PlayerRecordsModel(world: try World(contentsOf: url), work: work,
+        let model = PlayerRecordsModel(work: work,
             read: { _, _ in await gate.read(String(await numbers.next())) })
         let player = UUID()
         let first = Task { await model.load(player, name: nil) }
@@ -40,12 +38,10 @@ struct PlayerRecordsWorkTests {
     }
 
     @Test(.timeLimit(.minutes(1))) func closingOneInspectorDoesNotCancelOrWaitForItsSibling() async throws {
-        let url = try TestWorld.make(chunks: [])
-        defer { try? FileManager.default.removeItem(at: url) }
-        let world = try World(contentsOf: url), work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords>()
+        let work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords>()
         let firstID = UUID(), secondID = UUID()
-        let first = PlayerRecordsModel(world: world, work: work, read: { id, _ in await gate.read(id.uuidString) })
-        let second = PlayerRecordsModel(world: world, work: work, read: { id, _ in await gate.read(id.uuidString) })
+        let first = PlayerRecordsModel(work: work, read: { id, _ in await gate.read(id.uuidString) })
+        let second = PlayerRecordsModel(work: work, read: { id, _ in await gate.read(id.uuidString) })
         let firstCall = Task { await first.load(firstID, name: nil) }
         let secondCall = Task { await second.load(secondID, name: nil) }
         await gate.waitForRequest(firstID.uuidString)
@@ -67,10 +63,8 @@ struct PlayerRecordsWorkTests {
     }
 
     @Test(.timeLimit(.minutes(1))) func closingDrainsCancelledReplacementsAsWellAsTheCurrentRead() async throws {
-        let url = try TestWorld.make(chunks: [])
-        defer { try? FileManager.default.removeItem(at: url) }
         let work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords>()
-        let model = PlayerRecordsModel(world: try World(contentsOf: url), work: work,
+        let model = PlayerRecordsModel(work: work,
                                        read: { id, _ in await gate.read(id.uuidString) })
         let first = UUID(), second = UUID()
         let oldCall = Task { await model.load(first, name: nil) }
@@ -101,12 +95,10 @@ struct PlayerRecordsWorkTests {
     }
 
     @Test(.timeLimit(.minutes(1))) func worldCloseCancelsEveryScopeAndRefusesAnotherRead() async throws {
-        let url = try TestWorld.make(chunks: [])
-        defer { try? FileManager.default.removeItem(at: url) }
-        let world = try World(contentsOf: url), work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords>()
+        let work = BackgroundWork(), gate = AsyncReadGate<PlayerRecords>()
         let firstID = UUID(), secondID = UUID()
-        let first = PlayerRecordsModel(world: world, work: work, read: { id, _ in await gate.read(id.uuidString) })
-        let second = PlayerRecordsModel(world: world, work: work, read: { id, _ in await gate.read(id.uuidString) })
+        let first = PlayerRecordsModel(work: work, read: { id, _ in await gate.read(id.uuidString) })
+        let second = PlayerRecordsModel(work: work, read: { id, _ in await gate.read(id.uuidString) })
         let firstCall = Task { await first.load(firstID, name: nil) }
         let secondCall = Task { await second.load(secondID, name: nil) }
         await gate.waitForRequest(firstID.uuidString)

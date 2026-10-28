@@ -69,24 +69,34 @@ import Testing
     @Test func titlesComeFromDefinitionsAndNeverFilterSavedProgress() async throws {
         let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library().data
-        let records = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
-        let names = GameNames(await library.language("fr_FR", minecraftDirectory: game.root))
+        let files = try progress(at: root, player: player), world = try await resources(root, game: game)
+        defer { world.close() }
+        world.refreshGameLanguage(preferredLanguage: "fr_FR")
+        await world.waitForRefresh()
+        let records = try #require(await world.playerRecords(for: player, name: nil))
+        let names = world.gameNames, generation = world.definitionReadGeneration
         #expect(records.advancements.count == 7 && records.completedAdvancements.count == 5)
         #expect(records.statistics?.value("minecraft:deaths") == 4)
-        #expect(names.advancement(diamond, title: records.title(for: diamond, generation: nil)) == "Vrais diamonds")
-        #expect(records.title(for: "story/mine_diamond", generation: nil) == records.title(for: diamond, generation: nil))
-        #expect(names.advancement("test:literal", title: records.title(for: "test:literal", generation: nil)) == "Literal title!")
+        #expect(names.advancement(diamond, title: records.title(for: diamond, generation: generation)) == "Vrais diamonds")
+        #expect(records.title(for: "story/mine_diamond", generation: generation) == records.title(for: diamond, generation: generation))
+        #expect(names.advancement("test:literal", title: records.title(for: "test:literal", generation: generation)) == "Literal title!")
         for id in ["test:dynamic", "test:missing_title", "test:unknown"] {
-            #expect(records.title(for: id, generation: nil) == nil)
+            #expect(records.title(for: id, generation: generation) == nil)
             #expect(records.completedAdvancements.contains { $0.id == id })
         }
-        #expect(names.advancement(diamond) == "Story Mine Diamond") // No invented key lookup.
-        let unavailable = await PlayerRecords.load(from: world, uuid: player, name: nil)
+        #expect(names.advancement(diamond, title: nil) == "Story Mine Diamond") // No invented key lookup.
+        var unowned = records
+        unowned.definitionGeneration = nil
+        #expect(unowned.title(for: diamond, generation: generation) == nil)
+        #expect(records.title(for: diamond, generation: generation + 1) == nil)
+        let unavailable = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: nil)
         #expect(unavailable.advancements == records.advancements && unavailable.statistics == records.statistics)
         #expect(unavailable.advancementDefinitions.isEmpty)
         for (url, before) in files { #expect(try Data(contentsOf: url) == before) }
-        await library.close()
+        world.close()
+        await world.waitUntilClosed()
+        world.names.minecraft.forget()
+        await world.names.minecraft.waitUntilIdle()
     }
 
     @Test func packChangesUseFreshMetadataWithoutReplacingTheSavedWorld() async throws {
@@ -95,13 +105,13 @@ import Testing
         let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library().data
         _ = try pack(at: root, enabled: true)
         let packed = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
-        #expect(packed.title(for: diamond, generation: nil) == .literal("Pack title"))
-        let withoutGame = await PlayerRecords.load(from: world, uuid: player, name: nil)
-        #expect(withoutGame.title(for: diamond, generation: nil) == .literal("Pack title"))
+        #expect(packed.advancementDefinitions[diamond]?.title == .literal("Pack title"))
+        let withoutGame = await PlayerRecords.load(from: world, uuid: player, name: nil, library: nil)
+        #expect(withoutGame.advancementDefinitions[diamond]?.title == .literal("Pack title"))
         _ = try pack(at: root, enabled: false)
         let restored = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
         let names = GameNames(await library.language("en_US", minecraftDirectory: game.root))
-        #expect(names.advancement(diamond, title: restored.title(for: diamond, generation: nil)) == "Actual diamonds")
+        #expect(names.advancement(diamond, title: restored.advancementDefinitions[diamond]?.title) == "Actual diamonds")
         #expect(restored.advancements == packed.advancements && packed.advancements == withoutGame.advancements)
         for (url, before) in files { #expect(try Data(contentsOf: url) == before) }
         await library.close()
@@ -117,7 +127,28 @@ import Testing
         let records = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library)
         #expect(records.completedAdvancements.count == 4097)
         #expect(records.completedAdvancements.first?.id == diamond)
-        #expect(records.title(for: diamond, generation: nil) != nil)
+        #expect(records.advancementDefinitions[diamond]?.title != nil)
+        await library.close()
+    }
+
+    @Test func onlyTheDisplayedAdvancementsLoadDefinitionsWhileAllProgressRemains() async throws {
+        let root = try TestWorld.make(chunks: []), player = UUID()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let names = ["oldest", "second", "third", "fourth", "fifth", "newest"]
+        var files: [String: Data] = [:], saved: [String: Any] = ["DataVersion": SaveVersion.java26_3]
+        for (index, name) in names.enumerated() {
+            files["data/test/advancement/\(name).json"] = try ItemPictureFixture.json(["display": ["title": name]])
+            saved["test:" + name] = ["done": true, "criteria": ["found": "2026-10-\(10 + index) 12:00:00 +0000"]]
+        }
+        let game = try ItemPictureFixture(extraFiles: files), library = try game.library().data
+        defer { game.remove() }
+        try write(ItemPictureFixture.json(saved), to: root.appendingPathComponent("players/advancements/\(player.uuidString.lowercased()).json"))
+        let records = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library)
+        let expected = ["test:newest", "test:fifth", "test:fourth", "test:third", "test:second"]
+        #expect(records.completedAdvancements.count == 6)
+        #expect(records.displayedAdvancements.map(\.id) == expected)
+        #expect(Set(records.advancementDefinitions.keys) == Set(expected))
+        #expect(records.advancementDefinitions["test:oldest"] == nil)
         await library.close()
     }
 
