@@ -582,14 +582,24 @@ nonisolated struct RegionTileRenderer: Sendable {
         if let cached = gameArtwork?.cachedMapColors(requests: requests) { colors = cached }
         else if let gameArtwork { colors = try await gameArtwork.mapColors(requests: requests) }
         else { colors = Array(repeating: nil, count: requests.count) }
+        let waterOpacity: Double?
+        if let gameArtwork, scanned.columns.contains(where: { ($0?.waterDepth ?? 0) > 0 }) {
+            let appearance: GameArtworkLibrary.WaterAppearance
+            if let cached = gameArtwork.cachedWaterAppearance { appearance = cached }
+            else { appearance = try await gameArtwork.waterAppearance() }
+            waterOpacity = appearance.opacity
+        } else { waterOpacity = nil }
         let columns: [Column?] = zip(scanned.columns, positions).enumerated().map { index, pair in
             let (value, position) = pair
             guard var column = value else { return nil }
             if let index = position.surface, let color = colors[index] {
                 column.color = color.shaded(column.colorShade)
             }
-            if column.waterDepth > 0, let rgb = tint(.water, column: index, y: column.y) {
-                column.color = MapColor(rgb).shaded(column.colorShade)
+            if column.waterDepth > 0 {
+                column.waterOpacity = waterOpacity
+                if let rgb = tint(.water, column: index, y: column.y) {
+                    column.color = MapColor(rgb).shaded(column.colorShade)
+                }
             }
             if let index = position.floor, let color = colors[index] {
                 column.waterFloorColor = color
@@ -687,7 +697,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         let skipping = darkSpots?.rule == nil ? Chunk.keysNotNeededForTerrain : Chunk.keysNotNeededForTerrainAndLight
         guard let nbt = try? file.chunkNBT(localX: localX, localZ: localZ, skipping: skipping),
               let chunk = try? Chunk(nbt: nbt) else { return nil }
-        var sections = ColorSections(chunk, filter: blockFilter)
+        var sections = ColorSections(chunk, filter: blockFilter, water: context.water)
         var columns: [Column?]
         if let cutawayY {
             columns = sections.topColumns(from: .height(cutawayY))
@@ -715,6 +725,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         var y: Int
         var color: MapColor
         var waterDepth: Int
+        var waterOpacity: Double?
         var emphasis = MapBlockFilter.Emphasis.ordinary
         /// Where the block is in its chunk's section palettes, so it can be named on demand without
         /// copying a block ID for every column the map draws.
@@ -757,6 +768,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         private let chunk: Chunk
         private let hiddenIDs: Set<String>
         private let filter: MapBlockFilter
+        private let water: GameTag?
         private var entries: [[Entry]]
         private let highestSection: Int?
 
@@ -773,9 +785,10 @@ nonisolated struct RegionTileRenderer: Sendable {
             return states.palette[entry.palette]
         }
 
-        init(_ chunk: Chunk, filter: MapBlockFilter = MapBlockFilter()) {
+        init(_ chunk: Chunk, filter: MapBlockFilter, water: GameTag?) {
             self.chunk = chunk
             self.filter = filter
+            self.water = water
             hiddenIDs = filter.effectiveHiddenIDs
             entries = chunk.sections.map { section in
                 Array(repeating: .unresolved, count: section.blockStates?.palette.count ?? 0)
@@ -787,11 +800,16 @@ nonisolated struct RegionTileRenderer: Sendable {
         private mutating func resolve(section s: Int, palette: Int?) -> Entry {
             guard let p = palette, entries[s].indices.contains(p) else { return .clear }
             if entries[s][p] == .unresolved {
-                let id = blockID(section: s, palette: p)
-                let color = hiddenIDs.contains(id) ? nil : BlockColors.color(for: id)
+                let state = blockState(at: PaletteEntry(section: s, palette: p))
+                let id = state?.id ?? ""
+                // A missing tag preserves the existing no-game-file presentation. A readable
+                // empty tag is authoritative; known fluid and upper-face facts take precedence.
+                let isWater = state?.containsFluid(in: water).map { $0 && state?.hasSolidUpperFace != true }
+                    ?? BlockColors.isWater(id)
+                let color = hiddenIDs.contains(id) ? nil : BlockColors.color(for: isWater ? "minecraft:water" : id)
                 if let color {
                     let paint = Paint(color: color, emphasis: filter.emphasis(for: id))
-                    entries[s][p] = BlockColors.isWater(id) ? .water(paint) : .solid(paint)
+                    entries[s][p] = isWater ? .water(paint) : .solid(paint)
                 } else {
                     entries[s][p] = .clear
                 }
@@ -895,10 +913,16 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     static func baseColor(for column: Column) -> MapColor {
         guard column.waterDepth > 0 else { return column.color }
-        let water = column.color.shaded(1.15 - min(Double(column.waterDepth), 24) / 40)
+        let depthShade = 1.15 - min(Double(column.waterDepth), 24) / 40
+        let water = column.color.shaded(depthShade)
         guard let floor = column.waterFloorColor, column.waterDepth < 16 else { return water }
-        // Retain a blue cast at the shore, fading the visible floor out over sixteen blocks.
-        return floor.blended(with: water, amount: 0.2 + Double(column.waterDepth) / 20)
+        // Use the existing depth shade for the submerged floor too. Artwork limits how much
+        // floor shows through; the existing fade still removes it in deeper water.
+        let depthBlend = 0.2 + Double(column.waterDepth) / 20
+        if let opacity = column.waterOpacity {
+            return floor.shaded(depthShade).blended(with: water, amount: max(opacity, depthBlend))
+        }
+        return floor.blended(with: water, amount: depthBlend)
     }
 
     /// Pixels plus the surface height of each column, kept so relief shading can compare

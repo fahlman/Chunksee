@@ -3,14 +3,18 @@ import ChunkseeKit
 /// Display choices derived once from the reader's saved dimension facts. They describe the
 /// normal map view; an explicit cutaway height takes precedence over this ceiling view.
 nonisolated struct MapSurfaceContext: Equatable, Sendable {
-    static let unknown = MapSurfaceContext(settings: nil)
+    static let unknown = MapSurfaceContext(settings: nil, water: nil)
 
     let dimensionType: DimensionType?
     let buildHeight: Int?
     let ceilingY: Int?
     let biomeSampleY: Int?
+    let water: GameTag?
+    let waterKey: String?
 
-    init(settings: DimensionSettings?) {
+    init(settings: DimensionSettings?, water: GameTag?) {
+        self.water = water
+        waterKey = water.map { CacheKey.hash($0.members.map(\.id).sorted().joined(separator: "\n")) }
         dimensionType = settings?.type
         buildHeight = settings?.type?.height
         if let type = settings?.type, !type.hasCeiling {

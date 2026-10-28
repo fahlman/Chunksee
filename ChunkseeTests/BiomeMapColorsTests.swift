@@ -614,7 +614,7 @@ import Testing
             try Fixtures.writeGzippedNBT(.compound(["data": .compound([
                 "seed": .long(0), "dimensions": .compound(["minecraft:overworld": .compound(["type": type])])
             ])]), to: file)
-            return MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings[dimension.id])
+            return MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings[dimension.id], water: nil)
         }
         let cache = TileCache(directory: url.appendingPathComponent("tiles"))
         var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false, cutawayY: 15)

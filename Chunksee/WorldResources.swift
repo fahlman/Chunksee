@@ -167,7 +167,7 @@ final class WorldResources {
         let readers = snapshot.dimensions.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id]), definitions: snapshot.details.definitions),
+                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id], water: snapshot.details.definitions.water), definitions: snapshot.details.definitions),
                          notableBlocks: snapshot.details.definitions.notableBlocks,
                          structureGroups: snapshot.details.definitions.structureGroups,
                          read: readRegion)
@@ -205,7 +205,7 @@ final class WorldResources {
         index.include(added.map { dimension in
             RegionReader(dimension: dimension,
                          cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id]), definitions: details.definitions),
+                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id], water: details.definitions.water), definitions: details.definitions),
                          notableBlocks: details.definitions.notableBlocks,
                          structureGroups: details.definitions.structureGroups,
                          read: readRegion)
@@ -424,14 +424,14 @@ final class WorldResources {
                 let dimension = reader.dimension
                 return RegionReader(dimension: dimension,
                     cache: ScanCache(forWorldAt: self.url, dimensionID: dimension.id, root: self.cacheRoot),
-                    options: RegionReader.options(context: MapSurfaceContext(settings: updated.definitions.dimensionSettings[dimension.id]), definitions: updated.definitions),
+                    options: RegionReader.options(context: MapSurfaceContext(settings: updated.definitions.dimensionSettings[dimension.id], water: updated.definitions.water), definitions: updated.definitions),
                     notableBlocks: updated.definitions.notableBlocks,
                     structureGroups: updated.definitions.structureGroups, read: self.readRegion)
             }
             self.index.replace(readers: readers, firstDimension: self.activeDimensionID)
             for session in self.sessions.values.compactMap(\.value) {
                 guard let id = session.selectedDimensionID else { continue }
-                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id])
+                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id], water: updated.definitions.water)
                 session.heatMap.replaceReader(self.readers[id])
             }
             self.backgroundWork.start(priority: .utility) {
