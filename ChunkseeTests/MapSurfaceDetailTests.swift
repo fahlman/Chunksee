@@ -94,6 +94,33 @@ import Testing
         #expect(MapSurfaceDetail.decoded(data) == forward)
     }
 
+    @Test func mixedSizeDetailKeepsOnePrefixForEveryCompletionOrder() throws {
+        let requests = (0..<256).map { MapBlockColorRequest(state: .init("minecraft:material_\($0)_" + String(repeating: "a", count: 100))) }
+        let columns = [RegionTileRenderer.Column?](repeating: .init(y: 1, color: MapColor(0x808080), waterDepth: 0), count: 256)
+        let large = try #require(MapSurfaceDetail.Chunk(columns: columns, requests: requests, indices: (0..<256).map(Optional.some)))
+        let small = try chunk()
+        let inputs = (0..<1024).map { $0.isMultiple(of: 3) ? small : large }
+        var expected: [Int] = [], expectedBytes = 0
+        for (index, chunk) in inputs.enumerated() {
+            let cost = 64 + chunk.estimatedBytes
+            if expectedBytes + cost > MapSurfaceDetail.maximumRetainedBytes { break }
+            expected.append(index)
+            expectedBytes += cost
+        }
+        #expect(!expected.isEmpty && expected.count < inputs.count)
+        let orders = [Array(0..<1024), Array((0..<1024).reversed()),
+                      Array(stride(from: 0, to: 1024, by: 2)) + Array(stride(from: 1, to: 1024, by: 2))]
+        for order in orders {
+            var detail = MapSurfaceDetail()
+            for index in order { detail.insert(inputs[index], at: index) }
+            #expect(detail.chunks.keys.sorted() == expected)
+            #expect(detail.estimatedBytes == expectedBytes)
+            for index in expected { #expect(detail.chunks[index] == inputs[index]) }
+            let bytes = try #require(detail.encoded())
+            #expect(MapSurfaceDetail.decoded(bytes) == detail)
+        }
+    }
+
     @Test func ordinaryTerrainCacheIsIndependentOfMissingOrMalformedDetail() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
