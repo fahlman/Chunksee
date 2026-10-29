@@ -1183,8 +1183,10 @@ RefreshLoader coalesces saves during a pass, retains the previous value after a 
 publishes successful empty values. Failure remains invalidated for the next request without starting
 a retry loop. Producers merge their typed requests; failed or interrupted demand retains its
 strength until retried, while only a new external request schedules a following pass after failure.
-The internal RefreshLoader API has Source, Request and Value parameters. The existing reread
-convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
+The internal RefreshLoader API has Source, Request and Value parameters and accepts a prepared
+initial value, so opening's already interpreted source can be published without another read or
+temporary empty state. Closing clears the publication as well as canceling its scope, releasing
+the retained value while retired reads drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
 language and heat-map consumers keep their existing contracts. Each loader declares whether an
 inactive read finishes or cancels: Time Spent keeps
 its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last
@@ -1629,9 +1631,24 @@ while choosing a source. One file shares its separate data and artwork actors ac
 A changed folder generation retires the previous registry through MinecraftResources' background
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
 access until cleanup completes. MinecraftResources also notifies each open world directly.
-WorldResources owns the shared replacement request and definition publication even when every tab
-is hidden; view environment values derive from its observable source and loaded library, so first
-load and archive replacement update visible item pictures without another scene event. Returning to an active scene rechecks
+WorldResources owns one game-library RefreshLoader, seeded with WorldPreparation's actual source
+and completed selection. A successful selection can contain no library, independently of a failed
+or unfinished read. Same-source activations coalesce while preserving completed progress; a folder
+replacement immediately clears the incompatible selection and rejects delayed results. The loader
+replaces the separate asset counter, pending flag, scope and stored source/library pair.
+MinecraftResources.readLibrary preserves thrown failures; library retains opening's existing
+fallback on unavailable files. A missing installed-versions directory is successful absence, while
+another directory-read error is a failure. The selection and archive cache still have one owner.
+WorldResources supplies the loader's producer continuation to refresh dependent definitions,
+lighting, colors and names even when every tab is hidden. A completed same-library selection
+rechecks language objects without reloading unrelated definitions or colors.
+The loader invokes that continuation after synchronous Observation delivery returns, in the same
+publishing turn and at the caller's priority. Failed reads and closing publish no dependent work.
+Current-source/read guards run after delivery and again after the continuation, because either can
+replace the source or close the loader. This avoids nested delivery and a deferred-task gap before
+dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
+View environment values derive from that publication, so first load and archive replacement
+update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also

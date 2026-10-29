@@ -8,6 +8,169 @@ import Synchronization
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldGameAssetsTests {
+    @Test func sourceChangesDoNotMultiplyMapRenderRequests() async throws {
+        let game = try artworkFixture()
+        let section = Fixtures.section(y: 0, palette: [.string("minecraft:stone")], biomes: ["test:sample"])
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+                                sections: [section], extra: ["yPos": .int(0)]))])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(World(contentsOf: root).dimension("overworld"))
+        let resources = try await resources(root, game: game)
+        let session = WorldSession(resources: resources)
+        await resources.waitForRefresh()
+        let drawings = Mutex<[MapGameResources.Identity]>([])
+        let map = MapModel(gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
+            work: resources.backgroundWork, dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
+                let identity = MapGameResources(data: renderer.gameData, artwork: renderer.gameArtwork,
+                                                biomeColors: renderer.biomeColors).identity
+                drawings.withLock { $0.append(identity) }
+                return try await renderer.tile(for: region)
+            })
+        map.viewport.scale = 1
+        map.requestTiles(visibleIn: CGSize(width: 1, height: 1), displayScale: 1)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        for _ in 0..<3 {
+            for available in [false, true] {
+                drawings.withLock { $0.removeAll() }
+                if available { resources.names.minecraft.choose(game.root) }
+                else { resources.names.minecraft.forget() }
+                await resources.waitForRefresh()
+                await resources.backgroundWork.waitUntilFinished()
+                await map.waitUntilIdle(); await map.waitForRenders()
+                let actual = drawings.withLock { $0 }
+                let distinct = actual.reduce(into: [MapGameResources.Identity]()) { values, value in
+                    if !values.contains(value) { values.append(value) }
+                }
+                #expect(!actual.isEmpty)
+                #expect(actual.count == distinct.count,
+                        "One source transition must not restart the same map drawing through duplicate observers")
+                #expect((map.currentRenderer.gameData != nil) == available)
+            }
+        }
+        map.close(); session.close(); resources.close()
+        await resources.waitUntilClosed()
+        resources.names.minecraft.forget(); await resources.names.minecraft.waitUntilIdle()
+    }
+
+    @Test func preparedAssetsSurviveOverlappingRefreshesAndPublishProgress() async throws {
+        let game = try artworkFixture(), root = try TestWorld.make(chunks: [])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.choose(game.root)
+        let gate = AsyncReadGate<GameResourceLibrary?>(), numbers = ReadNumbers()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in await gate.read(String(await numbers.next())) })
+        let first = WorldSession(resources: resources), hidden = WorldSession(resources: resources)
+        var failure: (any Error)?
+        do {
+            let original = try #require(first.map?.currentRenderer.gameData)
+            await resources.waitForRefresh()
+            #expect(await gate.requested.isEmpty)
+            let a = try game.resources(), b = try game.resources()
+            resources.refreshGameAssets()
+            await gate.waitForRequest("0")
+            #expect(first.map?.currentRenderer.gameData === original)
+            resources.refreshGameAssets(); resources.refreshGameAssets(); resources.refreshGameAssets()
+            await gate.finish("0", with: a)
+            await gate.waitForRequest("1")
+            #expect(first.map?.currentRenderer.gameData === a.data && hidden.map?.currentRenderer.gameData === a.data)
+            #expect(await gate.requested == ["0", "1"])
+            first.close()
+            #expect(!resources.isClosed)
+            await gate.finish("1", with: b)
+            await resources.waitForRefresh()
+            #expect(hidden.map?.currentRenderer.gameData === b.data)
+            #expect(await gate.requested == ["0", "1"])
+        } catch { failure = error }
+        await gate.releaseAllAndFuture(with: nil)
+        resources.close(); await resources.waitUntilClosed()
+        names.minecraft.forget(); await names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
+    @Test func unreadableInstalledDirectoryRetainsAssetsButSuccessfulRemovalClearsThem() async throws {
+        let game = try artworkFixture(), root = try TestWorld.make(chunks: [])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root, game: game)
+        let session = WorldSession(resources: resources)
+        var failure: (any Error)?
+        do {
+            await resources.waitForRefresh()
+            let original = try #require(session.map?.currentRenderer.gameData), readers = resources.readers
+            let definitions = resources.details.definitions
+            let versions = game.root.appendingPathComponent("versions"), parked = game.root.appendingPathComponent("saved-versions")
+            try FileManager.default.moveItem(at: versions, to: parked)
+            try Data([0]).write(to: versions)
+            do {
+                _ = try await resources.names.minecraft.readLibrary()
+                Issue.record("An unreadable versions directory must fail, not report successful absence")
+            } catch { /* Expected file-read failure. */ }
+            resources.refreshGameAssets()
+            await resources.waitForRefresh()
+            #expect(session.map?.currentRenderer.gameData === original)
+            #expect(resources.details.definitions == definitions)
+            #expect(resources.readers["minecraft:overworld"] === readers["minecraft:overworld"])
+            try FileManager.default.removeItem(at: versions)
+            try FileManager.default.moveItem(at: parked, to: versions)
+            resources.refreshGameAssets()
+            await resources.waitForRefresh()
+            #expect(session.map?.currentRenderer.gameData === original)
+            try FileManager.default.removeItem(at: game.jar)
+            resources.refreshGameAssets()
+            await resources.waitForRefresh()
+            #expect(session.map?.currentRenderer.gameData == nil && session.map?.currentRenderer.gameArtwork == nil)
+            #expect(resources.details.definitions.enchantments["test:sample"] == nil)
+            // A missing versions directory is also successful absence, not a retrying failure.
+            try FileManager.default.removeItem(at: versions)
+            let absent = try await resources.names.minecraft.readLibrary()
+            #expect(absent == nil)
+        } catch { failure = error }
+        resources.close(); await resources.waitUntilClosed()
+        resources.names.minecraft.forget(); await resources.names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
+    @Test func replacedAndClosedSourcesRejectDelayedAssetResults() async throws {
+        let game = try artworkFixture(), replacement = try artworkFixture(), root = try TestWorld.make(chunks: [])
+        defer { game.remove(); replacement.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.choose(game.root)
+        let gate = AsyncReadGate<GameResourceLibrary?>(), numbers = ReadNumbers()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in await gate.read(String(await numbers.next())) })
+        let first = WorldSession(resources: resources), hidden = WorldSession(resources: resources)
+        var failure: (any Error)?
+        do {
+            await resources.waitForRefresh()
+            let old = try game.resources(), current = try replacement.resources()
+            resources.refreshGameAssets()
+            await gate.waitForRequest("0")
+            names.minecraft.choose(replacement.root)
+            #expect(first.map?.currentRenderer.gameData == nil && hidden.map?.currentRenderer.gameData == nil)
+            #expect(resources.gameNames.identity == GameNames.unavailable.identity && resources.newerWorldNotice == nil)
+            await gate.waitForCancellation("0"); await gate.waitForRequest("1")
+            await gate.finish("1", with: current)
+            for await ready in Observations({ hidden.map?.currentRenderer.gameData === current.data }) where ready { break }
+            await gate.finish("0", with: old)
+            await resources.waitForRefresh()
+            #expect(first.map?.currentRenderer.gameData === current.data && hidden.map?.currentRenderer.gameData === current.data)
+            resources.refreshGameAssets()
+            await gate.waitForRequest("2")
+            resources.close()
+            await gate.waitForCancellation("2")
+            await gate.finish("2", with: old)
+            await resources.waitUntilClosed()
+            #expect(resources.mapGameResources.data == nil && first.map?.currentRenderer.gameData == nil)
+        } catch { failure = error }
+        await gate.releaseAllAndFuture(with: nil)
+        resources.close(); await resources.waitUntilClosed()
+        names.minecraft.forget(); await names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
     @Test func artworkPreferenceDefaultsOnAndPersistsIndependentlyOfFolderAccess() async throws {
         let defaults = TestDefaults.make(), minecraft = MinecraftResources(defaults: defaults)
         let generation = minecraft.generation
@@ -125,6 +288,7 @@ import Synchronization
     }
 
     @Test func artworkOffReadsDataAndRendersWithoutReadingAnyTexture() async throws {
+        let assetReads = TestGameAssets()
         let fixture = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
@@ -139,10 +303,10 @@ import Synchronization
             return assets.texture(id)
         }
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         defer { resources.close() }
         let session = WorldSession(resources: resources), source = WorldGameAssetSource(generation: names.minecraft.generation)
-        resources.prepareGameAssets(source); resources.setGameAssets(library, source: source)
+        await assetReads.publish(library, to: resources)
         await resources.waitForRefresh()
         let map = try #require(session.map), region = RegionPosition(x: 0, z: 0)
         let definitions = resources.details.definitions
@@ -230,7 +394,7 @@ import Synchronization
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         let library = try #require(resources.gameArtworkLibrary(for: source))
         #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
-        resources.prepareGameAssets(source)
+        resources.refreshGameAssets()
         #expect(resources.gameArtworkLibrary(for: source) === library)
         resources.close()
         await resources.waitUntilClosed()
@@ -238,12 +402,13 @@ import Synchronization
     }
 
     @Test func mapsUseCurrentGameDataBeforeColorsFinishAndRejectRetiredColors() async throws {
+        let assetReads = TestGameAssets()
         let root = try TestWorld.make(chunks: []), game = try artworkFixture(), replacementGame = try artworkFixture()
         defer { game.remove(); replacementGame.remove(); try? FileManager.default.removeItem(at: root) }
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-            watchWorld: { _, _ in nil })
+            watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         var sessions = [WorldSession(resources: resources), WorldSession(resources: resources)]
         let gate = AsyncReadGate<MapBiomeColors?>(), numbers = ReadNumbers()
         let replacement = try replacementGame.resources()
@@ -282,8 +447,7 @@ import Synchronization
 
             // A newly read archive under the same folder generation must be available before
             // its colors. A delayed read from the retired archive cannot reconnect it.
-            let source = WorldGameAssetSource(generation: names.minecraft.generation)
-            resources.setGameAssets(replacement, source: source)
+            await assetReads.publish(replacement, to: resources)
             for session in sessions {
                 #expect(session.map?.currentRenderer.gameData === replacement.data)
                 #expect(session.map?.currentRenderer.gameArtwork === replacementArtwork)
@@ -380,13 +544,10 @@ import Synchronization
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         resources.refreshGameAssets()
         await resources.waitForRefresh()
-        let firstLibrary = try #require(await resources.names.minecraft.library())
         let first = try #require(resources.gameArtworkLibrary(for: source))
         let removal = observe(resources, source: source)
         resources.names.minecraft.forget()
         await expectUpdate(removal)
-        #expect(resources.gameArtworkLibrary(for: source) == nil)
-        resources.setGameAssets(firstLibrary, source: source)
         #expect(resources.gameArtworkLibrary(for: source) == nil)
         await resources.waitForRefresh()
         await resources.names.minecraft.waitUntilIdle()
@@ -397,15 +558,12 @@ import Synchronization
         let rechoice = observe(resources, source: current)
         await resources.waitForRefresh()
         await expectUpdate(rechoice)
-        let replacementLibrary = try #require(await resources.names.minecraft.library())
         let replacement = try #require(resources.gameArtworkLibrary(for: current))
         #expect(replacement !== first)
-        resources.setGameAssets(firstLibrary, source: source)
         #expect(resources.gameArtworkLibrary(for: current) === replacement)
         let closing = observe(resources, source: current)
         resources.close()
         await expectUpdate(closing)
-        resources.setGameAssets(replacementLibrary, source: current)
         #expect(resources.gameArtworkLibrary(for: current) == nil)
         await resources.waitUntilClosed()
         await resources.names.minecraft.waitUntilIdle()

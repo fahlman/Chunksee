@@ -85,12 +85,8 @@ import Testing
             await resources.waitForRefresh()
             #expect(resources.newerWorldNotice == notice)
         }
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        let oldLibrary = try #require(await resources.names.minecraft.library())
         resources.names.minecraft.choose(newer.root)
         await resources.waitForRefresh()
-        #expect(resources.newerWorldNotice == nil)
-        resources.setGameAssets(oldLibrary, source: source)
         #expect(resources.newerWorldNotice == nil)
         resources.names.minecraft.choose(older.root)
         await resources.waitForRefresh()

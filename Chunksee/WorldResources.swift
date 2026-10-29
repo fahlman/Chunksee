@@ -63,7 +63,7 @@ final class WorldResources {
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
     private let definitionsWork: BackgroundWork.Scope
-    private let assetWork: BackgroundWork.Scope
+    private let assetLoader: RefreshLoader<WorldGameAssetSource, RefreshInvalidation, GameAssetSelection>
     private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private lazy var languageLoader = RefreshLoader<LanguageSource, RefreshInvalidation, GameNames>(
         work: backgroundWork, priority: .utility, whenInactive: .finish, source: languageSource
@@ -94,8 +94,6 @@ final class WorldResources {
                        preference: languagePreference, folder: names.minecraft.folder)
     }
     @ObservationIgnored private var assetObserver: UUID?
-    @ObservationIgnored private var assetReadGeneration = 0
-    @ObservationIgnored private var isAssetReadPending = false
     private(set) var definitionReadGeneration = 0
     @ObservationIgnored private var isDefinitionReadPending = false
     @ObservationIgnored var readDefinitions: @Sendable (World, GameDataLibrary?) async throws -> DefinitionSnapshot = {
@@ -131,13 +129,18 @@ final class WorldResources {
     @ObservationIgnored var readLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
     }
-    // The view accessor must observe both its initial source guard and the later loaded library.
-    private var gameAssetSource: WorldGameAssetSource?
-    private var gameAssets: GameResourceLibrary?
+    /// A completed read can explicitly find no library; nil loader value means not yet read.
+    nonisolated private struct GameAssetSelection: Sendable {
+        let library: GameResourceLibrary?
+    }
+    private var gameAssets: GameResourceLibrary? {
+        guard !isClosed, assetLoader.source.generation == names.minecraft.generation else { return nil }
+        return assetLoader.value?.library
+    }
     private var gameData: GameDataLibrary? { gameAssets?.data }
     private var gameArtwork: GameArtworkLibrary? { names.minecraft.artwork(for: gameAssets) }
     var mapGameResources: MapGameResources {
-        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return .unavailable }
+        guard !isClosed else { return .unavailable }
         return MapGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
     }
     var biomeColors: MapBiomeColors? {
@@ -199,13 +202,21 @@ final class WorldResources {
          settings: WorldSettings, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
+         readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         let snapshot = prepared.snapshot
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
         definitionsWork = backgroundWork.makeScope()
-        assetWork = backgroundWork.makeScope()
+        assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
+            source: prepared.source, initialValue: GameAssetSelection(library: prepared.library)
+        ) { [minecraft = names.minecraft] source, _ in
+            guard await minecraft.generation == source.generation else { throw CancellationError() }
+            let library = try await readGameAssets(minecraft)
+            guard await minecraft.generation == source.generation else { throw CancellationError() }
+            return GameAssetSelection(library: library)
+        }
         access = snapshot.access
         world = snapshot.world
         savedVersion = SavedMinecraftVersion(snapshot.world.level)
@@ -213,8 +224,6 @@ final class WorldResources {
         details = snapshot.details
         playerRoster = PlayerRoster(snapshot.players)
         self.names = names
-        gameAssetSource = prepared.source
-        gameAssets = prepared.library
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
         self.readRegion = readRegion
@@ -232,6 +241,19 @@ final class WorldResources {
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
+        assetLoader.published = { [weak self] previous, current in
+            guard let self, !self.isClosed else { return }
+            if previous.source != current.source || previous.value?.library?.identity != current.value?.library?.identity {
+                self.refreshGameLanguage()
+                self.refreshBiomeColors(reload: true)
+                self.refreshNightLighting(reread: true)
+                self.refreshLighting()
+                self.refreshDefinitions()
+            } else if current.value != nil {
+                // A newly installed language object need not change the selected jar.
+                self.refreshGameLanguage(reload: true)
+            }
+        }
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         assetObserver = names.minecraft.observeChanges { [weak self] change in
             switch change {
@@ -293,58 +315,18 @@ final class WorldResources {
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
 
-    /// Multiple dimension views can observe the same source change. Retire it once for the
-    /// world; opening another tab must not clear its siblings' color snapshot.
-    func prepareGameAssets(_ source: WorldGameAssetSource) {
-        guard !isClosed, source.generation == names.minecraft.generation, gameAssetSource != source else { return }
-        // Retire values before publishing the new source token, so synchronous observers
-        // cannot reconnect the old archive under the new source.
-        gameAssets = nil
-        gameAssetSource = source
-        assetReadGeneration += 1
-        assetWork.cancel()
-        isAssetReadPending = false
-        refreshGameLanguage()
-        refreshBiomeColors(reload: true)
-        refreshLighting()
-        refreshNightLighting(reread: true)
-        refreshDefinitions()
-    }
-
     /// All dimension views share one source request. Permission changes also reach hidden tabs,
     /// whose SwiftUI tasks may not run until they become visible again.
     func refreshGameAssets() {
         guard !isClosed else { return }
         let source = WorldGameAssetSource(generation: names.minecraft.generation)
-        prepareGameAssets(source)
-        guard !isAssetReadPending else { return }
-        let generation = assetReadGeneration, minecraft = names.minecraft
-        isAssetReadPending = true
-        assetWork.start(priority: .utility) { [weak self] in
-            let library = await minecraft.library()
-            guard !Task.isCancelled, let self, !self.isClosed,
-                  self.assetReadGeneration == generation, minecraft.generation == source.generation else { return }
-            self.isAssetReadPending = false
-            let unchanged = self.gameAssets?.identity == library?.identity
-            self.setGameAssets(library, source: source)
-            // A newly installed language object need not change the selected jar.
-            if unchanged { self.refreshGameLanguage(reload: true) }
-        }
+        assetLoader.request(source: source, isEnabled: true, reread: true)
     }
 
-    func setGameAssets(_ library: GameResourceLibrary?, source: WorldGameAssetSource) {
-        guard !isClosed, source.generation == names.minecraft.generation,
-              gameAssetSource == source, gameAssets?.identity != library?.identity else { return }
-        gameAssets = library
-        refreshGameLanguage()
-        refreshBiomeColors(reload: true)
-        refreshNightLighting(reread: true)
-        refreshLighting()
-        refreshDefinitions()
-    }
+    func waitForGameAssets() async { await assetLoader.waitUntilFinished() }
 
     func gameArtworkLibrary(for source: WorldGameAssetSource) -> GameArtworkLibrary? {
-        guard !isClosed, source == gameAssetSource, source.generation == names.minecraft.generation else { return nil }
+        guard !isClosed, source == assetLoader.source, source.generation == names.minecraft.generation else { return nil }
         return gameArtwork
     }
 
@@ -356,7 +338,7 @@ final class WorldResources {
     }
 
     var gameNames: GameNames {
-        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation,
+        guard !isClosed, assetLoader.source.generation == names.minecraft.generation,
               languageLoader.source == languageSource else { return .unavailable }
         return languageLoader.value ?? .unavailable
     }
@@ -368,7 +350,7 @@ final class WorldResources {
     }
 
     var newerWorldNotice: WorldVersionNotice? {
-        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation,
+        guard !isClosed, assetLoader.source.generation == names.minecraft.generation,
               let data = gameData else { return nil }
         return WorldVersionNotice(saved: savedVersion, game: data.version)
     }
@@ -601,7 +583,7 @@ final class WorldResources {
         backgroundWork.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
-        gameAssets = nil
+        assetLoader.close()
         languageLoader.close()
         biomeLoader.close()
         nightLightingLoader.close()
@@ -718,7 +700,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetWork, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetLoader.work, languageLoader.work])
         await index.waitForProjection()
     }
 

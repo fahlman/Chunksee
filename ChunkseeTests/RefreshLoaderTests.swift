@@ -7,6 +7,116 @@ import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test(.timeLimit(.minutes(1))) func producerContinuesAfterDeliveryInThePublishingTurnAndNotAfterFailure() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Result<Int, CocoaError>>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "a", initialValue: 7) { source, _ in try await gate.read(source).get() }
+        let events = Mutex<[String]>([])
+        loader.published = { previous, current in
+            events.withLock { $0.append("producer:\(previous.source):\(previous.value.map(String.init) ?? "nil")->\(current.source):\(current.value.map(String.init) ?? "nil")") }
+        }
+        withObservationTracking(options: [.didSet]) { _ = loader.source } onChange: { _ in
+            MainActor.assumeIsolated {
+                #expect(loader.source == "b" && loader.value == nil)
+                events.withLock { $0.append("replacement delivered") }
+            }
+        }
+        loader.request(source: "b", isEnabled: false, reread: false)
+        // No suspension: the producer follows delivery before request returns.
+        #expect(events.withLock { $0 } == ["replacement delivered", "producer:a:7->b:nil"])
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { _ in
+            MainActor.assumeIsolated {
+                #expect(loader.source == "b" && loader.value == 8)
+                events.withLock { $0.append("read delivered") }
+            }
+        }
+        loader.request(source: "b", isEnabled: true, reread: false)
+        await gate.waitForRequest("b"); await gate.finish("b", with: .success(8))
+        await loader.waitUntilFinished()
+        let expected = ["replacement delivered", "producer:a:7->b:nil", "read delivered", "producer:b:nil->b:8"]
+        #expect(events.withLock { $0 } == expected)
+        loader.request(source: "b", isEnabled: true, reread: true)
+        await gate.waitForRequest("b", count: 2)
+        await gate.finish("b", with: .failure(CocoaError(.fileReadUnknown)))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 8 && events.withLock { $0 } == expected)
+        loader.close()
+        #expect(events.withLock { $0 } == expected)
+        work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func completedReadContinuationCanReplaceOrCloseWithoutEditingNewDemand(close: Bool) async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "a") { source, _ in
+            await gate.read(source + String(await numbers.next()))
+        }
+        loader.published = { [weak loader] _, current in
+            guard current.source == "a", current.value == 1, let loader else { return }
+            if close { loader.close() }
+            else {
+                loader.request(source: "b", isEnabled: true, reread: false)
+                loader.request(source: "b", isEnabled: true, reread: true)
+            }
+        }
+        loader.request(source: "a", isEnabled: true, reread: false)
+        await gate.waitForRequest("a0")
+        loader.request(source: "a", isEnabled: true, reread: true)
+        await gate.finish("a0", with: 1)
+        if close {
+            await loader.waitUntilFinished()
+            #expect(loader.isClosed && loader.value == nil)
+            #expect(await gate.requested == ["a0"])
+        } else {
+            await gate.waitForRequest("b1"); await gate.finish("b1", with: 2)
+            await gate.waitForRequest("b2"); await gate.finish("b2", with: 3)
+            await loader.waitUntilFinished()
+            #expect(loader.source == "b" && loader.value == 3)
+            #expect(await gate.requested == ["a0", "b1", "b2"])
+        }
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func sourceContinuationCanReplaceBeforeTheOldRequestStarts() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "a", initialValue: 1) { source, _ in
+            await gate.read(source + String(await numbers.next()))
+        }
+        loader.published = { [weak loader] _, current in
+            guard current.source == "b", let loader else { return }
+            loader.request(source: "c", isEnabled: true, reread: false)
+            loader.request(source: "c", isEnabled: true, reread: true)
+        }
+        loader.request(source: "b", isEnabled: true, reread: false)
+        #expect(loader.source == "c" && loader.value == nil)
+        await gate.waitForRequest("c0"); await gate.finish("c0", with: 2)
+        await gate.waitForRequest("c1"); await gate.finish("c1", with: 3)
+        await loader.waitUntilFinished()
+        #expect(loader.source == "c" && loader.value == 3)
+        #expect(await gate.requested == ["c0", "c1"])
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test func preparedValueIsAvailableWithoutReadingAndCloseReleasesIt() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "prepared", initialValue: 7) { _, _ in await gate.read("refresh") }
+        #expect(loader.value == 7)
+        loader.request(source: "prepared", isEnabled: true, reread: false)
+        await loader.waitUntilFinished()
+        #expect(await gate.requested.isEmpty && loader.value == 7)
+        loader.request(source: "prepared", isEnabled: true, reread: true)
+        await gate.waitForRequest("refresh")
+        #expect(loader.value == 7)
+        await gate.finish("refresh", with: 8)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 8)
+        loader.close()
+        #expect(loader.value == nil)
+        work.close(); await work.waitUntilFinished()
+    }
+
     nonisolated private enum Demand: String, Equatable, Sendable {
         case metadata, contents
         func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
@@ -164,6 +274,10 @@ struct RefreshLoaderTests {
         let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "a") { source, _ in
             await gate.read(source + String(await numbers.next()))
         }
+        let publications = Mutex<[String]>([])
+        loader.published = { _, current in
+            publications.withLock { $0.append("\(current.source):\(current.value.map(String.init) ?? "nil")") }
+        }
         withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { _ in
             MainActor.assumeIsolated {
                 loader.request(source: "b", isEnabled: true, reread: false)
@@ -177,6 +291,7 @@ struct RefreshLoaderTests {
         await loader.waitUntilFinished()
         #expect(loader.source == "b" && loader.value == 3)
         #expect(await gate.requested == ["a0", "b1", "b2"])
+        #expect(publications.withLock { $0 } == ["b:nil", "b:2", "b:3"])
         loader.close(); work.close(); await work.waitUntilFinished()
     }
 

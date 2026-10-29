@@ -84,17 +84,28 @@ final class MinecraftResources {
     }
 
     func library() async -> GameResourceLibrary? {
-        guard let access, !Task.isCancelled else { return nil }
+        // Opening remains useful without game files. Refreshes use the throwing read so a
+        // temporary failure cannot turn an already loaded archive into a successful removal.
+        try? await readLibrary()
+    }
+
+    func readLibrary() async throws -> GameResourceLibrary? {
+        try Task.checkCancellation()
+        guard let access else { return nil }
         let generation = generation, libraries = libraries
-        var result: GameResourceLibrary?
+        var result: Result<GameResourceLibrary?, any Error> = .failure(CancellationError())
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
-            let loaded = try? await libraries.library(under: access.url)
-            withExtendedLifetime(access) {}
-            guard !Task.isCancelled, self?.generation == generation else { return }
-            result = loaded
-        }) else { return nil }
+            defer { withExtendedLifetime(access) {} }
+            do {
+                let loaded = try await libraries.library(under: access.url)
+                guard !Task.isCancelled, self?.generation == generation else { return }
+                result = .success(loaded)
+            } catch { result = .failure(error) }
+        }) else { throw CancellationError() }
         await task.value
-        return Task.isCancelled || self.generation != generation ? nil : result
+        try Task.checkCancellation()
+        guard self.generation == generation else { throw CancellationError() }
+        return try result.get()
     }
 
     func waitUntilIdle() async { await work.waitUntilFinished() }
@@ -139,8 +150,13 @@ actor GameResourceLibraries {
         try Task.checkCancellation()
         guard !isClosed else { return nil }
         let directory = folder.appendingPathComponent("versions", isDirectory: true)
-        let installed = (try? FileManager.default.contentsOfDirectory(at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let installed: [URL]
+        do {
+            installed = try FileManager.default.contentsOfDirectory(at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey])
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
+        }
         live = live.filter { $0.value.data != nil }
         var seen: Set<Identity> = []
         var selected: (key: Identity, version: GameAssets.Version, assets: GameAssets?)?
