@@ -227,6 +227,66 @@ import Testing
         await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test(.timeLimit(.minutes(1))) func pendingGameSelectionKeepsHeightUntilItsDefinitionsAreKnown() async throws {
+        enum ReadFailure: Error { case unavailable }
+        let id = "minecraft:overworld"
+        let root = try roofWorld(definitions: [id: TestWorld.noiseDimension(
+            type: .string("example:game_height"), noise: .string("example:game_height"))])
+        let game = try ItemPictureFixture(extraFiles: [
+            "data/example/dimension_type/game_height.json": Data(
+                #"{"min_y":-64,"height":384,"logical_height":384,"has_ceiling":false,"has_skylight":true}"#.utf8),
+            "data/example/worldgen/noise_settings/game_height.json": Data(
+                #"{"noise":{"min_y":-64,"height":384},"sea_level":63}"#.utf8),
+        ])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.choose(game.root)
+        let gate = AsyncReadGate<Result<GameResourceLibrary?, any Error>>()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in try await gate.read("selection").get() })
+        let session = WorldSession(resources: resources)
+        var failure: (any Error)?
+        do {
+            await resources.waitForRefresh()
+            let map = try #require(session.map), scale = try #require(map.heightScale)
+            let definitions = resources.details.definitions, players = resources.playerSnapshot
+            let reader = try #require(resources.readers[id]), input = resources.definitionInput
+            map.setStyle(.height)
+
+            // Settings uses this same source change. Failed discovery leaves the replacement
+            // unread; it must not publish a successful no-game definition read in the meantime.
+            await names.chooseMinecraftFolder(game.root)
+            await gate.waitForRequest("selection")
+            await gate.finish("selection", with: .failure(ReadFailure.unavailable))
+            await resources.waitForRefresh()
+            #expect(resources.definitionInput != input)
+            #expect(resources.details.definitions == definitions && resources.playerSnapshot === players)
+            #expect(resources.readers[id] === reader)
+            #expect(map.heightScale == scale && map.style == .height)
+
+            let library = try #require(try await names.minecraft.readLibrary())
+            resources.refreshGameAssets()
+            await gate.waitForRequest("selection", count: 2)
+            await gate.finish("selection", with: .success(library))
+            await resources.waitForRefresh()
+            #expect(map.currentRenderer.gameData === library.data)
+            #expect(map.heightScale == scale && map.style == .height)
+            #expect(resources.readers[id] === reader)
+
+            // A completed absence is different: the game-only scale really is unavailable.
+            names.forgetMinecraftFolder()
+            await gate.waitForRequest("selection", count: 3)
+            await gate.finish("selection", with: .success(nil))
+            await resources.waitForRefresh()
+            #expect(map.heightScale == nil && map.style == .normal)
+        } catch { failure = error }
+        await gate.releaseAllAndFuture(with: .success(nil))
+        session.close(); resources.close(); await resources.waitUntilClosed()
+        names.forgetMinecraftFolder(); await names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
     private func checkViews(_ url: URL, expected: [(String, Int, String, String)]) async throws {
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
