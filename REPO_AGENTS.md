@@ -1962,8 +1962,15 @@ same fallback. No second world read is needed to draw retained layers at close z
 
 ## Game-supplied names (#438)
 
-WorldResources owns one immutable GameNames snapshot for its selected game and the Mac’s first
+WorldResources owns one game-language RefreshLoader for its selected game and the Mac’s first
 preferred interface language (Locale.preferredLanguages), refreshed when a window becomes active.
+Its declared source includes the Minecraft generation, data-library identity, language preference
+and launcher folder. Same-source reloads finish and publish progress, coalescing requests into one
+following pass. Replacement clears incompatible names and rejects retired reads. BackgroundWork
+owns cancellation and draining; closing a sibling window does not cancel the shared language read.
+The loader publishes immutable GameNames values; a nil language remains the reader's existing
+unavailable result, clearing translations while keeping readable-ID fallbacks. That completed result
+is reused until invalidated, distinct from never having read it.
 GameLanguageChoice canonicalizes the requested preference and verifies Apple's preferred file's
 declared language and script through Kit. If that fails, it shortlists same-language filenames and
 uses Apple's regional matching among verified declarations. Reads are reused within one request.
