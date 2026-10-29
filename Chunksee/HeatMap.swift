@@ -77,7 +77,7 @@ final class HeatMapLayer {
             load()
         }
     }
-    private let loader: RefreshLoader<Source, [RegionPosition: CGImage]>
+    private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
     private var hasReader: Bool { loader.source.reader != nil }
     nonisolated private struct Source: Equatable, Sendable {
         let reader: RegionReader?

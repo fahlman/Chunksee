@@ -62,11 +62,10 @@ final class WorldResources {
     @ObservationIgnored private var pendingBiomeMetadata = false
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
-    private let biomeWork: BackgroundWork.Scope
     private let definitionsWork: BackgroundWork.Scope
     private let assetWork: BackgroundWork.Scope
     private var languagePreference = GameLanguageChoice.preferredLanguage
-    @ObservationIgnored private lazy var languageLoader = RefreshLoader<LanguageSource, GameNames>(
+    @ObservationIgnored private lazy var languageLoader = RefreshLoader<LanguageSource, RefreshInvalidation, GameNames>(
         work: backgroundWork, priority: .utility, whenInactive: .finish, source: languageSource
     ) { [weak self] source, previous in
         guard let library = source.library else { return .unavailable }
@@ -141,9 +140,35 @@ final class WorldResources {
         guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return .unavailable }
         return MapGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
     }
-    private(set) var biomeColors: MapBiomeColors?
-    @ObservationIgnored private var biomeReadGeneration = 0
-    @ObservationIgnored private var needsBiomeReload = false
+    var biomeColors: MapBiomeColors? {
+        guard !isClosed, biomeLoader.source == biomeSource else { return nil }
+        return biomeLoader.value
+    }
+    @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
+        work: backgroundWork, priority: nil, whenInactive: .finish, source: biomeSource,
+        firstRequest: .metadata, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
+            guard previous.generation == current.generation, previous.data === current.data else { return nil }
+            return value.removingArtwork()
+        }
+    ) { [weak self, world] source, request, previous in
+        guard let read = await self?.readBiomeColors else { throw CancellationError() }
+        return try await read(world, source.data, source.artwork, previous, request == .contents)
+    }
+    nonisolated private enum BiomeRequest: Equatable, Sendable {
+        case metadata, contents
+        func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
+    }
+    nonisolated private struct BiomeSource: Equatable, Sendable {
+        let generation: UUID
+        let data: GameDataLibrary?
+        let artwork: GameArtworkLibrary?
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.generation == rhs.generation && lhs.data === rhs.data && lhs.artwork === rhs.artwork
+        }
+    }
+    private var biomeSource: BiomeSource {
+        BiomeSource(generation: names.minecraft.generation, data: gameData, artwork: gameArtwork)
+    }
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
     /// Tests can hold this boundary without making refresh correctness depend on scheduler speed.
     @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
@@ -179,7 +204,6 @@ final class WorldResources {
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
-        biomeWork = backgroundWork.makeScope()
         definitionsWork = backgroundWork.makeScope()
         assetWork = backgroundWork.makeScope()
         access = snapshot.access
@@ -276,13 +300,10 @@ final class WorldResources {
         // Retire values before publishing the new source token, so synchronous observers
         // cannot reconnect the old archive under the new source.
         gameAssets = nil
-        biomeColors = nil
         gameAssetSource = source
         assetReadGeneration += 1
         assetWork.cancel()
         isAssetReadPending = false
-        biomeReadGeneration += 1
-        biomeWork.cancel()
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
@@ -314,9 +335,6 @@ final class WorldResources {
     func setGameAssets(_ library: GameResourceLibrary?, source: WorldGameAssetSource) {
         guard !isClosed, source.generation == names.minecraft.generation,
               gameAssetSource == source, gameAssets?.identity != library?.identity else { return }
-        biomeReadGeneration += 1
-        biomeWork.cancel()
-        biomeColors = nil
         gameAssets = library
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
@@ -334,7 +352,6 @@ final class WorldResources {
     /// saved facts and their work retain the selected game library and source identity.
     private func refreshGameArtwork() {
         guard !isClosed else { return }
-        biomeColors = biomeColors?.removingArtwork()
         refreshBiomeColors(reload: true)
     }
 
@@ -456,23 +473,7 @@ final class WorldResources {
 
     private func refreshBiomeColors(reload: Bool) {
         guard !isClosed else { return }
-        let library = gameData
-        needsBiomeReload = needsBiomeReload || reload
-        biomeReadGeneration += 1
-        let generation = biomeReadGeneration
-        biomeWork.cancel()
-        let read = readBiomeColors, world = world, previous = biomeColors
-        let reload = needsBiomeReload
-        let artwork = gameArtwork
-        biomeWork.start(priority: nil) { [weak self] in
-            guard !Task.isCancelled else { return }
-            let updated = try? await read(world, library, artwork, previous, reload)
-            guard !Task.isCancelled, let self, !self.isClosed,
-                  self.biomeReadGeneration == generation, self.gameData?.identity == library?.identity else { return }
-            // A transient unreadable save keeps its last good colors. A successful empty
-            // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
-            if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
-        }
+        biomeLoader.request(source: biomeSource, isEnabled: true, refresh: reload ? .contents : .metadata)
     }
 
     @concurrent nonisolated static func readBiomeColors(_ world: World, data: GameDataLibrary?,
@@ -602,7 +603,7 @@ final class WorldResources {
         for session in sessions.values.compactMap(\.value) { session.close() }
         gameAssets = nil
         languageLoader.close()
-        biomeColors = nil
+        biomeLoader.close()
         nightLightingLoader.close()
         lightingLoader.close()
         let readers = Array(readers.values), index = index
@@ -717,7 +718,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetWork, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetWork, languageLoader.work])
         await index.waitForProjection()
     }
 

@@ -104,6 +104,9 @@ import Synchronization
         resources.worldChanged([root.appendingPathComponent("datapacks/ChunkseeTest/data/test/worldgen/biome/sample.json")])
         await gate.waitForRequest("on")
         resources.names.minecraft.usesGameArtwork = false
+        #expect(resources.biomeColors?.sourceKey == withoutArtwork.sourceKey)
+        #expect(resources.biomeColors?.outlineColor(for: "test:sample", at: .zero)
+            == withoutArtwork.outlineColor(for: "test:sample", at: .zero))
         await gate.waitForCancellation("on")
         await gate.waitForRequest("off")
         await gate.finish("off", with: withoutArtwork)
@@ -111,6 +114,12 @@ import Synchronization
         await resources.waitForRefresh()
         #expect(resources.gameArtworkLibrary(for: source) == nil)
         #expect(resources.biomeColors?.sourceKey == withoutArtwork.sourceKey)
+        resources.names.minecraft.usesGameArtwork = true
+        #expect(resources.biomeColors?.sourceKey == withoutArtwork.sourceKey)
+        await gate.waitForRequest("on", count: 2)
+        await gate.finish("on", with: withArtwork)
+        await resources.waitForRefresh()
+        #expect(resources.biomeColors?.sourceKey == withArtwork.sourceKey)
         resources.close()
         await resources.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
     }
