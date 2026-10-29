@@ -249,8 +249,8 @@ import Testing
             .write(to: dimension.regionURL(at: neighbor))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let savedLighting = TestSavedLighting()
-        let work = BackgroundWork(), map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
-            maxTiles: 3, maxPreviews: 3, heightScale: scale)
+        let work = BackgroundWork(), map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+            maxTiles: 3, maxPreviews: 3)
         savedLighting.value = try lighting()
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(map.tiles[region]?.storageUnits == 2 && map.previews[region]?.storageUnits == 2)

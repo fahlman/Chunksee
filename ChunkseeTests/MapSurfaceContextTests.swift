@@ -208,6 +208,25 @@ import Testing
         session.close(); await resources.waitUntilClosed()
     }
 
+    @Test(.timeLimit(.minutes(1))) func choosingGameFilesWithUnchangedDimensionFactsKeepsTheChosenHeightStyle() async throws {
+        let root = try roofWorld(definitions: ["minecraft:overworld": TestWorld.noiseDimension(
+            type: .string("minecraft:overworld"), noise: .string("minecraft:overworld"))])
+        let game = try ItemPictureFixture()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let session = WorldSession(resources: resources)
+        defer { session.close() }
+        let map = try #require(session.map), scale = try #require(map.heightScale)
+        map.setStyle(.height)
+        resources.names.minecraft.choose(game.root)
+        await resources.waitForRefresh()
+        #expect(map.heightScale == scale && map.style == .height)
+        session.close(); await resources.waitUntilClosed()
+        await resources.names.minecraft.waitUntilIdle()
+    }
+
     private func checkViews(_ url: URL, expected: [(String, Int, String, String)]) async throws {
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
