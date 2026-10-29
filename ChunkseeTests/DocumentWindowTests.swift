@@ -36,13 +36,19 @@ import Testing
             await model.names.minecraft.waitUntilIdle()
         }
         do {
-            // A fresh native open rejects this read. Restoration can retain its window instead;
-            // either way the document must have the failure, rather than only its opening state.
-            await #expect(throws: (any Error).self) {
-                try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+            // Native opening can throw here or return before SwiftUI creates and reads its
+            // document. Wait for the actual document and failure in both cases.
+            do {
+                let (native, reused) = try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+                natives.append(native)
+                #expect(!reused)
+            } catch {
+                #expect(!(error is CancellationError))
             }
-            try #require(!owners.isEmpty)
             let failed = try #require(await createdIterator.next())
+            for await _ in Observations<Void, Never>.untilFinished({
+                failed.openingFailure == nil ? .next(()) : .finish
+            }) {}
             #expect(failed.session == nil && failed.worldDimensions == nil)
             #expect(failed.openingFailure == WorldOpenError.notAWorld.localizedDescription)
 
@@ -57,6 +63,7 @@ import Testing
             #expect(failed.openingFailure == nil)
             await #expect(throws: WorldOpenError.notAWorld) { try await current.readFolder(dimension) }
             #expect(failed.openingFailure == WorldOpenError.notAWorld.localizedDescription)
+            natives.forEach { $0.close() }
             NSDocumentController.shared.document(for: dimension)?.close()
 
             // Opening the world grants access. A fresh native document can then use the normal
