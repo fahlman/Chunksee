@@ -2,6 +2,7 @@ import AppKit
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
@@ -280,6 +281,31 @@ import Testing
         names.forgetMinecraftFolder()
         await names.minecraft.waitUntilIdle()
         if let failure { throw failure }
+    }
+
+    @Test(arguments: [MapStyle.normal, .waterDepth])
+    func choosingAnAvailableMenuStyleReplacesUnavailableHeight(_ choice: MapStyle) throws {
+        let root = try terrainWorld()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
+        let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
+        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
+            work: BackgroundWork(), dimension: dimension, center: .zero, heightScale: MapHeightScale(settings: settings))
+        defer { map.close() }
+        map.setStyle(.height)
+        map.setDimensionSettings(nil, water: nil)
+        #expect(map.chosenStyle == .height && map.style == .normal)
+
+        let menu = NSHostingMenu(rootView: MapStyleOptions(map: map))
+        menu.update()
+        let normal = try #require(menu.item(at: 0)), height = try #require(menu.item(at: 1))
+        #expect(normal.state == .on && normal.isEnabled)
+        #expect(height.state == .off && !height.isEnabled)
+        menu.performActionForItem(at: choice == .normal ? 0 : 2)
+        #expect(map.chosenStyle == choice && map.style == choice)
+        map.setDimensionSettings(settings, water: nil)
+        #expect(map.chosenStyle == choice && map.style == choice)
+        #expect(map.currentRenderer.style == choice)
     }
 
     @Test func bothRampsCarryTheirOrderInLightnessAsWellAsHue() {
