@@ -813,6 +813,9 @@ The bundled sample remains on #92 until Ryan provides his world.
 `ReadOnlyDocumentMenus` coalesces menu notifications into a queued main-thread pass. It never
 changes item visibility inside AppKit's insertion/layout notifications, which invalidates native
 menu backing indexes. The pass disables hidden key equivalents before hiding editing items.
+Its menu provider resolves the current main menu when that pass runs. Regression tests supply
+isolated menus instead of replacing the test host's main menu while native windows are active;
+they await actual item-change notifications with a cancellable, time-limited stream.
 
 Copy Coordinates writes three whole block coordinates separated by single spaces, in X Y Z order.
 Marker hit testing supplies saved heights; terrain and two-dimensional saved places use the
