@@ -380,11 +380,13 @@ import Testing
             await delivered.waitForRequest("notification", count: 2)
             resources.worldChanged([url.appendingPathComponent("level.dat")])
             await delivered.waitForRequest("notification", count: 3)
-            try #require(await gate.requested == ["0"])
+            let entered = await gate.requested
+            try #require(entered == ["0"])
             await gate.finish("0", with: ())
             await gate.waitForRequest("1")
             #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
-            try #require(requests.withLock { $0 } == [true, true])
+            let readRequests = requests.withLock { $0 }
+            try #require(readRequests == [true, true])
             await gate.finish("1", with: ())
             await resources.waitForRefresh()
             let updated = session.map?.currentRenderer.biomeColors
