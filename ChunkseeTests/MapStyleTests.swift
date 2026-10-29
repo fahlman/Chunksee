@@ -2,9 +2,15 @@ import AppKit
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Observation
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
+
+@Observable @MainActor private final class MapStyleDefinitions {
+    var value: MapDefinitions
+    init(_ value: MapDefinitions) { self.value = value }
+}
 
 @Suite(.isolatedStores) struct MapStyleTests {
     @Test func heightScaleChangesPreparedPicturesWithoutRetiringUnlitNormalTiles() async throws {
@@ -289,11 +295,12 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
-        let map = MapModel(definitions: { .init(settings: settings, water: nil) }, gameResources: { .unavailable },
+        let definitions = MapStyleDefinitions(.init(settings: settings, water: nil))
+        let map = MapModel(definitions: { definitions.value }, gameResources: { .unavailable },
             savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
-        map.setDimensionSettings(nil, water: nil)
+        definitions.value = .unknown
         #expect(map.chosenStyle == .height && map.style == .normal)
 
         let menu = NSHostingMenu(rootView: MapStyleOptions(map: map))
@@ -303,7 +310,7 @@ import Testing
         #expect(height.state == .off && !height.isEnabled)
         menu.performActionForItem(at: choice == .normal ? 0 : 2)
         #expect(map.chosenStyle == choice && map.style == choice)
-        map.setDimensionSettings(settings, water: nil)
+        definitions.value = .init(settings: settings, water: nil)
         #expect(map.chosenStyle == choice && map.style == choice)
         #expect(map.currentRenderer.style == choice)
     }
