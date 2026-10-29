@@ -241,6 +241,19 @@ final class WorldResources {
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
+        assetLoader.published = { [weak self] previous, current in
+            guard let self, !self.isClosed else { return }
+            if previous.source != current.source || previous.value?.library?.identity != current.value?.library?.identity {
+                self.refreshGameLanguage()
+                self.refreshBiomeColors(reload: true)
+                self.refreshNightLighting(reread: true)
+                self.refreshLighting()
+                self.refreshDefinitions()
+            } else if current.value != nil {
+                // A newly installed language object need not change the selected jar.
+                self.refreshGameLanguage(reload: true)
+            }
+        }
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
         assetObserver = names.minecraft.observeChanges { [weak self] change in
             switch change {
@@ -248,7 +261,6 @@ final class WorldResources {
             case .artwork: self?.refreshGameArtwork()
             }
         }
-        observeGameAssets()
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
@@ -309,45 +321,6 @@ final class WorldResources {
         guard !isClosed else { return }
         let source = WorldGameAssetSource(generation: names.minecraft.generation)
         assetLoader.request(source: source, isEnabled: true, reread: true)
-    }
-
-    /// The loader publishes on the main actor, including source retirement. Observe its
-    /// completed publication so dependent reads never need a visible tab to start them.
-    /// Capture identities only, without retaining an archive after source replacement.
-    private func observeGameAssets() {
-        guard !isClosed else { return }
-        let source = assetLoader.source, identity = assetLoader.value?.library?.identity
-        withObservationTracking(options: [.didSet]) {
-            _ = assetLoader.source
-            _ = assetLoader.value
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeGameAssets()
-                let currentSource = self.assetLoader.source
-                let currentIdentity = self.assetLoader.value?.library?.identity
-                let completed = self.assetLoader.value != nil
-                // Mutating dependent publications inside this notification can deliver the
-                // same map observation twice. Drain delivery before requesting those reads.
-                // Preserve the notification's priority for loaders that inherit it, so
-                // temporary map work cannot outrun its replacement resource requests.
-                self.assetLoader.work.start(priority: nil) { [weak self] in
-                    guard !Task.isCancelled, let self, !self.isClosed,
-                          self.assetLoader.source == currentSource,
-                          self.assetLoader.value?.library?.identity == currentIdentity else { return }
-                    if source != currentSource || identity != currentIdentity {
-                        self.refreshGameLanguage()
-                        self.refreshBiomeColors(reload: true)
-                        self.refreshNightLighting(reread: true)
-                        self.refreshLighting()
-                        self.refreshDefinitions()
-                    } else if completed {
-                        // A newly installed language object need not change the selected jar.
-                        self.refreshGameLanguage(reload: true)
-                    }
-                }
-            }
-        }
     }
 
     func waitForGameAssets() async { await assetLoader.waitUntilFinished() }

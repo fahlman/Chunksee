@@ -549,7 +549,6 @@ import Synchronization
         resources.names.minecraft.forget()
         await expectUpdate(removal)
         #expect(resources.gameArtworkLibrary(for: source) == nil)
-        #expect(resources.gameArtworkLibrary(for: source) == nil)
         await resources.waitForRefresh()
         await resources.names.minecraft.waitUntilIdle()
         #expect(try await first.picture(for: ItemStack(id: "test:flat")) == nil)

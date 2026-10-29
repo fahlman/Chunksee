@@ -1639,13 +1639,14 @@ replaces the separate asset counter, pending flag, scope and stored source/libra
 MinecraftResources.readLibrary preserves thrown failures; library retains opening's existing
 fallback on unavailable files. A missing installed-versions directory is successful absence, while
 another directory-read error is a failure. The selection and archive cache still have one owner.
-WorldResources observes each source/selection publication to refresh dependent definitions,
+WorldResources supplies the loader's producer continuation to refresh dependent definitions,
 lighting, colors and names even when every tab is hidden. A completed same-library selection
 rechecks language objects without reloading unrelated definitions or colors.
-Dependent refreshes run after the asset notification returns, within the loader's existing work
-scope, inheriting the notification's priority as the earlier synchronous requests did; source
-replacement cancels them and obsolete identities are rejected. This avoids nested
-publication notifications registering duplicate map observers and repeating drawing work.
+The loader invokes that continuation after synchronous Observation delivery returns, in the same
+publishing turn and at the caller's priority. Failed reads and closing publish no dependent work.
+Current-source/read guards run after delivery and again after the continuation, because either can
+replace the source or close the loader. This avoids nested delivery and a deferred-task gap before
+dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. Definition, player and index generations reject canceled/closed-world results.
