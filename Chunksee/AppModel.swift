@@ -49,6 +49,9 @@ final class AppModel {
     /// The open resources of a snapshot's world, which its other dimensions share, or new ones.
     func resources(for snapshot: WorldSnapshot, folder: WorldFolders.Folder) async throws -> WorldResources {
         var adopted = false
+        let trace = UUID()
+        OpeningTrace.event("resources.start resources=\(trace) world=\(OpeningTrace.path(folder.url))")
+        defer { OpeningTrace.event("resources.exit resources=\(trace) adopted=\(adopted) cancelled=\(Task.isCancelled)") }
         defer { if !adopted { snapshot.access.release() } }
         try Task.checkCancellation()
         openWorlds = openWorlds.filter { $0.value.value.map { !$0.isClosed } ?? false }
@@ -57,7 +60,9 @@ final class AppModel {
            Set(snapshot.dimensions.map(\.id)).isSubset(of: Set(open.dimensions.map(\.id))) {
             return open
         }
+        OpeningTrace.event("resources.prepare.wait resources=\(trace)")
         let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
+        OpeningTrace.event("resources.prepare.ready resources=\(trace)")
         try Task.checkCancellation()
         // Another document may have finished opening this world while game data was loading.
         // Reuse it before creating any readers or starting another index.
@@ -99,6 +104,7 @@ final class AppModel {
     }
 
     private func openingWorld(_ folder: WorldFolders.Folder, documentURL: URL) async throws -> WorldOpening {
+        OpeningTrace.event("opening.start world=\(OpeningTrace.path(folder.url)) path=\(OpeningTrace.path(documentURL))")
         try Task.checkCancellation()
         let url = folder.url
         let key = url.path
@@ -110,8 +116,10 @@ final class AppModel {
             // The task's result holds one opening until every awaiting requester has received
             // its own. A canceled requester therefore cannot close a sibling's new resources.
             let task = Task {
+                OpeningTrace.event("opening.read.start opening=\(id)")
                 defer { completeOpeningRead(key: key, generation: id) }
                 let snapshot = try await read(url)
+                OpeningTrace.event("opening.read.ready opening=\(id)")
                 do {
                     try Task.checkCancellation()
                     guard let waiting = openingReads[key], waiting.id == id else { throw CancellationError() }
@@ -127,10 +135,12 @@ final class AppModel {
         }
         let request = UUID(), generation = pending.id, task = pending.task
         openingReads[key]?.requests[request] = documentURL
+        OpeningTrace.event("opening.join opening=\(generation) request=\(request) count=\(openingReads[key]?.requests.count ?? 0)")
         return try await withTaskCancellationHandler {
             defer { finishOpeningRead(request, key: key, generation: generation) }
             do {
                 let holding = try await task.value
+                OpeningTrace.event("opening.ready opening=\(generation) request=\(request) cancelled=\(Task.isCancelled)")
                 try Task.checkCancellation()
                 guard let resources = holding.resources else { throw CancellationError() }
                 return try resources.opening()
@@ -144,6 +154,7 @@ final class AppModel {
     }
 
     private func finishOpeningRead(_ request: UUID, key: String, generation: UUID) {
+        OpeningTrace.event("opening.finish opening=\(generation) request=\(request)")
         guard var pending = openingReads[key], pending.id == generation,
               pending.requests.removeValue(forKey: request) != nil else { return }
         if pending.requests.isEmpty {
@@ -153,6 +164,7 @@ final class AppModel {
     }
 
     private func completeOpeningRead(key: String, generation: UUID) {
+        OpeningTrace.event("opening.complete opening=\(generation)")
         if openingReads[key]?.id == generation { openingReads[key] = nil }
     }
 }

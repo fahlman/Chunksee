@@ -1,9 +1,17 @@
 import Foundation
 import ChunkseeKit
 import Observation
+import OSLog
 import SwiftUI
 import Synchronization
 import UniformTypeIdentifiers
+
+/// Temporary #484 probe. Correlates stages without recording folder names or world contents.
+nonisolated enum OpeningTrace {
+    private static let logger = Logger(subsystem: "com.fahlsing.Chunksee.OpeningTrace", category: "Issue484")
+    static func event(_ message: String) { logger.notice("\(message, privacy: .public)") }
+    static func path(_ url: URL?) -> String { url.map { String($0.standardizedFileURL.path.hashValue) } ?? "nil" }
+}
 
 /// Balanced access that can outlive a cancelled read until that read actually finishes.
 nonisolated final class WorldReadAccess: Sendable {
@@ -167,6 +175,7 @@ final class WorldDocument: ReadableDocument {
     init(configuration: URLDocumentConfiguration, model: AppModel) {
         self.configuration = configuration
         self.model = model
+        OpeningTrace.event("document.init doc=\(ObjectIdentifier(self)) path=\(OpeningTrace.path(configuration.fileURL))")
     }
 
     nonisolated struct Reader: DocumentReader {
@@ -183,24 +192,35 @@ final class WorldDocument: ReadableDocument {
 
         @concurrent
         func readFolder(_ source: URL) async throws -> FolderSnapshot {
+            let trace = UUID()
+            var result = "error"
+            OpeningTrace.event("reader.start read=\(trace) path=\(OpeningTrace.path(source))")
+            defer { OpeningTrace.event("reader.exit read=\(trace) result=\(result) cancelled=\(Task.isCancelled)") }
             try Task.checkCancellation()
             do {
                 let world = try World(contentsOf: source)
                 let dimensions = world.dimensions().map { $0.documentURL(inWorldAt: source) }
                 try Task.checkCancellation()
                 try folders.remember(source)
+                result = "world"
+                OpeningTrace.event("reader.world read=\(trace) dimensions=\(dimensions.map { OpeningTrace.path($0) }.joined(separator: ","))")
                 return .world(dimensions: dimensions)
             } catch WorldError.missingLevelDat {
                 do {
                     if let model, await reuseOpenWorld() {
                         guard let folder = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
+                        OpeningTrace.event("reader.initial.wait read=\(trace) world=\(OpeningTrace.path(folder.url))")
                         if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: folder) {
                             do { try Task.checkCancellation() }
                             catch { await snapshot.discardUnused(); throw error }
+                            result = "initial-dimension"
                             return .dimension(snapshot)
                         }
                     }
-                    return .dimension(try await DimensionSnapshot.read(source, folders: folders))
+                    OpeningTrace.event("reader.fresh.wait read=\(trace)")
+                    let snapshot = try await DimensionSnapshot.read(source, folders: folders)
+                    result = "fresh-dimension"
+                    return .dimension(snapshot)
                 } catch WorldOpenError.needsWorldFolder {
                     // Without a containing world, an arbitrary folder isn't known to be a
                     // dimension. Ask for a world instead of diagnosing lost access to one.
@@ -223,7 +243,8 @@ final class WorldDocument: ReadableDocument {
     private(set) var worldDimensions: [URL]?
 
     func reader(configuration: sending ReadConfiguration) -> sending Reader {
-        Reader(folders: model.worldFolders, model: model, reuseOpenWorld: { [weak self] in
+        OpeningTrace.event("document.reader doc=\(ObjectIdentifier(self)) path=\(OpeningTrace.path(self.configuration.fileURL))")
+        return Reader(folders: model.worldFolders, model: model, reuseOpenWorld: { [weak self] in
             guard let self else { return false }
             return self.session == nil
         })
@@ -232,6 +253,8 @@ final class WorldDocument: ReadableDocument {
     func apply(snapshot: sending FolderSnapshot, previous: sending FolderSnapshot?) async throws {
         let generation = UUID()
         applyGeneration = generation
+        OpeningTrace.event("apply.start doc=\(ObjectIdentifier(self)) apply=\(generation) path=\(OpeningTrace.path(configuration.fileURL))")
+        defer { OpeningTrace.event("apply.exit doc=\(ObjectIdentifier(self)) apply=\(generation) session=\(session != nil) redirect=\(worldDimensions != nil) current=\(generation == applyGeneration) cancelled=\(Task.isCancelled)") }
         switch snapshot {
         case .dimension(let dimension): try await replaceSession(dimension, generation: generation)
         case .world(let dimensions):
@@ -256,10 +279,13 @@ final class WorldDocument: ReadableDocument {
         guard generation == applyGeneration else { return }
         let oldSession = session
         oldSession?.close()
+        OpeningTrace.event("apply.drain.wait doc=\(ObjectIdentifier(self)) apply=\(generation) old=\(oldSession != nil)")
         await oldSession?.waitUntilClosed()
         try Task.checkCancellation()
         guard generation == applyGeneration else { return }
+        OpeningTrace.event("apply.session.wait doc=\(ObjectIdentifier(self)) apply=\(generation)")
         let opened = try await current.makeSession(in: model)
+        OpeningTrace.event("apply.session.ready doc=\(ObjectIdentifier(self)) apply=\(generation)")
         adopted = true
         guard !Task.isCancelled, generation == applyGeneration else {
             opened.close()
@@ -269,6 +295,7 @@ final class WorldDocument: ReadableDocument {
         }
         if let oldSession { opened.restoreView(from: oldSession) }
         session = opened
+        OpeningTrace.event("apply.published doc=\(ObjectIdentifier(self)) apply=\(generation)")
     }
 
     /// macOS updates the document URL after a Finder move; lazy region readers need the new paths.
@@ -283,7 +310,10 @@ final class WorldDocument: ReadableDocument {
         try await replaceSession(snapshot, generation: generation)
     }
 
-    isolated deinit { session?.close() }
+    isolated deinit {
+        OpeningTrace.event("document.deinit doc=\(ObjectIdentifier(self))")
+        session?.close()
+    }
 }
 
 struct WorldDocumentView: View {
@@ -307,6 +337,8 @@ struct WorldDocumentView: View {
                 opening
             }
         }
+        .onAppear { OpeningTrace.event("view.appear doc=\(ObjectIdentifier(document)) session=\(document.session != nil) redirect=\(document.worldDimensions != nil)") }
+        .onDisappear { OpeningTrace.event("view.disappear doc=\(ObjectIdentifier(document))") }
         .task(id: document.configuration.fileURL) {
             do { try await document.followFileURL() }
             catch is CancellationError {}
@@ -328,11 +360,21 @@ struct WorldDocumentView: View {
     /// Opens a world folder's dimensions, then closes the folder's own window. Opened last, the
     /// first dimension ends up in front.
     private func openInstead(_ dimensions: [URL]) async {
+        let trace = UUID()
+        OpeningTrace.event("redirect.start redirect=\(trace) doc=\(ObjectIdentifier(document))")
+        defer { OpeningTrace.event("redirect.exit redirect=\(trace) cancelled=\(Task.isCancelled)") }
         do {
-            for url in dimensions.reversed() { try await openDocument(at: url) }
+            for url in dimensions.reversed() {
+                OpeningTrace.event("redirect.open.wait redirect=\(trace) path=\(OpeningTrace.path(url))")
+                try await openDocument(at: url)
+                OpeningTrace.event("redirect.open.ready redirect=\(trace) path=\(OpeningTrace.path(url))")
+            }
+            OpeningTrace.event("redirect.dismiss redirect=\(trace)")
             dismiss()
         } catch is CancellationError {
+            OpeningTrace.event("redirect.cancelled redirect=\(trace)")
         } catch {
+            OpeningTrace.event("redirect.error redirect=\(trace) type=\(String(reflecting: type(of: error)))")
             errorMessage = error.localizedDescription
         }
     }

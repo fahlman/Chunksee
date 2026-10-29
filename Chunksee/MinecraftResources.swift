@@ -84,16 +84,22 @@ final class MinecraftResources {
     }
 
     func library() async -> GameResourceLibrary? {
+        let trace = UUID()
+        OpeningTrace.event("library.start library=\(trace) access=\(access != nil)")
+        defer { OpeningTrace.event("library.exit library=\(trace) cancelled=\(Task.isCancelled)") }
         guard let access, !Task.isCancelled else { return nil }
         let generation = generation, libraries = libraries
         var result: GameResourceLibrary?
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
+            OpeningTrace.event("library.archive.wait library=\(trace)")
             let loaded = try? await libraries.library(under: access.url)
+            OpeningTrace.event("library.archive.ready library=\(trace) available=\(loaded != nil)")
             withExtendedLifetime(access) {}
             guard !Task.isCancelled, self?.generation == generation else { return }
             result = loaded
         }) else { return nil }
         await task.value
+        OpeningTrace.event("library.task.ready library=\(trace)")
         return Task.isCancelled || self.generation != generation ? nil : result
     }
 
