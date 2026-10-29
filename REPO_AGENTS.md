@@ -503,7 +503,7 @@ older scan envelopes.
 | `GameArtworkLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
-| `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh coalescing |
+| `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
 | `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -1174,15 +1174,22 @@ or another dimension's entry. Native world moves migrate every dimension's saved
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
 It holds that document's reader as the declared source of a RefreshLoader. The loader owns its current value,
-pending pass and reread flag; no mutable dimension selector or per-dimension store is kept inside
+pending and retry demand; no mutable dimension selector or per-dimension store is kept inside
 the layer. Hidden invalidation waits until shown, while an already running read may finish.
 RefreshLoader coalesces saves during a pass, retains the previous value after a failed read and
 publishes successful empty values. Failure remains invalidated for the next request without starting
-a retry loop. Each loader declares whether an inactive read finishes or cancels: Time Spent keeps
+a retry loop. Producers merge their typed requests; failed or interrupted demand retains its
+strength until retried, while only a new external request schedules a following pass after failure.
+The internal RefreshLoader API has Source, Request and Value parameters. The existing reread
+convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
+language and heat-map consumers keep their existing contracts. Each loader declares whether an
+inactive read finishes or cancels: Time Spent keeps
 its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last
 coherent value and defers the interrupted refresh until demand returns; hiding a clean completed
 publication does not invalidate it. Source replacement clears incompatible values and cancels old
 work; its one active-read identity rejects late completions even when a source is selected again.
+Source and value publish together. A producer may project a compatible value during replacement;
+the default clears it, and the biome producer uses this only to retain numeric data across artwork changes.
 The loader's BackgroundWork scope retains retired reads until they drain and rejects results after
 its own or its world's close. Heat-map reader replacement uses this same contract, without retiring
 and draining a second loader. Canceling a waiter does not cancel the shared read. WorldResources
@@ -1839,8 +1846,17 @@ remains a design choice; other biomes use water for the game's `is_ocean`/`is_ri
 and otherwise grass then foliage at the area's representative point. With no usable land
 colormap, the definition's own water color remains available; only an unavailable definition
 uses the stable name hash. Enabled-pack overrides work without a selected game archive too.
-WorldResources owns the observable snapshot, refreshes it for packs and source changes, and
-rejects retired reads. Live and exported maps share MapScene's outline drawing. These overlays
+WorldResources exposes one biome-color RefreshLoader publication. Its source includes Minecraft
+generation and actual data/artwork identities. Metadata requests retain the reader's reuse path;
+pack-content requests dominate when same-source notifications coalesce. A running pass publishes
+progress before one merged follow-up, without restarting on every save. Failure keeps coherent
+colors and preserves forced-read demand for the next request without a retry loop; successful
+empty definitions clear removed colors. Artwork replacement under the same data/generation
+synchronously projects the publication to numeric colors without reading images. Any other
+source replacement clears it and rejects retired work. The computed accessor guards the live
+source, and MapGameResources independently admits only matching drawing colors. There is no
+separate biome task, generation counter, reload flag or mutable publication in WorldResources.
+Live and exported maps share MapScene's outline drawing. These overlays
 never enter terrain tiles, so outline tags do not change the terrain source key or cache version.
 View > Map Style > Blend Biome Colors is an initially-off, per-dimension display choice, owned
 by MapModel and persisted by WorldSettings. BiomeBlending averages the client's default 5-by-5

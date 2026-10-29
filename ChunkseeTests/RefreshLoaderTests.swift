@@ -1,11 +1,106 @@
 import Foundation
 import ChunkseeKit
 import Observation
+import Synchronization
 @testable import ChunkseeTestHost
 import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    nonisolated private enum Demand: String, Equatable, Sendable {
+        case metadata, contents
+        func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
+    }
+
+    @Test(.timeLimit(.minutes(1))) func typedRequestsKeepProgressAndMergeFollowingDemand() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed",
+                                   firstRequest: Demand.metadata, merge: { $0.merging($1) }) { _, request, _ in
+            await gate.read(request.rawValue)
+        }
+        loader.request(source: "fixed", isEnabled: true, refresh: nil)
+        await gate.waitForRequest("metadata")
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        loader.request(source: "fixed", isEnabled: true, refresh: .contents)
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.finish("metadata", with: 1)
+        await gate.waitForRequest("contents")
+        #expect(loader.value == 1)
+        #expect(await gate.requested == ["metadata", "contents"])
+        await gate.finish("contents", with: 2)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2)
+        #expect(await gate.requested == ["metadata", "contents"])
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func failedAndInterruptedRequestsKeepTheirStrengthWithoutRetryLoops() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Result<Int, CocoaError>>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .cancel, source: "fixed",
+                                   firstRequest: Demand.metadata, merge: { $0.merging($1) }) { _, request, _ in
+            try await gate.read(request.rawValue + String(await numbers.next())).get()
+        }
+        loader.request(source: "fixed", isEnabled: true, refresh: nil)
+        await gate.waitForRequest("metadata0"); await gate.finish("metadata0", with: .success(1))
+        await loader.waitUntilFinished()
+        loader.request(source: "fixed", isEnabled: true, refresh: .contents)
+        await gate.waitForRequest("contents1")
+        await gate.finish("contents1", with: .failure(CocoaError(.fileReadUnknown)))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 1)
+        #expect(await gate.requested.count == 2)
+
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.waitForRequest("contents2")
+        loader.request(source: "fixed", isEnabled: false, refresh: nil)
+        await gate.waitForCancellation("contents2")
+        loader.request(source: "fixed", isEnabled: true, refresh: nil)
+        await gate.waitForRequest("contents3")
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.finish("contents3", with: .failure(CocoaError(.fileReadUnknown)))
+        await gate.waitForRequest("contents4")
+        #expect(loader.value == 1)
+        await gate.finish("contents4", with: .success(2))
+        await gate.finish("contents2", with: .success(99))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2)
+        #expect(await gate.requested == ["metadata0", "contents1", "contents2", "contents3", "contents4"])
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func aSourceProjectionPublishesItsSourceAndValueTogetherAndRejectsRetiredReads() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<String>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "on",
+                                   firstRequest: RefreshInvalidation.refresh, merge: { _, _ in .refresh },
+                                   retainingValue: { _, old, new in old == "on" && new == "off" ? "numeric" : nil }) { source, _, _ in
+            await gate.read(source + String(await numbers.next()))
+        }
+        loader.request(source: "on", isEnabled: true, reread: false)
+        await gate.waitForRequest("on0"); await gate.finish("on0", with: "numeric+artwork")
+        await loader.waitUntilFinished()
+        loader.request(source: "on", isEnabled: true, reread: true)
+        await gate.waitForRequest("on1")
+        let observed = Mutex(false)
+        withObservationTracking(options: [.didSet]) { _ = loader.source } onChange: { _ in
+            MainActor.assumeIsolated {
+                #expect(loader.source == "off" && loader.value == "numeric")
+                observed.withLock { $0 = true }
+            }
+        }
+        loader.request(source: "off", isEnabled: true, reread: false)
+        #expect(observed.withLock { $0 } && loader.value == "numeric")
+        await gate.waitForCancellation("on1"); await gate.waitForRequest("off2")
+        loader.request(source: "other", isEnabled: true, reread: false)
+        #expect(loader.value == nil)
+        await gate.waitForCancellation("off2"); await gate.waitForRequest("other3")
+        await gate.finish("other3", with: "other")
+        await gate.finish("off2", with: "retired-off")
+        await gate.finish("on1", with: "retired-on")
+        await loader.waitUntilFinished()
+        #expect(loader.source == "other" && loader.value == "other")
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func inactiveOptionalReadCancelsAndRetainsItsPublicationUntilDemandReturns() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
         let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .cancel, source: "fixed") { _, _ in
