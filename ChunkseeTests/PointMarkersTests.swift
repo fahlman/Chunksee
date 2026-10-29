@@ -108,7 +108,7 @@ import SwiftUI
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(World(contentsOf: world).dimension("overworld"))
-        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         let places = places(), creatures = creatures()
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)

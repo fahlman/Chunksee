@@ -99,7 +99,8 @@ final class WorldSession {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
+        let map = MapModel(gameResources: { [weak resources] in resources?.mapGameResources ?? .unavailable },
+                           savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
                            nightLighting: { [weak resources] in resources?.nightLighting(in: dimension.id) },
                            work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),

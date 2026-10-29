@@ -228,6 +228,108 @@ import Synchronization
         await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test func mapsUseCurrentGameDataBeforeColorsFinishAndRejectRetiredColors() async throws {
+        let root = try TestWorld.make(chunks: []), game = try artworkFixture(), replacementGame = try artworkFixture()
+        defer { game.remove(); replacementGame.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil })
+        var sessions = [WorldSession(resources: resources), WorldSession(resources: resources)]
+        let gate = AsyncReadGate<MapBiomeColors?>(), numbers = ReadNumbers()
+        let replacement = try replacementGame.resources()
+        let replacementArtwork = names.minecraft.artwork(for: replacement)
+        func close() async {
+            await gate.releaseAllAndFuture(with: nil)
+            sessions.forEach { $0.close() }
+            resources.close()
+            await resources.waitUntilClosed()
+            names.minecraft.forget()
+            await names.minecraft.waitUntilIdle()
+            await replacementArtwork?.close()
+            await replacement.data.close()
+        }
+        do {
+            await resources.waitForRefresh()
+            resources.readBiomeColors = { world, data, artwork, previous, reload in
+                guard data != nil else {
+                    return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                   previous: previous, reload: reload)
+                }
+                guard let colors = await gate.read(String(await numbers.next())) else { throw CancellationError() }
+                return colors
+            }
+            names.minecraft.choose(game.root)
+            await gate.waitForRequest("0")
+            let original = try #require(await names.minecraft.library())
+            let originalArtwork = try #require(names.minecraft.artwork(for: original))
+            let oldColors = try await original.data.biomeColors(in: resources.world, artwork: originalArtwork)
+            sessions.append(WorldSession(resources: resources))
+            for session in sessions {
+                #expect(session.map?.currentRenderer.gameData === original.data)
+                #expect(session.map?.currentRenderer.gameArtwork === originalArtwork)
+                #expect(session.map?.currentRenderer.biomeColors == nil)
+            }
+
+            // A newly read archive under the same folder generation must be available before
+            // its colors. A delayed read from the retired archive cannot reconnect it.
+            let source = WorldGameAssetSource(generation: names.minecraft.generation)
+            resources.setGameAssets(replacement, source: source)
+            for session in sessions {
+                #expect(session.map?.currentRenderer.gameData === replacement.data)
+                #expect(session.map?.currentRenderer.gameArtwork === replacementArtwork)
+                #expect(session.map?.currentRenderer.biomeColors == nil)
+            }
+            await gate.waitForCancellation("0")
+            await gate.waitForRequest("1")
+            let current = try await replacement.data.biomeColors(in: resources.world, artwork: replacementArtwork)
+            await gate.finish("1", with: current)
+            await gate.finish("0", with: oldColors)
+            await resources.waitForRefresh()
+            for session in sessions {
+                #expect(session.map?.currentRenderer.gameData === replacement.data)
+                #expect(session.map?.currentRenderer.biomeColors?.sourceKey == current.sourceKey)
+            }
+
+            sessions[0].close()
+            #expect(!resources.isClosed)
+            names.minecraft.forget()
+            for session in sessions {
+                #expect(session.map?.currentRenderer.gameData == nil)
+                #expect(session.map?.currentRenderer.gameArtwork == nil)
+                #expect(session.map?.currentRenderer.biomeColors == nil)
+            }
+        } catch {
+            await close()
+            throw error
+        }
+        await close()
+    }
+
+    @Test func preparedMapReadsBlockInformationWithoutAFollowupResourcePush() async throws {
+        let root = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+        let game = try artworkFixture()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root, game: game)
+        let session = WorldSession(resources: resources)
+        func close() async {
+            session.close()
+            await session.waitUntilClosed()
+            await resources.names.minecraft.waitUntilIdle()
+        }
+        do {
+            let map = try #require(session.map)
+            await resources.waitForRefresh()
+            await map.waitForTopBlocks()
+            let block = try #require(map.topBlock(at: map.viewport.center))
+            #expect(block.id == "minecraft:stone" && block.hasGameDefinition == true)
+        } catch {
+            await close()
+            throw error
+        }
+        await close()
+    }
+
     @Test func asynchronousLoadAndJarReplacementPublishPicturesWithoutAnotherSceneEvent() async throws {
         let root = try TestWorld.make(chunks: []), game = try ItemPictureFixture()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }

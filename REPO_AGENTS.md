@@ -475,7 +475,7 @@ older scan envelopes.
 | `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
 | `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
-| `MapModel.swift`, `MapShadow.swift` | Full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
+| `MapModel.swift`, `MapGameResources.swift`, `MapShadow.swift` | Observes world-owned game resources; full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate values and their shared Foundation format style using ChunkseeKit’s checked block conversion, common CoordinateText digit styling, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
@@ -693,6 +693,14 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
+The required game-resources accessor follows the same observation contract. WorldResources
+derives MapGameResources from its current data, artwork and biome-color publications; source
+replacement clears old values before publishing the new token. MapGameResources admits colors
+only from the matching game source. Game data remains available while colors load. Maps keep no
+separately editable resource triple, and WorldResources sends no manual resource updates. Map
+observation retains only live identities, not retired libraries; persistent cache keys still use
+the complete stable inputs. Artwork changes preserve data and synchronously retire affected
+readouts, details and tiles through the existing invalidation path.
 Each MapModel owns its remembered Saved Time / Daylight choice, exposed by the native View >
 Lighting menu. Height bypasses lighting; Water Depth preserves its water palette; markers and
 overlays are never tinted. Increase Contrast uses a brighter ambient floor and milder color tint.

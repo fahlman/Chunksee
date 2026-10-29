@@ -135,14 +135,15 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let gameResources = TestGameResources()
+        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.gameArtwork == nil ? "fallback" : "assets")
         })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
         await gate.waitForRequest("fallback")
         let previousRenderer = map.currentRenderer
         let artwork = try fixture.library()
-        map.setGameResources(data: artwork.data, artwork: artwork)
+        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
         await gate.waitForRequest("assets")
         let good = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
         await gate.finish("assets", with: try map.currentRenderer.fixtureTile(good, for: .init(x: 0, z: 0)))

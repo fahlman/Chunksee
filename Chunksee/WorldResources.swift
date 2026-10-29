@@ -122,6 +122,10 @@ final class WorldResources {
     private var gameAssets: GameResourceLibrary?
     private var gameData: GameDataLibrary? { gameAssets?.data }
     private var gameArtwork: GameArtworkLibrary? { names.minecraft.artwork(for: gameAssets) }
+    var mapGameResources: MapGameResources {
+        guard !isClosed, gameAssetSource?.generation == names.minecraft.generation else { return .unavailable }
+        return MapGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
+    }
     private(set) var biomeColors: MapBiomeColors?
     @ObservationIgnored private var biomeReadGeneration = 0
     @ObservationIgnored private var needsBiomeReload = false
@@ -247,7 +251,6 @@ final class WorldResources {
 
     func attach(_ session: WorldSession) {
         sessions[session.viewID] = WeakSession(session)
-        session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
         darkSpotsVisibilityChanged()
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
@@ -256,18 +259,17 @@ final class WorldResources {
     /// world; opening another tab must not clear its siblings' color snapshot.
     func prepareGameAssets(_ source: WorldGameAssetSource) {
         guard !isClosed, source.generation == names.minecraft.generation, gameAssetSource != source else { return }
+        // Retire values before publishing the new source token, so synchronous observers
+        // cannot reconnect the old archive under the new source.
+        gameAssets = nil
+        biomeColors = nil
         gameAssetSource = source
         assetReadGeneration += 1
         assetWork.cancel()
         isAssetReadPending = false
         biomeReadGeneration += 1
         biomeWork.cancel()
-        gameAssets = nil
         refreshGameLanguage()
-        biomeColors = nil
-        for session in sessions.values.compactMap(\.value) {
-            session.map?.setGameResources(data: nil, artwork: nil)
-        }
         refreshBiomeColors(reload: true)
         refreshLighting()
         refreshNightLighting(reread: true)
@@ -300,10 +302,9 @@ final class WorldResources {
               gameAssetSource == source, gameAssets?.identity != library?.identity else { return }
         biomeReadGeneration += 1
         biomeWork.cancel()
+        biomeColors = nil
         gameAssets = library
         refreshGameLanguage()
-        biomeColors = nil
-        for session in sessions.values.compactMap(\.value) { session.map?.setGameResources(data: nil, artwork: nil) }
         refreshBiomeColors(reload: true)
         refreshNightLighting(reread: true)
         refreshLighting()
@@ -320,14 +321,7 @@ final class WorldResources {
     private func refreshGameArtwork() {
         guard !isClosed else { return }
         biomeColors = biomeColors?.removingArtwork()
-        updateGameArtwork()
         refreshBiomeColors(reload: true)
-    }
-
-    private func updateGameArtwork() {
-        for session in sessions.values.compactMap(\.value) {
-            session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
-        }
     }
 
     var gameNames: GameNames {
@@ -481,7 +475,6 @@ final class WorldResources {
             // A transient unreadable save keeps its last good colors. A successful empty
             // catalog replaces them, so a removed or invalid pack cannot leave stale tints.
             if let updated { self.biomeColors = updated; self.needsBiomeReload = false }
-            self.updateGameArtwork()
         }
     }
 
