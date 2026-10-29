@@ -232,6 +232,40 @@ import Testing
         }
     }
 
+    @Test func restoredReadersCanRetryAfterAWorldFolderSuppliesMissingAccess() async throws {
+        let game = try ItemPictureFixture()
+        defer { game.remove() }
+        try await withFixture(paused: true) { f in
+            f.model.names.minecraft.choose(game.root)
+            f.defaults.removeObject(forKey: "worldFolderBookmarks")
+            for document in f.documents {
+                let failed = f.start(document)
+                await #expect(throws: WorldOpenError.notAWorld) { try await failed.value }
+            }
+            #expect(await f.probe.count == 0)
+            guard case .world(let urls) = try await f.reader.readFolder(f.url) else {
+                Issue.record("Opening the world did not supply its dimension URLs"); return
+            }
+            #expect(Set(urls) == Set(f.documents))
+            // Model boundary for #484: restoration and the folder redirect can both request
+            // the same dimensions. Native document restoration itself needs a separate check.
+            let waiting = (urls + urls).map { f.start($0) }
+            await f.probe.waitForStarts(1)
+            await waitUntil { f.model.openingRequestCount == waiting.count }
+            guard case .world(let repeated) = try await f.reader.readFolder(f.url) else {
+                Issue.record("A repeated folder opening did not redirect"); return
+            }
+            #expect(Set(repeated) == Set(urls))
+            #expect(await f.probe.count == 1)
+            await f.probe.release(1)
+            for request in waiting { _ = try await f.attach(request.value) }
+            #expect(f.sessions.count == waiting.count)
+            #expect(Set(f.sessions.map { ObjectIdentifier($0.resources) }).count == 1)
+            #expect(f.model.openingRequestCount == 0)
+            await f.model.names.minecraft.waitUntilIdle()
+        }
+    }
+
     @Test func aWorldFolderStillRedirectsToItsNativeDocumentsWithoutStartingAFullWorldRead() async throws {
         try await withFixture { f in
             guard case .world(let urls) = try await f.reader.readFolder(f.url) else { Issue.record("World did not redirect"); return }
