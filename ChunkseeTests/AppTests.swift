@@ -25,8 +25,8 @@ import Testing
             Issue.record("A folder without a world must be rejected")
         } catch {
             let presented = error as NSError
-            #expect(presented.localizedFailureReason == "That folder isn’t a Minecraft world.")
-            #expect(presented.localizedRecoverySuggestion == "Choose a world’s folder inside your saves folder.")
+            #expect(presented.localizedFailureReason == "Chunksee can’t read this folder as a world.")
+            #expect(presented.localizedRecoverySuggestion == "Open the world’s folder inside your saves folder.")
         }
     }
 
