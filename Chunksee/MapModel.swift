@@ -68,21 +68,23 @@ final class MapModel {
 
     private var failed: Set<RegionPosition> = []
     private var renderer: RegionTileRenderer
-    private var gameData: GameDataLibrary?
-    private var gameArtwork: GameArtworkLibrary?
-    private var biomeColors: MapBiomeColors?
+    @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
+    private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
+    private var gameData: GameDataLibrary? { gameResources.data }
+    private var gameArtwork: GameArtworkLibrary? { gameResources.artwork }
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
     var currentRenderer: RegionTileRenderer {
         var current = renderer
+        let resources = gameResources
         current.cutawayY = depth.cutawayY
         current.style = style
         current.blendsBiomeColors = blendsBiomeColors
         current.usesSavedLighting = lighting != nil
         current.blockFilter = blockFilter
         current.darkSpots = darkSpots
-        current.gameData = style == .height ? nil : gameData
-        current.gameArtwork = style == .height ? nil : gameArtwork
-        current.biomeColors = style == .height ? nil : biomeColors
+        current.gameData = style == .height ? nil : resources.data
+        current.gameArtwork = style == .height ? nil : resources.artwork
+        current.biomeColors = style == .height ? nil : resources.biomeColors
         return current
     }
     private let work: BackgroundWork
@@ -102,7 +104,8 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    init(savedLighting: @escaping @MainActor () -> MapLighting?,
+    init(gameResources: @escaping @MainActor () -> MapGameResources,
+         savedLighting: @escaping @MainActor () -> MapLighting?,
          nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
          work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
@@ -116,6 +119,7 @@ final class MapModel {
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
+        readGameResources = gameResources
         readSavedLighting = savedLighting
         readNightLighting = nightLighting
         renderWork = work.makeScope()
@@ -140,6 +144,8 @@ final class MapModel {
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
         observeLighting()
+        observeGameResources()
+        updateTopBlockReads()
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
@@ -418,9 +424,6 @@ final class MapModel {
         cancel()
         shadowHeights = [:]
         shadowImages = [:]
-        gameData = nil
-        gameArtwork = nil
-        biomeColors = nil
     }
 
     // MARK: Close-up terrain
@@ -868,18 +871,25 @@ final class MapModel {
         }
     }
 
-    /// Data remains connected when artwork changes. Retire old drawing requests and keys
-    /// without changing the selected world facts or their immutable reader.
-    func setGameResources(data: GameDataLibrary?, artwork: GameArtworkLibrary?, biomeColors: MapBiomeColors? = nil) {
-        guard !isClosed, gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
-                || self.biomeColors?.sourceKey != biomeColors?.sourceKey else { return }
-        let readoutsChanged = gameData?.identity != data?.identity || gameArtwork?.identity != artwork?.identity
-        gameData = data
-        gameArtwork = artwork
-        self.biomeColors = biomeColors
-        if readoutsChanged { resetTopBlockReads() }
-        if style != .height { reloadTiles() }
-        if readoutsChanged { updateTopBlockReads() }
+    /// World and test publications are main-actor isolated, as with lighting above. Capture
+    /// identities rather than libraries so the observation does not retain a retired archive.
+    private func observeGameResources() {
+        guard !isClosed else { return }
+        let previous = gameResources.identity
+        withObservationTracking(options: [.didSet]) {
+            _ = gameResources
+        } onChange: { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                self.observeGameResources()
+                let current = self.gameResources.identity
+                guard previous != current else { return }
+                let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
+                if readoutsChanged { self.resetTopBlockReads() }
+                if self.style != .height { self.reloadTiles() }
+                if readoutsChanged { self.updateTopBlockReads() }
+            }
+        }
     }
 
     private func reloadTiles() {
