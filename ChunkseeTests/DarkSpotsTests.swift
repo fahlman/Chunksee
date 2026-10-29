@@ -122,7 +122,7 @@ import Testing
         await map.waitUntilIdle()
         await gate.finish("off", with: before)
         await map.waitForRenders()
-        #expect(map.tiles[region] === after?.full)
+        #expect(map.tiles[region]?.picture === after?.full)
         map.regionsChanged([region])
         await gate.waitForRequest("on", count: 2)
         map.close()

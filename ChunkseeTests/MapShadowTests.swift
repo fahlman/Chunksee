@@ -204,7 +204,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let west = RegionPosition(x: -1, z: 0), gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-        let neighbor = try #require(try await RegionTileRenderer(dimension: dimension).tile(for: west))
+        var neighborRenderer = RegionTileRenderer(dimension: dimension)
+        neighborRenderer.usesSavedLighting = true
+        let neighbor = try #require(try await neighborRenderer.tile(for: west))
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
                            renderTile: { renderer, region in
                                if region == west { return await gate.read("neighbor") }
