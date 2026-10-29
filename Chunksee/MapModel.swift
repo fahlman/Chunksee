@@ -15,7 +15,9 @@ final class MapModel {
         }
     }
     private(set) var depth = MapDepth()
-    private(set) var style = MapStyle.normal
+    private(set) var chosenStyle = MapStyle.normal
+    /// Missing game definitions can change the picture without replacing the saved choice.
+    var style: MapStyle { canShowStyle(chosenStyle) ? chosenStyle : .normal }
     private(set) var blendsBiomeColors = false
     private(set) var lightingMode = MapLightingMode.savedTime
     @ObservationIgnored private let readSavedLighting: @MainActor () -> MapLighting?
@@ -747,7 +749,6 @@ final class MapModel {
         renderer.surfaceContext = context
         renderer.heightScale = scale
         heightScale = scale
-        if scale == nil, style == .height { style = .normal }
         surfaceChanged()
     }
 
@@ -798,10 +799,13 @@ final class MapModel {
 
     /// A style changes colours, never the selected block or a pending coordinate/hover read.
     func setStyle(_ value: MapStyle) {
-        guard !isClosed, value != style, value != .height || heightScale != nil else { return }
-        style = value
-        reloadTiles()
+        guard !isClosed, value != chosenStyle else { return }
+        let previous = style
+        chosenStyle = value
+        if style != previous { reloadTiles() }
     }
+
+    func canShowStyle(_ value: MapStyle) -> Bool { value != .height || heightScale != nil }
 
     func setBiomeBlending(_ enabled: Bool) {
         guard !isClosed, enabled != blendsBiomeColors else { return }

@@ -181,7 +181,7 @@ struct WorldView: View {
                     .id(map.dimension.id)
                     .safeAreaInset(edge: .top, spacing: 0) { WorldVersionBanner(resources: session.resources) }
                     .onChange(of: map.depth) { session.saveView() }
-                    .onChange(of: map.style) { session.saveView() }
+                    .onChange(of: map.chosenStyle) { session.saveView() }
                     .onChange(of: map.blendsBiomeColors) { session.saveView() }
                     .onChange(of: map.lightingMode) { session.saveView() }
                     .onChange(of: map.castsShadows) { session.saveView() }

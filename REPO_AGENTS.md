@@ -678,7 +678,11 @@ SelectionModel's image cache carries that key, so reusing a map number with chan
 metadata replaces the old image. Rendering views do not encode catalogs or read source files.
 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
-restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears
+restoration and WorldSettings use that owner. Its `chosenStyle` survives missing height metadata;
+`style` derives the picture that can currently be shown. Persistence and document rereads keep the
+choice, while menus, legends, rendering and export use the shown style. Height returns when its
+scale becomes available. Choosing Normal while it is the temporary fallback replaces the saved
+Height choice. The existing preference format is unchanged. A shown-style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
 TileCache version 15 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other

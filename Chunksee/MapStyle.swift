@@ -16,6 +16,25 @@ nonisolated enum MapStyle: String, CaseIterable, Sendable, Encodable {
     }
 }
 
+struct MapStyleOptions: View {
+    let map: MapModel?
+
+    var body: some View {
+        ForEach(MapStyle.allCases, id: \.self) { style in
+            // Native toggles honor per-item availability, unlike inline Picker options.
+            Toggle(isOn: Binding {
+                map?.style == style
+            } set: { _ in
+                // Choosing an already checked Normal still replaces an unavailable Height choice.
+                map?.setStyle(style)
+            }) {
+                Text(style.title)
+            }
+            .disabled(map?.canShowStyle(style) != true)
+        }
+    }
+}
+
 /// One fixed scale for height colouring, derived from saved facts rather than loaded tiles.
 /// Sea level is the palette's midpoint, even when it lies outside the build range.
 nonisolated struct MapHeightScale: Hashable, Sendable, Encodable {
