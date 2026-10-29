@@ -99,7 +99,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
     private let unavailable: Value
     private let emptyPlayers = PlayerSnapshot([])
     private(set) var requestedDefinitions: WorldDefinitionInput
-    @ObservationIgnored var published: @MainActor (Value, Value, Set<String>) -> Void = { _, _, _ in }
+    @ObservationIgnored var published: @MainActor (Value) -> Void = { _ in }
 
     var value: Value { loader.value ?? unavailable }
     var snapshot: PlayerSnapshot { value.facts?.players ?? emptyPlayers }
@@ -162,10 +162,9 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                 }
                 return retained
             })
-        loader.published = { [weak self] previous, current in
+        loader.published = { [weak self] _, current in
             guard let self, !self.isClosed else { return }
-            let added = Set(current.source.preparedDimensions.keys).subtracting(previous.source.preparedDimensions.keys)
-            self.published(previous.value ?? self.unavailable, current.value ?? self.unavailable, added)
+            self.published(current.value ?? self.unavailable)
         }
     }
 

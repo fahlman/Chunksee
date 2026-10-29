@@ -197,7 +197,7 @@ import Testing
         #expect(changedOres !== original)
         #expect(changedOres.scanOptions.blockIDs?.contains("minecraft:diamond_ore") == false)
         let villages = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/worldgen/structure/village.json")
-        try write(#"{"values":["example:hill_fort"]}"#, to: villages)
+        try write(#"{"replace":true,"values":["example:hill_fort"]}"#, to: villages)
         resources.worldChanged([villages])
         await resources.waitForRefresh()
         await resources.index.waitForIndex()

@@ -448,8 +448,8 @@ Water inputs are explicit, so omitting an argument cannot drop the composed tag.
 Tile renderer version 35 discards the older fluid classification and water pixels.
 The depth cap and Height/Water Depth scales remain.
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
-jar and the world's enabled packs. Opening first uses available world-pack facts; the shared game
-request adds installed resources. Each resource category remains independently available. A failed
+jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
+by WorldPreparation. Each resource category remains independently available. A failed
 player refresh retains the previous coherent definitions/player snapshot until the next save. Initial player reads, later player reads and region scans use
 its same enchantment dictionary. It also supplies dimension settings, possible biome associations,
 trading definitions and the shared NotableBlock.Catalog. Current health and other saved facts stay
@@ -461,8 +461,9 @@ the independently read saved version, while keeping coherent facts and retrying 
 request on the next external demand. Replacing game inputs cancels obsolete reads while retaining
 the completed definition/player facts until their coherent replacement is ready. Those retained
 facts carry the producing game generation and library identity; they are never relabeled as
-the new source. This producer's compatible projection preserves reader caches and explicit Height
-choices instead of publishing an unread unknown. Retired in-flight results still cannot publish.
+the new source. This producer's compatible projection retains the completed scale and reader
+inputs instead of publishing an unread unknown. MapModel owns the retained style choice.
+Retired in-flight results still cannot publish.
 The definition input distinguishes a game selection still loading from a completed selection
 with no library. Loading invalidates titles and cancels old reads immediately, but queues the
 replacement read until discovery completes; failed discovery retains the coherent facts. A
@@ -480,9 +481,13 @@ height reaches the shared heightmap reader; a known ceiling with nonempty genera
 the surface-rule range's upper plane for roof hiding and middle plane for biome sampling. Unknown
 context keeps the actual surface, without a dimension-name ceiling fallback. Explicit cutaways
 keep their chosen Y. Source/pack replacement updates each map's height scale and renderer context,
-cancels obsolete renders/coordinate reads, and replaces the world's immutable region readers.
-Their scan options include the enchantments and tag-derived block IDs; each shared index uses the
-same catalog. Old index passes cannot publish into the replacement generation. Heat maps rebind to
+cancels obsolete renders/coordinate reads, and replaces region readers only when their consumed
+inputs change. RegionReader.Inputs owns the scan options and notable-block/structure-group
+catalogs used by each reader. WorldResources compares that value and uses one factory for opening,
+new dimensions and replacement. Leaf membership, trades, possible-biome lists and other unconsumed
+definition facts cannot discard readers or the index. Their scan options include enchantments and
+tag-derived block IDs; each shared index uses the same catalog. Old index passes cannot publish
+into the replacement generation. Heat maps rebind to
 the new reader, and retired readers/loaders drain under the world's BackgroundWork owner.
 Tile renderer version 27 invalidates the previous interpretation. Source/color and surface keys
 continue to distinguish their own inputs; the published Kit's RegionFacts version 20 invalidates

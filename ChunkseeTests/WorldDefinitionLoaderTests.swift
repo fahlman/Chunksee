@@ -192,7 +192,7 @@ import Testing
         let nextSource = WorldDefinitionLoader.GameSource(generation: generation, libraryID: second.identity)
         #expect(loader.value.facts?.source == initialSource)
         var publishedDefinitions: [WorldDefinitions?] = []
-        loader.published = { _, current, _ in publishedDefinitions.append(current.facts?.definitions) }
+        loader.published = { current in publishedDefinitions.append(current.facts?.definitions) }
         loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(first))
         await definitions.waitForRequest("first")
         loader.refreshDefinitions(generation: generation, selection: .loaded(second))

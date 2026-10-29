@@ -52,7 +52,7 @@ final class WorldResources {
     var playerRoster: any PlayerSnapshotSource { definitionLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
-    private let readRegion: RegionReader.Read
+    private let makeReader: (ChunkseeKit.Dimension, WorldDefinitions) -> RegionReader
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -239,23 +239,22 @@ final class WorldResources {
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
-        self.readRegion = readRegion
+        let worldURL = snapshot.access.url
+        let makeReader = { (dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions) in
+            RegionReader(dimension: dimension,
+                cache: ScanCache(forWorldAt: worldURL, dimensionID: dimension.id, root: cacheRoot),
+                inputs: .init(dimensionID: dimension.id, definitions: definitions), read: readRegion)
+        }
+        self.makeReader = makeReader
         self.settings = settings
         savedPlaces = SavedPlaces(settings: settings)
-        let readers = snapshot.dimensions.map { dimension in
-            RegionReader(dimension: dimension,
-                         cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id], water: snapshot.details.definitions.water), definitions: snapshot.details.definitions),
-                         notableBlocks: snapshot.details.definitions.notableBlocks,
-                         structureGroups: snapshot.details.definitions.structureGroups,
-                         read: readRegion)
-        }
+        let readers = snapshot.dimensions.map { makeReader($0, snapshot.details.definitions) }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
         index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: definitionLoader)
-        definitionLoader.published = { [weak self] previous, current, included in
-            self?.adoptDefinitions(previous: previous, current: current, included: included)
+        definitionLoader.published = { [weak self] current in
+            self?.adoptDefinitions(current)
         }
         assetLoader.published = { [weak self] previous, current in
             guard let self, !self.isClosed else { return }
@@ -303,14 +302,7 @@ final class WorldResources {
         definitionLoader.include(added, settings: snapshot.details.dimensionSettings)
         guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
-        index.include(added.map { dimension in
-            RegionReader(dimension: dimension,
-                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id], water: details.definitions.water), definitions: details.definitions),
-                         notableBlocks: details.definitions.notableBlocks,
-                         structureGroups: details.definitions.structureGroups,
-                         read: readRegion)
-        }, firstDimension: activeDimensionID)
+        index.include(added.map { makeReader($0, details.definitions) }, firstDimension: activeDimensionID)
         refreshNightLighting(reread: true)
         refreshLighting()
     }
@@ -420,25 +412,14 @@ final class WorldResources {
         definitionLoader.refreshDefinitions(generation: names.minecraft.generation, selection: selection)
     }
 
-    private func adoptDefinitions(previous: WorldDefinitionLoader.Value, current: WorldDefinitionLoader.Value,
-                                  included: Set<String>) {
+    private func adoptDefinitions(_ current: WorldDefinitionLoader.Value) {
         guard !isClosed else { return }
-        var previousDefinitions = previous.facts?.definitions ?? WorldDefinitions()
         let definitions = current.facts?.definitions ?? WorldDefinitions()
-        // Leaf membership supplies a sheet shortcut; new-dimension metadata supplies only the
-        // added reader. Neither replaces unchanged readers or explicit block choices.
-        previousDefinitions.leafTag = definitions.leafTag
-        for id in included { previousDefinitions.dimensionSettings[id] = definitions.dimensionSettings[id] }
-        guard previousDefinitions != definitions else { return }
         let retired = index.readers
-        let readers = retired.map { reader in
-            let dimension = reader.dimension
-            return RegionReader(dimension: dimension,
-                cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id], water: definitions.water), definitions: definitions),
-                notableBlocks: definitions.notableBlocks,
-                structureGroups: definitions.structureGroups, read: readRegion)
-        }
+        guard retired.contains(where: {
+            $0.inputs != RegionReader.Inputs(dimensionID: $0.dimension.id, definitions: definitions)
+        }) else { return }
+        let readers = retired.map { makeReader($0.dimension, definitions) }
         // Register retirement before publishing the replacement catalog: an observer may close
         // the world synchronously, and that close must drain the retired readers too.
         backgroundWork.start(priority: .utility) {
