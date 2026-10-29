@@ -181,17 +181,10 @@ actor GameDataLibrary {
 }
 
 /// Data identity and artwork availability are separate parts of every affected cache key.
-nonisolated struct GameResourceSource: Hashable, Sendable {
-    enum Artwork: Hashable, Sendable {
+nonisolated struct GameResourceSource: Hashable, Sendable, Encodable {
+    enum Artwork: Hashable, Sendable, Encodable {
         case unavailable
         case game(String)
-
-        var cacheKey: String {
-            switch self {
-            case .unavailable: "none"
-            case .game(let source): "game-" + source
-            }
-        }
     }
 
     let data: String?
@@ -208,5 +201,4 @@ nonisolated struct GameResourceSource: Hashable, Sendable {
     }
 
     static let unavailable = Self(data: nil as String?, artwork: .unavailable)
-    var cacheKey: String { CacheKey.hash((data ?? "no-game-data") + "\nartwork:" + artwork.cacheKey) }
 }

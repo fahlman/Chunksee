@@ -10,15 +10,19 @@ nonisolated struct MapBlockFilter: Equatable, Sendable {
     let hiddenIDs: Set<String>
     let highlightedIDs: Set<String>
     /// Computed only when choices change, never for every column or region being drawn.
-    let cacheKey: String?
+    let cacheKey: Key?
+
+    struct Key: Hashable, Sendable, Encodable {
+        let hidden: [String]
+        let highlighted: [String]
+    }
 
     init(isEnabled: Bool = true, hiddenIDs: Set<String> = [], highlightedIDs: Set<String> = []) {
         self.isEnabled = isEnabled
         self.hiddenIDs = Set(hiddenIDs.compactMap { Identifier($0)?.description })
         self.highlightedIDs = Set(highlightedIDs.compactMap { Identifier($0)?.description }).subtracting(self.hiddenIDs)
-        // Valid identifiers cannot contain newlines, so the two sorted sections are unambiguous.
         cacheKey = isEnabled && (!self.hiddenIDs.isEmpty || !self.highlightedIDs.isEmpty)
-            ? CacheKey.hash(self.hiddenIDs.sorted().joined(separator: "\n") + "\n\n" + self.highlightedIDs.sorted().joined(separator: "\n"))
+            ? Key(hidden: self.hiddenIDs.sorted(), highlighted: self.highlightedIDs.sorted())
             : nil
     }
 

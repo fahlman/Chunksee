@@ -6,6 +6,20 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct MapStyleTests {
+    @Test func heightScaleChangesPreparedPicturesWithoutRetiringUnlitNormalTiles() async throws {
+        let root = try terrainWorld()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        var renderer = RegionTileRenderer(dimension: dimension, heightScale: try heightScale(sea: 40))
+        let region = RegionPosition(x: 0, z: 0)
+        let first = try #require(try await renderer.tile(for: region))
+        renderer.heightScale = try heightScale(sea: 80)
+        let second = try #require(try await renderer.tile(for: region))
+        #expect(first.key.surface == second.key.surface && first.key != second.key)
+        #expect(!renderer.accepts(first.key) && renderer.accepts(second.key))
+        #expect(first.full.image.dataProvider?.data as Data? != second.full.image.dataProvider?.data as Data?)
+    }
+
     @Test func savedBuildBoundsAndSeaLevelDefineOneStableHeightScale() throws {
         let scale = try heightScale(sea: 40)
         #expect(scale.bounds == -64...319)
@@ -128,16 +142,17 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("normal")
+        let previousRenderer = map.currentRenderer
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setStyle(.height)
         await render.waitForCancellation("normal")
         await render.waitForRequest("height")
         let heightImage = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("height", with: .init(full: heightImage, preview: heightImage))
+        await render.finish("height", with: try map.currentRenderer.fixtureTile(heightImage, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let normalImage = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
-        await render.finish("normal", with: .init(full: normalImage, preview: normalImage))
+        await render.finish("normal", with: try previousRenderer.fixtureTile(normalImage, for: .init(x: 0, z: 0)))
         let block = RegionTileRenderer.TopBlock(id: "minecraft:stone", y: 40, waterDepth: 0)
         await columns.finish("0", with: (file, Array(repeating: block, count: 256)))
         await columns.finish("1", with: (file, Array(repeating: block, count: 256)))

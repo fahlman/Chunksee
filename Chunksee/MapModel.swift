@@ -39,16 +39,16 @@ final class MapModel {
     private(set) var heightScale: MapHeightScale?
 
     /// Full-resolution tiles (512×512), kept for the regions near the view.
-    private(set) var tiles: [RegionPosition: MapTileImage] = [:]
+    private(set) var tiles: [RegionPosition: CachedMapImage] = [:]
     /// Half-resolution previews (256×256, a quarter of the memory), kept for many more regions so
     /// zoomed-out views never thrash and zooming in shows something at once.
-    private(set) var previews: [RegionPosition: MapTileImage] = [:]
+    private(set) var previews: [RegionPosition: CachedMapImage] = [:]
     /// Regions that have a region file. Others are never requested.
     private(set) var availableRegions: Set<RegionPosition>
     private(set) var isLoading = false
     /// Only visible close-up chunks are drawn at texture resolution; ordinary tiles stay underneath.
-    private(set) var detailImages: [ChunkPosition: MapTileImage] = [:]
-    @ObservationIgnored private var detailSurfaces: [RegionPosition: MapSurfaceDetail.Surface] = [:]
+    private(set) var detailImages: [ChunkPosition: CachedMapImage] = [:]
+    @ObservationIgnored private var detailSurfaces: [RegionPosition: RegionTileRenderer.DetailSurface] = [:]
     @ObservationIgnored private var detailAttempted: Set<ChunkPosition> = []
     @ObservationIgnored private var detailQueue: [ChunkPosition] = []
     @ObservationIgnored private var detailJob: (chunk: ChunkPosition, id: UUID, task: Task<Void, Never>)?
@@ -56,7 +56,7 @@ final class MapModel {
     @ObservationIgnored private var detailLoadsAttempted: Set<RegionPosition> = []
     @ObservationIgnored private var detailLoadJob: (region: RegionPosition, id: UUID, task: Task<Void, Never>)?
     typealias DetailRenderer = @Sendable (ChunkPosition, MapSurfaceDetail.Surface, GameArtworkLibrary, MapHeightScale?, Bool) async throws -> MapTileImage?
-    typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> MapSurfaceDetail.Surface?
+    typealias DetailReader = @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.DetailSurface?
     @ObservationIgnored private let renderDetail: DetailRenderer
     @ObservationIgnored private let readDetail: DetailReader
 
@@ -139,7 +139,7 @@ final class MapModel {
 
     /// The image to draw for a region: the sharpest one cached that the view needs.
     func image(for region: RegionPosition, fullResolution: Bool) -> MapTileImage? {
-        fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region])
+        (fullResolution ? (tiles[region] ?? previews[region]) : (previews[region] ?? tiles[region]))?.picture
     }
 
     /// Starts rendering the visible regions that lack the resolution the view needs, nearest to the
@@ -234,11 +234,15 @@ final class MapModel {
         }
         switch result {
         case .success(let tile?):
-            store(tile, for: region)
-            if let operation = tile.cacheWrite {
-                let write = writeCache
-                cacheWork.start(priority: .utility) {
-                    if !Task.isCancelled { await write(operation) }
+            // Job identity guards source replacement and file-change notifications. The typed
+            // key independently guards every drawing input before pixels or disk work publish.
+            if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer.accepts(tile.key) {
+                store(tile, for: region)
+                if let operation = tile.cacheWrite, operation.key == tile.key.surface {
+                    let write = writeCache
+                    cacheWork.start(priority: .utility) {
+                        if !Task.isCancelled { await write(operation) }
+                    }
                 }
             }
         case .success(nil):
@@ -320,16 +324,16 @@ final class MapModel {
         }
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
-            tiles[region] = tile.full
+            tiles[region] = CachedMapImage(key: tile.key, picture: tile.full)
             if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style != .height {
-                detailSurfaces[region] = tile.detail
+                detailSurfaces[region] = tile.detail.map { .init(key: tile.key.surface, surface: $0) }
             }
         } else if wasStale {
             tiles[region] = nil   // drawn from the old file; zooming in will draw it again
             invalidateDetail(in: [region], keepingImages: false)
             detailSurfaces[region] = nil
         }
-        previews[region] = tile.preview
+        previews[region] = CachedMapImage(key: tile.key, picture: tile.preview)
         evictFullTiles()
         for region in Self.regionsToEvict(from: previews, keeping: maxPreviews, visible: visibleRegions, viewport: viewport) {
             previews[region] = nil
@@ -343,7 +347,7 @@ final class MapModel {
             + shadowImages.values.reduce(0) { $0 + $1.bytesPerRow * $1.height }
         let evicted = Self.regionsToEvict(from: tiles, keeping: maxTiles, visible: visibleRegions, viewport: viewport,
             reservedUnits: Double(shadowBytes) / Double(tileBytes),
-            additionalUnits: { Double(detailSurfaces[$0]?.estimatedBytes ?? 0) / Double(tileBytes) })
+            additionalUnits: { Double(detailSurfaces[$0]?.surface.estimatedBytes ?? 0) / Double(tileBytes) })
         for region in evicted {
             tiles[region] = nil
             detailSurfaces[region] = nil
@@ -352,7 +356,7 @@ final class MapModel {
     }
 
     /// The cached regions farthest from the view center beyond `limit`, never a visible one.
-    private static func regionsToEvict(from cached: [RegionPosition: MapTileImage], keeping limit: Int,
+    private static func regionsToEvict(from cached: [RegionPosition: CachedMapImage], keeping limit: Int,
                                        visible: Set<RegionPosition>, viewport: MapViewport,
                                        reservedUnits: Double = 0,
                                        additionalUnits: (RegionPosition) -> Double = { _ in 0 }) -> [RegionPosition] {
@@ -426,8 +430,8 @@ final class MapModel {
             detailImages = [:]
             detailAttempted = []
         }
-        let visible = Set(detailSurfaces.flatMap { region, surface in
-            MapDetailRenderer.visibleChunks(in: surface, region: region, viewport: viewport, size: size)
+        let visible = Set(detailSurfaces.flatMap { region, entry in
+            MapDetailRenderer.visibleChunks(in: entry.surface, region: region, viewport: viewport, size: size)
         })
         let needed = gameArtwork == nil ? [] : visible.filter {
             !stale.contains($0.region) && !detailAttempted.contains($0)
@@ -462,7 +466,7 @@ final class MapModel {
             // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
             // writes before loading, so zooming cannot cause a redundant world read.
             await work.waitUntilFinished(in: [cacheWork])
-            let surface: MapSurfaceDetail.Surface?
+            let surface: RegionTileRenderer.DetailSurface?
             do {
                 try Task.checkCancellation()
                 surface = try await reader(renderer, region)
@@ -470,7 +474,7 @@ final class MapModel {
             guard let self, self.detailLoadJob?.id == id, !self.isClosed else { return }
             self.detailLoadJob = nil
             if !Task.isCancelled {
-                self.detailSurfaces[region] = surface
+                if surface?.key == self.tiles[region]?.key.surface { self.detailSurfaces[region] = surface }
                 self.detailLoadsAttempted.insert(region)
                 self.evictFullTiles()
             }
@@ -499,16 +503,17 @@ final class MapModel {
     private func startDetail() {
         guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork else { return }
         let chunk = detailQueue.removeFirst()
-        guard let surface = detailSurfaces[chunk.region] else { return }
+        guard let surface = detailSurfaces[chunk.region], surface.key == tiles[chunk.region]?.key.surface else { return }
         let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
+        let key = RegionTileRenderer.ImageKey(surface: surface.key, preparation: currentRenderer.preparation, chunk: chunk)
         guard let task = detailWork.start(priority: nil, operation: { [weak self] in
             let image: MapTileImage?
-            do { image = try await render(chunk, surface, assets, heightScale, usesSavedLighting) }
+            do { image = try await render(chunk, surface.surface, assets, heightScale, usesSavedLighting) }
             catch { image = nil }
             guard let self, self.detailJob?.id == id, !self.isClosed else { return }
             self.detailJob = nil
-            if !Task.isCancelled {
-                self.detailImages[chunk] = image
+            if !Task.isCancelled, self.currentRenderer.accepts(key), self.tiles[chunk.region]?.key.surface == key.surface {
+                self.detailImages[chunk] = image.map { CachedMapImage(key: key, picture: $0) }
                 self.detailAttempted.insert(chunk)
                 self.trimDetailCache()
             }

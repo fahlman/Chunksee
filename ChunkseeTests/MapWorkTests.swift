@@ -51,7 +51,7 @@ struct MapWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let image = try #require(CGImage.rgba([255, 255, 255, 255], width: 1, height: 1))
-        let tile = RegionTileRenderer.RenderedTile(full: image, preview: image)
+        let tile = try RegionTileRenderer(dimension: dimension).fixtureTile(image, for: .init(x: 0, z: 0))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
         let work = BackgroundWork()
         let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),

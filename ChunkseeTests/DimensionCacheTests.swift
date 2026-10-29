@@ -17,7 +17,7 @@ import Testing
                         ("ice/caves", "minecraft:red_wool", 333)]
         let date = Date(timeIntervalSince1970: 1_790_000_000)
         let region = RegionPosition(x: 0, z: 0)
-        var keys = Set<TileCache.Key>(), fingerprints = Set<String>(), directories = Set<URL>()
+        var keys = Set<TileCache.Key>(), fingerprints = Set<[CacheKey.FileStamp?]>(), directories = Set<URL>()
         var referenceImages = Set<Data>()
         for (path, block, time) in examples {
             let folder = worldURL.appendingPathComponent("dimensions/example/\(path)/region")
@@ -60,7 +60,9 @@ import Testing
         let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
         let oldDirectory = worldFolder.appendingPathComponent("example_ice_caves")
         let region = RegionPosition(x: 0, z: 0)
-        let key = TileCache.Key(region: region, fileSize: 12_288, modified: 1_790_000_000)
+        let key = TileCache.Key(region: region, file: .init(size: 12_288, modified: 1_790_000_000), inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+            blockFilter: MapBlockFilter(), colorSource: nil, gameSource: .unavailable,
+            samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         TileCache(directory: oldDirectory).store(RegionTileRenderer.Canvas(), for: key)
         _ = try TestWorld.legacyCache([999], name: "inhabitedTimes.0.0.matching.v17",
                                       directory: oldDirectory.appendingPathComponent("scans"))

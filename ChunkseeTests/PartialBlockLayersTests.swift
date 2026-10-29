@@ -146,7 +146,7 @@ import Testing
         let cold = try #require(try await renderer.tile(for: region))
         let hit = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(cold.full.image).bytes == ItemPictureFixture.pixels(hit.full.image).bytes)
-        let surface = try #require(try await renderer.detail(for: region))
+        let surface = try #require(try await renderer.detail(for: region)).surface
         #expect(surface.detail == cold.detail?.detail)
         try FileManager.default.removeItem(at: dimension.regionURL(at: region))
         let detail = try #require(try await MapDetailRenderer.render(.init(x: 0, z: 0), surface: surface,

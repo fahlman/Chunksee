@@ -14,7 +14,7 @@ final class SelectionModel {
     private var inspectorIsShown = false
     /// A map can remain under a selected location while its inspector shows that location.
     private var overlayID: Int?
-    @ObservationIgnored private var inGameMapImages: [Int: CGImage] = [:]
+    @ObservationIgnored private var inGameMapImages = InGameMapImage.Cache()
     /// Inspector commands and linked-pet jumps can reveal an already-selected row again.
     private(set) var sidebarRevealRequest: UUID?
     var inGameMapOpacity = 0.85
@@ -271,10 +271,10 @@ final class SelectionModel {
 
     /// An image cache for the sidebar thumbnail and the selected map overlay.
     func image(for map: MapItem) -> CGImage? {
-        if let image = inGameMapImages[map.id] { return image }
-        let image = InGameMapImage.make(map)
-        inGameMapImages[map.id] = image
-        return image
+        guard let publication = source?.details.mapImageSource(for: map.id), publication.map == map else {
+            return InGameMapImage.make(map)
+        }
+        return inGameMapImages.image(for: publication)
     }
 
     func show(_ map: MapItem) {

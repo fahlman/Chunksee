@@ -89,7 +89,9 @@ import Testing
     @Test func cachedSurfacesKeepUnlitColoursSignedHeightsAndWater() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ReliefCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: url) }
-        let cache = TileCache(directory: url), key = TileCache.Key(region: .init(x: -1, z: 2), fileSize: 12, modified: 0)
+        let cache = TileCache(directory: url), key = TileCache.Key(region: .init(x: -1, z: 2), file: .init(size: 12, modified: 0), inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+            blockFilter: MapBlockFilter(), colorSource: nil, gameSource: .unavailable,
+            samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         var surface = RegionTileRenderer.Canvas()
         surface.set(x: 0, z: 0, column: column(y: -64))
         surface.set(x: 1, z: 0, column: column(y: 30, water: 4))
@@ -100,7 +102,7 @@ import Testing
         #expect(loaded.litPixels(heightScale: nil) == surface.litPixels(heightScale: nil))
 
         // The prior pixel-only payload must not be accepted under the new format, even if renamed.
-        let file = url.appendingPathComponent(key.fileName)
+        let file = url.appendingPathComponent(try #require(key.fileName))
         try ((Data(surface.pixels) as NSData).compressed(using: .lzfse) as Data).write(to: file)
         #expect(cache.load(key) == nil)
         cache.store(surface, for: key)
@@ -125,10 +127,10 @@ import Testing
         let original = try #require(first.full.image.dataProvider?.data as Data?)
         #expect(Array(original.prefix(4)) == [125, 125, 125, 255])
         #expect(try await renderer.pixels(for: region) == Array(original))
-        let cacheFile = cache.directory.appendingPathComponent(key.fileName), cachedBytes = try Data(contentsOf: cacheFile)
+        let cacheFile = cache.directory.appendingPathComponent(try #require(key.fileName)), cachedBytes = try Data(contentsOf: cacheFile)
 
         // Keep the cache key, but make the fixture region empty: rereading chunks would erase the tile.
-        try Data(repeating: 0, count: key.fileSize).write(to: file)
+        try Data(repeating: 0, count: key.file.size).write(to: file)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
         #expect(TileCache.key(for: region, regionFile: file) == key)
         renderer.heightScale = try scale(sea: 319)

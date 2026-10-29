@@ -9,13 +9,36 @@ nonisolated struct ScanCache: Sendable {
     let directory: URL?
     static let off = ScanCache(directory: nil)
 
-    struct Key: Hashable, Sendable {
+    /// One immutable scan publication. Its complete definitions are encoded once when the
+    /// reader is created, rather than once for every region requested by its consumers.
+    struct Options: Hashable, Sendable, Encodable {
+        let value: RegionScanOptions
+        private let identity: String?
+
+        init(_ value: RegionScanOptions) {
+            self.value = value
+            identity = try? InterpretationKey.identity(of: value)
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            guard let identity else {
+                throw EncodingError.invalidValue(value, .init(codingPath: encoder.codingPath,
+                    debugDescription: "Scan options have no persistent identity"))
+            }
+            var container = encoder.singleValueContainer()
+            try container.encode(identity)
+        }
+    }
+
+    struct Key: Hashable, Sendable, Encodable {
+        var interpretation = RegionFacts.interpretationVersion
+        var transform = ScanCache.transformVersion
         let dimension: String
         let region: RegionPosition
-        let fingerprint: String
-        let options: RegionScanOptions
+        let fingerprint: [CacheKey.FileStamp?]
+        let options: Options
 
-        init(dimension: ChunkseeKit.Dimension, region: RegionPosition, options: RegionScanOptions) {
+        init(dimension: ChunkseeKit.Dimension, region: RegionPosition, options: Options) {
             self.dimension = dimension.id
             self.region = region
             fingerprint = ScanCache.fingerprint(ChunkseeKit.Dimension.Folder.allCases.map {
@@ -25,19 +48,14 @@ nonisolated struct ScanCache: Sendable {
         }
 
         func matches(_ facts: RegionFacts) -> Bool {
-            facts.dimension == dimension && facts.region == region && facts.options == options
+            facts.dimension == dimension && facts.region == region && facts.options == options.value
         }
 
-        var optionsHash: String {
-            // Length-prefix IDs so even unfamiliar saved names cannot alias another set.
-            let ids = options.blockIDs.map { $0.sorted().map { "\($0.utf8.count):\($0)" }.joined() } ?? "all"
-            return CacheKey.hash("\(options.biomeSampleY.map(String.init) ?? "surface");\(options.height.map(String.init) ?? "unknown");\(ids)")
-        }
     }
 
     private struct Entry: Codable {
         let transformVersion: Int
-        let fingerprint: String
+        let fingerprint: [CacheKey.FileStamp?]
         let facts: RegionFacts
     }
 
@@ -83,19 +101,12 @@ nonisolated struct ScanCache: Sendable {
     }
 
     private func file(_ key: Key) -> URL? {
-        directory?.appendingPathComponent("facts.\(key.region.x).\(key.region.z).\(key.fingerprint).k\(RegionFacts.interpretationVersion).a\(Self.transformVersion).\(key.optionsHash).lzfse")
+        guard let identity = try? InterpretationKey.identity(of: key) else { return nil }
+        return directory?.appendingPathComponent("facts.\(key.region.x).\(key.region.z).\(identity).lzfse")
     }
 
-    /// A stable FNV-1a hash of each source file's size and modification date.
-    static func fingerprint(_ sources: [URL]) -> String {
-        var text = ""
-        for url in sources {
-            if let stamp = CacheKey.fileStamp(for: url) {
-                text += "\(stamp.size):\(stamp.modified);"
-            } else {
-                text += "-;"
-            }
-        }
-        return CacheKey.hash(text)
+    /// Preserve source order and missing files; the complete key owns stable encoding.
+    static func fingerprint(_ sources: [URL]) -> [CacheKey.FileStamp?] {
+        sources.map { CacheKey.fileStamp(for: $0) }
     }
 }

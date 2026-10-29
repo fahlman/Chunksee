@@ -4,6 +4,40 @@ import SwiftUI
 
 /// Pictures of maps made in the game, in Minecraft's map colors.
 nonisolated enum InGameMapImage {
+    struct Key: Hashable, Sendable, Encodable {
+        var interpretation = GameAssets.interpretationVersion
+        let content: String
+    }
+
+    /// The world prepares content identity once, alongside its immutable saved map.
+    struct Source: Sendable {
+        let map: MapItem
+        let key: Key?
+
+        init(_ map: MapItem) {
+            self.map = map
+            key = (try? InterpretationKey.identity(of: map)).map { Key(content: $0) }
+        }
+    }
+
+    struct Cache {
+        private struct Entry {
+            let key: Key
+            let image: CGImage
+        }
+        private var entries: [Int: Entry] = [:]
+
+        mutating func image(for source: Source) -> CGImage? {
+            if let key = source.key, let entry = entries[source.map.id], entry.key == key {
+                return entry.image
+            }
+            entries[source.map.id] = nil
+            guard let image = InGameMapImage.make(source.map) else { return nil }
+            if let key = source.key { entries[source.map.id] = Entry(key: key, image: image) }
+            return image
+        }
+    }
+
     /// A 128×128 image with transparent pixels where nothing was drawn.
     static func make(_ map: MapItem) -> CGImage? {
         var pixels = [UInt8](repeating: 0, count: MapItem.size * MapItem.size * 4)
