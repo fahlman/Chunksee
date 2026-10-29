@@ -4,7 +4,6 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import SwiftUI
-import Synchronization
 import Testing
 @testable import ChunkseeTestHost
 
@@ -349,7 +348,7 @@ import Testing
         resources.setGameAssets(game, source: source)
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)
-        let gate = AsyncReadGate<Void>(), numbers = ReadNumbers(), requests = Mutex<[Bool]>([])
+        let gate = AsyncReadGate<Void>(), numbers = ReadNumbers(), requests = ColorRequests()
         let delivered = AsyncReadGate<Void>()
         await delivered.releaseAllAndFuture(with: ())
         resources.readDefinitions = { world, data in
@@ -358,7 +357,7 @@ import Testing
             return try await WorldResources.readDefinitions(world, library: data)
         }
         resources.readBiomeColors = { world, data, artwork, previous, reload in
-            requests.withLock { $0.append(reload) }
+            await requests.append(reload)
             let result = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork, previous: previous, reload: reload)
             await gate.read(String(await numbers.next()))
             #expect(!Task.isCancelled)
@@ -385,7 +384,7 @@ import Testing
             await gate.finish("0", with: ())
             await gate.waitForRequest("1")
             #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
-            let readRequests = requests.withLock { $0 }
+            let readRequests = await requests.values
             try #require(readRequests == [true, true])
             await gate.finish("1", with: ())
             await resources.waitForRefresh()
@@ -412,10 +411,10 @@ import Testing
             await resources.waitForRefresh()
             let original = try #require(resources.biomeColors)
             #expect(original.biome("test:a").color(.grass, x: 0, z: 0) == 0xff0000)
-            let requests = Mutex<[Bool]>([]), numbers = ReadNumbers()
+            let requests = ColorRequests(), numbers = ReadNumbers()
             resources.refreshDelay = .zero
             resources.readBiomeColors = { world, data, artwork, previous, reload in
-                requests.withLock { $0.append(reload) }
+                await requests.append(reload)
                 if await numbers.next() == 0 { throw CocoaError(.fileReadUnknown) }
                 return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork, previous: previous, reload: reload)
             }
@@ -423,25 +422,30 @@ import Testing
             let file = url.appendingPathComponent("datapacks/override/data/test/worldgen/biome/a.json")
             resources.worldChanged([file]); await resources.waitForRefresh()
             #expect(resources.biomeColors?.sourceKey == original.sourceKey)
-            #expect(requests.withLock { $0 } == [true])
+            #expect(await requests.values == [true])
             resources.worldChanged([url.appendingPathComponent("level.dat")]); await resources.waitForRefresh()
             let updated = try #require(resources.biomeColors)
             #expect(updated.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
-            #expect(requests.withLock { $0 } == [true, true])
+            #expect(await requests.values == [true, true])
 
             resources.worldChanged([url.appendingPathComponent("level.dat")]); await resources.waitForRefresh()
             #expect(resources.biomeColors?.sourceKey == updated.sourceKey)
-            #expect(requests.withLock { $0 } == [true, true, false])
+            #expect(await requests.values == [true, true, false])
             try FileManager.default.removeItem(at: file)
             resources.worldChanged([file]); await resources.waitForRefresh()
             #expect(resources.biomeColors != nil && resources.biomeColors?.sourceKey != updated.sourceKey)
             #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == nil)
-            #expect(requests.withLock { $0 } == [true, true, false, true])
+            #expect(await requests.values == [true, true, false, true])
         } catch {
             await close()
             throw error
         }
         await close()
+    }
+
+    private actor ColorRequests {
+        private(set) var values: [Bool] = []
+        func append(_ reload: Bool) { values.append(reload) }
     }
 
     @Test func displacedCellsCrossChunkRegionAndVerticalBoundariesWithIdenticalSerialAndParallelPixels() async throws {
