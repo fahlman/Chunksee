@@ -7,6 +7,89 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .serialized, .timeLimit(.minutes(1))) struct DocumentWindowTests {
+    @Test func failedNativeReadsPublishTheirErrorAndLaterOpenNormally() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(World(contentsOf: root).dimension("minecraft:overworld"))
+            .documentURL(inWorldAt: root).resolvingSymlinksInPath()
+        let defaults = TestDefaults.make()
+        let model = AppModel(defaults: defaults, cacheRoot: nil)
+        let (documents, created) = AsyncStream.makeStream(of: WorldDocument.self)
+        defer { created.finish() }
+        var createdIterator = documents.makeAsyncIterator()
+        var natives: [NSDocument] = []
+        var owners: [WorldDocument] = []
+        try #require(TestDocumentWindows.makeDocument == nil)
+        TestDocumentWindows.makeDocument = { configuration in
+            let document = WorldDocument(configuration: configuration, model: model)
+            owners.append(document)
+            created.yield(document)
+            return document
+        }
+        defer { TestDocumentWindows.makeDocument = nil }
+        func close() async {
+            natives.forEach { $0.close() }
+            for owner in owners {
+                owner.session?.close()
+                await owner.session?.waitUntilClosed()
+            }
+            await model.names.minecraft.waitUntilIdle()
+        }
+        do {
+            // A fresh native open rejects this read. Restoration can retain its window instead;
+            // either way the document must have the failure, rather than only its opening state.
+            await #expect(throws: (any Error).self) {
+                try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+            }
+            try #require(!owners.isEmpty)
+            let failed = try #require(await createdIterator.next())
+            #expect(failed.session == nil && failed.worldDimensions == nil)
+            #expect(failed.openingFailure == WorldOpenError.notAWorld.localizedDescription)
+
+            // A retired or canceled read must not put a newer opening back into its error state.
+            let retired = failed.makeReader()
+            let current = failed.makeReader()
+            await #expect(throws: WorldOpenError.notAWorld) { try await retired.readFolder(dimension) }
+            #expect(failed.openingFailure == nil)
+            let canceled = Task { try await current.readFolder(dimension) }
+            canceled.cancel()
+            await #expect(throws: CancellationError.self) { try await canceled.value }
+            #expect(failed.openingFailure == nil)
+            await #expect(throws: WorldOpenError.notAWorld) { try await current.readFolder(dimension) }
+            #expect(failed.openingFailure == WorldOpenError.notAWorld.localizedDescription)
+            NSDocumentController.shared.document(for: dimension)?.close()
+
+            // Opening the world grants access. A fresh native document can then use the normal
+            // reader and shared preparation, without a second document registry or retry loop.
+            let reader = WorldDocument.Reader(folders: model.worldFolders, model: model)
+            guard case .world = try await reader.readFolder(root) else {
+                Issue.record("World did not supply its folder access")
+                await close()
+                return
+            }
+            let (openedNative, reused) = try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+            natives.append(openedNative)
+            #expect(!reused)
+            let opened = try #require(await createdIterator.next())
+            for await _ in Observations<Void, Never>.untilFinished({
+                opened.session == nil && opened.openingFailure == nil ? .next(()) : .finish
+            }) {}
+            #expect(opened.openingFailure == nil)
+            #expect(opened.session?.selectedDimensionID == "minecraft:overworld")
+            #expect(model.openingRequestCount == 0)
+            let session = try #require(opened.session)
+            defaults.removeObject(forKey: "worldFolderBookmarks")
+            let rereader = opened.makeReader()
+            await #expect(throws: WorldOpenError.notAWorld) { try await rereader.readFolder(dimension) }
+            #expect(opened.openingFailure == nil && opened.session === session)
+            #expect(!session.resources.isClosed)
+        } catch {
+            await close()
+            throw error
+        }
+        await close()
+    }
+
     @Test(arguments: [false, true], [CGFloat(640), 900])
     func inspectorFitsAndZoomsAfterShrinking(_ showsNotice: Bool, _ width: CGFloat) async throws {
         try await checkWindow(width: width, showsNotice: showsNotice, opensInspector: true, tabbed: true)

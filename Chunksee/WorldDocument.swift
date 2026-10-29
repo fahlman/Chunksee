@@ -162,6 +162,7 @@ final class WorldDocument: ReadableDocument {
     let configuration: URLDocumentConfiguration
     private let model: AppModel
     private(set) var session: WorldSession?
+    private(set) var openingFailure: String?
     @ObservationIgnored private var applyGeneration = UUID()
 
     init(configuration: URLDocumentConfiguration, model: AppModel) {
@@ -173,6 +174,7 @@ final class WorldDocument: ReadableDocument {
         let folders: WorldFolders
         var model: AppModel?
         var reuseOpenWorld: @MainActor @Sendable () -> Bool = { true }
+        var reportFailure: @MainActor @Sendable (URL, any Error) -> Void = { _, _ in }
 
         /// A world folder isn't itself a document: it holds one for each dimension. Reading it
         /// remembers the world's access and lists those, for its window to open instead.
@@ -183,6 +185,17 @@ final class WorldDocument: ReadableDocument {
 
         @concurrent
         func readFolder(_ source: URL) async throws -> FolderSnapshot {
+            do { return try await readContents(source) }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                try Task.checkCancellation()
+                await reportFailure(source, error)
+                throw error
+            }
+        }
+
+        @concurrent
+        private func readContents(_ source: URL) async throws -> FolderSnapshot {
             try Task.checkCancellation()
             do {
                 let world = try World(contentsOf: source)
@@ -223,9 +236,23 @@ final class WorldDocument: ReadableDocument {
     private(set) var worldDimensions: [URL]?
 
     func reader(configuration: sending ReadConfiguration) -> sending Reader {
-        Reader(folders: model.worldFolders, model: model, reuseOpenWorld: { [weak self] in
+        makeReader()
+    }
+
+    func makeReader() -> Reader {
+        let generation = UUID()
+        applyGeneration = generation
+        openingFailure = nil
+        return Reader(folders: model.worldFolders, model: model, reuseOpenWorld: { [weak self] in
             guard let self else { return false }
             return self.session == nil
+        }, reportFailure: { [weak self] source, error in
+            guard !Task.isCancelled, let self, self.applyGeneration == generation, self.session == nil else { return }
+            if let currentURL = self.configuration.fileURL,
+               currentURL.standardizedFileURL != source.standardizedFileURL { return }
+            // SwiftUI can retain a restored window after its reader throws, without applying a
+            // snapshot or presenting an error. Preserve native rejection and make that state visible.
+            self.openingFailure = error.localizedDescription
         })
     }
 
@@ -238,6 +265,7 @@ final class WorldDocument: ReadableDocument {
             try Task.checkCancellation()
             worldDimensions = dimensions
         }
+        if generation == applyGeneration { openingFailure = nil }
     }
 
     private func replaceSession(_ snapshot: DimensionSnapshot, generation: UUID) async throws {
@@ -303,6 +331,17 @@ struct WorldDocumentView: View {
                     .id(ObjectIdentifier(session))
                     // Capture only the action: the session must not keep its own view or document alive.
                     .onAppear { session.routing.openDocument = { [openDocument] in try await openDocument(at: $0) } }
+            } else if let failure = document.openingFailure {
+                ContentUnavailableView {
+                    Label("Couldn’t Read World", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(failure)
+                } actions: {
+                    Button("Close", role: .cancel) { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
+                .frame(minWidth: WorldView.minimumContentSize.width, maxWidth: .infinity,
+                       minHeight: WorldView.minimumContentSize.height, maxHeight: .infinity)
             } else {
                 opening
             }
