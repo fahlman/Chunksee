@@ -150,9 +150,11 @@ import Testing
         let file = url.appendingPathComponent("data/world_clocks.dat")
         resources.worldChanged([file]); await gate.waitForRequest("0")
         // Player entry is after refreshLighting in the actual file-change pass, proving each
-        // request reached the loader while its first read was held, without scheduler sleeps.
+        // request reached the lighting loader while its first read was held. Release each
+        // player read so the definition loader can start the next sequential pass.
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players")
+        await playerGate.finish("players", with: nil)
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players", count: 2)
         await playerGate.finishAll(with: nil)
