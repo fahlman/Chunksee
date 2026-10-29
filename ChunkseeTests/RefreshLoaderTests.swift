@@ -1,13 +1,93 @@
 import Foundation
 import ChunkseeKit
+import Observation
 @testable import ChunkseeTestHost
 import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test(.timeLimit(.minutes(1))) func inactiveOptionalReadCancelsAndRetainsItsPublicationUntilDemandReturns() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .cancel, source: "fixed") { _, _ in
+            await gate.read(String(await numbers.next()))
+        }
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await gate.waitForRequest("0"); await gate.finish("0", with: 1)
+        await loader.waitUntilFinished()
+        loader.request(source: loader.source, isEnabled: true, reread: true)
+        await gate.waitForRequest("1")
+        loader.request(source: loader.source, isEnabled: false, reread: false)
+        await gate.waitForCancellation("1")
+        #expect(loader.value == 1)
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await gate.waitForRequest("2"); await gate.finish("2", with: 2)
+        for await ready in Observations({ loader.value == 2 }) where ready { break }
+        var drained = false
+        var waiting: Task<Void, Never>?
+        await withCheckedContinuation { started in
+            waiting = Task { started.resume(); await loader.waitUntilFinished(); drained = true }
+        }
+        #expect(!drained)
+        await gate.finish("1", with: 99)
+        await waiting?.value
+        #expect(drained && loader.value == 2)
+        loader.request(source: loader.source, isEnabled: false, reread: false)
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await loader.waitUntilFinished()
+        #expect(await gate.requested == ["0", "1", "2"])
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func failureRetriesOnlyOnAnotherRequestAndSuccessfulEmptyIsReusable() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Result<[Int], CocoaError>>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .cancel, source: "fixed") { _, _ in
+            try await gate.read("value").get()
+        }
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await gate.waitForRequest("value"); await gate.finish("value", with: .success([1]))
+        await loader.waitUntilFinished()
+        loader.request(source: loader.source, isEnabled: true, reread: true)
+        await gate.waitForRequest("value", count: 2)
+        await gate.finish("value", with: .failure(CocoaError(.fileReadUnknown)))
+        await loader.waitUntilFinished()
+        #expect(loader.value == [1])
+        #expect(await gate.requested.count == 2)
+        loader.request(source: loader.source, isEnabled: false, reread: false)
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await gate.waitForRequest("value", count: 3)
+        await gate.finish("value", with: .success([])); await loader.waitUntilFinished()
+        loader.request(source: loader.source, isEnabled: false, reread: false)
+        loader.request(source: loader.source, isEnabled: true, reread: false)
+        await loader.waitUntilFinished()
+        #expect(loader.value == [])
+        #expect(await gate.requested.count == 3)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func replacementDuringPublicationKeepsItsQueuedRefresh() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "a") { source, _ in
+            await gate.read(source + String(await numbers.next()))
+        }
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { _ in
+            MainActor.assumeIsolated {
+                loader.request(source: "b", isEnabled: true, reread: false)
+                loader.request(source: "b", isEnabled: true, reread: true)
+            }
+        }
+        loader.request(source: "a", isEnabled: true, reread: false)
+        await gate.waitForRequest("a0"); await gate.finish("a0", with: 1)
+        await gate.waitForRequest("b1"); await gate.finish("b1", with: 2)
+        await gate.waitForRequest("b2"); await gate.finish("b2", with: 3)
+        await loader.waitUntilFinished()
+        #expect(loader.source == "b" && loader.value == 3)
+        #expect(await gate.requested == ["a0", "b1", "b2"])
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func replacementClearsImmediatelyAndRetiredReadsStayOwned() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
-        let loader = RefreshLoader(work: work, priority: .utility, source: "a") { source, _ in
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "a") { source, _ in
             await gate.read(source + String(await numbers.next()))
         }
         loader.request(source: "a", isEnabled: true, reread: false)
@@ -36,7 +116,7 @@ struct RefreshLoaderTests {
 
     @Test(.timeLimit(.minutes(1))) func failedReadRetainsButSuccessfulEmptyAndSourceRemovalClear() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Result<[Int], CocoaError>>()
-        let loader = RefreshLoader(work: work, priority: .utility, source: "a") { source, _ in
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "a") { source, _ in
             try await gate.read(source).get()
         }
         loader.request(source: "a", isEnabled: true, reread: false)
@@ -57,7 +137,7 @@ struct RefreshLoaderTests {
 
     @Test(.timeLimit(.minutes(1))) func refreshesCoalesceAndHiddenInvalidationSurvives() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
-        let loader = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("value") }
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("value") }
         loader.request(source: loader.source, isEnabled: true, reread: false)
         await gate.waitForRequest("value")
         loader.request(source: loader.source, isEnabled: true, reread: true)
@@ -85,7 +165,7 @@ struct RefreshLoaderTests {
 
     @Test(.timeLimit(.minutes(1))) func aCancelledWaiterDoesNotCancelTheSharedRead() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
-        let loader = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("value") }
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("value") }
         loader.request(source: loader.source, isEnabled: true, reread: false)
         await gate.waitForRequest("value")
         var waiter: Task<Void, Never>?
@@ -107,8 +187,8 @@ struct RefreshLoaderTests {
 
     @Test(.timeLimit(.minutes(1))) func closingOneLoaderKeepsItsSiblingAndRejectsLateResults() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
-        let first = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("first") }
-        let second = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("second") }
+        let first = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("first") }
+        let second = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("second") }
         first.request(source: first.source, isEnabled: true, reread: false)
         second.request(source: second.source, isEnabled: true, reread: false)
         await gate.waitForRequest("first")
@@ -131,7 +211,7 @@ struct RefreshLoaderTests {
     @Test(.timeLimit(.minutes(1))) func closingBeforeEntryStillDrainsTheLoader() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
         await gate.releaseAllAndFuture(with: 1)
-        let loader = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("value") }
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("value") }
         loader.request(source: loader.source, isEnabled: true, reread: false)
         loader.close()
         await loader.waitUntilFinished()
@@ -169,7 +249,7 @@ struct RefreshLoaderTests {
 
     @Test(.timeLimit(.minutes(1))) func hidingDuringAReadDefersItsQueuedRefreshUntilShown() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
-        let loader = RefreshLoader(work: work, priority: .utility, source: "fixed") { _, _ in await gate.read("value") }
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("value") }
         loader.request(source: loader.source, isEnabled: true, reread: false)
         await gate.waitForRequest("value")
         loader.request(source: loader.source, isEnabled: true, reread: true)
@@ -196,7 +276,7 @@ struct RefreshLoaderTests {
                                        watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()
         let gate = AsyncReadGate<Int>()
-        let loader = RefreshLoader(work: resources.backgroundWork, priority: .utility, source: "fixed") { _, _ in await gate.read("value") }
+        let loader = RefreshLoader(work: resources.backgroundWork, priority: .utility, whenInactive: .finish, source: "fixed") { _, _ in await gate.read("value") }
         loader.request(source: loader.source, isEnabled: true, reread: false)
         await gate.waitForRequest("value")
         loader.request(source: loader.source, isEnabled: true, reread: true)

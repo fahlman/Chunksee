@@ -74,7 +74,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: 1)
         let bounds = CGRect(x: -24, y: -8, width: 48, height: 32)
@@ -153,7 +153,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            regionConcurrency: 1, chunkConcurrency: 1, heightScale: scale)
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)

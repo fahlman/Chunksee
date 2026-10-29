@@ -85,7 +85,8 @@ final class HeatMapLayer {
     }
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
     init(reader: RegionReader?, work: BackgroundWork) {
-        loader = RefreshLoader(work: work, priority: .userInitiated, source: Source(reader: reader)) { source, previous in
+        loader = RefreshLoader(work: work, priority: .userInitiated, whenInactive: .finish,
+                               source: Source(reader: reader)) { source, previous in
             guard let reader = source.reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }

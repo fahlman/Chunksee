@@ -39,7 +39,8 @@ final class MapModel {
     private var shadowsNeedUpdate = false
     private(set) var blockFilter = MapBlockFilter()
     private(set) var showsDarkSpots = false
-    private(set) var nightLighting: MonsterSpawnLight?
+    @ObservationIgnored private let readNightLighting: @MainActor () -> MonsterSpawnLight?
+    var nightLighting: MonsterSpawnLight? { isClosed ? nil : readNightLighting() }
     var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
     private(set) var heightScale: MapHeightScale?
 
@@ -102,6 +103,7 @@ final class MapModel {
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
     init(savedLighting: @escaping @MainActor () -> MapLighting?,
+         nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
          work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
@@ -115,6 +117,7 @@ final class MapModel {
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
         readSavedLighting = savedLighting
+        readNightLighting = nightLighting
         renderWork = work.makeScope()
         cacheWork = work.makeScope()
         readoutWork = work.makeScope()
@@ -136,7 +139,7 @@ final class MapModel {
                                            cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
-        observeSavedLighting()
+        observeLighting()
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
@@ -418,7 +421,6 @@ final class MapModel {
         gameData = nil
         gameArtwork = nil
         biomeColors = nil
-        nightLighting = nil
     }
 
     // MARK: Close-up terrain
@@ -760,12 +762,6 @@ final class MapModel {
         surfaceChanged(coordinatesChanged: false)
     }
 
-    func setNightLighting(_ value: MonsterSpawnLight?) {
-        guard !isClosed, nightLighting != value else { return }
-        nightLighting = value
-        if showsDarkSpots { surfaceChanged(coordinatesChanged: false) }
-    }
-
     private func resetTopBlockReads() {
         readoutWork.cancel()
         activeTopBlockReads = [:]
@@ -797,13 +793,20 @@ final class MapModel {
     /// The world owns the publication; the map only observes it and invalidates its drawing work.
     /// Its loader and test publications are main-actor isolated. didSet runs on that setter's
     /// actor, so synchronous invalidation needs neither an unowned task nor a second fact copy.
-    private func observeSavedLighting() {
+    private func observeLighting() {
         guard !isClosed else { return }
-        let previous = savedLighting
-        withObservationTracking(options: [.didSet]) { _ = savedLighting } onChange: { [weak self] _ in
+        let previous = savedLighting, previousNight = nightLighting
+        withObservationTracking(options: [.didSet]) {
+            _ = savedLighting
+            _ = nightLighting
+        } onChange: { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.isClosed else { return }
-                self.observeSavedLighting()
+                self.observeLighting()
+                if previousNight != self.nightLighting, self.showsDarkSpots {
+                    self.surfaceChanged(coordinatesChanged: false)
+                    return
+                }
                 guard previous != self.savedLighting else { return }
                 let prepared = self.lighting(using: previous) != nil
                 let previousLight = self.shadowLight(using: previous)

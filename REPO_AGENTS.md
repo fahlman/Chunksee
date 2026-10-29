@@ -686,8 +686,9 @@ library clears incompatible lighting before reading, including a new archive und
 generation. Source replacement and world close reject late reads; save-only lighting still loads
 without game files. No app-side timeline tables or clock simulation exist. No-skylight or unsupported
 dimensions retain Daylight; a custom skylit fixed-time type uses its own saved attributes.
-MapModel requires a main-actor saved-lighting accessor and observes the world's publication with
-Observation's didSet tracking. The loader and all supplied publications mutate only on the main
+MapModel requires main-actor accessors for saved lighting and optional night lighting and observes
+the world's independent publications with Observation's didSet tracking. The loaders and all supplied
+publications mutate only on the main
 actor, so the callback's actor assertion is safe and invalidates drawing work synchronously after
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
@@ -1162,7 +1163,11 @@ It holds that document's reader as the declared source of a RefreshLoader. The l
 pending pass and reread flag; no mutable dimension selector or per-dimension store is kept inside
 the layer. Hidden invalidation waits until shown, while an already running read may finish.
 RefreshLoader coalesces saves during a pass, retains the previous value after a failed read and
-publishes successful empty values. Source replacement clears incompatible values and cancels old
+publishes successful empty values. Failure remains invalidated for the next request without starting
+a retry loop. Each loader declares whether an inactive read finishes or cancels: Time Spent keeps
+its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last
+coherent value and defers the interrupted refresh until demand returns; hiding a clean completed
+publication does not invalidate it. Source replacement clears incompatible values and cancels old
 work; its one active-read identity rejects late completions even when a source is selected again.
 The loader's BackgroundWork scope retains retired reads until they drain and rejects results after
 its own or its world's close. Heat-map reader replacement uses this same contract, without retiring
@@ -1402,11 +1407,16 @@ Surface/cutaway bucket. The stable filter hash is computed only when choices cha
 filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
 highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
 
-Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag and optional
-resolved nighttime rule; WorldSession persists only the flag through LayerVisibility. WorldResources
-shares one cancellable metadata read across interested tabs, using ChunkseeKit's published
-World.nightMonsterLighting. Hidden layers start no read; the last hidden/closed tab cancels pending
-metadata, and generation/asset identities reject stale results. No game light rule is repeated here.
+Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag; WorldSession persists it
+through LayerVisibility. WorldResources owns one optional night-lighting RefreshLoader, keyed by
+Minecraft-folder generation and game-data library identity, using ChunkseeKit's published
+World.nightMonsterLighting. Maps observe their dimension's rule directly from that publication;
+there is no editable map copy or manual push. Closed maps expose no rule while siblings may keep
+the world alive. Hidden layers start no read; the last hidden/closed tab cancels pending metadata,
+while a sibling's demand keeps it alive. Same-source saves coalesce, failures retain good rules and
+successful empty reads clear them. Replacement clears incompatible rules for existing and newly
+opened dimensions; canceled results cannot publish even after the same source is chosen again.
+Artwork policy does not change gameplay-light demand or source identity. No game light rule is repeated here.
 RegionTileRenderer keeps the ordinary terrain profile while the layer is off; when enabled and a rule
 is available, it uses the shared terrain/light profile and samples the block above each displayed
 surface during the same decode. The layer indicates only whether ordinary monsters can pass the
