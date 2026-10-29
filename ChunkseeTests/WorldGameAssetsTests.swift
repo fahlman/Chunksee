@@ -8,6 +8,51 @@ import Synchronization
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldGameAssetsTests {
+    @Test func sourceChangesDoNotMultiplyMapRenderRequests() async throws {
+        let game = try artworkFixture()
+        let section = Fixtures.section(y: 0, palette: [.string("minecraft:stone")], biomes: ["test:sample"])
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+                                sections: [section], extra: ["yPos": .int(0)]))])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(World(contentsOf: root).dimension("overworld"))
+        let resources = try await resources(root, game: game)
+        let session = WorldSession(resources: resources)
+        await resources.waitForRefresh()
+        let drawings = Mutex<[MapGameResources.Identity]>([])
+        let map = MapModel(gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
+            work: resources.backgroundWork, dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
+                let identity = MapGameResources(data: renderer.gameData, artwork: renderer.gameArtwork,
+                                                biomeColors: renderer.biomeColors).identity
+                drawings.withLock { $0.append(identity) }
+                return try await renderer.tile(for: region)
+            })
+        map.viewport.scale = 1
+        map.requestTiles(visibleIn: CGSize(width: 1, height: 1), displayScale: 1)
+        await map.waitUntilIdle(); await map.waitForRenders()
+        for _ in 0..<3 {
+            for available in [false, true] {
+                drawings.withLock { $0.removeAll() }
+                if available { resources.names.minecraft.choose(game.root) }
+                else { resources.names.minecraft.forget() }
+                await resources.waitForRefresh()
+                await resources.backgroundWork.waitUntilFinished()
+                await map.waitUntilIdle(); await map.waitForRenders()
+                let actual = drawings.withLock { $0 }
+                let distinct = actual.reduce(into: [MapGameResources.Identity]()) { values, value in
+                    if !values.contains(value) { values.append(value) }
+                }
+                #expect(!actual.isEmpty)
+                #expect(actual.count == distinct.count,
+                        "One source transition must not restart the same map drawing through duplicate observers")
+                #expect((map.currentRenderer.gameData != nil) == available)
+            }
+        }
+        map.close(); session.close(); resources.close()
+        await resources.waitUntilClosed()
+        resources.names.minecraft.forget(); await resources.names.minecraft.waitUntilIdle()
+    }
+
     @Test func preparedAssetsSurviveOverlappingRefreshesAndPublishProgress() async throws {
         let game = try artworkFixture(), root = try TestWorld.make(chunks: [])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }

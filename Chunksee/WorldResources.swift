@@ -324,15 +324,25 @@ final class WorldResources {
             MainActor.assumeIsolated {
                 guard let self, !self.isClosed else { return }
                 self.observeGameAssets()
-                if source != self.assetLoader.source || identity != self.assetLoader.value?.library?.identity {
-                    self.refreshGameLanguage()
-                    self.refreshBiomeColors(reload: true)
-                    self.refreshNightLighting(reread: true)
-                    self.refreshLighting()
-                    self.refreshDefinitions()
-                } else if self.assetLoader.value != nil {
-                    // A newly installed language object need not change the selected jar.
-                    self.refreshGameLanguage(reload: true)
+                let currentSource = self.assetLoader.source
+                let currentIdentity = self.assetLoader.value?.library?.identity
+                let completed = self.assetLoader.value != nil
+                // Mutating dependent publications inside this notification can deliver the
+                // same map observation twice. Drain delivery before requesting those reads.
+                self.assetLoader.work.start(priority: .utility) { [weak self] in
+                    guard !Task.isCancelled, let self, !self.isClosed,
+                          self.assetLoader.source == currentSource,
+                          self.assetLoader.value?.library?.identity == currentIdentity else { return }
+                    if source != currentSource || identity != currentIdentity {
+                        self.refreshGameLanguage()
+                        self.refreshBiomeColors(reload: true)
+                        self.refreshNightLighting(reread: true)
+                        self.refreshLighting()
+                        self.refreshDefinitions()
+                    } else if completed {
+                        // A newly installed language object need not change the selected jar.
+                        self.refreshGameLanguage(reload: true)
+                    }
                 }
             }
         }

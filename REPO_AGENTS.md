@@ -1641,9 +1641,12 @@ fallback on unavailable files. A missing installed-versions directory is success
 another directory-read error is a failure. The selection and archive cache still have one owner.
 WorldResources observes each source/selection publication to refresh dependent definitions,
 lighting, colors and names even when every tab is hidden. A completed same-library selection
-rechecks language objects without reloading unrelated definitions or colors. View environment
-values derive from that publication, so first
-load and archive replacement update visible item pictures without another scene event. Returning to an active scene rechecks
+rechecks language objects without reloading unrelated definitions or colors.
+Dependent refreshes run after the asset notification returns, within the loader's existing work
+scope; source replacement cancels them and obsolete identities are rejected. This avoids nested
+publication notifications registering duplicate map observers and repeating drawing work.
+View environment values derive from that publication, so first load and archive replacement
+update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
