@@ -154,7 +154,7 @@ enum WorldOpenError: LocalizedError, Equatable {
     var failureReason: String? {
         switch self {
         case .notAWorld, .notADimension:
-            String(localized: "That folder isn’t a Minecraft world.")
+            String(localized: "Chunksee can’t read this folder as a world.")
         case .needsWorldFolder:
             String(localized: "Chunksee can’t see the world this dimension belongs to.")
         case .unreadable:
@@ -165,7 +165,7 @@ enum WorldOpenError: LocalizedError, Equatable {
     var recoverySuggestion: String? {
         switch self {
         case .notAWorld, .notADimension:
-            String(localized: "Choose a world’s folder inside your saves folder.")
+            String(localized: "Open the world’s folder inside your saves folder.")
         case .needsWorldFolder:
             String(localized: "Open the world’s folder, inside your saves folder, instead.")
         case .unreadable:
