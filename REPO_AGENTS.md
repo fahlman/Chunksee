@@ -472,7 +472,7 @@ older scan envelopes.
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
-| `WorldResources.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
+| `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
 | `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift`, `MapShadow.swift` | Full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
@@ -590,6 +590,13 @@ the last canceled requester cancels it, and generations protect a replacement re
 completion. There is no separate completed metadata cache or timeout. Closing all sessions and
 openings drains the world's work, and reopening rereads it. File access is never released through
 a sibling's raw token. Metadata and resolved dimension-document paths are read off-main.
+Before constructing region readers, WorldPreparation loads the selected game library and interprets
+the opening definitions and dependent players together. A source change during this read discards
+the retired result and prepares the current source; cancellation cannot publish late work. AppModel
+rechecks for a shared open world after awaiting preparation. Initial readers therefore use the same
+complete scan options as later unchanged refreshes and reopens, preserving the region-facts cache.
+Preparation does not wait for biome colors or artwork, and removing the game folder retains the
+definitions readable from the save. Fresh dimension additions use the same preparation boundary.
 Existing-document rereads and native moves keep fresh coordinated reads. An unknown path in a
 live catalog also goes through fresh validation. A fresh snapshot can add newly created dimensions
 to the open world's catalog without replacing existing readers, maps or tab state. WorldIndexStore

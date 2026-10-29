@@ -300,7 +300,7 @@ import Testing
         defer { fixture.remove() }
         let url = try world(), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
@@ -338,7 +338,7 @@ import Testing
         let url = try world(), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
         try pack(at: url, grass: 0xff0000)
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
@@ -615,7 +615,7 @@ import Testing
         defer { fixture.remove() }
         let url = try world(seed: 0), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))

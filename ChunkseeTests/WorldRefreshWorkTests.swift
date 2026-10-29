@@ -7,7 +7,7 @@ import Testing
 struct WorldRefreshWorkTests {
     private func makeResources() async throws -> (URL, WorldResources) {
         let url = try TestWorld.make(chunks: []), defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()

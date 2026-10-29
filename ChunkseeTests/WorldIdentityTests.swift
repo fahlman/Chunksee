@@ -60,7 +60,7 @@ import Testing
         defer { for url in [original, moved] { try? FileManager.default.removeItem(at: url) } }
         try FileManager.default.createDirectory(at: original.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
-        let old = try WorldResources(snapshot: try await WorldSnapshot.read(original), names: PlayerNames(defaults: defaults),
+        let old = try await WorldResources(snapshot: try await WorldSnapshot.read(original), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         var live = [old]
         defer { live.forEach { $0.close() } }
@@ -78,7 +78,7 @@ import Testing
         guard case .dimension(let first) = try await reader.readFolder(moved.appendingPathComponent("dimensions/minecraft/overworld")) else {
             Issue.record("Moved dimension was not read as a document"); return
         }
-        let restored = try first.makeSession(in: model)
+        let restored = try await first.makeSession(in: model)
         live.append(restored.resources)
         #expect(restored.resources !== old && restored.resources.settings.worldID == old.settings.worldID)
         #expect(restored.map?.viewport == view && restored.map?.depth == MapDepth(y: 48, isSurface: false))
@@ -91,7 +91,7 @@ import Testing
         guard case .dimension(let second) = try await reader.readFolder(moved.appendingPathComponent("dimensions/minecraft/the_nether")) else {
             Issue.record("Moved sibling was not read as a document"); return
         }
-        let restoredNether = try second.makeSession(in: model)
+        let restoredNether = try await second.makeSession(in: model)
         #expect(restoredNether.resources === restored.resources)
         #expect(restoredNether.map?.viewport == netherView && restoredNether.visibility.creatures.isEmpty)
         #expect(restored.savedPlaces.all == [place])

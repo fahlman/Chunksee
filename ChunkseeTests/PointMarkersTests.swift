@@ -186,7 +186,7 @@ import SwiftUI
         try Data(TestWorld.regionFile([spec])).write(to: nether.appendingPathComponent("r.0.0.mca"))
         let state = MovingMarkers()
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { dimension, _, options in try await state.read(dimension.id, options: options) })
         resources.refreshDelay = .zero

@@ -37,7 +37,7 @@ import Testing
 
     private func resources(_ root: URL) async throws -> WorldResources {
         let defaults = TestDefaults.make()
-        let result = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+        let result = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root.appendingPathComponent("test-cache"),
             watchWorld: { _, _ in nil })
         result.refreshDelay = .zero

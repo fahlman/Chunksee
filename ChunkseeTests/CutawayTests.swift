@@ -205,7 +205,7 @@ import SwiftUI
     @Test func sessionsRestoreTheirOwnHeightAndSurfaceState() async throws {
         try await withFixture { f in
             try FileManager.default.createDirectory(at: f.url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(f.url), names: PlayerNames(defaults: f.defaults),
+            let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(f.url), names: PlayerNames(defaults: f.defaults),
                 savedSearches: SavedSearches(defaults: f.defaults), defaults: f.defaults, cacheRoot: nil)
             f.resources.append(resources)
             let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")

@@ -30,7 +30,7 @@ import Testing
         }
 
         func open() async throws -> WorldResources {
-            let opened = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            let opened = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                 savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
             resources = opened
             return opened
@@ -120,7 +120,7 @@ import Testing
             try f.dimension("example:deep")
             try f.metadata(["minecraft:overworld": .string("minecraft:the_nether"), "example:deep": deepType])
             let fresh = try await WorldSnapshot.read(f.url)
-            resources.includeDimensions(from: fresh)
+            try await resources.includeDimensions(from: fresh)
             fresh.access.release()
             let added = f.session(in: resources, dimensionID: "example:deep")
             #expect(added.map != nil && added.presentation.heightRange == -128...127)

@@ -113,7 +113,7 @@ enum StructureTagFixture {
         }
         try write(#"{"replace":true,"values":["test:hill_fort"]}"#)
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root.appendingPathComponent("test-cache"),
             watchWorld: { _, _ in nil })
         resources.refreshDelay = .zero

@@ -42,7 +42,7 @@ enum GameNameFixture {
     private func resources(_ root: URL, game: ItemPictureFixture) async throws -> WorldResources {
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
         names.minecraft.choose(game.root)
-        return try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+        return try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
             watchWorld: { _, _ in nil })
     }
@@ -251,12 +251,14 @@ enum GameNameFixture {
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let world = try await resources(root, game: game), gate = AsyncReadGate<GameLanguage?>()
         defer { world.close() }
+        await world.waitForRefresh()
         let library = try game.library()
         let english = await library.data.language("en_US", minecraftDirectory: game.root)
         let french = await library.data.language("fr_FR", minecraftDirectory: game.root)
         world.readLanguage = { _, locale, _ in await gate.read(locale) }
-        world.refreshGameLanguage(preferredLanguage: "en_US")
-        world.refreshGameAssets()
+        // The opening already has its game source. Hold an explicit language reread without
+        // introducing an unrelated game-source refresh that could start another language pass.
+        world.refreshGameLanguage(preferredLanguage: "en_US", reload: true)
         await gate.waitForRequest("en_US")
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
         await gate.waitForRequest("fr_FR")

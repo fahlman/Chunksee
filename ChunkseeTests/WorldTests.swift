@@ -68,7 +68,7 @@ import Testing
         let snapshot = WorldSnapshot(access: original.access, world: original.world, dimensions: original.dimensions,
                                      dimensionDocuments: original.dimensionDocuments, players: [player(unknownID, knownDimension: false), player(localID, knownDimension: true)], details: original.details)
         let defaults = TestDefaults.make()
-        let session = try WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
+        let session = try await WorldSession(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         session.search.text = "diamond"
         await session.search.waitForSearch()

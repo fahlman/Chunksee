@@ -55,7 +55,7 @@ import Testing
             try Fixtures.writeGzippedNBT(data, to: playerDirectory.appendingPathComponent(uuid.uuidString.lowercased() + ".dat"))
         }
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let overworld = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let nether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")

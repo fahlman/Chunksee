@@ -18,7 +18,7 @@ import Testing
             let url = try TestWorld.make(chunks: [])
             worlds.append(url)
             try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
-            let world = try model.resources(for: try await WorldSnapshot.read(url))
+            let world = try await model.resources(for: try await WorldSnapshot.read(url))
             resources.append(world)
             let overworld = WorldSession(resources: world, dimensionID: "minecraft:overworld")
             let nether = WorldSession(resources: world, dimensionID: "minecraft:the_nether")

@@ -1,3 +1,4 @@
+import ChunkseeKit
 import Foundation
 import Observation
 
@@ -13,6 +14,7 @@ final class AppModel {
     private let defaults: UserDefaults
     private let cacheRoot: URL?
     private let readWorld: @Sendable (URL) async throws -> WorldSnapshot
+    private let readRegion: RegionReader.Read
 
     /// Readers waiting for initial metadata; returned snapshots hold their own opening instead.
     var openingRequestCount: Int { openingReads.values.reduce(0) { $0 + $1.requests.count } }
@@ -29,10 +31,12 @@ final class AppModel {
     }
 
     init(defaults: UserDefaults, cacheRoot: URL?,
-         readWorld: @escaping @Sendable (URL) async throws -> WorldSnapshot = { try await WorldSnapshot.read($0) }) {
+         readWorld: @escaping @Sendable (URL) async throws -> WorldSnapshot = { try await WorldSnapshot.read($0) },
+         readRegion: @escaping RegionReader.Read = RegionReader.scan) {
         self.defaults = defaults
         self.cacheRoot = cacheRoot
         self.readWorld = readWorld
+        self.readRegion = readRegion
         // The old window model's bookmarks cannot serve native document restoration.
         for key in ["openWorlds", "recentWorlds", "lastWorldBookmark"] {
             defaults.removeObject(forKey: key)
@@ -43,17 +47,29 @@ final class AppModel {
     }
 
     /// The open resources of a snapshot's world, which its other dimensions share, or new ones.
-    func resources(for snapshot: WorldSnapshot, folder: WorldFolders.Folder) -> WorldResources {
+    func resources(for snapshot: WorldSnapshot, folder: WorldFolders.Folder) async throws -> WorldResources {
+        var adopted = false
+        defer { if !adopted { snapshot.access.release() } }
+        try Task.checkCancellation()
         openWorlds = openWorlds.filter { $0.value.value.map { !$0.isClosed } ?? false }
         let key = snapshot.access.url.resolvingSymlinksInPath().path
-        if let open = openWorlds[key]?.value {
-            open.includeDimensions(from: snapshot)
-            snapshot.access.release()
+        if let open = openWorlds[key]?.value,
+           Set(snapshot.dimensions.map(\.id)).isSubset(of: Set(open.dimensions.map(\.id))) {
             return open
         }
-        let resources = WorldResources(snapshot: snapshot, names: names, savedSearches: savedSearches,
-                                       settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot)
+        let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
+        try Task.checkCancellation()
+        // Another document may have finished opening this world while game data was loading.
+        // Reuse it before creating any readers or starting another index.
+        if let open = openWorlds[key]?.value, !open.isClosed {
+            open.includeDimensions(from: prepared)
+            return open
+        }
+        let resources = WorldResources(prepared: prepared, names: names, savedSearches: savedSearches,
+                                       settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot,
+                                       readRegion: readRegion)
         openWorlds[key] = WeakResources(resources)
+        adopted = true
         return resources
     }
 
@@ -104,7 +120,7 @@ final class AppModel {
                     guard waiting.requests.values.contains(where: { paths.contains($0.path) }) else { throw WorldOpenError.notADimension }
                 }
                 catch { snapshot.access.release(); throw error }
-                return try self.resources(for: snapshot, folder: folder).opening()
+                return try await self.resources(for: snapshot, folder: folder).opening()
             }
             pending = OpeningRead(id: id, task: task)
             openingReads[key] = pending

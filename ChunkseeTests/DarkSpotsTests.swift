@@ -162,7 +162,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()
         let gate = AsyncReadGate<[String: MonsterSpawnLight]>()

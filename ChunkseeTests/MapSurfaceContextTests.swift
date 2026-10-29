@@ -177,7 +177,7 @@ import Testing
 
     private func checkViews(_ url: URL, expected: [(String, Int, String, String)]) async throws {
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         var sessions: [WorldSession] = []
         func close() async {

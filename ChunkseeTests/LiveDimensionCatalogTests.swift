@@ -27,7 +27,7 @@ import Testing
         func open(_ document: URL) async throws -> WorldSession {
             let reader = WorldDocument.Reader(folders: model.worldFolders, model: model)
             guard case .dimension(let snapshot) = try await reader.readFolder(document) else { throw WorldOpenError.notADimension }
-            let session = try snapshot.makeSession(in: model)
+            let session = try await snapshot.makeSession(in: model)
             sessions.append(session)
             return session
         }
@@ -49,7 +49,7 @@ import Testing
 
         func blockedIndex() async throws -> (WorldResources, AsyncReadGate<RegionFacts>, Reads) {
             let gate = AsyncReadGate<RegionFacts>(), calls = Reads()
-            let resource = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
+            let resource = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: model.names,
                 savedSearches: model.savedSearches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region, options in
                     let count = await calls.next(dimension.id)
                     if dimension.id == "minecraft:overworld", count == 0 { return await gate.read("overworld") }
@@ -121,7 +121,7 @@ import Testing
             let second = try await secondTask.value, third = try await thirdTask.value
             #expect(second.map != nil && third.map != nil)
             #expect(second.resources === resources && third.resources === resources)
-            #expect(try f.model.resources(for: oldSnapshot) === resources)
+            #expect(try await f.model.resources(for: oldSnapshot) === resources)
             #expect(Set(resources.dimensions.map(\.id)) == ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"])
             #expect(resources.readers["minecraft:overworld"] === oldReader)
             await resources.index.waitForIndex()
@@ -139,7 +139,7 @@ import Testing
             for name in ["the_nether", "the_end"] {
                 _ = try f.addDimension(name)
                 let snapshot = try await WorldSnapshot.read(f.url)
-                resources.includeDimensions(from: snapshot)
+                try await resources.includeDimensions(from: snapshot)
                 snapshot.access.release()
             }
             #expect(resources.readers.count == 3 && resources.readers["minecraft:overworld"] === oldReader)
@@ -158,7 +158,7 @@ import Testing
             let (resources, gate, calls) = try await f.blockedIndex()
             _ = try f.addDimension("the_nether")
             let snapshot = try await WorldSnapshot.read(f.url)
-            resources.includeDimensions(from: snapshot)
+            try await resources.includeDimensions(from: snapshot)
             snapshot.access.release()
             resources.close()
             await gate.waitForCancellation("overworld")
@@ -169,7 +169,7 @@ import Testing
 
             _ = try f.addDimension("the_end")
             let afterClose = try await WorldSnapshot.read(f.url)
-            resources.includeDimensions(from: afterClose)
+            try await resources.includeDimensions(from: afterClose)
             afterClose.access.release()
             #expect(resources.isClosed && resources.readers.count == 2)
         }

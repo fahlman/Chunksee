@@ -60,8 +60,8 @@ import Testing
             return snapshot
         }
 
-        func attach(_ snapshot: DimensionSnapshot) throws -> WorldSession {
-            let session = try snapshot.makeSession(in: model)
+        func attach(_ snapshot: DimensionSnapshot) async throws -> WorldSession {
+            let session = try await snapshot.makeSession(in: model)
             sessions.append(session)
             resources.append(session.resources)
             return session
@@ -106,7 +106,7 @@ import Testing
             var snapshots: [DimensionSnapshot] = []
             for url in f.documents {
                 let snapshot = try await f.read(url)
-                let session = try f.attach(snapshot)
+                let session = try await f.attach(snapshot)
                 snapshots.append(snapshot)
                 #expect(session.players.count == 1 && session.resources.details.maps.map(\.id) == [3])
                 #expect(session.resources.dimensions.count == 3 && session.selectedDimensionID == snapshot.dimensionID)
@@ -127,7 +127,7 @@ import Testing
             }
             try f.writePlayer(health: 9)
             let reopened = try await f.read(f.documents[0])
-            let next = try f.attach(reopened)
+            let next = try await f.attach(reopened)
             #expect(next.resources !== resource && next.players.first?.health == 9)
             #expect(await f.probe.count == 2)
         }
@@ -143,7 +143,7 @@ import Testing
             await f.probe.release(1)
             await #expect(throws: CancellationError.self) { try await tasks[0].value }
             for task in tasks.dropFirst() {
-                let session = try f.attach(try await task.value)
+                let session = try await f.attach(try await task.value)
                 #expect(session.players.count == 1 && session.resources.details.maps.count == 1)
             }
             #expect(await f.probe.count == 1)
@@ -165,7 +165,7 @@ import Testing
             await #expect(throws: CancellationError.self) { try await old.value }
             #expect(f.model.openingRequestCount == 1)
             await f.probe.release(2)
-            let session = try f.attach(try await replacement.value)
+            let session = try await f.attach(try await replacement.value)
             #expect(!session.resources.isClosed && session.players.count == 1)
             #expect(await f.probe.count == 2)
         }
@@ -173,13 +173,13 @@ import Testing
 
     @Test func aPendingDocumentKeepsAccessWhenThePreviousLastSessionCloses() async throws {
         try await withFixture { f in
-            let first = try f.attach(try await f.read(f.documents[0]))
+            let first = try await f.attach(try await f.read(f.documents[0]))
             let pending = try await f.read(f.documents[1])
             let resource = first.resources
             first.close()
             await first.waitUntilClosed()
             #expect(!resource.isClosed)
-            let second = try f.attach(pending)
+            let second = try await f.attach(pending)
             #expect(second.resources === resource && second.map != nil)
             second.close()
             await second.waitUntilClosed()
@@ -217,7 +217,7 @@ import Testing
             let reader = WorldDocument.Reader(folders: f.model.worldFolders, model: f.model,
                                                reuseOpenWorld: { f.sessions.isEmpty })
             guard case .dimension(let initial) = try await reader.readFolder(f.documents[0]) else { Issue.record("Missing dimension"); return }
-            let session = try f.attach(initial)
+            let session = try await f.attach(initial)
             #expect(await f.probe.count == 2)
             try f.writePlayer(health: 9)
             guard case .dimension(let fresh) = try await reader.readFolder(f.documents[0]),
@@ -245,12 +245,12 @@ import Testing
         do {
             try second.writePlayer(health: 7)
             try first.model.worldFolders.remember(second.url)
-            let one = try first.attach(try await first.read(first.documents[0]))
-            let two = try first.attach(try await first.read(second.documents[0]))
+            let one = try await first.attach(try await first.read(first.documents[0]))
+            let two = try await first.attach(try await first.read(second.documents[0]))
             #expect(one.resources !== two.resources)
             #expect(one.players.first?.health == 20 && two.players.first?.health == 7)
             let late = try await first.read(first.documents[1])
-            let sibling = try first.attach(late)
+            let sibling = try await first.attach(late)
             #expect(sibling.resources === one.resources)
             #expect(await first.probe.count == 2)
         } catch {
@@ -262,7 +262,7 @@ import Testing
 
     @Test func aliasesUseResolvedIdentityAndUnknownLiveCatalogPathsStillGetFreshValidation() async throws {
         try await withFixture { f in
-            let session = try f.attach(try await f.read(f.documents[0]))
+            let session = try await f.attach(try await f.read(f.documents[0]))
             let alias = f.url.appendingPathComponent("Dimension Shortcut")
             try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: f.documents[1])
             let aliased = try await f.read(alias)

@@ -191,7 +191,7 @@ import Testing
             ])
             defer { try? FileManager.default.removeItem(at: root) }
             let defaults = TestDefaults.make()
-            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
                 savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
             let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
             let session = WorldSession(resources: resources, renderTile: { renderer, _ in

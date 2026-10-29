@@ -68,7 +68,7 @@ import Testing
         _ = try write([chest(2, table: "minecraft:chests/simple_dungeon")], entities: [cart(4), cart(5)], in: url)
         _ = try write([chest(3, table: "example:nether_treasure")], in: url, dimensionID: "minecraft:the_nether")
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults,
                                        cacheRoot: nil, watchWorld: { _, _ in nil })
         let first = WorldSession(resources: resources, dimensionID: overworld)
