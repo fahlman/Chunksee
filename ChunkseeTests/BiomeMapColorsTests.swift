@@ -367,6 +367,7 @@ import Testing
             await gate.releaseAllAndFuture(with: ())
             resources.close(); await resources.waitUntilClosed(); await library.close()
         }
+        var failure: (any Error)?
         do {
             let file = url.appendingPathComponent("datapacks/override/data/test/worldgen/biome/a.json")
             try pack(at: url, grass: 0x0000ff)
@@ -393,10 +394,10 @@ import Testing
             #expect(updated?.biome("test:a").color(.grass, x: 0, z: 0) == 0x800080)
             #expect(await gate.requested == ["0", "1"])
         } catch {
-            await close()
-            throw error
+            failure = error
         }
         await close()
+        if let failure { throw failure }
     }
 
     @Test(.timeLimit(.minutes(1))) func aFailedPackReadRetriesItsContentsOnMetadataAndSuccessfulRemovalClearsColors() async throws {
@@ -407,6 +408,7 @@ import Testing
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         let session = WorldSession(resources: resources)
         func close() async { resources.close(); await resources.waitUntilClosed() }
+        var failure: (any Error)?
         do {
             await resources.waitForRefresh()
             let original = try #require(resources.biomeColors)
@@ -437,10 +439,10 @@ import Testing
             #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == nil)
             #expect(await requests.values == [true, true, false, true])
         } catch {
-            await close()
-            throw error
+            failure = error
         }
         await close()
+        if let failure { throw failure }
     }
 
     private actor ColorRequests {
