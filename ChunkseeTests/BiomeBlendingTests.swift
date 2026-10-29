@@ -130,7 +130,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             renderTile: { renderer, _ in await render.read(String(renderer.blendsBiomeColors)) },
             readTopBlocks: { chunk, _, _ in await columns.read(String(chunk.x)) })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))

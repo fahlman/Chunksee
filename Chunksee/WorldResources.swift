@@ -98,9 +98,20 @@ final class WorldResources {
     @ObservationIgnored var readNightLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
     }
-    private let lightingWork: BackgroundWork.Scope
-    @ObservationIgnored private var lightingReadGeneration = 0
-    @ObservationIgnored private var lighting: [String: MapLighting] = [:]
+    nonisolated private struct LightingSource: Equatable, Sendable {
+        let generation: UUID
+        let library: GameDataLibrary?
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.generation == rhs.generation && lhs.library === rhs.library
+        }
+    }
+    @ObservationIgnored private lazy var lightingLoader = RefreshLoader(
+        work: backgroundWork, priority: nil,
+        source: LightingSource(generation: names.minecraft.generation, library: gameData)
+    ) { [weak self, world] source, _ in
+        guard let read = await self?.readLighting else { throw CancellationError() }
+        return try await read(world, source.library)
+    }
     @ObservationIgnored var readLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
     }
@@ -152,7 +163,6 @@ final class WorldResources {
         assetWork = backgroundWork.makeScope()
         languageWork = backgroundWork.makeScope()
         nightLightWork = backgroundWork.makeScope()
-        lightingWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
         savedVersion = SavedMinecraftVersion(snapshot.world.level)
@@ -238,7 +248,6 @@ final class WorldResources {
         sessions[session.viewID] = WeakSession(session)
         session.map?.setGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
         darkSpotsVisibilityChanged()
-        session.map?.setSavedLighting(session.selectedDimensionID.flatMap { lighting[$0] })
         if let id = session.selectedDimensionID, let pending = pendingActions.removeValue(forKey: id) { pending.action(session) }
     }
 
@@ -255,10 +264,8 @@ final class WorldResources {
         gameAssets = nil
         refreshGameLanguage()
         biomeColors = nil
-        lighting = [:]
         for session in sessions.values.compactMap(\.value) {
             session.map?.setGameResources(data: nil, artwork: nil)
-            session.map?.setSavedLighting(nil)
         }
         refreshBiomeColors(reload: true)
         refreshLighting()
@@ -539,22 +546,14 @@ final class WorldResources {
         }
     }
 
+    func savedLighting(in dimension: String) -> MapLighting? {
+        lightingLoader.value?[dimension]
+    }
+
     private func refreshLighting() {
         guard !isClosed else { return }
-        lightingReadGeneration += 1
-        let generation = lightingReadGeneration, library = gameData, read = readLighting, world = world
-        lightingWork.cancel()
-        lightingWork.start(priority: nil) { [weak self] in
-            let updated = try? await read(world, library)
-            guard !Task.isCancelled, let self, !self.isClosed, generation == self.lightingReadGeneration,
-                  self.gameData?.identity == library?.identity, let updated else { return }
-            // A failed metadata read retains the last good clock. Successful unavailable data
-            // clears it, so deleted packs or definitions cannot leave stale lighting behind.
-            self.lighting = updated
-            for session in self.sessions.values.compactMap(\.value) {
-                session.map?.setSavedLighting(session.selectedDimensionID.flatMap { updated[$0] })
-            }
-        }
+        lightingLoader.request(source: LightingSource(generation: names.minecraft.generation, library: gameData),
+                               isEnabled: true, reread: true)
     }
 
     @concurrent nonisolated static func readNightLighting(_ world: World, library: GameDataLibrary?) async throws -> [String: MonsterSpawnLight] {
@@ -648,7 +647,7 @@ final class WorldResources {
         languageNames = GameNames.unavailable
         biomeColors = nil
         nightLighting = nil
-        lighting = [:]
+        lightingLoader.close()
         let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
@@ -761,7 +760,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingWork, definitionsWork, assetWork, languageWork])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingLoader.work, definitionsWork, assetWork, languageWork])
         await index.waitForProjection()
     }
 

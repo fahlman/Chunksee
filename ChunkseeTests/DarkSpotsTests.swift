@@ -109,7 +109,7 @@ import Testing
         let before = try await RegionTileRenderer(dimension: dimension).tile(for: region)
         let after = try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).tile(for: region)
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.darkSpots == nil ? "off" : "on")
         })
         map.setNightLighting(overlay.rule)
@@ -139,7 +139,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, renderer, _ in
             // Center reads start with the layer; this gate holds only the original copy.
             renderer.darkSpots == nil ? await gate.read("coordinate") : nil
@@ -211,7 +211,8 @@ import Testing
         let root = try world([chunk { x, _, _ in x }])
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
+        let savedLighting = TestSavedLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
         map.viewport = plan.viewport
@@ -219,7 +220,7 @@ import Testing
             let time = try JSONDecoder().decode(DimensionTime.self, from: Data(#"{"has_skylight":true}"#.utf8))
             let saved = try #require(SkyLighting(sunAngle: 180, moonAngle: 0, skyLightFactor: 0.24,
                 skyLightColor: SIMD3(0.48, 0.48, 1), moonPhase: .fullMoon))
-            map.setSavedLighting(MapLighting(saved: saved, time: time))
+            savedLighting.value = MapLighting(saved: saved, time: time)
         }
         map.setNightLighting(overlay.rule)
         map.setDarkSpots(true)
@@ -252,7 +253,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent()) }
         map.setNightLighting(overlay.rule)
@@ -283,7 +284,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })
         map.setNightLighting(overlay.rule)
         map.setDarkSpots(true)
@@ -321,7 +322,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>(), numbers = ReadNumbers()
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in await gate.read(String(await numbers.next())) })
         map.setNightLighting(overlay.rule)
         map.setDarkSpots(true)
@@ -351,7 +352,7 @@ import Testing
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in (file, blocks) })
         defer { map.close() }
         map.setNightLighting(overlay.rule)

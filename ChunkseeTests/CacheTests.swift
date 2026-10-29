@@ -314,7 +314,7 @@ import Testing
     @Test(arguments: [false, true]) func visibleTilesDoNotWaitForCacheButClosingDoes(closeOwner: Bool) async throws {
         try await withFixture { f in
             let gate = f.gate, dimension = try f.dimension(), work = BackgroundWork()
-            let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
+            let map = MapModel(savedLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
                 // Represent an already-started disk operation that completes despite cancellation.
                 await gate.read("write")
                 await operation.store()
@@ -347,7 +347,7 @@ import Testing
     @Test func aDroppedRenderNeverSchedulesItsCacheWrite() async throws {
         try await withFixture { f in
             let gate = f.gate, count = WriteCount()
-            let map = MapModel(work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
+            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
                 writeCache: { operation in await count.note(); await operation.store() }, renderTile: { renderer, region in
                     let tile = try await renderer.tile(for: region)
                     await gate.read("render")

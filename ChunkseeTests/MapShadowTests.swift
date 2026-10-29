@@ -119,19 +119,20 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld")), reads = ReadNumbers()
         let work = BackgroundWork()
-        let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let savedLighting = TestSavedLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, work: work, dimension: dimension, center: CGPoint(x: 4, y: 8),
                            maxTiles: 1, maxPreviews: 1,
                            renderTile: { renderer, region in
                                _ = await reads.next()
                                return try await renderer.tile(for: region)
                            })
-        map.setSavedLighting(try lighting(sun: 0))
+        savedLighting.value = try lighting(sun: 0)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
         #expect(map.shadowImages.isEmpty)
         #expect(await reads.next() == 2) // The visible tile and the offscreen caster, once each.
         let tile = try #require(map.tiles[region])
-        map.setSavedLighting(try lighting(sun: 60))
+        savedLighting.value = try lighting(sun: 60)
         await map.waitUntilIdle()
         let mask = try #require(map.shadowImages[region])
         #expect(try ItemPictureFixture.pixels(mask).color(4, 8)[3] == 255)
@@ -144,10 +145,10 @@ import Testing
         await map.waitUntilIdle()
         #expect(map.shadowImages[region] === mask && map.previews.count == 1)
         #expect(await reads.next() == 4)
-        map.setSavedLighting(try lighting(sun: 60, factor: 0.5))
+        savedLighting.value = try lighting(sun: 60, factor: 0.5)
         #expect(!map.isLoading && map.shadowImages[region] === mask)
         #expect(await reads.next() == 5)
-        map.setSavedLighting(try lighting(sun: 300))
+        savedLighting.value = try lighting(sun: 300)
         #expect(map.isLoading)
         work.close() // Cancel before the background result can return to this actor.
         await map.waitForRenders()
@@ -160,8 +161,9 @@ import Testing
         let url = try borderWorld()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
-        map.setSavedLighting(try lighting(sun: 60))
+        let savedLighting = TestSavedLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
         #expect(map.shadowImages[region] != nil)
@@ -182,8 +184,9 @@ import Testing
         let url = try borderWorld()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
-        map.setSavedLighting(try lighting(sun: 60))
+        let savedLighting = TestSavedLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
         #expect(map.shadowImages[region] != nil)
@@ -207,12 +210,13 @@ import Testing
         var neighborRenderer = RegionTileRenderer(dimension: dimension)
         neighborRenderer.usesSavedLighting = true
         let neighbor = try #require(try await neighborRenderer.tile(for: west))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let savedLighting = TestSavedLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
                            renderTile: { renderer, region in
                                if region == west { return await gate.read("neighbor") }
                                return try await renderer.tile(for: region)
                            })
-        map.setSavedLighting(try lighting(sun: 60))
+        savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await gate.waitForRequest("neighbor")
         map.setCastsShadows(false)
@@ -237,7 +241,10 @@ import Testing
         await resources.waitForRefresh()
         let map = try #require(session.map)
         for saved in [false, true] {
-            map.setSavedLighting(saved ? try lighting(sun: 60) : nil)
+            let lights = saved ? ["minecraft:overworld": try lighting(sun: 60)] : [:]
+            resources.readLighting = { _, _ in lights }
+            resources.worldChanged([url.appendingPathComponent("data/world_clocks.dat")])
+            await resources.waitForRefresh()
             for downsample in [1, 2] {
                 let plan = try MapExportPlan(bounds: CGRect(x: -4, y: 4, width: 16, height: 8), blocksPerPixel: downsample)
                 map.viewport = plan.viewport; map.requestTiles(visibleIn: plan.size, displayScale: 1)
