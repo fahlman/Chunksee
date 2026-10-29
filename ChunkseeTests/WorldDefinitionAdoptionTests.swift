@@ -153,6 +153,64 @@ import Testing
         await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test func biomeListsAndTradesRefreshWithoutReplacingRegionReaders() async throws {
+        let root = try fixture(enchantment: "test:ward")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(neutral, to: root.appendingPathComponent("datapacks/ChunkseeTest/data/test/enchantment/ward.json"))
+        let resources = try await resources(root)
+        defer { resources.close() }
+        try await expectHealth(20, in: resources)
+        let readers = resources.readers
+        let original = resources.details.definitions
+        let biomes = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/worldgen/biome/is_overworld.json")
+        try write(#"{"replace":true,"values":["example:meadow"]}"#, to: biomes)
+        resources.worldChanged([biomes])
+        try await expectHealth(20, in: resources)
+        #expect(resources.details.definitions.possibleBiomes["minecraft:overworld"] == ["example:meadow"])
+        #expect(resources.details.definitions.possibleBiomes != original.possibleBiomes)
+        for (id, reader) in readers { #expect(resources.readers[id] === reader) }
+
+        let trades = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/trade_set/farmer/level_1.json")
+        try write(#"{"amount":1,"trades":[]}"#, to: trades)
+        resources.worldChanged([trades])
+        try await expectHealth(20, in: resources)
+        #expect(resources.details.definitions.trading != original.trading)
+        #expect(resources.readers.count == readers.count)
+        for (id, reader) in readers { #expect(resources.readers[id] === reader) }
+        resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test func consumedCatalogChangesReplaceReadersAndIdenticalRereadsKeepThem() async throws {
+        let root = try fixture(enchantment: "test:ward")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root)
+        defer { resources.close() }
+        await resources.waitForRefresh()
+        let id = "minecraft:overworld", original = try #require(resources.readers[id])
+        #expect(original.scanOptions.blockIDs?.contains("minecraft:diamond_ore") == true)
+        let ores = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/diamond_ores.json")
+        try write(#"{"replace":true,"values":[]}"#, to: ores)
+        resources.worldChanged([ores])
+        await resources.waitForRefresh()
+        await resources.index.waitForIndex()
+        let changedOres = try #require(resources.readers[id])
+        #expect(changedOres !== original)
+        #expect(changedOres.scanOptions.blockIDs?.contains("minecraft:diamond_ore") == false)
+        let villages = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/worldgen/structure/village.json")
+        try write(#"{"values":["example:hill_fort"]}"#, to: villages)
+        resources.worldChanged([villages])
+        await resources.waitForRefresh()
+        await resources.index.waitForIndex()
+        let changedGroups = try #require(resources.readers[id])
+        #expect(changedGroups !== changedOres && changedGroups.scanOptions == changedOres.scanOptions)
+        #expect(changedGroups.structureGroups.group(for: "example:hill_fort") == .village)
+        resources.worldChanged([villages])
+        await resources.waitForRefresh()
+        await resources.index.waitForIndex()
+        #expect(resources.readers[id] === changedGroups)
+        resources.close(); await resources.waitUntilClosed()
+    }
+
     @Test func staleAndClosedWorldDefinitionReadsCannotPublish() async throws {
         let assetReads = TestGameAssets()
         let root = try fixture(enchantment: "minecraft:protection")
