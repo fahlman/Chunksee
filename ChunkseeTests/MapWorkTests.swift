@@ -54,7 +54,7 @@ struct MapWorkTests {
         let tile = try RegionTileRenderer(dimension: dimension).fixtureTile(image, for: .init(x: 0, z: 0))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
         let work = BackgroundWork()
-        let map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(savedLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
                            renderTile: { _, _ in await render.read("render") },
                            readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         var copied = false

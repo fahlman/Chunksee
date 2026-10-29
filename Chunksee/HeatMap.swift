@@ -77,31 +77,23 @@ final class HeatMapLayer {
             load()
         }
     }
-    private var loader: RefreshLoader<[RegionPosition: CGImage]>
-    private var hasReader: Bool
-    private let work: BackgroundWork
+    private let loader: RefreshLoader<Source, [RegionPosition: CGImage]>
+    private var hasReader: Bool { loader.source.reader != nil }
+    nonisolated private struct Source: Equatable, Sendable {
+        let reader: RegionReader?
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.reader === rhs.reader }
+    }
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
     init(reader: RegionReader?, work: BackgroundWork) {
-        self.work = work
-        hasReader = reader != nil
-        loader = RefreshLoader(work: work, priority: .userInitiated) { previous in
-            guard let reader else { return [:] }
+        loader = RefreshLoader(work: work, priority: .userInitiated, source: Source(reader: reader)) { source, previous in
+            guard let reader = source.reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }
     }
 
     func replaceReader(_ reader: RegionReader?) {
         guard !loader.isClosed else { return }
-        let previous = loader
-        previous.close()
-        // Keep the retired loader alive until its read drains, under the world's owner.
-        work.start(priority: .utility) { await previous.waitUntilFinished() }
-        hasReader = reader != nil
-        loader = RefreshLoader(work: work, priority: .userInitiated) { previous in
-            guard let reader else { return [:] }
-            return await HeatMap.images(reader, previous: previous ?? [:])
-        }
-        load()
+        loader.request(source: Source(reader: reader), isEnabled: isShown && reader != nil, reread: false)
     }
 
     /// Restores this tab's flag without making a second live copy in LayerVisibility.
@@ -121,7 +113,7 @@ final class HeatMapLayer {
     /// Reads the shown dimension's images if needed, or again with `reread` after the game saved;
     /// the current ones stay until the new ones are ready.
     func load(reread: Bool = false) {
-        loader.request(isEnabled: isShown && hasReader, reread: reread)
+        loader.request(source: loader.source, isEnabled: isShown && hasReader, reread: reread)
     }
 
     func waitForReads() async {

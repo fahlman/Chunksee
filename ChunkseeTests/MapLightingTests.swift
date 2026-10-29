@@ -138,29 +138,105 @@ import Testing
         resources.close(); await resources.waitUntilClosed()
     }
 
-    @Test(.timeLimit(.minutes(1))) func lateAndFailedMetadataReadsCannotReplaceNewerOrClosedSnapshots() async throws {
+    @Test(.timeLimit(.minutes(1))) func savesCoalesceAndFailureEmptyAndCloseRemainDistinct() async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let resources = try await resources(url, defaults: TestDefaults.make()), session = WorldSession(resources: resources)
         await resources.waitForRefresh()
         let gate = AsyncReadGate<[String: MapLighting]>(), numbers = ReadNumbers()
+        let playerGate = AsyncReadGate<[PlayerInfo]?>()
         resources.readLighting = { _, _ in await gate.read(String(await numbers.next())) }
+        resources.readPlayers = { _, _ in await playerGate.read("players") }
         let file = url.appendingPathComponent("data/world_clocks.dat")
         resources.worldChanged([file]); await gate.waitForRequest("0")
-        resources.worldChanged([file]); await gate.waitForRequest("1"); await gate.waitForCancellation("0")
-        let newest = try lighting(sun: 60)
+        // Player entry is after refreshLighting in the actual file-change pass, proving each
+        // request reached the loader while its first read was held, without scheduler sleeps.
+        resources.worldChanged([file, resources.world.playerDataDirectory])
+        await playerGate.waitForRequest("players")
+        resources.worldChanged([file, resources.world.playerDataDirectory])
+        await playerGate.waitForRequest("players", count: 2)
+        await playerGate.finishAll(with: nil)
+        let first = try lighting(sun: 300), newest = try lighting(sun: 60)
+        await gate.finish("0", with: ["minecraft:overworld": first])
+        await gate.waitForRequest("1")
+        #expect(session.map?.savedLighting == first)
         await gate.finish("1", with: ["minecraft:overworld": newest])
-        await gate.finish("0", with: ["minecraft:overworld": try lighting(sun: 300)])
         await resources.waitForRefresh()
+        #expect(await gate.requested == ["0", "1"])
         #expect(session.map?.savedLighting == newest)
         resources.readLighting = { _, _ in throw CocoaError(.fileReadUnknown) }
         resources.worldChanged([file]); await resources.waitForRefresh()
         #expect(session.map?.savedLighting == newest)
+        resources.readLighting = { _, _ in [:] }
+        resources.worldChanged([file]); await resources.waitForRefresh()
+        #expect(session.map?.savedLighting == nil)
         resources.readLighting = { _, _ in await gate.read("closing") }
         resources.worldChanged([file]); await gate.waitForRequest("closing")
         resources.close(); await gate.waitForCancellation("closing")
-        await gate.finish("closing", with: [:]); await resources.waitUntilClosed()
-        #expect(session.map?.savedLighting == newest && session.isClosed)
+        await gate.finish("closing", with: ["minecraft:overworld": newest]); await resources.waitUntilClosed()
+        #expect(session.map?.savedLighting == nil && session.isClosed)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func replacementLibraryRetiresLightingForExistingAndNewDimensions() async throws {
+        let url = try world(), fixture = try ItemPictureFixture()
+        defer { try? FileManager.default.removeItem(at: url); fixture.remove() }
+        let resources = try await resources(url, defaults: TestDefaults.make()), first = WorldSession(resources: resources)
+        await resources.waitForRefresh()
+        let a = try fixture.resources(), b = try fixture.resources(), c = try fixture.resources()
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
+        let old = try lighting(sun: 300), updated = try lighting(sun: 60)
+        let oldValues = ["minecraft:overworld": old, "test:fixed_sky": old]
+        let newValues = ["minecraft:overworld": updated, "test:fixed_sky": updated]
+        resources.readLighting = { _, _ in oldValues }
+        resources.setGameAssets(a, source: source); await resources.waitForRefresh()
+        #expect(first.map?.savedLighting == old)
+        resources.names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        #expect(first.map?.savedLighting == old)
+
+        let gate = AsyncReadGate<Result<[String: MapLighting], CocoaError>>()
+        resources.readLighting = { _, library in
+            try await gate.read(library?.identity.uuidString ?? "none").get()
+        }
+        resources.setGameAssets(b, source: source)
+        #expect(first.map?.savedLighting == nil)
+        let second = WorldSession(resources: resources, dimensionID: "test:fixed_sky")
+        #expect(second.map?.savedLighting == nil)
+        await gate.waitForRequest(b.identity.uuidString)
+        await gate.finish(b.identity.uuidString, with: .failure(CocoaError(.fileReadUnknown)))
+        await resources.waitForRefresh()
+        #expect(first.map?.savedLighting == nil && second.map?.savedLighting == nil)
+        let file = url.appendingPathComponent("data/world_clocks.dat")
+        resources.worldChanged([file]); await gate.waitForRequest(b.identity.uuidString, count: 2)
+        await gate.finish(b.identity.uuidString, with: .success(newValues))
+        await resources.waitForRefresh()
+        #expect(first.map?.savedLighting == updated && second.map?.savedLighting == updated)
+
+        resources.worldChanged([file]); await gate.waitForRequest(b.identity.uuidString, count: 3)
+        #expect(first.map?.savedLighting == updated)
+        resources.setGameAssets(c, source: source)
+        await gate.waitForCancellation(b.identity.uuidString)
+        await gate.waitForRequest(c.identity.uuidString)
+        #expect(first.map?.savedLighting == nil && second.map?.savedLighting == nil)
+        first.close() // A sibling still owns the world's shared replacement read.
+        #expect(!resources.isClosed)
+        await gate.finish(b.identity.uuidString, with: .success(oldValues))
+        await gate.finish(c.identity.uuidString, with: .success(newValues))
+        await resources.waitForRefresh()
+        #expect(second.map?.savedLighting == updated)
+        resources.setGameAssets(nil, source: source)
+        #expect(second.map?.savedLighting == nil)
+        await gate.waitForRequest("none")
+        let saveOnly = try await WorldResources.readLighting(resources.world, library: nil)
+        await gate.finish("none", with: .success(saveOnly))
+        await resources.waitForRefresh()
+        #expect(second.map?.savedLighting == saveOnly["test:fixed_sky"])
+        #expect(resources.names.minecraft.generation == source.generation)
+        resources.close(); await resources.waitUntilClosed()
+        for library in [a, b, c] {
+            if let artwork = resources.names.minecraft.artwork(for: library) { await artwork.close() }
+            await library.data.close()
+        }
     }
 
     @Test func normalImagesShareTheExistingEvictionBudgetAndHeightBypassesThem() async throws {
@@ -171,9 +247,10 @@ import Testing
         try Data(TestWorld.regionFile([TestWorld.chunk(x: 32, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }]))
             .write(to: dimension.regionURL(at: neighbor))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
-        let work = BackgroundWork(), map = MapModel(work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let savedLighting = TestSavedLighting()
+        let work = BackgroundWork(), map = MapModel(savedLighting: { savedLighting.value }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
             maxTiles: 3, maxPreviews: 3, heightScale: scale)
-        map.setSavedLighting(try lighting())
+        savedLighting.value = try lighting()
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(map.tiles[region]?.storageUnits == 2 && map.previews[region]?.storageUnits == 2)
         map.viewport.center.x = 520
@@ -228,7 +305,10 @@ import Testing
         let resources = try await resources(url, defaults: TestDefaults.make()), session = WorldSession(resources: resources)
         await resources.waitForRefresh()
         let map = try #require(session.map)
-        map.setSavedLighting(try lighting(sun: 180, factor: 0.24, color: SIMD3(0.48, 0.48, 1)))
+        let light = try lighting(sun: 180, factor: 0.24, color: SIMD3(0.48, 0.48, 1))
+        resources.readLighting = { _, _ in ["minecraft:overworld": light] }
+        resources.worldChanged([url.appendingPathComponent("data/world_clocks.dat")])
+        await resources.waitForRefresh()
         for downsample in [1, 2] {
             let plan = try MapExportPlan(bounds: CGRect(x: -8, y: -8, width: 32, height: 32), blocksPerPixel: downsample)
             map.viewport = plan.viewport; map.requestTiles(visibleIn: plan.size, displayScale: 1); await map.waitUntilIdle()

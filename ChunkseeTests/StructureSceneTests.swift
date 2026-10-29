@@ -85,7 +85,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 20, y: 80))
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 20, y: 80))
         defer { map.close() }
         var marker = try structure()
         marker.bounds = CGRect(x: 0, y: 0, width: 8_000, height: 160)
@@ -113,7 +113,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 32, y: 32))
+        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 32, y: 32))
         defer { map.close() }
         var marker = try structure()
         marker.bounds = CGRect(x: 0, y: 0, width: 64, height: 64)

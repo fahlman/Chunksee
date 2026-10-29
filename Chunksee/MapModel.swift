@@ -18,12 +18,17 @@ final class MapModel {
     private(set) var style = MapStyle.normal
     private(set) var blendsBiomeColors = false
     private(set) var lightingMode = MapLightingMode.savedTime
-    private(set) var savedLighting: MapLighting?
-    var lighting: MapLighting? { style != .height && lightingMode == .savedTime ? savedLighting : nil }
+    @ObservationIgnored private let readSavedLighting: @MainActor () -> MapLighting?
+    var savedLighting: MapLighting? { readSavedLighting() }
+    var lighting: MapLighting? { lighting(using: savedLighting) }
     private(set) var castsShadows = true
-    var shadowLight: MapShadow.Light? {
+    var shadowLight: MapShadow.Light? { shadowLight(using: savedLighting) }
+    private func lighting(using saved: MapLighting?) -> MapLighting? {
+        style != .height && lightingMode == .savedTime ? saved : nil
+    }
+    private func shadowLight(using saved: MapLighting?) -> MapShadow.Light? {
         guard castsShadows, style != .height else { return nil }
-        if let lighting { return MapShadow.Light.saved(lighting.direction) }
+        if let lighting = lighting(using: saved) { return MapShadow.Light.saved(lighting.direction) }
         return .daylight
     }
     private(set) var shadowImages: [RegionPosition: CGImage] = [:]
@@ -96,7 +101,8 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    init(work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
+    init(savedLighting: @escaping @MainActor () -> MapLighting?,
+         work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
          surfaceContext: MapSurfaceContext = .unknown, heightScale: MapHeightScale? = nil,
@@ -108,6 +114,7 @@ final class MapModel {
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
+        readSavedLighting = savedLighting
         renderWork = work.makeScope()
         cacheWork = work.makeScope()
         readoutWork = work.makeScope()
@@ -129,6 +136,7 @@ final class MapModel {
                                            cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        observeSavedLighting()
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
@@ -786,14 +794,23 @@ final class MapModel {
         if style != .height { reloadTiles() }
     }
 
-    /// Time changes only the drawing snapshot. Rebuild image inputs from the unlit disk cache
-    /// when availability or the chosen mode changes; clock ticks never invalidate terrain.
-    func setSavedLighting(_ value: MapLighting?) {
-        guard !isClosed, value != savedLighting else { return }
-        let prepared = lighting != nil, previousLight = shadowLight
-        savedLighting = value
-        if prepared != (lighting != nil) { reloadTiles() }
-        else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
+    /// The world owns the publication; the map only observes it and invalidates its drawing work.
+    /// Its loader and test publications are main-actor isolated. didSet runs on that setter's
+    /// actor, so synchronous invalidation needs neither an unowned task nor a second fact copy.
+    private func observeSavedLighting() {
+        guard !isClosed else { return }
+        let previous = savedLighting
+        withObservationTracking(options: [.didSet]) { _ = savedLighting } onChange: { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                self.observeSavedLighting()
+                guard previous != self.savedLighting else { return }
+                let prepared = self.lighting(using: previous) != nil
+                let previousLight = self.shadowLight(using: previous)
+                if prepared != (self.lighting != nil) { self.reloadTiles() }
+                else if previousLight != self.shadowLight { self.invalidateShadows(); self.updateLoadingState() }
+            }
+        }
     }
 
     func setLightingMode(_ value: MapLightingMode) {

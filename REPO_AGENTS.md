@@ -678,11 +678,20 @@ and Water Depth keys therefore do not include the lighting scale; Height's baked
 Cache writes retain the existing map-owned cancellation/draining lifecycle.
 
 MapLighting projects Kit 0.62.0's savedSkyLighting and dimension time metadata into drawing inputs.
-WorldResources shares one cancellable lighting read across dimensions, reopening metadata on
-saved-clock, level, generation-settings or pack changes. A failed read retains its last good
-snapshot; a successful missing definition clears it. Asset replacement and world close reject
-late reads. No app-side timeline tables or clock simulation exist. No-skylight or unsupported
+WorldResources owns one saved-lighting RefreshLoader shared across dimensions. Its declared source
+is the Minecraft-folder generation and selected game-data library identity. Same-source clock,
+level, generation-settings and pack changes coalesce behind a running read. Failure retains that
+source's last good snapshot; a successful missing definition clears it. Replacing or removing the
+library clears incompatible lighting before reading, including a new archive under the same folder
+generation. Source replacement and world close reject late reads; save-only lighting still loads
+without game files. No app-side timeline tables or clock simulation exist. No-skylight or unsupported
 dimensions retain Daylight; a custom skylit fixed-time type uses its own saved attributes.
+MapModel requires a main-actor saved-lighting accessor and observes the world's publication with
+Observation's didSet tracking. The loader and all supplied publications mutate only on the main
+actor, so the callback's actor assertion is safe and invalidates drawing work synchronously after
+the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
+them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
+revision and typed-key checks; observation creates no background task or competing lifetime owner.
 Each MapModel owns its remembered Saved Time / Daylight choice, exposed by the native View >
 Lighting menu. Height bypasses lighting; Water Depth preserves its water palette; markers and
 overlays are never tinted. Increase Contrast uses a brighter ambient floor and milder color tint.
@@ -1149,16 +1158,20 @@ Existing app-wide preferences seed a new scope once; later tab changes never wri
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
 HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
 through that dimension scope; there is no second editable flag in LayerVisibility.
-It holds that document's fixed reader through a RefreshLoader. The loader owns its current value,
+It holds that document's reader as the declared source of a RefreshLoader. The loader owns its current value,
 pending pass and reread flag; no mutable dimension selector or per-dimension store is kept inside
 the layer. Hidden invalidation waits until shown, while an already running read may finish.
-RefreshLoader coalesces saves during a pass, retains the previous value and rejects results after
-its own or its world's close. Canceling a waiter does not cancel the shared read. WorldResources
+RefreshLoader coalesces saves during a pass, retains the previous value after a failed read and
+publishes successful empty values. Source replacement clears incompatible values and cancels old
+work; its one active-read identity rejects late completions even when a source is selected again.
+The loader's BackgroundWork scope retains retired reads until they drain and rejects results after
+its own or its world's close. Heat-map reader replacement uses this same contract, without retiring
+and draining a second loader. Canceling a waiter does not cancel the shared read. WorldResources
 owns BackgroundWork, which retains registered tasks until completion and drains work added during
 a wait. A tab closes only its own loader; world close cancels and drains all registered work before
 releasing file access. Index, search, map, player-record and refresh readers now use the same
-owner with their own cancellation scopes, as described above. Source and request identities
-remain with the models that validate their results. Startup cache maintenance also
+owner with their own cancellation scopes, as described above. Other source and request identities
+remain with their models until their foundation migration. Startup cache maintenance also
 registers with BackgroundWork, keeping its off-main I/O boundary and cancellation checks. The
 world's common drain includes a maintenance write already underway before cache cleanup or
 file-access release; there is no separate maintenance-task handle.

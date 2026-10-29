@@ -608,10 +608,20 @@ enum StructureTestWorld {
         layer.replaceReader(newer)
         await gate.waitForRequest("newer")
         await gate.finish("newer", with: try TestWorld.facts())
-        await layer.waitForReads()
+        // Replacement publishes while the retired read is still held. The loader's drain
+        // now includes that retired read, so observe publication before awaiting its scope.
+        for await ready in Observations({ layer.visibleImages?.isEmpty == true }) where ready { break }
         #expect(layer.visibleImages?.isEmpty == true)
+        var drained = false
+        var waiting: Task<Void, Never>?
+        await withCheckedContinuation { started in
+            waiting = Task { started.resume(); await layer.waitForReads(); drained = true }
+        }
+        #expect(!drained)
         await gate.finish("older", with: try TestWorld.facts(inhabitedTime: HeatMap.maximumTicks))
+        await waiting?.value
         await work.waitUntilFinished()
+        #expect(drained)
         #expect(layer.visibleImages?.isEmpty == true && !layer.isLoading)
         layer.cancel()
         await older.close(); await newer.close()
