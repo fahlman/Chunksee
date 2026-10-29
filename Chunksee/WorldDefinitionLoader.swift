@@ -12,6 +12,27 @@ nonisolated struct WorldDefinitionInput: Hashable, Sendable {
 /// metadata can advance even when the dependent player read needs to be retried.
 @Observable
 final class WorldDefinitionLoader: PlayerSnapshotSource {
+    nonisolated enum GameSelection: Equatable, Sendable {
+        case loading
+        case loaded(GameDataLibrary?)
+
+        var isLoaded: Bool {
+            if case .loaded = self { true } else { false }
+        }
+
+        var libraryID: UUID? {
+            if case .loaded(let library) = self { library?.identity } else { nil }
+        }
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            switch (lhs, rhs) {
+            case (.loading, .loading): true
+            case (.loaded(let first), .loaded(let second)): first === second
+            default: false
+            }
+        }
+    }
+
     nonisolated struct GameSource: Equatable, Sendable {
         let generation: UUID
         let libraryID: UUID?
@@ -38,15 +59,15 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
 
     nonisolated private struct Source: Equatable, Sendable {
         var generation: UUID
-        var library: GameDataLibrary?
+        var selection: GameSelection
         /// Prepared metadata supplies only newly included dimensions. Completed definition reads
         /// remain authoritative thereafter; old seed values never replace a later read.
         var preparedDimensions: [String: DimensionInput]
 
-        var gameSource: GameSource { .init(generation: generation, libraryID: library?.identity) }
+        var gameSource: GameSource { .init(generation: generation, libraryID: selection.libraryID) }
 
         func sharesGameData(with other: Self) -> Bool {
-            generation == other.generation && library === other.library
+            generation == other.generation && selection == other.selection
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
@@ -100,7 +121,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         self.reads = reads
         requestedDefinitions = input
         unavailable = Value(facts: nil, savedVersion: savedVersion)
-        let source = Source(generation: generation, library: library,
+        let source = Source(generation: generation, selection: .loaded(library),
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
@@ -111,7 +132,8 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
             try Task.checkCancellation()
             switch request {
             case .definitions(let input):
-                let updated = try await readDefinitions(world, source.library)
+                guard case .loaded(let library) = source.selection else { throw CancellationError() }
+                let updated = try await readDefinitions(world, library)
                 try Task.checkCancellation()
                 let players = await readPlayers(world, updated.definitions.enchantments)
                 try Task.checkCancellation()
@@ -147,10 +169,10 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         }
     }
 
-    func refreshDefinitions(generation: UUID, library: GameDataLibrary?) {
+    func refreshDefinitions(generation: UUID, selection: GameSelection) {
         var source = loader.source
         source.generation = generation
-        source.library = library
+        source.selection = selection
         requestDefinitions(source: source)
     }
 
@@ -169,11 +191,13 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         requestedDefinitions = input
         // A synchronous title observer can request a newer source or close the world.
         guard !isClosed, requestedDefinitions == input else { return }
-        loader.request(source: source, isEnabled: true, refresh: .definitions(input))
+        // Source replacement invalidates titles and cancels retired reads immediately. An
+        // unread selection cannot yet say which definitions are missing from the new source.
+        loader.request(source: source, isEnabled: source.selection.isLoaded, refresh: .definitions(input))
     }
 
     func refreshPlayers() {
-        loader.request(source: loader.source, isEnabled: true, refresh: .players)
+        loader.request(source: loader.source, isEnabled: loader.source.selection.isLoaded, refresh: .players)
     }
 
     func close() { loader.close() }

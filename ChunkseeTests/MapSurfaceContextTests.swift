@@ -270,7 +270,7 @@ import Testing
             await gate.waitForRequest("selection", count: 2)
             await gate.finish("selection", with: .success(library))
             await resources.waitForRefresh()
-            #expect(map.currentRenderer.gameData === library.data)
+            #expect(resources.mapGameResources.data === library.data)
             #expect(map.heightScale == scale && map.style == .height)
             #expect(resources.readers[id] === reader)
 

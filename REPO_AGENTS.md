@@ -463,6 +463,12 @@ the completed definition/player facts until their coherent replacement is ready.
 facts carry the producing game generation and library identity; they are never relabeled as
 the new source. This producer's compatible projection preserves reader caches and explicit Height
 choices instead of publishing an unread unknown. Retired in-flight results still cannot publish.
+The definition input distinguishes a game selection still loading from a completed selection
+with no library. Loading invalidates titles and cancels old reads immediately, but queues the
+replacement read until discovery completes; failed discovery retains the coherent facts. A
+completed absence starts a real no-game read and removes facts the remaining world packs cannot
+supply. This preserves Height when reselecting game files without retaining an unavailable scale
+after a confirmed removal.
 Prepared dimension additions extend only new settings synchronously; later
 definition reads remain authoritative. WorldDetails projects definitions and borders from this
 publication; its other opening facts remain for step 5b. Player/index/search consumers share the

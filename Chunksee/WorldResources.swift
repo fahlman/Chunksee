@@ -259,7 +259,8 @@ final class WorldResources {
         }
         assetLoader.published = { [weak self] previous, current in
             guard let self, !self.isClosed else { return }
-            if previous.source != current.source || previous.value?.library?.identity != current.value?.library?.identity {
+            if previous.source != current.source || previous.value == nil ||
+                previous.value?.library?.identity != current.value?.library?.identity {
                 self.refreshGameLanguage()
                 self.refreshBiomeColors(reload: true)
                 self.refreshNightLighting(reread: true)
@@ -407,7 +408,13 @@ final class WorldResources {
 
     private func refreshDefinitions() {
         guard !isClosed else { return }
-        definitionLoader.refreshDefinitions(generation: names.minecraft.generation, library: gameData)
+        let selection: WorldDefinitionLoader.GameSelection
+        if assetLoader.source.generation == names.minecraft.generation, let loaded = assetLoader.value {
+            selection = .loaded(loaded.library?.data)
+        } else {
+            selection = .loading
+        }
+        definitionLoader.refreshDefinitions(generation: names.minecraft.generation, selection: selection)
     }
 
     private func adoptDefinitions(previous: WorldDefinitionLoader.Value, current: WorldDefinitionLoader.Value,
