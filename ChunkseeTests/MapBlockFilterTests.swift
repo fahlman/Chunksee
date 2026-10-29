@@ -205,7 +205,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         let first = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")

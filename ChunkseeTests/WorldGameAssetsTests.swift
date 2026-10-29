@@ -36,7 +36,7 @@ import Synchronization
         names.minecraft.choose(game.root)
         func open(_ root: URL) async throws -> WorldResources {
             let defaults = TestDefaults.make()
-            return try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            return try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
                 savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         }
         let first = try await open(firstRoot), second = try await open(secondRoot)
@@ -129,7 +129,7 @@ import Synchronization
             reads.withLock { $0.append(id) }
             return assets.texture(id)
         }
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         defer { resources.close() }
         let session = WorldSession(resources: resources), source = WorldGameAssetSource(generation: names.minecraft.generation)
@@ -190,7 +190,7 @@ import Synchronization
     private func resources(_ root: URL, game: ItemPictureFixture) async throws -> WorldResources {
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
         names.minecraft.choose(game.root)
-        return try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+        return try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
             watchWorld: { _, _ in nil })
     }

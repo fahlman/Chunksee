@@ -11,7 +11,7 @@ import Testing
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM-1/region"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: url.appendingPathComponent("DIM1/region"), withIntermediateDirectories: true)
         let defaults = suppliedDefaults ?? TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         return (url, resources)
     }
@@ -334,8 +334,8 @@ import Testing
 
         // Dimensions of one open world share its resources until the last one closes.
         let model = AppModel(defaults: defaults, cacheRoot: nil)
-        let view = try snapshot.makeSession(in: model)
-        let other = try overworld.makeSession(in: model)
+        let view = try await snapshot.makeSession(in: model)
+        let other = try await overworld.makeSession(in: model)
         let first = view.resources
         #expect(other.resources === first)
         view.close()
@@ -343,7 +343,7 @@ import Testing
         await view.waitUntilClosed()
         await other.waitUntilClosed()
         let again = try await DimensionSnapshot.read(nether, folders: folders)
-        let next = try again.makeSession(in: model)
+        let next = try await again.makeSession(in: model)
         let second = next.resources
         #expect(second !== first)
         next.close()
@@ -429,7 +429,7 @@ import Testing
         for dimension in ["DIM-1", "DIM1"] {
             try FileManager.default.createDirectory(at: url.appendingPathComponent(dimension + "/region"), withIntermediateDirectories: true)
         }
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
         defer { resources.close() }
@@ -464,7 +464,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<RegionFacts>()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        readRegion: { _, _, _ in await gate.read("region") })
         await gate.waitForRequest("region")
@@ -536,7 +536,7 @@ import Testing
         await resources.waitUntilClosed()
         nether.becameActive()
         #expect(resources.settings.lastDimension == "minecraft:the_end")
-        let reopened = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
+        let reopened = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: resources.names,
                                       savedSearches: resources.savedSearches, defaults: defaults, cacheRoot: nil)
         #expect(reopened.defaultDimensionID == "minecraft:the_end")
         #expect(reopened.activeDimensionID == "minecraft:the_end")

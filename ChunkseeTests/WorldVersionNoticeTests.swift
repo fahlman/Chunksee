@@ -36,7 +36,9 @@ import Testing
 
     private func resources(_ root: URL, defaults: UserDefaults, id: UUID = UUID()) async throws -> WorldResources {
         let snapshot = try await WorldSnapshot.read(root)
-        let resources = WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),
+        let names = PlayerNames(defaults: defaults)
+        let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
+        let resources = WorldResources(prepared: prepared, names: names,
             savedSearches: SavedSearches(defaults: defaults), settings: WorldSettings(id: id, defaults: defaults),
             cacheRoot: nil, watchWorld: { _, _ in nil })
         resources.refreshDelay = .zero

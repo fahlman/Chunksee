@@ -10,7 +10,7 @@ struct MapWorkTests {
         let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         let url = try TestWorld.make(chunks: [chunk]), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
         await resources.index.waitForIndex()

@@ -140,10 +140,10 @@ nonisolated struct DimensionSnapshot: Sendable {
 
     /// Attach before finishing the opening, so closing the previous last view cannot end access.
     @MainActor
-    func makeSession(in model: AppModel) throws -> WorldSession {
+    func makeSession(in model: AppModel) async throws -> WorldSession {
         switch source {
         case .snapshot(let world):
-            return WorldSession(resources: model.resources(for: world, folder: folder), dimensionID: dimensionID)
+            return WorldSession(resources: try await model.resources(for: world, folder: folder), dimensionID: dimensionID)
         case .opening(let opening):
             guard let resources = opening.resources, !resources.isClosed else { throw CancellationError() }
             let session = WorldSession(resources: resources, dimensionID: dimensionID)
@@ -259,8 +259,14 @@ final class WorldDocument: ReadableDocument {
         await oldSession?.waitUntilClosed()
         try Task.checkCancellation()
         guard generation == applyGeneration else { return }
-        let opened = try current.makeSession(in: model)
+        let opened = try await current.makeSession(in: model)
         adopted = true
+        guard !Task.isCancelled, generation == applyGeneration else {
+            opened.close()
+            await opened.waitUntilClosed()
+            try Task.checkCancellation()
+            return
+        }
         if let oldSession { opened.restoreView(from: oldSession) }
         session = opened
     }

@@ -33,7 +33,7 @@ import Testing
         }
 
         func open() async throws -> WorldSession {
-            let session = try WorldSession(snapshot: try await WorldSnapshot.read(url), names: names,
+            let session = try await WorldSession(snapshot: try await WorldSnapshot.read(url), names: names,
                                        savedSearches: searches, defaults: defaults, cacheRoot: nil)
             sessions.append(session)
             return session
@@ -48,7 +48,7 @@ import Testing
 
         func controlled() async throws -> (WorldSession, AsyncReadGate<RegionFacts>) {
             let gate = AsyncReadGate<RegionFacts>(), first = FirstRead()
-            let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: names,
+            let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: names,
                 savedSearches: searches, defaults: defaults, cacheRoot: nil, readRegion: { dimension, region, options in
                     if dimension.id == "minecraft:the_nether", await first.take() { return await gate.read("nether") }
                     return try await RegionReader.scan(dimension, region: region, options: options)
@@ -118,7 +118,7 @@ import Testing
             #expect(session.presentation.roundTrip(for: portal) == nil && !session.presentation.isWaitingForPortalLink(portal))
             try f.addTarget()
             let snapshot = try await WorldSnapshot.read(f.url)
-            session.resources.includeDimensions(from: snapshot)
+            try await session.resources.includeDimensions(from: snapshot)
             snapshot.access.release()
             await gate.waitForRequest("nether")
             #expect(session.presentation.roundTrip(for: portal) == nil && session.presentation.isWaitingForPortalLink(portal))

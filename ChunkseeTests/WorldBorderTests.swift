@@ -31,7 +31,7 @@ import Testing
         // An existing dimension with no border choice keeps the previously always-shown border.
         WorldSettings(id: id, defaults: defaults).saveLayers([.showsGrid: true], for: "minecraft:overworld")
         func open() async throws -> WorldResources {
-            WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+            try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                            savedSearches: SavedSearches(defaults: defaults),
                            settings: WorldSettings(id: id, defaults: defaults), cacheRoot: nil,
                            watchWorld: { _, _ in nil })
@@ -77,7 +77,7 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                            savedSearches: SavedSearches(defaults: defaults), defaults: defaults,
                                            cacheRoot: nil, watchWorld: { _, _ in nil })
         defer { resources.close() }

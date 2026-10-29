@@ -101,7 +101,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"), withIntermediateDirectories: true)
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         resources.refreshDelay = .zero
         let session = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -344,7 +344,7 @@ import Testing
         let url = try selectionWorld(creatures: searchCreatures())
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         resources.refreshDelay = .zero
         let session = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -800,7 +800,7 @@ import Testing
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([chunk])).write(to: nether.appendingPathComponent("r.0.0.mca"))
         let defaults = TestDefaults.make()
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         let sessions = [WorldSession(resources: resources, dimensionID: "minecraft:overworld"),
                         WorldSession(resources: resources, dimensionID: "minecraft:the_nether")]

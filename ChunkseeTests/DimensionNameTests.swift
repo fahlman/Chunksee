@@ -66,7 +66,7 @@ import Testing
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/mod_b/caves/region"),
                                                  withIntermediateDirectories: true)
         let snapshot = try await WorldSnapshot.read(url)
-        document?.resources.includeDimensions(from: snapshot)
+        try await document?.resources.includeDimensions(from: snapshot)
         snapshot.access.release()
         let changed = await iterator.next(isolation: #isolation)
         #expect(changed == true)

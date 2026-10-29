@@ -20,7 +20,7 @@ import Testing
         defaults.set(places, forKey: "savedPlaces." + url.path)
         defaults.set(false, forKey: "showsGrid")
         defaults.set("app-wide sentinel", forKey: "playerNamesSentinel")
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         let first = WorldSession(resources: resources, dimensionID: overworld)
         let second = WorldSession(resources: resources, dimensionID: nether)

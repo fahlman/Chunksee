@@ -274,7 +274,7 @@ import Testing
     }
 
     private func resources(_ url: URL, defaults: UserDefaults) async throws -> WorldResources {
-        let value = try WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
+        let value = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         value.refreshDelay = .zero
         return value

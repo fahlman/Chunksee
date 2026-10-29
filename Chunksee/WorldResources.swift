@@ -138,11 +138,12 @@ final class WorldResources {
 
     /// Tests that inject file changes substitute the watcher so real notifications cannot race
     /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
-    init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
+    init(prepared: WorldPreparation, names: PlayerNames, savedSearches: SavedSearches,
          settings: WorldSettings, cacheRoot: URL?,
          watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
+        let snapshot = prepared.snapshot
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
@@ -159,6 +160,8 @@ final class WorldResources {
         details = snapshot.details
         playerRoster = PlayerRoster(snapshot.players)
         self.names = names
+        gameAssetSource = prepared.source
+        gameAssets = prepared.library
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
         self.readRegion = readRegion
@@ -183,6 +186,7 @@ final class WorldResources {
             case .artwork: self?.refreshGameArtwork()
             }
         }
+        refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
         if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
@@ -194,8 +198,9 @@ final class WorldResources {
 
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
     /// The snapshot's own access remains the caller's; this world keeps its original root access.
-    func includeDimensions(from snapshot: WorldSnapshot) {
+    func includeDimensions(from prepared: WorldPreparation) {
         guard !isClosed else { return }
+        let snapshot = prepared.snapshot
         let known = Set(dimensions.map(\.id))
         let added = snapshot.dimensions.filter { !known.contains($0.id) }
         guard !added.isEmpty else { return }

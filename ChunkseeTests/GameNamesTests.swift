@@ -42,7 +42,7 @@ enum GameNameFixture {
     private func resources(_ root: URL, game: ItemPictureFixture) async throws -> WorldResources {
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
         names.minecraft.choose(game.root)
-        return try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+        return try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
             watchWorld: { _, _ in nil })
     }

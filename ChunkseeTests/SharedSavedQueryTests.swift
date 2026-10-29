@@ -269,7 +269,7 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("diamond")
-        let resources = try WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),
+        let resources = try await WorldResources(snapshot: snapshot, names: PlayerNames(defaults: defaults),
                                        savedSearches: saved, defaults: defaults, cacheRoot: nil)
         var sessions = ["minecraft:overworld", "minecraft:the_nether"].map { WorldSession(resources: resources, dimensionID: $0) }
         let originalPlayers = resources.playerSnapshot

@@ -111,7 +111,7 @@ import Testing
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
         names.minecraft.choose(fixture.root)
-        let resources = try WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
         defer { resources.close() }
         let session = WorldSession(resources: resources), map = try #require(session.map)
