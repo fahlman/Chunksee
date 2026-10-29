@@ -90,11 +90,13 @@ final class WorldResources {
     @ObservationIgnored var readPlayerRecords: @Sendable (World, UUID, String?, GameDataLibrary?) async -> PlayerRecords = {
         await PlayerRecords.load(from: $0, uuid: $1, name: $2, library: $3)
     }
-    private let nightLightWork: BackgroundWork.Scope
-    @ObservationIgnored private var nightLighting: [String: MonsterSpawnLight]?
-    @ObservationIgnored private var nightReadGeneration = 0
-    @ObservationIgnored private var needsNightReload = true
-    @ObservationIgnored private var isNightReadPending = false
+    @ObservationIgnored private lazy var nightLightingLoader = RefreshLoader(
+        work: backgroundWork, priority: nil, whenInactive: .cancel,
+        source: LightingSource(generation: names.minecraft.generation, library: gameData)
+    ) { [weak self, world] source, _ in
+        guard let read = await self?.readNightLighting else { throw CancellationError() }
+        return try await read(world, source.library)
+    }
     @ObservationIgnored var readNightLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
     }
@@ -106,7 +108,7 @@ final class WorldResources {
         }
     }
     @ObservationIgnored private lazy var lightingLoader = RefreshLoader(
-        work: backgroundWork, priority: nil,
+        work: backgroundWork, priority: nil, whenInactive: .finish,
         source: LightingSource(generation: names.minecraft.generation, library: gameData)
     ) { [weak self, world] source, _ in
         guard let read = await self?.readLighting else { throw CancellationError() }
@@ -162,7 +164,6 @@ final class WorldResources {
         definitionsWork = backgroundWork.makeScope()
         assetWork = backgroundWork.makeScope()
         languageWork = backgroundWork.makeScope()
-        nightLightWork = backgroundWork.makeScope()
         access = snapshot.access
         world = snapshot.world
         savedVersion = SavedMinecraftVersion(snapshot.world.level)
@@ -225,7 +226,7 @@ final class WorldResources {
                          structureGroups: details.definitions.structureGroups,
                          read: readRegion)
         }, firstDimension: activeDimensionID)
-        refreshNightLighting()
+        refreshNightLighting(reread: true)
         refreshLighting()
         refreshDefinitions()
     }
@@ -269,8 +270,7 @@ final class WorldResources {
         }
         refreshBiomeColors(reload: true)
         refreshLighting()
-        clearNightLighting()
-        refreshNightLighting()
+        refreshNightLighting(reread: true)
         refreshDefinitions()
     }
 
@@ -305,8 +305,7 @@ final class WorldResources {
         biomeColors = nil
         for session in sessions.values.compactMap(\.value) { session.map?.setGameResources(data: nil, artwork: nil) }
         refreshBiomeColors(reload: true)
-        clearNightLighting()
-        refreshNightLighting()
+        refreshNightLighting(reread: true)
         refreshLighting()
         refreshDefinitions()
     }
@@ -500,50 +499,18 @@ final class WorldResources {
     /// Optional gameplay light metadata is shared by all interested dimension tabs. Ordinary
     /// windows do not start this read, and hiding the last layer cancels its current request.
     func darkSpotsVisibilityChanged() {
+        refreshNightLighting(reread: false)
+    }
+
+    func nightLighting(in dimension: String) -> MonsterSpawnLight? {
+        nightLightingLoader.value?[dimension]
+    }
+
+    private func refreshNightLighting(reread: Bool) {
         guard !isClosed else { return }
-        let documents = sessions.values.compactMap(\.value)
-        guard documents.contains(where: { $0.map?.showsDarkSpots == true }) else {
-            nightReadGeneration += 1
-            nightLightWork.cancel()
-            isNightReadPending = false
-            return
-        }
-        for session in documents {
-            session.map?.setNightLighting(session.selectedDimensionID.flatMap { nightLighting?[$0] })
-        }
-        if needsNightReload, !isNightReadPending { refreshNightLighting() }
-    }
-
-    private func clearNightLighting() {
-        nightReadGeneration += 1
-        nightLightWork.cancel()
-        isNightReadPending = false
-        nightLighting = nil
-        needsNightReload = true
-        for session in sessions.values.compactMap(\.value) { session.map?.setNightLighting(nil) }
-    }
-
-    private func refreshNightLighting() {
-        needsNightReload = true
-        guard !isClosed, sessions.values.contains(where: { $0.value?.map?.showsDarkSpots == true }) else { return }
-        nightReadGeneration += 1
-        let generation = nightReadGeneration, library = gameData, read = readNightLighting, world = world
-        nightLightWork.cancel()
-        isNightReadPending = true
-        nightLightWork.start(priority: nil) { [weak self] in
-            let updated = try? await read(world, library)
-            guard !Task.isCancelled, let self, !self.isClosed, self.nightReadGeneration == generation,
-                  self.gameData?.identity == library?.identity else { return }
-            self.isNightReadPending = false
-            // Keep the last good value after a transient read error. A successful empty
-            // projection clears removed/unsupported rules, including those from data packs.
-            guard let updated else { return }
-            self.nightLighting = updated
-            self.needsNightReload = false
-            for session in self.sessions.values.compactMap(\.value) {
-                session.map?.setNightLighting(session.selectedDimensionID.flatMap { updated[$0] })
-            }
-        }
+        nightLightingLoader.request(source: LightingSource(generation: names.minecraft.generation, library: gameData),
+                                    isEnabled: sessions.values.contains { $0.value?.map?.showsDarkSpots == true },
+                                    reread: reread)
     }
 
     func savedLighting(in dimension: String) -> MapLighting? {
@@ -646,7 +613,7 @@ final class WorldResources {
         gameAssets = nil
         languageNames = GameNames.unavailable
         biomeColors = nil
-        nightLighting = nil
+        nightLightingLoader.close()
         lightingLoader.close()
         let readers = Array(readers.values), index = index
         let access = access
@@ -760,7 +727,7 @@ final class WorldResources {
 
     /// Waits for every refresh under way, including one still reading players behind a newer one.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightWork, lightingLoader.work, definitionsWork, assetWork, languageWork])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeWork, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetWork, languageWork])
         await index.waitForProjection()
     }
 
@@ -781,7 +748,7 @@ final class WorldResources {
         if !changed.isEmpty { index.rebuild(firstDimension: activeDimensionID, changes: changed) }
         if biomesChanged {
             refreshBiomeColors(reload: reloadBiomes)
-            refreshNightLighting()
+            refreshNightLighting(reread: true)
         }
         if lightingChanged { refreshLighting() }
         if biomesChanged || (playersChanged && isDefinitionReadPending) {

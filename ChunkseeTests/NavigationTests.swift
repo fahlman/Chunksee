@@ -213,7 +213,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let work = BackgroundWork()
-        let map = MapModel(savedLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
         let navigation = MapNavigation(map: map)
         let original = map.viewport
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
@@ -233,7 +233,7 @@ import Testing
         navigation.fitWorld()
         #expect(map.viewport == lastView && !navigation.canGoBack && !navigation.canGoForward)
 
-        let replacement = MapModel(savedLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let replacement = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
         let restored = MapNavigation(map: replacement)
         restored.restore(from: navigation)
         #expect(replacement.viewport == lastView && replacement.depth == map.depth)

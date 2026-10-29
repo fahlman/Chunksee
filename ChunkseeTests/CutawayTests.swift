@@ -47,7 +47,7 @@ import SwiftUI
     @Test(arguments: [-1, 1], [true, false])
     func heightCommandsStepOneLevelAndEnterCutaway(step: Int, isSurface: Bool) async throws {
         try await withFixture { f in
-            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             map.setDepth(MapDepth(y: 64, isSurface: isSurface))
             let viewport = map.viewport
@@ -61,7 +61,7 @@ import SwiftUI
 
     @Test func heightCommandsKeepCustomHeightsAndGuardIntegerEndpointsAndClosure() async throws {
         try await withFixture { f in
-            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
+            let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
             f.maps.append(map)
             for (height, step) in [(-900, -1), (900, 1), (Int.min, -1), (Int.max, 1)] {
                 map.setDepth(MapDepth(y: height, isSurface: true))
@@ -128,7 +128,7 @@ import SwiftUI
             let surface = try await RegionTileRenderer(dimension: dimension).tile(for: region)
             let cutaway = try await RegionTileRenderer(dimension: dimension, cutawayY: 7).tile(for: region)
             let gate = f.tiles
-            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+            let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
                 guard !Task.isCancelled else { return nil }
                 return await gate.read(renderer.cutawayY.map(String.init) ?? "surface")
             })
@@ -155,7 +155,7 @@ import SwiftUI
     @Test func changingHeightCancelsPendingCopiesAndRereadsAStillPointer() async throws {
         try await withFixture { f in
             let dimension = try f.dimension(), gate = f.blocks
-            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
+            let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
                 guard !Task.isCancelled else { return nil }
                 if renderer.cutawayY == nil { return await gate.read("surface") }
                 return await MapModel.readTopBlocks(of: chunk, using: renderer, cached: cached)
@@ -185,7 +185,7 @@ import SwiftUI
 
     @Test func exportedTerrainFollowsTheCutawayAndSurface() async throws {
         try await withFixture { f in
-            let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             let size = CGSize(width: 16, height: 16)
             map.requestTiles(visibleIn: size, displayScale: 1)

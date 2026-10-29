@@ -160,7 +160,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let point = CGPoint(x: 8, y: 8)
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: point, cacheDirectory: nil)
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: point, cacheDirectory: nil)
         defer { map.close() }
         let absentLibrary = try absent.library(), presentLibrary = try present.library()
         map.setGameResources(data: absentLibrary.data, artwork: absentLibrary)

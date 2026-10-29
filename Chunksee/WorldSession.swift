@@ -100,6 +100,7 @@ final class WorldSession {
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
         let map = MapModel(savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
+                           nightLighting: { [weak resources] in resources?.nightLighting(in: dimension.id) },
                            work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            surfaceContext: MapSurfaceContext(settings: resources.details.dimensionSettings[dimension.id],

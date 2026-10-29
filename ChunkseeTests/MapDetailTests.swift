@@ -78,7 +78,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let gate = AsyncReadGate<RegionTileRenderer.DetailSurface?>(), numbers = ReadNumbers()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           cacheDirectory: root.appendingPathComponent("tiles"),
                           readDetail: { _, _ in await gate.read(String(await numbers.next())) })
         defer { map.close() }
@@ -129,7 +129,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let assets = try fixture.library(), gate = AsyncReadGate<MapTileImage?>()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { chunk, _, _, _, _ in await gate.read("\(chunk.x),\(chunk.z)") })
         map.setGameResources(data: assets.data, artwork: assets)
         map.viewport.scale = 8
@@ -159,7 +159,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let first = try fixture.library(), second = try fixture.library(), gate = AsyncReadGate<MapTileImage?>()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { _, _, assets, _, _ in await gate.read(assets.identity.uuidString) })
         defer { map.close() }
         map.setGameResources(data: first.data, artwork: first)
@@ -184,7 +184,7 @@ import Testing
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8))
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8))
         defer { map.close() }
         let artwork = try fixture.library()
         map.setGameResources(data: artwork.data, artwork: artwork)
@@ -265,7 +265,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           cacheDirectory: root.appendingPathComponent("tiles"))
         defer { map.close() }
         let artwork = try fixture.library()
@@ -323,7 +323,7 @@ import Testing
             }
         }
         let detail = MapTileImage(try #require(CGImage.rgba(pixels, width: 256, height: 256)))
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
             renderTile: { renderer, position in
                 guard var tile = try await renderer.tile(for: position) else { return nil }
                 tile.full = MapTileImage(white); tile.preview = MapTileImage(white)
@@ -376,7 +376,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let gate = AsyncReadGate<MapTileImage?>()
         let savedLighting = TestSavedLighting()
-        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
+        let map = MapModel(savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
             renderDetail: { _, _, _, _, saved in await gate.read(saved ? "saved" : "daylight") })
         defer { map.close() }
         let artwork = try fixture.library()

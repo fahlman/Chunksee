@@ -3,6 +3,7 @@ import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
 import ImageIO
+import Observation
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -109,10 +110,11 @@ import Testing
         let before = try await RegionTileRenderer(dimension: dimension).tile(for: region)
         let after = try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).tile(for: region)
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.darkSpots == nil ? "off" : "on")
         })
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
         await gate.waitForRequest("off")
         map.setDarkSpots(true)
@@ -139,7 +141,8 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, renderer, _ in
             // Center reads start with the layer; this gate holds only the original copy.
             renderer.darkSpots == nil ? await gate.read("coordinate") : nil
@@ -148,7 +151,7 @@ import Testing
         map.readTopBlock(at: CGPoint(x: 3, y: 4)) { copiedHeight = $0?.y }
         await gate.waitForRequest("coordinate")
         map.setDarkSpots(true)
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.setDarkSpots(false)
         await gate.finish("coordinate", with: (file, blocks))
         await map.waitForCoordinateReads()
@@ -206,13 +209,216 @@ import Testing
         #expect(saved.rememberedDarkSpots && !another.rememberedDarkSpots)
     }
 
+    @Test(.timeLimit(.minutes(1))) func resumingDarkSpotsWhileAReadRetiresKeepsWorldDrainage() async throws {
+        let root = try world([])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root), session = WorldSession(resources: resources)
+        let rules = try resources.world.nightMonsterLighting(assets: nil)
+        let gate = AsyncReadGate<[String: MonsterSpawnLight]>(), numbers = ReadNumbers()
+        resources.readNightLighting = { _, _ in await gate.read(String(await numbers.next())) }
+        session.setDarkSpots(true); await gate.waitForRequest("0")
+        await gate.finish("0", with: rules); await resources.waitForRefresh()
+        resources.worldChanged([root.appendingPathComponent("datapacks")])
+        await gate.waitForRequest("1")
+        session.setDarkSpots(false); await gate.waitForCancellation("1")
+        #expect(session.map?.nightLighting == rules["minecraft:overworld"])
+        session.setDarkSpots(true); await gate.waitForRequest("2")
+        await gate.finish("2", with: [:])
+        for await ready in Observations({ session.map?.nightLighting == nil }) where ready { break }
+        var drained = false
+        var waiter: Task<Void, Never>?
+        await withCheckedContinuation { started in
+            waiter = Task { started.resume(); await resources.waitForRefresh(); drained = true }
+        }
+        #expect(!drained)
+        await gate.finish("1", with: rules); await waiter?.value
+        #expect(drained && session.map?.nightLighting == nil)
+        #expect(await gate.requested == ["0", "1", "2"])
+        resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func optionalRulesRetryFailuresAndRememberHiddenChanges() async throws {
+        let root = try world([])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root), session = WorldSession(resources: resources)
+        let rules = try resources.world.nightMonsterLighting(assets: nil)
+        let gate = AsyncReadGate<Result<[String: MonsterSpawnLight], CocoaError>>()
+        resources.readNightLighting = { _, _ in try await gate.read("rules").get() }
+        resources.names.minecraft.usesGameArtwork = false
+        resources.names.minecraft.usesGameArtwork = true
+        await resources.waitForRefresh()
+        #expect(await gate.requested.isEmpty)
+        session.setDarkSpots(true)
+        await gate.waitForRequest("rules"); await gate.finish("rules", with: .success(rules))
+        await resources.waitForRefresh()
+        session.setDarkSpots(false); session.setDarkSpots(true)
+        await resources.waitForRefresh()
+        #expect(await gate.requested.count == 1)
+
+        let pack = root.appendingPathComponent("datapacks")
+        resources.worldChanged([pack]); await gate.waitForRequest("rules", count: 2)
+        await gate.finish("rules", with: .failure(CocoaError(.fileReadUnknown)))
+        await resources.waitForRefresh()
+        #expect(session.map?.nightLighting == rules["minecraft:overworld"])
+        #expect(await gate.requested.count == 2) // Failure does not start a retry loop.
+        session.setDarkSpots(false); session.setDarkSpots(true)
+        await gate.waitForRequest("rules", count: 3)
+        await gate.finish("rules", with: .success([:]))
+        await resources.waitForRefresh()
+        #expect(session.map?.nightLighting == nil)
+        session.setDarkSpots(false); session.setDarkSpots(true)
+        await resources.waitForRefresh()
+        #expect(await gate.requested.count == 3) // Successful empty is a reusable publication.
+
+        session.setDarkSpots(false)
+        resources.worldChanged([pack]); await resources.waitForRefresh()
+        #expect(await gate.requested.count == 3)
+        session.setDarkSpots(true)
+        await gate.waitForRequest("rules", count: 4)
+        await gate.finish("rules", with: .success(rules)); await resources.waitForRefresh()
+        #expect(session.map?.nightLighting == rules["minecraft:overworld"])
+        resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func savesCoalesceWhileARuleReadRunsAndClosingASiblingKeepsItAlive() async throws {
+        let root = try world([])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root)
+        let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
+        let rules = try resources.world.nightMonsterLighting(assets: nil)
+        let gate = AsyncReadGate<[String: MonsterSpawnLight]>(), changes = AsyncReadGate<Void>()
+        await changes.releaseAllAndFuture(with: ())
+        resources.readNightLighting = { _, _ in await gate.read("rules") }
+        resources.readDefinitions = { world, library in
+            await changes.read("pack")
+            return try await WorldResources.readDefinitions(world, library: library)
+        }
+        first.setDarkSpots(true); await gate.waitForRequest("rules")
+        second.setDarkSpots(true)
+        for count in 1...3 {
+            resources.worldChanged([root.appendingPathComponent("datapacks")])
+            await changes.waitForRequest("pack", count: count)
+        }
+        first.close()
+        #expect(first.map?.nightLighting == nil && !resources.isClosed)
+        #expect(await gate.requested.count == 1)
+        await gate.finish("rules", with: rules)
+        await gate.waitForRequest("rules", count: 2)
+        #expect(second.map?.nightLighting == rules["minecraft:overworld"])
+        await gate.finish("rules", with: [:]); await resources.waitForRefresh()
+        #expect(second.map?.nightLighting == nil)
+        #expect(await gate.requested.count == 2)
+        resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func replacingTheNightSourceClearsRulesAndRejectsRetiredReads() async throws {
+        let root = try world([]), changedRoot = try world([], hasSky: false, blockLimit: 15)
+        let fixture = try ItemPictureFixture()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: changedRoot)
+            fixture.remove()
+        }
+        for url in [root, changedRoot] {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                   withIntermediateDirectories: true)
+        }
+        let resources = try await resources(root), first = WorldSession(resources: resources)
+        let old = try resources.world.nightMonsterLighting(assets: nil)
+        let updated = try World(contentsOf: changedRoot).nightMonsterLighting(assets: nil)
+        #expect(old["minecraft:overworld"] != updated["minecraft:overworld"])
+        let a = try fixture.resources(), b = try fixture.resources()
+        let artwork = [a, b].compactMap { resources.names.minecraft.artwork(for: $0) }
+        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
+        resources.setGameAssets(a, source: source); await resources.waitForRefresh()
+        let gate = AsyncReadGate<Result<[String: MonsterSpawnLight], CocoaError>>()
+        resources.readNightLighting = { _, library in try await gate.read(library?.identity.uuidString ?? "none").get() }
+        first.setDarkSpots(true)
+        await gate.waitForRequest(a.identity.uuidString)
+        await gate.finish(a.identity.uuidString, with: .success(old)); await resources.waitForRefresh()
+        #expect(first.map?.nightLighting == old["minecraft:overworld"])
+        resources.names.minecraft.usesGameArtwork = false
+        await resources.waitForRefresh()
+        #expect(await gate.requested.count == 1)
+        #expect(first.map?.nightLighting == old["minecraft:overworld"])
+
+        resources.setGameAssets(b, source: source)
+        #expect(first.map?.nightLighting == nil)
+        let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        #expect(second.map?.nightLighting == nil)
+        second.setDarkSpots(true)
+        await gate.waitForRequest(b.identity.uuidString)
+        await gate.finish(b.identity.uuidString, with: .failure(CocoaError(.fileReadUnknown)))
+        await resources.waitForRefresh()
+        #expect(first.map?.nightLighting == nil && second.map?.nightLighting == nil)
+        resources.worldChanged([root.appendingPathComponent("datapacks")])
+        await gate.waitForRequest(b.identity.uuidString, count: 2)
+        await gate.finish(b.identity.uuidString, with: .success(updated)); await resources.waitForRefresh()
+        #expect(first.map?.nightLighting == updated["minecraft:overworld"])
+        #expect(second.map?.nightLighting == updated["minecraft:the_nether"])
+        let third = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        #expect(third.map?.nightLighting == updated["minecraft:the_nether"])
+
+        resources.worldChanged([root.appendingPathComponent("datapacks")])
+        await gate.waitForRequest(b.identity.uuidString, count: 3)
+        resources.setGameAssets(a, source: source)
+        await gate.waitForCancellation(b.identity.uuidString)
+        await gate.waitForRequest(a.identity.uuidString, count: 2)
+        #expect(first.map?.nightLighting == nil && third.map?.nightLighting == nil)
+        first.close()
+        #expect(!resources.isClosed)
+        await gate.finish(b.identity.uuidString, with: .success(updated))
+        await gate.finish(a.identity.uuidString, with: .success(old)); await resources.waitForRefresh()
+        #expect(first.map?.nightLighting == nil)
+        #expect(second.map?.nightLighting == old["minecraft:the_nether"])
+        resources.setGameAssets(nil, source: source)
+        #expect(second.map?.nightLighting == nil && third.map?.nightLighting == nil)
+        await gate.waitForRequest("none")
+        let saveOnly = try resources.world.nightMonsterLighting(assets: nil)
+        await gate.finish("none", with: .success(saveOnly)); await resources.waitForRefresh()
+        #expect(second.map?.nightLighting == saveOnly["minecraft:the_nether"])
+        #expect(resources.names.minecraft.generation == source.generation)
+        resources.close(); await resources.waitUntilClosed()
+        for library in artwork { await library.close() }
+        for library in [a, b] { await library.data.close() }
+    }
+
+    @Test(.timeLimit(.minutes(1))) func addingADimensionInvalidatesTheSharedRulesWithoutStartingAHiddenRead() async throws {
+        let root = try world([])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root), first = WorldSession(resources: resources)
+        let gate = AsyncReadGate<[String: MonsterSpawnLight]>()
+        resources.readNightLighting = { _, _ in await gate.read("rules") }
+        first.setDarkSpots(true); await gate.waitForRequest("rules")
+        await gate.finish("rules", with: try resources.world.nightMonsterLighting(assets: nil))
+        await resources.waitForRefresh()
+        first.setDarkSpots(false)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                               withIntermediateDirectories: true)
+        try await resources.includeDimensions(from: WorldSnapshot.read(root))
+        await resources.waitForRefresh()
+        let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        #expect(second.map != nil)
+        #expect(await gate.requested.count == 1)
+        second.setDarkSpots(true)
+        await gate.waitForRequest("rules", count: 2)
+        let rules = try resources.world.nightMonsterLighting(assets: nil)
+        await gate.finish("rules", with: rules); await resources.waitForRefresh()
+        #expect(second.map?.nightLighting == rules["minecraft:the_nether"])
+        #expect(second.map?.nightLighting?.hasSkylight == false)
+        first.setDarkSpots(true); await resources.waitForRefresh()
+        #expect(await gate.requested.count == 2)
+        resources.close(); await resources.waitUntilClosed()
+    }
+
     @Test(arguments: [false, true])
     func mapAndAreaExportsUseTheSameLightPixelsAndLegendInBothAppearances(savedTime: Bool) async throws {
         let root = try world([chunk { x, _, _ in x }])
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let savedLighting = TestSavedLighting()
-        let map = MapModel(savedLighting: { savedLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { savedLighting.value }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
         map.viewport = plan.viewport
@@ -222,7 +428,7 @@ import Testing
                 skyLightColor: SIMD3(0.48, 0.48, 1), moonPhase: .fullMoon))
             savedLighting.value = MapLighting(saved: saved, time: time)
         }
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.setDarkSpots(true)
         map.requestTiles(visibleIn: plan.size, displayScale: 1)
         await map.waitUntilIdle()
@@ -253,10 +459,11 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent()) }
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.viewport.center = CGPoint(x: 0.5, y: 0.5)
         #expect(map.unfinishedTopBlockReads == 0 && map.topBlocks.isEmpty)
         #expect(!readout().contains("Dark Spots"))
@@ -284,9 +491,10 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.setDarkSpots(true)
         await gate.waitForRequest("0")
         map.loadTopBlocks(at: CGPoint(x: 1, y: 1))
@@ -322,9 +530,10 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>(), numbers = ReadNumbers()
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in await gate.read(String(await numbers.next())) })
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.setDarkSpots(true)
         await gate.waitForRequest("0")
         map.regionsChanged([RegionPosition(x: 1, z: 0)]) // Unrelated save keeps this read.
@@ -352,10 +561,11 @@ import Testing
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
-        let map = MapModel(savedLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let nightLighting = TestNightLighting()
+        let map = MapModel(savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in (file, blocks) })
         defer { map.close() }
-        map.setNightLighting(overlay.rule)
+        nightLighting.value = overlay.rule
         map.setDarkSpots(true)
         await map.waitForTopBlocks()
         for x in 1...65 {
@@ -380,6 +590,15 @@ import Testing
     private func pngPixels(_ value: MapImage) throws -> [UInt8] {
         let source = try #require(CGImageSourceCreateWithData(value.data as CFData, nil))
         return try ItemPictureFixture.pixels(#require(CGImageSourceCreateImageAtIndex(source, 0, nil))).bytes
+    }
+
+    private func resources(_ root: URL) async throws -> WorldResources {
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        resources.refreshDelay = .zero
+        await resources.waitForRefresh()
+        return resources
     }
 
     private func inputs(_ root: URL) throws -> (ChunkseeKit.Dimension, DarkSpots) {
