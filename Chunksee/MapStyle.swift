@@ -4,7 +4,7 @@ import Foundation
 import SwiftUI
 
 /// A dimension's terrain presentation. The scan and its selected column stay the same.
-nonisolated enum MapStyle: String, CaseIterable, Sendable {
+nonisolated enum MapStyle: String, CaseIterable, Sendable, Encodable {
     case normal, height, waterDepth
 
     var title: LocalizedStringResource {
@@ -18,7 +18,7 @@ nonisolated enum MapStyle: String, CaseIterable, Sendable {
 
 /// One fixed scale for height colouring, derived from saved facts rather than loaded tiles.
 /// Sea level is the palette's midpoint, even when it lies outside the build range.
-nonisolated struct MapHeightScale: Hashable, Sendable {
+nonisolated struct MapHeightScale: Hashable, Sendable, Encodable {
     let bounds: ClosedRange<Int>
     let seaLevel: Int?
 
@@ -38,9 +38,6 @@ nonisolated struct MapHeightScale: Hashable, Sendable {
         return 0.5 + 0.5 * (y - sea) / (high - sea)
     }
 
-    var cacheKey: String {
-        "\(bounds.lowerBound).\(bounds.upperBound).sea\(seaLevel.map(String.init) ?? "unknown")"
-    }
 }
 
 /// Both the tile pixels and their legend sample these fixed, lightness-ordered ramps.

@@ -7,7 +7,7 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct TileCacheTests {
-    @Test func sharedKeyPrimitivesKeepDiskNamesAndReadFreshFileAttributes() throws {
+    @Test func sharedKeysHaveStableNamesAndReadFreshFileAttributes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheKeyTests-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -23,25 +23,27 @@ import Testing
         // Prime Foundation's URL metadata before changing this same URL's file.
         _ = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let original = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(original.fileName == "r.-1.2.normal.surface.all.ordinary.sourcea83f0dca971003d8.fallback.hunknown.cnone.3.1790000000500000.v38.lzfse")
-        #expect(TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName
-                == "r.-1.2.normal.cutaway.all.ordinary.sourcea83f0dca971003d8.fallback.y-16.3.1790000000500000.v38.lzfse")
-        #expect(ScanCache.fingerprint([file, missing]) == "573ac917b6c1e815")
+        let reopened = try #require(TileCache.key(for: region, regionFile: file))
+        #expect(original.fileName == reopened.fileName && original.fileName != nil)
+        #expect(original.fileName != TileCache.key(for: region, regionFile: file, cutawayY: -16)?.fileName)
+        #expect(ScanCache.fingerprint([file, missing]) == [original.file, nil])
         #expect(ScanCache.fingerprint([missing, file]) != ScanCache.fingerprint([file, missing]))
 
         try Data([1, 2, 3, 4]).write(to: file)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
         let resized = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(resized.fileSize == 4 && resized.modified == original.modified)
-        #expect(ScanCache.fingerprint([file, missing]) == "c5830d16238e6a68")
+        #expect(resized.file.size == 4 && resized.file.modified == original.file.modified)
+        #expect(ScanCache.fingerprint([file, missing]) == [resized.file, nil])
+        #expect(resized.fileName != original.fileName)
 
         try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(1)], ofItemAtPath: file.path)
         let touched = try #require(TileCache.key(for: region, regionFile: file))
-        #expect(touched.fileSize == 4 && touched.modified == original.modified + 1_000_000)
-        #expect(ScanCache.fingerprint([file, missing]) == "d789b310e6f2543d")
+        #expect(touched.file.size == 4 && touched.file.modified == original.file.modified + 1_000_000)
+        #expect(ScanCache.fingerprint([file, missing]) == [touched.file, nil])
+        #expect(touched.fileName != resized.fileName)
         try FileManager.default.removeItem(at: file)
         #expect(TileCache.key(for: region, regionFile: file) == nil)
-        #expect(ScanCache.fingerprint([file, missing]) == "8c8a4f8e0f4479e5")
+        #expect(ScanCache.fingerprint([file, missing]) == [nil, nil])
     }
 
     @Test func oldTilesAreRebuiltByScanningBlocksWhenHeightmapWidthIsAmbiguous() async throws {
@@ -62,7 +64,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: world.appendingPathComponent("test-cache"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionDirectory.appendingPathComponent("r.0.0.mca")))
-        let oldFile = cache.directory.appendingPathComponent("r.0.0.surface.\(key.fileSize).\(key.modified).v6.lzfse")
+        let oldFile = cache.directory.appendingPathComponent("r.0.0.surface.\(key.file.size).\(key.file.modified).v6.lzfse")
         try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
@@ -150,7 +152,7 @@ import Testing
         try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: entitiesFile)
         let cache = ScanCache(directory: world.appendingPathComponent("test-cache"))
-        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
+        let fingerprint = ScanCache.legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
         let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v\(version)")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let stale = [Creature(id: "minecraft:cat", x: 4, y: 64, z: 4, owner: NBT.intArray([1, 2, 3, 4]).uuid, health: 6)]
@@ -160,7 +162,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let creatures = try #require(await reader.facts(region)).creatures
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.creatures
+        let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.creatures
         #expect(saved?.first?.maxHealth == 10)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
@@ -171,7 +173,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let region = RegionPosition(x: -1, z: 0)
         let cache = ScanCache(directory: world.appendingPathComponent("cache"))
-        let fingerprint = ScanCache.fingerprint([
+        let fingerprint = ScanCache.legacyFingerprint([
             dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
             dimension.entitiesDirectory.appendingPathComponent("r.-1.0.mca"),
         ])
@@ -188,7 +190,7 @@ import Testing
         let index = await TestWorld.index(reader)
         let rebuilt = try #require(index.regions[region])
         #expect(rebuilt.structures.isEmpty)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map { StructureMarker($0) }
+        let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }

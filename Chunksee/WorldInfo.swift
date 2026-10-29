@@ -17,7 +17,12 @@ nonisolated struct WorldDetails: Sendable {
     var dragonFight: EnderDragonFight?
     var wanderingTrader: WanderingTraderTimer?
     /// Every readable saved map, including blank pictures and unavailable dimensions.
-    var maps: [MapItem] = []
+    var maps: [MapItem] { mapSources.map(\.map) }
+    private var mapSources: [InGameMapImage.Source] = []
+
+    func mapImageSource(for id: Int) -> InGameMapImage.Source? {
+        mapSources.first { $0.map.id == id }
+    }
 
     var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
         gameRules.map { (id: $0.key, name: Self.readableRule($0.key), value: $0.value) }
@@ -48,7 +53,7 @@ nonisolated struct WorldDetails: Sendable {
         }
         details.dragonFight = try? world.enderDragonFight()
         details.wanderingTrader = try? world.wanderingTrader()
-        details.maps = world.mapItems()
+        details.mapSources = world.mapItems().map(InGameMapImage.Source.init)
         return details
     }
 

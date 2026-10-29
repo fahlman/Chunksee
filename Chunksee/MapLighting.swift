@@ -87,3 +87,18 @@ nonisolated final class MapTileImage: @unchecked Sendable { // Both CGImages are
 
     var storageUnits: Int { normals == nil ? 1 : 2 }
 }
+
+/// A retained picture always carries the complete surface and preparation that produced it.
+nonisolated final class CachedMapImage: Sendable {
+    let key: RegionTileRenderer.ImageKey
+    let picture: MapTileImage
+
+    init(key: RegionTileRenderer.ImageKey, picture: MapTileImage) {
+        self.key = key
+        self.picture = picture
+    }
+
+    var image: CGImage { picture.image }
+    var normals: CGImage? { picture.normals }
+    var storageUnits: Int { picture.storageUnits }
+}

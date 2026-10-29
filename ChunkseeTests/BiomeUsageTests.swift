@@ -78,7 +78,7 @@ import Testing
             let dimension = try f.dimension()
             let cache = ScanCache(directory: f.url.appendingPathComponent("test-cache"))
             let sources = [dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca")]
-            let fingerprint = ScanCache.fingerprint(sources)
+            let fingerprint = ScanCache.legacyFingerprint(sources)
             let stale = [ChunkPosition(x: 0, z: 0): ["minecraft:lush_caves", "minecraft:deep_dark"]]
             let historical = try TestWorld.legacyCache(stale, name: "caveBiomes.0.0.\(fingerprint).v11",
                                                       directory: #require(cache.directory))

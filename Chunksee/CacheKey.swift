@@ -2,12 +2,17 @@ import Foundation
 
 /// Shared disk-key primitives; each cache still owns its entry format and version.
 nonisolated enum CacheKey {
-    static func fileStamp(for url: URL) -> (size: Int, modified: Int64)? {
+    struct FileStamp: Hashable, Sendable, Codable {
+        let size: Int
+        let modified: Int64
+    }
+
+    static func fileStamp(for url: URL) -> FileStamp? {
         // URL resource values can be cached, so ask FileManager for the current attributes.
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attributes[.size] as? NSNumber)?.intValue,
               let modified = attributes[.modificationDate] as? Date else { return nil }
-        return (size, Int64(modified.timeIntervalSince1970 * 1_000_000))
+        return FileStamp(size: size, modified: Int64(modified.timeIntervalSince1970 * 1_000_000))
     }
 
     /// Stable FNV-1a preserves the existing on-disk keys across launches and app versions.

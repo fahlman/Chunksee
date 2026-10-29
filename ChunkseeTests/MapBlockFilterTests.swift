@@ -154,7 +154,7 @@ import Testing
         await map.waitForRenders()
         #expect(!copiedOld)
         #expect(map.topBlock(at: CGPoint(x: 1, y: 1))?.y == 2)
-        #expect(map.tiles[.init(x: 0, z: 0)] === after?.full)
+        #expect(map.tiles[.init(x: 0, z: 0)]?.picture === after?.full)
         map.close()
         map.setBlockFilter(MapBlockFilter())
         #expect(map.blockFilter == hiddenLeaves)

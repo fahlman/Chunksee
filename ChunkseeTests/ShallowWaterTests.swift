@@ -260,7 +260,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: url.appendingPathComponent("test-tiles"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region)))
-        let old = cache.directory.appendingPathComponent(key.fileName.replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v34."))
+        let old = cache.directory.appendingPathComponent((try #require(key.fileName)).replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v34."))
         try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
         try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: old)

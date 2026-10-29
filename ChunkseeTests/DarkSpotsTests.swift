@@ -95,9 +95,9 @@ import Testing
         renderer.darkSpots = nil
         let restored = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == ItemPictureFixture.pixels(ordinary.full.image).bytes)
-        var bad = try (Data(contentsOf: cache.directory.appendingPathComponent(litKey.fileName)) as NSData).decompressed(using: .lzfse) as Data
+        var bad = try (Data(contentsOf: cache.directory.appendingPathComponent(try #require(litKey.fileName))) as NSData).decompressed(using: .lzfse) as Data
         bad[512 * 512 * 9] = 3
-        try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: cache.directory.appendingPathComponent(litKey.fileName))
+        try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: cache.directory.appendingPathComponent(try #require(litKey.fileName)))
         #expect(cache.load(litKey) == nil)
         #expect(cache.load(key) != nil)
     }
@@ -122,7 +122,7 @@ import Testing
         await map.waitUntilIdle()
         await gate.finish("off", with: before)
         await map.waitForRenders()
-        #expect(map.tiles[region] === after?.full)
+        #expect(map.tiles[region]?.picture === after?.full)
         map.regionsChanged([region])
         await gate.waitForRequest("on", count: 2)
         map.close()

@@ -11,7 +11,8 @@ actor RegionReader {
 
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
-    nonisolated let scanOptions: RegionScanOptions
+    nonisolated var scanOptions: RegionScanOptions { cacheOptions.value }
+    private nonisolated let cacheOptions: ScanCache.Options
     nonisolated let notableBlocks: NotableBlock.Catalog
     nonisolated let structureGroups: StructureGroup.Catalog
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
@@ -24,7 +25,7 @@ actor RegionReader {
          structureGroups: StructureGroup.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
-        self.scanOptions = options
+        cacheOptions = ScanCache.Options(options)
         self.notableBlocks = notableBlocks
         self.structureGroups = structureGroups
         self.read = read
@@ -70,7 +71,7 @@ actor RegionReader {
 
     func facts(_ region: RegionPosition) async -> RegionFacts? {
         guard !isClosed, !Task.isCancelled else { return nil }
-        let key = ScanCache.Key(dimension: dimension, region: region, options: scanOptions)
+        let key = ScanCache.Key(dimension: dimension, region: region, options: cacheOptions)
         let task: Task<RegionFacts, Error>
         let ownsRead: Bool
         if let existing = reading[key] { task = existing; ownsRead = false }
@@ -104,7 +105,7 @@ actor RegionReader {
             try Task.checkCancellation()
             return saved
         }
-        let facts = try await read(dimension, key.region, key.options)
+        let facts = try await read(dimension, key.region, key.options.value)
         try Task.checkCancellation()
         guard key.matches(facts) else { throw CocoaError(.fileReadCorruptFile) }
         // A save during the scan must not persist mixed results as an unchanged region.

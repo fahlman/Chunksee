@@ -8,6 +8,31 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct BiomeMapColorsTests {
+    @Test func publicationKeysCoverCompleteCatalogsAndColormapsInAnyInsertionOrder() throws {
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try pack(at: root, grass: 0x123456)
+        let world = try World(contentsOf: root)
+        let definition = try #require(world.biomeDefinitions(assets: nil)["test:a"])
+        let source = GameResourceSource(data: "fixture", artwork: .game("fixture"))
+        let grass = try #require(Identifier("minecraft:grass")), foliage = try #require(Identifier("minecraft:foliage"))
+        let green = ItemTexture(width: 1, height: 1, pixels: [0, 255, 0, 255])
+        let red = ItemTexture(width: 1, height: 1, pixels: [255, 0, 0, 255])
+        let first = try MapBiomeColors(world: world, source: source,
+            definitions: Dictionary(uniqueKeysWithValues: [("test:a", definition), ("test:b", definition)]),
+            colorMaps: Dictionary(uniqueKeysWithValues: [(grass, green), (foliage, red)]))
+        let reordered = try MapBiomeColors(world: world, source: source,
+            definitions: Dictionary(uniqueKeysWithValues: [("test:b", definition), ("test:a", definition)]),
+            colorMaps: Dictionary(uniqueKeysWithValues: [(foliage, red), (grass, green)]))
+        #expect(first.sourceKey == reordered.sourceKey)
+        let changed = try MapBiomeColors(world: world, source: source,
+            definitions: ["test:a": definition, "test:b": definition], colorMaps: [grass: red, foliage: red])
+        #expect(first.sourceKey != changed.sourceKey)
+        #expect(first.removingArtwork().sourceKey == changed.removingArtwork().sourceKey)
+        #expect(first.removingArtwork().sourceKey.catalog == first.sourceKey.catalog)
+        #expect(first.removingArtwork().sourceKey.colorMaps == nil)
+    }
+
     @Test func worldsShareTheArchiveButKeepTheirOwnResolvedColorsAndStableKeys() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }
@@ -849,7 +874,7 @@ import Testing
             let renderer = map.currentRenderer
             let hit = try #require(try await renderer.tile(for: region))
             #expect(hit.cacheWrite == nil && hit.detail == nil)
-            let surface = try #require(try await renderer.detail(for: region))
+            let surface = try #require(try await renderer.detail(for: region)).surface
             let detail = try #require(try await MapDetailRenderer.render(chunk, surface: surface, assets: library,
                                                                          heightScale: nil, usesSavedLighting: false))
             #expect(try ItemPictureFixture.pixels(detail.image).color(7 * 16 + 8, 8 * 16 + 8) == expected)

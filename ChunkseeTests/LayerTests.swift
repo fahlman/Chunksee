@@ -238,7 +238,7 @@ enum StructureTestWorld {
         try save(health: 8)
         let root = world.appendingPathComponent("app-cache")
         let cache = ScanCache(forWorldAt: world, dimensionID: dimension.id, root: root)
-        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), file])
+        let fingerprint = ScanCache.legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), file])
         let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v\(oldVersion)")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let oldPet = Creature(id: "minecraft:wolf", x: 4, y: 64, z: 4, customName: "Summer", owner: owner, health: oldVersion == 6 ? 8 : nil)
@@ -253,7 +253,7 @@ enum StructureTestWorld {
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
-        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: try #require(session.resources.readers[dimension.id]).scanOptions))?.creatures
+        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: .init(try #require(session.resources.readers[dimension.id]).scanOptions)))?.creatures
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))

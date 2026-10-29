@@ -8,8 +8,20 @@ struct WorldGameAssetSource: Equatable {
 /// Immutable color facts for one world and game archive. Dimension tabs share this value;
 /// different enabled data packs never become mutable state in the shared archive reader.
 nonisolated struct MapBiomeColors: Sendable {
-    let sourceKey: String
-    let source: GameResourceSource
+    struct Key: Hashable, Sendable, Encodable {
+        var interpretation = GameAssets.interpretationVersion
+        let source: GameResourceSource
+        let catalog: String
+        let colorMaps: String?
+    }
+
+    private struct Catalog: Encodable {
+        let seed: Int64?
+        let definitions: [String: BiomeDefinition]
+    }
+
+    let sourceKey: Key
+    var source: GameResourceSource { sourceKey.source }
     let dataVersion: Int?
     let enabledPacks: [String]
     let seed: Int64?
@@ -30,36 +42,33 @@ nonisolated struct MapBiomeColors: Sendable {
 
     init(world: World, source: GameResourceSource, definitions: [String: BiomeDefinition],
          colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String> = []) throws {
-        self.init(source: source, seed: try world.seed(), dataVersion: world.level.dataVersion,
+        let seed = try world.seed()
+        // Keep Kit's complete definitions in the identity. Compute this once at publication,
+        // rather than enumerating its current fields or encoding the catalog for every tile.
+        let catalog = try InterpretationKey.identity(of: Catalog(seed: seed, definitions: definitions))
+        let maps = Dictionary(uniqueKeysWithValues: colorMaps.map { ($0.key.description, $0.value) })
+        let pictures = maps.isEmpty ? nil : try InterpretationKey.identity(of: maps)
+        self.init(source: source, catalog: catalog, pictures: pictures, seed: seed, dataVersion: world.level.dataVersion,
                   enabledPacks: world.level.enabledDataPacks, definitions: definitions,
                   colorMaps: colorMaps, waterBiomes: waterBiomes)
     }
 
-    private init(source: GameResourceSource, seed: Int64?, dataVersion: Int?, enabledPacks: [String],
+    private init(source: GameResourceSource, catalog: String, pictures: String?, seed: Int64?, dataVersion: Int?, enabledPacks: [String],
                  definitions: [String: BiomeDefinition], colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String>) {
         self.seed = seed
         sampler = seed.map(BiomeSampler.init(seed:))
-        self.source = source
+        sourceKey = Key(source: source, catalog: catalog, colorMaps: pictures)
         self.waterBiomes = waterBiomes
         self.dataVersion = dataVersion
         self.enabledPacks = enabledPacks
         self.definitions = definitions
         colors = definitions.mapValues { Biome(definition: $0, colorMaps: colorMaps) }
-        // Hash resolved values, not level.dat's timestamp: ordinary autosaves do not change
-        // color meaning. Resource IDs cannot contain these field/record separators.
-        let rows = definitions.keys.sorted().map { id in
-            let value = definitions[id]!
-            return [id, String(value.temperature.bitPattern), String(value.downfall.bitPattern),
-                    String(value.waterColor), value.grassColor.map(String.init) ?? "-",
-                    value.foliageColor.map(String.init) ?? "-", value.dryFoliageColor.map(String.init) ?? "-",
-                    value.grassColorModifier.rawValue].joined(separator: "|")
-        }
-        sourceKey = CacheKey.hash(source.cacheKey + "\nseed:" + (seed.map(String.init) ?? "unknown") + "\n" + rows.joined(separator: "\n"))
     }
 
     /// Retain data immediately when a toggle retires artwork; no archive or image read is needed.
     func removingArtwork() -> Self {
-        Self(source: .init(data: source.data, artwork: .unavailable), seed: seed, dataVersion: dataVersion,
+        Self(source: .init(data: source.data, artwork: .unavailable), catalog: sourceKey.catalog, pictures: nil,
+             seed: seed, dataVersion: dataVersion,
              enabledPacks: enabledPacks, definitions: definitions, colorMaps: [:], waterBiomes: waterBiomes)
     }
 

@@ -94,13 +94,13 @@ import Testing
         var renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
         let daylight = try #require(try await renderer.tile(for: region))
         let key = try #require(TileCache.key(for: region, regionFile: file))
-        let bytes = try Data(contentsOf: cache.directory.appendingPathComponent(key.fileName))
-        try Data(repeating: 0, count: key.fileSize).write(to: file)
+        let bytes = try Data(contentsOf: cache.directory.appendingPathComponent(try #require(key.fileName)))
+        try Data(repeating: 0, count: key.file.size).write(to: file)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
         renderer.usesSavedLighting = true
         let saved = try #require(try await renderer.tile(for: region))
         #expect(saved.cacheWrite == nil && saved.full.normals != nil && saved.preview.normals != nil)
-        #expect(try Data(contentsOf: cache.directory.appendingPathComponent(key.fileName)) == bytes)
+        #expect(try Data(contentsOf: cache.directory.appendingPathComponent(try #require(key.fileName))) == bytes)
         #expect(try ItemPictureFixture.pixels(saved.full.image).color(8, 8)[3] == 255)
         renderer.usesSavedLighting = false
         let restored = try #require(try await renderer.tile(for: region))

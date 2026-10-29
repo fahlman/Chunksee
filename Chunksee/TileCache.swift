@@ -7,7 +7,8 @@ import Foundation
 /// from (size and modification date) and the current renderer version, so regions changed in
 /// game re-render automatically.
 nonisolated struct TileCache: Sendable {
-    /// Bump whenever rendering output changes (colors, shading, layout), invalidating old entries.
+    /// Versions this app's drawing only. Kit's complete contracts are separate key inputs.
+    /// Bump whenever app rendering output changes (colors, shading, layout).
     /// 2: relief shading on each region's top row. 3: the Nether drawn under its roof.
     /// 4: solid Nether columns drawn darkened instead of left empty. 5: that block taken from below
     /// the roof's bedrock band. 6: independent Surface/cutaway height keys.
@@ -43,36 +44,55 @@ nonisolated struct TileCache: Sendable {
 
     let directory: URL
 
-    struct Key: Hashable, Sendable {
-        var region: RegionPosition
-        var fileSize: Int
-        var modified: Int64
+    struct Inputs: Hashable, Sendable, Encodable {
+        var renderer = TileCache.rendererVersion
+        var terrain = Chunk.interpretationVersion
+        var assets: InterpretationVersion? = GameAssets.interpretationVersion
         var cutawayY: Int? = nil
         var buildHeight: Int? = nil
         var ceilingY: Int? = nil
         var style = MapStyle.normal
         var heightScale: MapHeightScale? = nil
-        var filterKey: String? = nil
-        var colorSource: String? = nil
+        var filterKey: MapBlockFilter.Key? = nil
+        var colorSource: RegionTileRenderer.ColorSource? = nil
         var gameSource = GameResourceSource.unavailable
-        var biomeSource: String? = nil
-        var nightLight: String? = nil
-        var waterSource: String? = nil
+        var biomeBounds: ClosedRange<Int>? = nil
+        var nightLight: DarkSpots.Key? = nil
+        var waterSource: [String]? = nil
 
-        var fileName: String {
-            let view = cutawayY.map { "y\($0)" }
-                ?? "h\(buildHeight.map(String.init) ?? "unknown").c\(ceilingY.map(String.init) ?? "none")"
-            let scale = heightScale.map { ".scale\($0.cacheKey)" } ?? ""
-            let biomes = biomeSource.map { "biomes\($0)." } ?? ""
-            let colors = "source\(gameSource.cacheKey)." + (colorSource.map { "colors\($0)." } ?? "fallback.")
-            let light = nightLight.map { "light\($0)." } ?? ""
-            let water = waterSource.map { "water\($0)." } ?? ""
-            return "\(prefix)\(light)\(colors)\(biomes)\(water)\(filterKey.map { $0 + "." } ?? "")\(view)\(scale).\(fileSize).\(modified).v\(TileCache.rendererVersion).lzfse"
+        init(context: MapSurfaceContext, cutawayY: Int?, style: MapStyle, heightScale: MapHeightScale?,
+             blockFilter: MapBlockFilter, colorSource: RegionTileRenderer.ColorSource?,
+             gameSource: GameResourceSource, samplesNeighborBiomes: Bool, darkSpots: DarkSpots?) {
+            assets = style == .height ? nil : GameAssets.interpretationVersion
+            self.cutawayY = cutawayY
+            // Explicit slices never use heightmaps or the normal view below a roof.
+            buildHeight = cutawayY == nil ? context.buildHeight : nil
+            ceilingY = cutawayY == nil ? context.ceilingY : nil
+            self.style = style
+            self.heightScale = style == .height ? heightScale : nil
+            filterKey = blockFilter.cacheKey
+            self.colorSource = style == .height ? nil : colorSource
+            self.gameSource = style == .height ? .unavailable : gameSource
+            biomeBounds = samplesNeighborBiomes ? context.dimensionType.map { $0.minY...$0.maxY } : nil
+            nightLight = darkSpots?.cacheKey
+            waterSource = context.waterKey
+        }
+    }
+
+    struct Key: Hashable, Sendable, Encodable {
+        var region: RegionPosition
+        var file: CacheKey.FileStamp
+        var inputs: Inputs
+        var biomeFiles: [RegionTileRenderer.BiomeFile]?
+
+        var fileName: String? {
+            guard let identity = try? InterpretationKey.identity(of: self) else { return nil }
+            return "\(prefix)\(identity).v\(inputs.renderer).lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
-        var prefix: String { "\(regionPrefix)\(style.rawValue).\(cutawayY == nil ? "surface" : "cutaway").\(filterKey == nil ? "all" : "filtered").\(nightLight == nil ? "ordinary" : "night")." }
-        var detailFileName: String { fileName + ".detail" }
+        var prefix: String { "\(regionPrefix)\(inputs.style.rawValue).\(inputs.cutawayY == nil ? "surface" : "cutaway").\(inputs.filterKey == nil ? "all" : "filtered").\(inputs.nightLight == nil ? "ordinary" : "night")." }
+        var detailFileName: String? { fileName.map { $0 + ".detail" } }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -121,26 +141,20 @@ nonisolated struct TileCache: Sendable {
     }
 
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
-    static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil,
-                    style: MapStyle = .normal, heightScale: MapHeightScale? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: String? = nil, gameSource: GameResourceSource = .unavailable, biomeSource: String? = nil, darkSpots: DarkSpots? = nil) -> Key? {
+    static func key(for region: RegionPosition, regionFile: URL, inputs: Inputs,
+                    biomeFiles: [RegionTileRenderer.BiomeFile]?) -> Key? {
         guard let stamp = CacheKey.fileStamp(for: regionFile) else { return nil }
-        // Explicit slices never use heightmaps or the normal view below a roof.
-        return Key(region: region, fileSize: stamp.size, modified: stamp.modified, cutawayY: cutawayY,
-                   buildHeight: cutawayY == nil ? context.buildHeight : nil,
-                   ceilingY: cutawayY == nil ? context.ceilingY : nil,
-                   style: style, heightScale: style == .height ? heightScale : nil, filterKey: blockFilter.cacheKey, colorSource: style == .height ? nil : colorSource,
-                   gameSource: style == .height ? .unavailable : gameSource,
-                   biomeSource: style == .height ? nil : biomeSource, nightLight: darkSpots?.cacheKey,
-                   waterSource: context.waterKey)
+        return Key(region: region, file: stamp, inputs: inputs, biomeFiles: biomeFiles)
     }
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.fileName)),
+        guard let name = key.fileName,
+              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
               let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              bytes.count == count * (key.nightLight == nil ? 9 : 10) else { return nil }
+              bytes.count == count * (key.inputs.nightLight == nil ? 9 : 10) else { return nil }
         let water = bytes[(count * 8)..<(count * 9)]
-        let light = key.nightLight == nil ? nil : Array(bytes[(count * 9)...])
+        let light = key.inputs.nightLight == nil ? nil : Array(bytes[(count * 9)...])
         if let light, !light.allSatisfy({ DarkSpots.Status(rawValue: $0) != nil }) { return nil }
         guard water.allSatisfy({ $0 <= 1 }) else { return nil }
         let heights = bytes.withUnsafeBytes { buffer in
@@ -154,12 +168,13 @@ nonisolated struct TileCache: Sendable {
     /// forces a world scan just to display the ordinary map.
     func loadDetail(_ key: Key) -> MapSurfaceDetail.Surface? {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        let offset = count * (key.nightLight == nil ? 4 : 5)
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent(key.detailFileName)),
+        let offset = count * (key.inputs.nightLight == nil ? 4 : 5)
+        guard let name = key.detailFileName,
+              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
               let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
               bytes.count >= offset, bytes.count <= offset + MapSurfaceDetail.maximumEncodedBytes,
               let detail = MapSurfaceDetail.decoded(Data(bytes[offset...])) else { return nil }
-        let light = key.nightLight == nil ? nil : Array(bytes[(count * 4)..<offset])
+        let light = key.inputs.nightLight == nil ? nil : Array(bytes[(count * 4)..<offset])
         if let light, !light.allSatisfy({ DarkSpots.Status(rawValue: $0) != nil }) { return nil }
         let heights = bytes.withUnsafeBytes { buffer in
             (0..<count).map { Int32(littleEndian: buffer.loadUnaligned(fromByteOffset: $0 * 4, as: Int32.self)) }
@@ -169,16 +184,17 @@ nonisolated struct TileCache: Sendable {
 
     func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard case .game = key.gameSource.artwork, key.colorSource != nil, key.style != .height,
-              (key.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
+        guard let name = key.detailFileName,
+              case .game = key.inputs.gameSource.artwork, key.inputs.colorSource != nil, key.inputs.style != .height,
+              (key.inputs.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
               surface.heights.count == count, let detail = surface.detail.encoded() else { return }
-        var bytes = Data(capacity: count * (key.nightLight == nil ? 4 : 5) + detail.count)
+        var bytes = Data(capacity: count * (key.inputs.nightLight == nil ? 4 : 5) + detail.count)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         if let light = surface.nightLight { bytes.append(contentsOf: light) }
         bytes.append(detail)
         guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? compressed.write(to: directory.appendingPathComponent(key.detailFileName), options: .atomic)
+        try? compressed.write(to: directory.appendingPathComponent(name), options: .atomic)
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
@@ -186,10 +202,11 @@ nonisolated struct TileCache: Sendable {
     /// disabling a filter preserves the ordinary tile. Failures only cost a re-render.
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard surface.pixels.count == count * 4, surface.heights.count == count,
+        guard let fileName = key.fileName,
+              surface.pixels.count == count * 4, surface.heights.count == count,
               surface.isWater.count == count,
-              (key.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count) else { return }
-        var bytes = Data(capacity: count * (key.nightLight == nil ? 9 : 10))
+              (key.inputs.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count) else { return }
+        var bytes = Data(capacity: count * (key.inputs.nightLight == nil ? 9 : 10))
         bytes.append(contentsOf: surface.pixels)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
@@ -197,12 +214,13 @@ nonisolated struct TileCache: Sendable {
         guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let detailName = fileName + ".detail"
         for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        where (name.hasPrefix(key.prefix) && name != key.fileName && name != key.detailFileName)
+        where (name.hasPrefix(key.prefix) && name != fileName && name != detailName)
             || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")
                 && !name.hasSuffix(".v\(Self.rendererVersion).lzfse.detail")) {
             try? fileManager.removeItem(at: directory.appendingPathComponent(name))
         }
-        try? compressed.write(to: directory.appendingPathComponent(key.fileName), options: .atomic)
+        try? compressed.write(to: directory.appendingPathComponent(fileName), options: .atomic)
     }
 }

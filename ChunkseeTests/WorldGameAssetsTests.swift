@@ -151,7 +151,7 @@ import Synchronization
         let off = try await rendered()
         #expect(off.detail == nil)
         let offKey = try #require(off.cacheWrite?.key)
-        #expect(offKey.gameSource.artwork == .unavailable)
+        #expect(offKey.inputs.gameSource.artwork == .unavailable)
         #expect(reads.withLock { $0.isEmpty })
 
         names.minecraft.usesGameArtwork = true
@@ -162,7 +162,7 @@ import Synchronization
         let on = try await rendered(), onKey = try #require(on.cacheWrite?.key)
         #expect(on.heights == off.heights)
         #expect(on.cacheWrite?.surface.isWater == off.cacheWrite?.surface.isWater)
-        #expect(onKey.gameSource.artwork == .game(library.sourceKey) && onKey != offKey)
+        #expect(onKey.inputs.gameSource.artwork == .game(library.sourceKey) && onKey != offKey)
         #expect(map.currentRenderer.biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
         #expect(!reads.withLock { $0.isEmpty })
 

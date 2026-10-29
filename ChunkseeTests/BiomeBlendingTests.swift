@@ -138,6 +138,7 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("false")
+        let previousRenderer = map.currentRenderer
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setBiomeBlending(true)
@@ -145,10 +146,10 @@ import Testing
         await render.waitForRequest("true")
         map.setBiomeBlending(true)
         let blended = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("true", with: .init(full: blended, preview: blended))
+        await render.finish("true", with: try map.currentRenderer.fixtureTile(blended, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let old = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
-        await render.finish("false", with: .init(full: old, preview: old))
+        await render.finish("false", with: try previousRenderer.fixtureTile(old, for: .init(x: 0, z: 0)))
         let block = RegionTileRenderer.TopBlock(id: "minecraft:stone", y: 15, waterDepth: 0)
         await columns.finish("0", with: (file, Array(repeating: block, count: 256)))
         await columns.finish("1", with: (file, Array(repeating: block, count: 256)))

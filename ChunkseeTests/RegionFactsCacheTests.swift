@@ -98,13 +98,13 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
         let options = RegionReader.options()
-        let key = ScanCache.Key(dimension: dimension, region: region, options: options)
+        let key = ScanCache.Key(dimension: dimension, region: region, options: .init(options))
         let facts = try dimension.scan(region: region, options: options)
         cache.store(facts, key: key)
         #expect(cache.load(key)?.containers.count == 1)
         for other in [RegionScanOptions(blockIDs: []), RegionScanOptions(blockIDs: options.blockIDs, biomeSampleY: 64),
                       RegionScanOptions(blockIDs: options.blockIDs, height: 384)] {
-            #expect(cache.load(.init(dimension: dimension, region: region, options: other)) == nil)
+            #expect(cache.load(.init(dimension: dimension, region: region, options: .init(other))) == nil)
         }
         let directory = try #require(cache.directory)
         let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
@@ -116,7 +116,10 @@ import Testing
             var saved = try #require(entry["facts"] as? [String: Any])
             switch invalid {
             case "transform": entry["transformVersion"] = ScanCache.transformVersion - 1
-            case "interpretation": saved["version"] = RegionFacts.interpretationVersion - 1
+            case "interpretation":
+                var version = try #require(saved["version"] as? [String: Any])
+                version["revision"] = -1
+                saved["version"] = version
             case "fingerprint": entry["fingerprint"] = "different"
             case "dimension": saved["dimension"] = "minecraft:the_nether"
             default: saved["biomeSampleY"] = 64
@@ -142,7 +145,7 @@ import Testing
             "id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
             "Items": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(1), "components": components])]),
         ])])
-        let key = ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: facts.options)
+        let key = ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: .init(facts.options))
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
         cache.store(facts, key: key)
         let loaded = try #require(cache.load(key)?.containers.first?.items.first)
@@ -170,7 +173,7 @@ import Testing
             #expect(retained.containers == initial.containers && retained.regions.count == 1)
         }
         #expect(await HeatMap.images(reader, previous: heat).count == 1)
-        let badKey = ScanCache.Key(dimension: dimension, region: region, options: RegionReader.options())
+        let badKey = ScanCache.Key(dimension: dimension, region: region, options: .init(RegionReader.options()))
         #expect(cache.load(badKey) == nil)
         // A successful empty region replaces old contributions; it is different from a failed read.
         try Data(repeating: 0, count: 8192).write(to: file)

@@ -40,9 +40,14 @@ nonisolated struct RegionTileRenderer: Sendable {
               biomeColors.source.artwork == .unavailable || biomeColors.source.artwork == gameSource.artwork else { return nil }
         return biomeColors
     }
-    var colorSourceKey: String? {
-        guard let colors = currentBiomeColors else { return gameData?.sourceKey }
-        return colors.sourceKey + (blendsBiomeColors ? "." + BiomeBlending.cacheKey : "")
+    enum ColorSource: Hashable, Sendable, Encodable {
+        case game(String)
+        case biomes(MapBiomeColors.Key, blending: String?)
+    }
+
+    var colorSourceKey: ColorSource? {
+        guard let colors = currentBiomeColors else { return gameData.map { .game($0.sourceKey) } }
+        return .biomes(colors.sourceKey, blending: blendsBiomeColors ? BiomeBlending.cacheKey : nil)
     }
 
     var samplesNeighborBiomes: Bool {
@@ -51,14 +56,45 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// Include unavailable neighbors too, so creating/deleting a file changes the dependency.
     /// Sampled Y also depends on the saved build range even for an explicit cutaway.
-    private func biomeDependencyKey(for region: RegionPosition) -> String? {
+    struct BiomeFile: Hashable, Sendable, Encodable {
+        let region: RegionPosition
+        let stamp: CacheKey.FileStamp?
+    }
+
+    private func biomeFiles(for region: RegionPosition) -> [BiomeFile]? {
         guard samplesNeighborBiomes else { return nil }
-        let files = Self.neighboringRegions(around: region).sorted { ($0.x, $0.z) < ($1.x, $1.z) }.map { neighbor in
+        return Self.neighboringRegions(around: region).sorted { ($0.x, $0.z) < ($1.x, $1.z) }.map { neighbor in
             let stamp = CacheKey.fileStamp(for: dimension.regionURL(.terrain, x: neighbor.x, z: neighbor.z))
-            return "\(neighbor.x),\(neighbor.z):" + (stamp.map { "\($0.size),\($0.modified)" } ?? "missing")
+            return BiomeFile(region: neighbor, stamp: stamp)
         }
-        let limits = surfaceContext.dimensionType.map { "\($0.minY)...\($0.maxY)" } ?? "unknown"
-        return CacheKey.hash(limits + "\n" + files.joined(separator: "\n"))
+    }
+
+    /// Immutable publication inputs, compared without disk access or catalog hashing.
+    var cacheInputs: TileCache.Inputs {
+        TileCache.Inputs(context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale,
+                         blockFilter: blockFilter, colorSource: colorSourceKey, gameSource: gameSource,
+                         samplesNeighborBiomes: samplesNeighborBiomes, darkSpots: darkSpots)
+    }
+
+    struct Preparation: Hashable, Sendable {
+        let heightScale: MapHeightScale?
+        let usesSavedLighting: Bool
+    }
+
+    var preparation: Preparation {
+        Preparation(heightScale: style == .height ? nil : heightScale,
+                    usesSavedLighting: style != .height && usesSavedLighting)
+    }
+
+    struct ImageKey: Hashable, Sendable {
+        let surface: TileCache.Key
+        let preparation: Preparation
+        /// Ordinary full/preview images have separate stores; close-ups also name their chunk.
+        let chunk: ChunkPosition?
+    }
+
+    func accepts(_ key: ImageKey) -> Bool {
+        key.surface.inputs == cacheInputs && key.preparation == preparation
     }
 
     /// RGBA pixels (premultiplied, row-major, 512×512), or `nil` when the region file doesn't exist.
@@ -281,21 +317,28 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// A region's full-resolution image and a half-resolution preview for zoomed-out views.
     struct RenderedTile: Sendable {
+        let key: ImageKey
         var full: MapTileImage
         var preview: MapTileImage
         var cacheWrite: CacheWrite?
         var detail: MapSurfaceDetail.Surface?
         var heights: [Int32]?
 
-        init(full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil,
+        init(key: ImageKey, full: MapTileImage, preview: MapTileImage, cacheWrite: CacheWrite? = nil,
              detail: MapSurfaceDetail.Surface? = nil, heights: [Int32]? = nil) {
+            self.key = key
             self.full = full; self.preview = preview; self.cacheWrite = cacheWrite
             self.detail = detail; self.heights = heights
         }
 
-        init(full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil, detail: MapSurfaceDetail.Surface? = nil) {
-            self.init(full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite, detail: detail)
+        init(key: ImageKey, full: CGImage, preview: CGImage, cacheWrite: CacheWrite? = nil, detail: MapSurfaceDetail.Surface? = nil) {
+            self.init(key: key, full: MapTileImage(full), preview: MapTileImage(preview), cacheWrite: cacheWrite, detail: detail)
         }
+    }
+
+    struct DetailSurface: Sendable {
+        let key: TileCache.Key
+        let surface: MapSurfaceDetail.Surface
     }
 
     /// Immutable data for an accepted tile's save. The map owns scheduling/draining it; canceled
@@ -320,16 +363,16 @@ nonisolated struct RegionTileRenderer: Sendable {
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
         if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
-        let key = cacheKey(for: region)
+        guard let key = cacheKey(for: region) else { return nil }
         var surface: Canvas?
         var cacheWrite: CacheWrite?
         var scanned = false
-        if let cache, let key, let cached = cache.load(key) {
+        if let cache, let cached = cache.load(key) {
             surface = cached
         } else {
             surface = try await self.surface(for: region)
             scanned = true
-            if let cache, let key, let surface {
+            if let cache, let surface {
                 if savesInBackground {
                     cacheWrite = CacheWrite(cache: cache, key: key, surface: surface)
                 } else {
@@ -353,7 +396,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                                          width: Self.previewSide, height: Self.previewSide, colorSpace: CGColorSpace.linearSRGB)
             guard normals != nil, previewNormals != nil else { return nil }
         }
-        return RenderedTile(full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
+        return RenderedTile(key: ImageKey(surface: key, preparation: preparation, chunk: nil),
+                            full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
                             cacheWrite: cacheWrite,
                             detail: scanned && gameArtwork != nil && style != .height ? surface.detailSurface : nil,
                             heights: style == .height ? nil : surface.heights)
@@ -362,22 +406,20 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
     /// sidecar (including disabled caching) uses the same renderer, never another block parser.
     @concurrent
-    func detail(for region: RegionPosition) async throws -> MapSurfaceDetail.Surface? {
+    func detail(for region: RegionPosition) async throws -> DetailSurface? {
         guard gameArtwork != nil, style != .height else { return nil }
         try await gameArtwork?.checkAvailable()
-        let key = cacheKey(for: region)
-        if let cache, let key, let detail = cache.loadDetail(key) { return detail }
+        guard let key = cacheKey(for: region) else { return nil }
+        if let cache, let detail = cache.loadDetail(key) { return DetailSurface(key: key, surface: detail) }
         guard let surface = try await surface(for: region) else { return nil }
         try Task.checkCancellation()
-        if let cache, let key { cache.storeDetail(surface, for: key) }
-        return surface.detailSurface
+        if let cache { cache.storeDetail(surface, for: key) }
+        return DetailSurface(key: key, surface: surface.detailSurface)
     }
 
-    private func cacheKey(for region: RegionPosition) -> TileCache.Key? {
-        guard cache != nil else { return nil }
-        return TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
-            context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale, blockFilter: blockFilter,
-            colorSource: style == .height ? nil : colorSourceKey, gameSource: gameSource, biomeSource: biomeDependencyKey(for: region), darkSpots: darkSpots)
+    func cacheKey(for region: RegionPosition) -> TileCache.Key? {
+        TileCache.key(for: region, regionFile: dimension.regionURL(.terrain, x: region.x, z: region.z),
+                      inputs: cacheInputs, biomeFiles: biomeFiles(for: region))
     }
 
     /// Averages each 2×2 block of premultiplied RGBA pixels, so partly generated edges fade

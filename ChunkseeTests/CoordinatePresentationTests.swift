@@ -66,7 +66,7 @@ import Testing
         let file = dimension.entitiesDirectory.appendingPathComponent("r.-1.-1.mca")
         try Data(TestWorld.regionFile([.init(x: -1, z: -2, nbt: nbt)])).write(to: file)
         let cache = ScanCache(directory: url.appendingPathComponent("cache"))
-        let fingerprint = ScanCache.fingerprint([dimension.regionDirectory.appendingPathComponent("r.-1.-1.mca"), file])
+        let fingerprint = ScanCache.legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.-1.-1.mca"), file])
         var oldContainer = try #require(ItemContainer.containers(inEntityChunk: nbt).first)
         oldContainer.x = -8; oldContainer.y = 0; oldContainer.z = -16
         let oldFile = try #require(cache.directory).appendingPathComponent("contents.-1.-1.\(fingerprint).v12")
@@ -86,7 +86,7 @@ import Testing
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
-        let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: RegionReader.options()))
+        let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: .init(RegionReader.options())))
         #expect(saved?.containers == contents.containers)
     }
 

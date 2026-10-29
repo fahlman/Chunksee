@@ -21,11 +21,12 @@ nonisolated struct MapImage: Sendable {
               let destination = imageContext(width: width, height: height) else { return nil }
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         let full = map.needsFullResolution(displayScale: scale)
+        let detail = map.detailImages.mapValues(\.picture)
         for region in visible {
             if let tile = map.image(for: region, fullResolution: full),
                !drawTerrainLayer(tile, region: region, viewport: map.viewport, size: size, scale: scale,
                                  lighting: map.lighting, protectsWater: map.style == .waterDepth,
-                                 contrast: contrast, shadow: map.shadowImages[region], detail: map.detailImages, into: destination) { return nil }
+                                 contrast: contrast, shadow: map.shadowImages[region], detail: detail, into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,

@@ -4,7 +4,7 @@ import Foundation
 import ImageIO
 
 /// Decoded pixels have a top-left origin and premultiplied RGBA channels.
-nonisolated struct ItemTexture: Sendable {
+nonisolated struct ItemTexture: Sendable, Encodable {
     let width: Int
     let height: Int
     let pixels: [UInt8]

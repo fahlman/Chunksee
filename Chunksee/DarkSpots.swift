@@ -26,10 +26,12 @@ nonisolated struct DarkSpots: Equatable, Sendable {
 
     /// Only resolved facts affect the cache. Autosaves, a renamed world or identical pack
     /// contents do not change the image; unavailable facts cannot reuse a known result.
-    var cacheKey: String {
-        guard let rule else { return "unknown" }
-        return "\(rule.blockLightLimit).\(rule.maximumRawLight).\(rule.hasSkylight).\(rule.skyDarkening.map(String.init) ?? "none")"
+    struct Key: Hashable, Sendable, Encodable {
+        var interpretation = MonsterSpawnLight.interpretationVersion
+        let rule: MonsterSpawnLight?
     }
+
+    var cacheKey: Key { Key(rule: rule) }
 
     func status(in chunk: Chunk, x: Int, surfaceY: Int, z: Int) -> Status {
         let y = surfaceY.addingReportingOverflow(1)

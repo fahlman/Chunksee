@@ -160,8 +160,11 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("DetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
-        let key = TileCache.Key(region: .init(x: -1, z: 0), fileSize: 1, modified: 2, colorSource: "test-assets",
-            gameSource: .init(data: "test-assets", artwork: .game("test-assets")))
+        let key = TileCache.Key(region: .init(x: -1, z: 0), file: .init(size: 1, modified: 2),
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+                          blockFilter: MapBlockFilter(), colorSource: .game("test-assets"),
+                          gameSource: .init(data: "test-assets", artwork: .game("test-assets")),
+                          samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         var surface = RegionTileRenderer.Canvas()
         surface.detail.insert(try chunk(), at: 0)
         surface.heights[0] = 12
@@ -169,13 +172,13 @@ import Testing
         let loaded = try #require(cache.load(key))
         #expect(loaded.detail.isEmpty && loaded.heights == surface.heights)
         #expect(cache.loadDetail(key) == nil)
-        let file = directory.appendingPathComponent(key.fileName)
+        let file = directory.appendingPathComponent(try #require(key.fileName))
         let ordinary = try Data(contentsOf: file)
         cache.storeDetail(surface, for: key)
         let detail = try #require(cache.loadDetail(key))
         #expect(detail.detail == surface.detail && detail.heights == surface.heights)
         #expect(try Data(contentsOf: file) == ordinary)
-        let detailFile = directory.appendingPathComponent(key.detailFileName)
+        let detailFile = directory.appendingPathComponent(try #require(key.detailFileName))
         let bytes = try (Data(contentsOf: detailFile) as NSData).decompressed(using: .lzfse) as Data
         for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 4 - 1)),
                     Data(repeating: 0, count: 512 * 512 * 4 + MapSurfaceDetail.maximumEncodedBytes + 1)] {
@@ -187,7 +190,7 @@ import Testing
         cache.store(surface, for: key)
         #expect(cache.loadDetail(key)?.detail == surface.detail) // rewriting the tile keeps its sidecar
         var changed = key
-        changed.modified += 1
+        changed.file = .init(size: key.file.size, modified: key.file.modified + 1)
         cache.store(surface, for: changed)
         #expect(cache.load(key) == nil && cache.loadDetail(key) == nil)
         #expect(cache.load(changed) != nil && cache.loadDetail(changed) == nil)
@@ -197,10 +200,13 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NightDetailCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
-        let ordinary = TileCache.Key(region: .init(x: -1, z: -1), fileSize: 1, modified: 2, colorSource: "test-assets",
-            gameSource: .init(data: "test-assets", artwork: .game("test-assets")))
+        let ordinary = TileCache.Key(region: .init(x: -1, z: -1), file: .init(size: 1, modified: 2),
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+                          blockFilter: MapBlockFilter(), colorSource: .game("test-assets"),
+                          gameSource: .init(data: "test-assets", artwork: .game("test-assets")),
+                          samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         var night = ordinary
-        night.nightLight = "unknown"
+        night.inputs.nightLight = DarkSpots(rule: nil).cacheKey
         var surface = RegionTileRenderer.Canvas()
         surface.detail.insert(try chunk(), at: 0)
         surface.heights[0] = 12
@@ -216,7 +222,7 @@ import Testing
         #expect(restored.nightLight == surface.nightLight && restored.estimatedBytes == day.estimatedBytes + count)
         #expect(cache.load(ordinary)?.nightLight == nil && cache.loadDetail(ordinary)?.nightLight == nil)
         #expect(cache.load(night)?.nightLight == restored.nightLight)
-        let file = directory.appendingPathComponent(night.detailFileName)
+        let file = directory.appendingPathComponent(try #require(night.detailFileName))
         var bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
         bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
         try ((bytes as NSData).compressed(using: .lzfse) as Data).write(to: file)

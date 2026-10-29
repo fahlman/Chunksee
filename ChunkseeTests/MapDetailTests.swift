@@ -50,7 +50,7 @@ import Testing
         let cold = try #require(try await renderer.tile(for: region))
         let hit = try #require(try await renderer.tile(for: region))
         #expect(hit.detail == nil) // ordinary cache hits never decode or retain close-up materials
-        let surface = try #require(try await renderer.detail(for: region))
+        let surface = try #require(try await renderer.detail(for: region)).surface
         #expect(cold.detail?.detail == surface.detail && cold.detail?.heights == surface.heights)
         #expect(surface.heights[511 * 512 + 511] == 14)
         // This compositor receives only retained materials and heights. Removing the synthetic
@@ -77,7 +77,7 @@ import Testing
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let gate = AsyncReadGate<MapSurfaceDetail.Surface?>(), numbers = ReadNumbers()
+        let gate = AsyncReadGate<RegionTileRenderer.DetailSurface?>(), numbers = ReadNumbers()
         let map = MapModel(work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           cacheDirectory: root.appendingPathComponent("tiles"),
                           readDetail: { _, _ in await gate.read(String(await numbers.next())) })
@@ -353,7 +353,7 @@ import Testing
         let assets = try fixture.library()
         map.setGameResources(data: assets.data, artwork: assets)
         await map.waitUntilIdle(); await map.waitForRenders()
-        #expect(map.detailImages[chunk] === detail)
+        #expect(map.detailImages[chunk]?.picture === detail)
         // White detail over white terrain is unchanged before the shadow. Applying a mask to
         // both resolutions would double-darken transparent or partially transparent areas.
         #expect(try screen() == ordinary)
@@ -361,7 +361,7 @@ import Testing
         #expect(try copy(.increased) == ordinaryContrastCopy)
         map.setCastsShadows(false)
         await map.waitUntilIdle(); await map.waitForRenders()
-        #expect(map.detailImages[chunk] === detail)
+        #expect(map.detailImages[chunk]?.picture === detail)
         let unshadowed = try copy(.standard)
         for x in [17, 49, 81] { #expect(unshadowed[(65 * 128 + x) * 4] == 255) }
         map.close(); await map.waitForRenders(); await assets.close()
@@ -391,7 +391,7 @@ import Testing
         await map.waitUntilIdle()
         await gate.finish("saved", with: old)
         await map.waitForRenders()
-        #expect(map.detailImages[.init(x: -1, z: -1)] === current)
+        #expect(map.detailImages[.init(x: -1, z: -1)]?.picture === current)
     }
 
     private func lighting(night: Bool) throws -> MapLighting {

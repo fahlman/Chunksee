@@ -10,11 +10,11 @@ nonisolated struct MapSurfaceContext: Equatable, Sendable {
     let ceilingY: Int?
     let biomeSampleY: Int?
     let water: GameTag?
-    let waterKey: String?
+    let waterKey: [String]?
 
     init(settings: DimensionSettings?, water: GameTag?) {
         self.water = water
-        waterKey = water.map { CacheKey.hash($0.members.map(\.id).sorted().joined(separator: "\n")) }
+        waterKey = water.map { $0.members.map(\.id).sorted() }
         dimensionType = settings?.type
         buildHeight = settings?.type?.height
         if let type = settings?.type, !type.hasCeiling {

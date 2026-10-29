@@ -179,7 +179,7 @@ struct MapView: View {
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
-                    shadow: { map.shadowImages[$0] }, detail: map.detailImages,
+                    shadow: { map.shadowImages[$0] }, detail: map.detailImages.mapValues(\.picture),
                     protectsWater: map.style == .waterDepth, in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)

@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.78.0`, resolved to `0.78.0` (`6c05e9531ce4d85bc98c0963f0be5145ec84dc8d`).
+  minor" from `0.79.0`, resolved to `0.79.0` (`2a8da29ae51f51db54ac11cb6efa5c296152eb45`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -510,7 +510,7 @@ older scan envelopes.
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
 | `HelpView.swift` | On-demand native Help window with opening/navigation instructions and the User Guide link |
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
-| `TileCache.swift` | Rendered tiles on disk in the app's Caches folder, keyed by region file size, modification date and renderer version |
+| `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
@@ -623,6 +623,26 @@ The held cave list and renderer colors remain app presentation policy.
 Concurrent requests share cache decoding/scanning. File-open errors and cancellation do not write
 cache entries, and a save during a scan prevents persisting that snapshot. Failed refreshes retain
 previous index and heat contributions; successful empty reads and deleted files remove them.
+
+Cache identity (#471) adopts Kit's complete terrain, light, assets and region-facts contracts.
+`TileCache.Inputs` owns the immutable drawing inputs; `Key` adds the source file and sampled
+neighbors, including missing files. Kit's stable whole-value encoder supplies disk identities.
+`rendererVersion` covers only app drawing. Biome definitions, seed and colormap pixels receive
+stable identities once per immutable publication; scan options include the complete enchantment
+definitions and are prepared once per RegionReader. ScanCache still retains one envelope per region.
+
+MapModel retains keyed ordinary, preview and close-up images. Prepared-image keys add the height
+scale and saved-lighting preparation to the unlit surface key; clock angles remain drawing inputs
+and do not retire terrain. Keys also exist with disk caching disabled. Background publication
+checks the key before storing pixels or scheduling a write, alongside the existing job/lifetime
+checks. Same-source file saves keep the last published picture while marked stale and awaiting
+replacement; they cannot satisfy the next render request. Source/presentation replacement clears
+incompatible entries. Close-up surfaces must match the ordinary tile's source before publication.
+Memory budgets, deferred writes and close/drain ownership stay with their existing owners.
+
+WorldDetails prepares a complete saved MapItem identity once when publishing its maps.
+SelectionModel's image cache carries that key, so reusing a map number with changed colors or
+metadata replaces the old image. Rendering views do not encode catalogs or read source files.
 
 MapModel also owns each dimension's Normal / Height / Water Depth style. The native View menu,
 restoration and WorldSettings use that owner. A style change cancels obsolete renders and clears

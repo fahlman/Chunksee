@@ -128,8 +128,9 @@ import Testing
         await gate.waitForCancellation("tile")
         let image = try #require(CGImage.rgba([100, 100, 100, 255], width: 1, height: 1))
         let cache = TileCache(directory: root.appendingPathComponent("export-tiles"))
-        let key = TileCache.Key(region: region, fileSize: 0, modified: 0)
-        let late = RegionTileRenderer.RenderedTile(full: image, preview: image,
+        let renderer = RegionTileRenderer(dimension: dimension)
+        let key = TileCache.Key(region: region, file: .init(size: 0, modified: 0), inputs: renderer.cacheInputs, biomeFiles: nil)
+        let late = RegionTileRenderer.RenderedTile(key: .init(surface: key, preparation: renderer.preparation, chunk: nil), full: image, preview: image,
             cacheWrite: .init(cache: cache, key: key, surface: RegionTileRenderer.Canvas()))
         await gate.finish("tile", with: late)
         do {
