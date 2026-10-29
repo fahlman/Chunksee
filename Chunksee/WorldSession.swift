@@ -135,7 +135,7 @@ final class WorldSession {
     /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.style,
+        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.chosenStyle,
                                 blockFilter: map.blockFilter, blendsBiomeColors: map.blendsBiomeColors,
                                 lightingMode: map.lightingMode, castsShadows: map.castsShadows)
     }
