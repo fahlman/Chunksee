@@ -136,7 +136,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.gameArtwork == nil ? "fallback" : "assets")
         })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))

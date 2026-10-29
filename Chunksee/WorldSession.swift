@@ -44,7 +44,8 @@ final class WorldSession {
                              singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index,
                              gameNames: { [weak resources] in resources?.gameNames ?? GameNames.unavailable })
-        heatMap = HeatMapLayer(reader: selected.flatMap { resources.readers[$0] }, work: resources.backgroundWork)
+        heatMap = HeatMapLayer(reader: { [weak resources] in selected.flatMap { resources?.readers[$0] } },
+                               work: resources.backgroundWork)
         selectedDimensionID = selected
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected, renderTile: renderTile)
         map = initialMap
@@ -99,14 +100,16 @@ final class WorldSession {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
         // otherwise at the origin.
-        let map = MapModel(gameResources: { [weak resources] in resources?.mapGameResources ?? .unavailable },
+        let map = MapModel(definitions: { [weak resources] in
+                               guard let resources else { return .unknown }
+                               return MapDefinitions(settings: resources.details.dimensionSettings[dimension.id],
+                                                     water: resources.details.definitions.water)
+                           },
+                           gameResources: { [weak resources] in resources?.mapGameResources ?? .unavailable },
                            savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
                            nightLighting: { [weak resources] in resources?.nightLighting(in: dimension.id) },
                            work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
-                           surfaceContext: MapSurfaceContext(settings: resources.details.dimensionSettings[dimension.id],
-                                                             water: resources.details.definitions.water),
-                           heightScale: MapHeightScale(settings: resources.details.dimensionSettings[dimension.id]),
                            renderTile: renderTile)
         if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
         map.setDepth(resources.settings.depth(for: dimension.id))

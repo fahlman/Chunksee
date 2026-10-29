@@ -175,6 +175,39 @@ import Testing
         return url
     }
 
+    @Test(.timeLimit(.minutes(1))) func savedDefinitionChangesReachAnExistingMapThroughObservation() async throws {
+        let id = "minecraft:overworld"
+        let open = TestWorld.noiseDimension(type: .string("minecraft:overworld"), noise: .string("minecraft:overworld"))
+        let roof = TestWorld.noiseDimension(type: .string("minecraft:the_nether"), noise: .string("minecraft:nether"))
+        let root = try roofWorld(definitions: [id: open])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let session = WorldSession(resources: resources, dimensionID: id)
+        defer { session.close() }
+        resources.refreshDelay = .zero
+        let map = try #require(session.map), reader = try #require(resources.readers[id])
+        let point = CGPoint(x: 8, y: 8)
+        map.loadTopBlocks(at: point)
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: point)?.y == 127 && map.heightScale?.bounds == -64...319)
+        map.setStyle(.height)
+        let metadata = root.appendingPathComponent("data/minecraft/world_gen_settings.dat")
+        try Fixtures.writeGzippedNBT(.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "data": .compound(["dimensions": .compound([id: roof])])]), to: metadata)
+        resources.worldChanged([metadata])
+        await resources.waitForRefresh()
+        #expect(session.map === map && map.heightScale?.bounds == 0...255 && map.style == .height)
+        #expect(resources.readers[id] !== reader)
+        map.loadTopBlocks(at: point)
+        await map.waitForTopBlocks()
+        #expect(map.topBlock(at: point)?.y == 48)
+        let facts = try #require(await resources.readers[id]?.facts(.init(x: 0, z: 0)))
+        #expect(facts.chunks.first?.sampledBiome == "minecraft:crimson_forest")
+        session.close(); await resources.waitUntilClosed()
+    }
+
     private func checkViews(_ url: URL, expected: [(String, Int, String, String)]) async throws {
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),

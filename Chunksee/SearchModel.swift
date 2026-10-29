@@ -19,7 +19,7 @@ final class SearchModel {
             if text != oldValue { updateQueries() }
         }
     }
-    let playerRoster: PlayerRoster
+    let playerRoster: any PlayerSnapshotSource
     var playerSnapshot: PlayerSnapshot { indexStore.playerSnapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     var index: SearchIndex { indexStore.index }
@@ -51,7 +51,7 @@ final class SearchModel {
     @ObservationIgnored private var sources: SearchSources?
     private var isClosed: Bool { work.isClosed }
 
-    init(readers: [RegionReader], work: BackgroundWork, playerRoster: PlayerRoster, names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], work: BackgroundWork, playerRoster: any PlayerSnapshotSource, names: PlayerNames, singleplayerUUID: UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil, gameNames: @escaping @MainActor () -> GameNames) {

@@ -2,6 +2,8 @@ import ChunkseeIndex
 import AppKit
 import CoreGraphics
 import Foundation
+import Observation
+import Synchronization
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Testing
@@ -96,11 +98,19 @@ import Testing
         let oldPosition = PlayerPresentation.position(of: prior)
         let updated = PlayerInfo(uuid: carrier, nbt: playerData(pets: [parrot(bird)],
             dimension: .string(overworld), position: [42, 75, -12]))
-        session.resources.playerRoster.publish([updated])
-        // No actor suspension: the roster is newer while its carried-mob merge is pending.
-        let pendingPlayer = try #require(session.players.first { $0.uuid == carrier })
-        #expect(PlayerPresentation.position(of: pendingPlayer) == oldPosition)
-        await session.resources.index.waitForProjection()
+        let pendingPosition = Mutex<PlayerInfo.Location?>(nil)
+        withObservationTracking(options: [.didSet]) { _ = session.resources.playerSnapshot } onChange: { _ in
+            MainActor.assumeIsolated {
+                let position = session.players.first { $0.uuid == carrier }.flatMap(PlayerPresentation.position(of:))
+                pendingPosition.withLock { $0 = position }
+            }
+        }
+        session.resources.readPlayers = { _, _ in [updated] }
+        session.resources.refreshDelay = .zero
+        session.resources.worldChanged([session.world.playerDataDirectory.appendingPathComponent("\(carrier.uuidString).dat")])
+        await session.resources.waitForRefresh()
+        // The world publication arrives before the coherent carried-mob/player projection.
+        #expect(pendingPosition.withLock { $0 } == oldPosition)
         let shownPlayer = try #require(session.players.first { $0.uuid == carrier })
         let shownPet = try #require(session.presentation.selectedIndex.creatures.first { $0.carrier == carrier })
         #expect(PlayerPresentation.position(of: shownPlayer)?.x == 42)

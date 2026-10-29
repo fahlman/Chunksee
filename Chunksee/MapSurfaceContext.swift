@@ -1,5 +1,22 @@
 import ChunkseeKit
 
+/// The dimension's published definition inputs, separate from its window's map choices.
+nonisolated struct MapDefinitions: Equatable, Sendable {
+    static let unknown = MapDefinitions(context: .unknown, heightScale: nil)
+    let context: MapSurfaceContext
+    let heightScale: MapHeightScale?
+
+    init(context: MapSurfaceContext, heightScale: MapHeightScale?) {
+        self.context = context
+        self.heightScale = heightScale
+    }
+
+    init(settings: DimensionSettings?, water: GameTag?) {
+        context = MapSurfaceContext(settings: settings, water: water)
+        heightScale = MapHeightScale(settings: settings)
+    }
+}
+
 /// Display choices derived once from the reader's saved dimension facts. They describe the
 /// normal map view; an explicit cutaway height takes precedence over this ceiling view.
 nonisolated struct MapSurfaceContext: Equatable, Sendable {

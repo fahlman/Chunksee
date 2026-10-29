@@ -161,7 +161,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let point = CGPoint(x: 8, y: 8)
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: point, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: point, cacheDirectory: nil)
         defer { map.close() }
         let absentLibrary = try absent.library(), presentLibrary = try present.library()
         gameResources.value = MapGameResources(data: absentLibrary.data, artwork: absentLibrary, biomeColors: nil)

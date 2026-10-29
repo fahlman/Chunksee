@@ -8,7 +8,7 @@ import Observation
 final class WorldIndexStore {
     let savedQueries: SavedQueryResults
     private(set) var index = SearchIndex()
-    let playerRoster: PlayerRoster
+    let playerRoster: any PlayerSnapshotSource
     private(set) var playerSnapshot: PlayerSnapshot
     private var regionIndex = SearchIndex()
     private(set) var portals: [String: [NetherPortal]] = [:]
@@ -44,7 +44,7 @@ final class WorldIndexStore {
         }
     }
 
-    init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?, playerRoster: PlayerRoster,
+    init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?, playerRoster: any PlayerSnapshotSource,
          projectCreatures: @escaping @Sendable (SearchIndex, [ShoulderPet]) async -> SearchIndex = { await $0.including($1) },
          readDimension: @escaping @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent = DimensionContent.read) {
         self.work = work.makeScope()

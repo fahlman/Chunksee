@@ -10,7 +10,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimensions().first)
         let position = CGPoint(x: -8.7, y: -16.1)
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: position, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: position, cacheDirectory: nil)
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally(); map.close() }
         var content = MapContent()

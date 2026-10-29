@@ -15,10 +15,15 @@ nonisolated final class PlayerSnapshot: Sendable {
     }
 }
 
-/// One observable publication for all searches and inspectors in a world. Background queries
-/// capture its immutable snapshot; refreshing publishes once instead of pushing into each tab.
+/// Consumers read one producer's immutable snapshot. Definitions and their dependent players
+/// can share a publication without copying the players into another mutable roster.
+protocol PlayerSnapshotSource: AnyObject {
+    var snapshot: PlayerSnapshot { get }
+}
+
+/// An independently supplied roster, also used by standalone search/index clients.
 @Observable
-final class PlayerRoster {
+final class PlayerRoster: PlayerSnapshotSource {
     private(set) var snapshot: PlayerSnapshot
 
     init(_ players: [PlayerInfo]) { snapshot = PlayerSnapshot(players) }

@@ -9,6 +9,20 @@ nonisolated enum InactiveReadPolicy: Equatable, Sendable {
 /// Producers without distinct request strengths need only one kind of invalidation.
 nonisolated enum RefreshInvalidation: Sendable { case refresh }
 
+/// A failed dependent read may still supply independent facts. Publish those facts while
+/// retaining the failed request's strength for the next externally requested pass.
+nonisolated enum RefreshRead<Value: Sendable>: Sendable {
+    case complete(Value)
+    case partial(Value)
+
+    var value: Value {
+        switch self { case .complete(let value), .partial(let value): value }
+    }
+    var isComplete: Bool {
+        if case .complete = self { true } else { false }
+    }
+}
+
 /// Retains a value while it reloads and folds changes during a read into one following pass.
 /// Waiting callers do not own the read; only this loader or its world may cancel it.
 @Observable
@@ -24,7 +38,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     private let firstRequest: Request
     private let merge: @Sendable (Request, Request) -> Request
     private let retainingValue: @Sendable (Value, Source, Source) -> Value?
-    private let read: @Sendable (Source, Request, Value?) async throws -> Value
+    private let read: @Sendable (Source, Request, Value?) async throws -> RefreshRead<Value>
     /// The producer installs dependent work before making requests. Run it after synchronous
     /// Observation delivery, in the publishing turn; it does not notify consumers itself.
     @ObservationIgnored var published: @MainActor (Publication, Publication) -> Void = { _, _ in }
@@ -33,11 +47,11 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     @ObservationIgnored private var pending: Request?
     @ObservationIgnored private var retry: Request?
 
-    init(work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+    init(partialRead: @escaping @Sendable (Source, Request, Value?) async throws -> RefreshRead<Value>,
+         work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
          initialValue: Value? = nil,
          firstRequest: Request, merge: @escaping @Sendable (Request, Request) -> Request,
-         retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil },
-         read: @escaping @Sendable (Source, Request, Value?) async throws -> Value) {
+         retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil }) {
         self.work = work.makeScope()
         self.priority = priority
         self.whenInactive = whenInactive
@@ -45,7 +59,17 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
         self.firstRequest = firstRequest
         self.merge = merge
         self.retainingValue = retainingValue
-        self.read = read
+        self.read = partialRead
+    }
+
+    convenience init(work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+                     initialValue: Value? = nil,
+                     firstRequest: Request, merge: @escaping @Sendable (Request, Request) -> Request,
+                     retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil },
+                     read: @escaping @Sendable (Source, Request, Value?) async throws -> Value) {
+        self.init(partialRead: { source, request, previous in .complete(try await read(source, request, previous)) },
+                  work: work, priority: priority, whenInactive: whenInactive, source: source,
+                  initialValue: initialValue, firstRequest: firstRequest, merge: merge, retainingValue: retainingValue)
     }
 
     func request(source: Source, isEnabled: Bool, refresh: Request?) {
@@ -81,16 +105,16 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
             var request = request
             repeat {
                 guard !Task.isCancelled, !work.isClosed else { return }
-                let updated: Value?
+                let updated: RefreshRead<Value>?
                 do { updated = try await read(source, request, self?.value) }
                 catch { updated = nil }
                 guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed,
                       self.active?.id == id else { return }
-                // Failure preserves this source's last coherent value. An empty successful
-                // value is still a publication, so removals do not leave old facts behind.
+                // A thrown failure preserves the value; a partial result supplies its own
+                // coherent retained portion. Successful empty values still publish removals.
                 if let updated {
                     let previous = self.publication
-                    self.publication = (source, updated)
+                    self.publication = (source, updated.value)
                     guard self.active?.id == id, !self.isClosed, !work.isClosed else { return }
                     self.published(previous, self.publication)
                 }
@@ -99,7 +123,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
                 guard self.active?.id == id, !self.isClosed, !work.isClosed else { return }
                 // Preserve failed request strength, but only external demand starts another
                 // pass. A failed forced read must not become a weaker metadata-only retry.
-                if case nil = updated { self.retry = self.merged(self.retry, request) }
+                if updated?.isComplete != true { self.retry = self.merged(self.retry, request) }
                 guard self.isEnabled, self.pending != nil, let next = self.takeRequest() else { return }
                 request = next
                 self.active = (id, request)

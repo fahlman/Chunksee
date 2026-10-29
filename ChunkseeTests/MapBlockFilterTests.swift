@@ -129,7 +129,7 @@ import Testing
         let after = try await RegionTileRenderer(dimension: dimension, blockFilter: hiddenLeaves).tile(for: .init(x: 0, z: 0))
         let oldBlocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
         let tiles = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), blocks = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await tiles.read(renderer.blockFilter.cacheKey == nil ? "before" : "after")
         }, readTopBlocks: { chunk, renderer, cached in
             if renderer.blockFilter.cacheKey == nil { return await blocks.read(String(chunk.x)) }
@@ -167,7 +167,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let named = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, blockFilter: hiddenLeaves))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
             readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })
         map.setBlockFilter(hiddenLeaves)
         map.loadTopBlocks(at: CGPoint(x: 1, y: 1))
@@ -186,7 +186,7 @@ import Testing
         let url = try terrain()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
@@ -232,7 +232,7 @@ import Testing
         let url = try terrain()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         let filter = MapBlockFilter(hiddenIDs: [leaves], highlightedIDs: ["minecraft:grass_block"])
         map.setBlockFilter(filter)

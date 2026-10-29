@@ -30,11 +30,17 @@ final class WorldResources {
     let access: WorldReadAccess
     let backgroundWork: BackgroundWork
     let world: World
-    private(set) var savedVersion: SavedMinecraftVersion
+    var savedVersion: SavedMinecraftVersion { definitionLoader.value.savedVersion }
     private var visibleNewerWorldNoticeID: String?
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
-    private(set) var details: WorldDetails
+    private let openingDetails: WorldDetails
+    var details: WorldDetails {
+        var details = openingDetails
+        details.definitions = definitionLoader.value.facts?.definitions ?? WorldDefinitions()
+        details.borders = definitionLoader.value.facts?.borders ?? [:]
+        return details
+    }
     let names: PlayerNames
     let savedSearches: SavedSearches
     let savedPlaces: SavedPlaces
@@ -42,7 +48,8 @@ final class WorldResources {
     let index: WorldIndexStore
     let settings: WorldSettings
     let cacheRoot: URL?
-    let playerRoster: PlayerRoster
+    private let definitionLoader: WorldDefinitionLoader
+    var playerRoster: any PlayerSnapshotSource { definitionLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     private let readRegion: RegionReader.Read
@@ -62,7 +69,6 @@ final class WorldResources {
     @ObservationIgnored private var pendingBiomeMetadata = false
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
-    private let definitionsWork: BackgroundWork.Scope
     private let assetLoader: RefreshLoader<WorldGameAssetSource, RefreshInvalidation, GameAssetSelection>
     private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private lazy var languageLoader = RefreshLoader<LanguageSource, RefreshInvalidation, GameNames>(
@@ -94,10 +100,10 @@ final class WorldResources {
                        preference: languagePreference, folder: names.minecraft.folder)
     }
     @ObservationIgnored private var assetObserver: UUID?
-    private(set) var definitionReadGeneration = 0
-    @ObservationIgnored private var isDefinitionReadPending = false
-    @ObservationIgnored var readDefinitions: @Sendable (World, GameDataLibrary?) async throws -> DefinitionSnapshot = {
-        try await WorldResources.readDefinitions($0, library: $1)
+    var definitionInput: WorldDefinitionInput { definitionLoader.requestedDefinitions }
+    var readDefinitions: WorldDefinitionLoader.ReadDefinitions {
+        get { definitionLoader.readDefinitions }
+        set { definitionLoader.readDefinitions = newValue }
     }
     @ObservationIgnored var readPlayerRecords: @Sendable (World, UUID, String?, GameDataLibrary?) async -> PlayerRecords = {
         await PlayerRecords.load(from: $0, uuid: $1, name: $2, library: $3)
@@ -176,9 +182,11 @@ final class WorldResources {
     /// Tests can hold this boundary without making refresh correctness depend on scheduler speed.
     @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     @ObservationIgnored private var isRefreshScheduled = false
-    @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
-    @ObservationIgnored var readPlayers: @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0, enchantments: $1) }
+    var readPlayers: WorldDefinitionLoader.ReadPlayers {
+        get { definitionLoader.readPlayers }
+        set { definitionLoader.readPlayers = newValue }
+    }
     @ObservationIgnored var readHeadingBlock: @Sendable (ChunkseeKit.Dimension, BlockPosition) async throws -> BlockState? = {
         try await WorldResources.readBlock($0, at: $1)
     }
@@ -208,7 +216,11 @@ final class WorldResources {
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
-        definitionsWork = backgroundWork.makeScope()
+        let definitionLoader = WorldDefinitionLoader(world: snapshot.world, work: backgroundWork,
+            generation: prepared.source.generation, library: prepared.library?.data, dimensions: snapshot.dimensions,
+            definitions: snapshot.details.definitions, borders: snapshot.details.borders,
+            players: snapshot.players, savedVersion: SavedMinecraftVersion(snapshot.world.level))
+        self.definitionLoader = definitionLoader
         assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
             source: prepared.source, initialValue: GameAssetSelection(library: prepared.library)
         ) { [minecraft = names.minecraft] source, _ in
@@ -219,10 +231,11 @@ final class WorldResources {
         }
         access = snapshot.access
         world = snapshot.world
-        savedVersion = SavedMinecraftVersion(snapshot.world.level)
         dimensionDocuments = snapshot.dimensionDocuments
-        details = snapshot.details
-        playerRoster = PlayerRoster(snapshot.players)
+        var openingDetails = snapshot.details
+        openingDetails.definitions = WorldDefinitions()
+        openingDetails.borders = [:]
+        self.openingDetails = openingDetails
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
@@ -240,7 +253,10 @@ final class WorldResources {
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: definitionLoader)
+        definitionLoader.published = { [weak self] previous, current, included in
+            self?.adoptDefinitions(previous: previous, current: current, included: included)
+        }
         assetLoader.published = { [weak self] previous, current in
             guard let self, !self.isClosed else { return }
             if previous.source != current.source || previous.value?.library?.identity != current.value?.library?.identity {
@@ -280,7 +296,8 @@ final class WorldResources {
         let added = snapshot.dimensions.filter { !known.contains($0.id) }
         guard !added.isEmpty else { return }
         let newIDs = Set(added.map(\.id))
-        for id in newIDs { details.definitions.dimensionSettings[id] = snapshot.details.dimensionSettings[id] }
+        definitionLoader.include(added, settings: snapshot.details.dimensionSettings)
+        guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
         index.include(added.map { dimension in
             RegionReader(dimension: dimension,
@@ -292,7 +309,6 @@ final class WorldResources {
         }, firstDimension: activeDimensionID)
         refreshNightLighting(reread: true)
         refreshLighting()
-        refreshDefinitions()
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
@@ -381,64 +397,44 @@ final class WorldResources {
 
     func playerRecords(for uuid: UUID, name: String?) async -> PlayerRecords? {
         guard !isClosed, !Task.isCancelled else { return nil }
-        let generation = definitionReadGeneration, library = gameData, source = names.minecraft.generation
+        let input = definitionInput, library = gameData, source = names.minecraft.generation
         var records = await readPlayerRecords(world, uuid, name, library)
-        guard !Task.isCancelled, !isClosed, generation == definitionReadGeneration,
+        guard !Task.isCancelled, !isClosed, input == definitionInput,
               source == names.minecraft.generation, gameData?.identity == library?.identity else { return nil }
-        records.definitionGeneration = generation
+        records.definitionInput = input
         return records
     }
 
     private func refreshDefinitions() {
         guard !isClosed else { return }
-        definitionReadGeneration += 1
-        playerReadGeneration += 1
-        let generation = definitionReadGeneration, library = gameData, read = readDefinitions, world = world
-        let readPlayers = readPlayers
-        definitionsWork.cancel()
-        isDefinitionReadPending = true
-        definitionsWork.start(priority: .utility) { [weak self] in
-            let updated = try? await read(world, library)
-            guard !Task.isCancelled, let updated else {
-                if self?.definitionReadGeneration == generation { self?.isDefinitionReadPending = false }
-                return
-            }
-            let players = await readPlayers(world, updated.definitions.enchantments)
-            guard !Task.isCancelled, let self, !self.isClosed,
-                  self.definitionReadGeneration == generation,
-                  self.gameData?.identity == library?.identity else { return }
-            self.isDefinitionReadPending = false
-            self.savedVersion = updated.savedVersion
-            // Keep the last coherent snapshot during a transient unreadable save. Never pair
-            // new region definitions with players whose maximum used the previous definitions.
-            guard let players else { return }
-            var previous = self.details.definitions
-            self.details.definitions = updated.definitions
-            self.details.borders = updated.borders
-            self.playerRoster.publish(players)
-            // Leaf membership only supplies a sheet shortcut. Publishing it must not replace
-            // readers or rescan regions; existing explicit block choices remain unchanged.
-            previous.leafTag = updated.definitions.leafTag
-            guard previous != updated.definitions else { return }
-            let retired = self.index.readers
-            let readers = retired.map { reader in
-                let dimension = reader.dimension
-                return RegionReader(dimension: dimension,
-                    cache: ScanCache(forWorldAt: self.url, dimensionID: dimension.id, root: self.cacheRoot),
-                    options: RegionReader.options(context: MapSurfaceContext(settings: updated.definitions.dimensionSettings[dimension.id], water: updated.definitions.water), definitions: updated.definitions),
-                    notableBlocks: updated.definitions.notableBlocks,
-                    structureGroups: updated.definitions.structureGroups, read: self.readRegion)
-            }
-            self.index.replace(readers: readers, firstDimension: self.activeDimensionID)
-            for session in self.sessions.values.compactMap(\.value) {
-                guard let id = session.selectedDimensionID else { continue }
-                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id], water: updated.definitions.water)
-                session.heatMap.replaceReader(self.readers[id])
-            }
-            self.backgroundWork.start(priority: .utility) {
-                for reader in retired { await reader.close() }
-            }
+        definitionLoader.refreshDefinitions(generation: names.minecraft.generation, library: gameData)
+    }
+
+    private func adoptDefinitions(previous: WorldDefinitionLoader.Value, current: WorldDefinitionLoader.Value,
+                                  included: Set<String>) {
+        guard !isClosed else { return }
+        var previousDefinitions = previous.facts?.definitions ?? WorldDefinitions()
+        let definitions = current.facts?.definitions ?? WorldDefinitions()
+        // Leaf membership supplies a sheet shortcut; new-dimension metadata supplies only the
+        // added reader. Neither replaces unchanged readers or explicit block choices.
+        previousDefinitions.leafTag = definitions.leafTag
+        for id in included { previousDefinitions.dimensionSettings[id] = definitions.dimensionSettings[id] }
+        guard previousDefinitions != definitions else { return }
+        let retired = index.readers
+        let readers = retired.map { reader in
+            let dimension = reader.dimension
+            return RegionReader(dimension: dimension,
+                cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
+                options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id], water: definitions.water), definitions: definitions),
+                notableBlocks: definitions.notableBlocks,
+                structureGroups: definitions.structureGroups, read: readRegion)
         }
+        // Register retirement before publishing the replacement catalog: an observer may close
+        // the world synchronously, and that close must drain the retired readers too.
+        backgroundWork.start(priority: .utility) {
+            for reader in retired { await reader.close() }
+        }
+        index.replace(readers: readers, firstDimension: activeDimensionID)
     }
 
     @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> DefinitionSnapshot {
@@ -588,6 +584,7 @@ final class WorldResources {
         biomeLoader.close()
         nightLightingLoader.close()
         lightingLoader.close()
+        definitionLoader.close()
         let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
@@ -698,9 +695,9 @@ final class WorldResources {
         }
     }
 
-    /// Waits for every refresh under way, including one still reading players behind a newer one.
+    /// Waits for active and coalesced refresh passes, without waiting for unrelated world work.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetLoader.work, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, assetLoader.work, languageLoader.work])
         await index.waitForProjection()
     }
 
@@ -724,16 +721,10 @@ final class WorldResources {
             refreshNightLighting(reread: true)
         }
         if lightingChanged { refreshLighting() }
-        if biomesChanged || (playersChanged && isDefinitionReadPending) {
+        if biomesChanged {
             refreshDefinitions()
         } else if playersChanged {
-            // Refreshes can overlap while one reads players, so only the newest read is published:
-            // an older, slower read finishing later must not put old positions back.
-            playerReadGeneration += 1
-            let generation = playerReadGeneration
-            let updated = await readPlayers(world, details.definitions.enchantments)
-            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
-            playerRoster.publish(updated)
+            definitionLoader.refreshPlayers()
         }
     }
 

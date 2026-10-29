@@ -447,13 +447,23 @@ and the tag's membership identity is computed once in the immutable surface cont
 Water inputs are explicit, so omitting an argument cannot drop the composed tag.
 Tile renderer version 35 discards the older fluid classification and water pixels.
 The depth cap and Height/Water Depth scales remain.
-WorldDetails owns one WorldDefinitions snapshot, loaded off-main through Kit with the selected
+WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening first uses available world-pack facts; the shared game
 request adds installed resources. Each resource category remains independently available. A failed
 player refresh retains the previous coherent definitions/player snapshot until the next save. Initial player reads, later player reads and region scans use
 its same enchantment dictionary. It also supplies dimension settings, possible biome associations,
 trading definitions and the shared NotableBlock.Catalog. Current health and other saved facts stay
 available when maximum health cannot be established.
+
+Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
+definition demand dominates player-only demand. A failed dependent player read can still publish
+the independently read saved version, while keeping coherent facts and retrying the stronger
+request on the next external demand. Replacing game inputs cancels obsolete reads and removes
+incompatible facts. Prepared dimension additions extend only new settings synchronously; later
+definition reads remain authoritative. WorldDetails projects definitions and borders from this
+publication; its other opening facts remain for step 5b. Player/index/search consumers share the
+producer's immutable player snapshot rather than another editable roster. Maps observe explicit
+definition inputs, and Time Spent observes its reader; neither receives manual refresh pushes.
 
 MapSurfaceContext derives normal-view choices from resolved type/generation facts: known build
 height reaches the shared heightmap reader; a known ceiling with nonempty generation bounds uses
@@ -2063,11 +2073,11 @@ using enabled world packs over the selected game jar through GameDataLibrary, in
 of the artwork setting. It never guesses a translation key from
 an advancement ID. Saved progress, dates and counts remain independent of unavailable titles;
 the readable ID is their fallback. Definitions reread fresh world metadata off the main actor.
-The existing WorldResources definition generation restarts an open player's read on game/pack
-changes and rejects obsolete results. A refresh retains that player's progress while old titles
+The loader's typed definition request identity restarts an open player's read on game/pack
+changes and rejects obsolete records. A refresh retains that player's progress while old titles
 become unavailable immediately; selecting a different player clears the previous records.
 Record reads require an explicit data library and the inspector model requires the world's
-guarded reader. Title presentation requires an explicit title and current definition generation;
+guarded reader. Title presentation requires an explicit title and current definition input;
 unpublished or retired definitions cannot bypass that check.
 
 GameText lays out Kit's interpreted literal, sequence and translated title components using the
