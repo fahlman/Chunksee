@@ -199,6 +199,89 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test(.timeLimit(.minutes(1))) func heightChoiceSurvivesMissingGameFilesAndReopening() async throws {
+        let id = "minecraft:overworld"
+        let root = try terrainWorld(definitions: [id: TestWorld.noiseDimension(
+            type: .string("example:game_height"), noise: .string("example:game_height"))])
+        let game = try ItemPictureFixture(extraFiles: [
+            "data/example/dimension_type/game_height.json": Data(
+                #"{"min_y":-64,"height":384,"logical_height":384,"has_ceiling":false,"has_skylight":true}"#.utf8),
+            "data/example/worldgen/noise_settings/game_height.json": Data(
+                #"{"noise":{"min_y":-64,"height":384},"sea_level":40}"#.utf8),
+        ])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        await names.chooseMinecraftFolder(game.root)
+        var sessions: [WorldSession] = []
+        func open() async throws -> WorldSession {
+            let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                watchWorld: { _, _ in nil })
+            let session = WorldSession(resources: resources)
+            sessions.append(session)
+            await resources.waitForRefresh()
+            return session
+        }
+        var failure: (any Error)?
+        do {
+            let first = try await open(), map = try #require(first.map)
+            let scale = try #require(map.heightScale)
+            map.setStyle(.height)
+            first.saveView()
+            #expect(first.resources.settings.style(for: id) == .height)
+
+            // A real absence changes what can be shown, not what the user chose.
+            names.forgetMinecraftFolder()
+            await first.resources.waitForRefresh()
+            #expect(map.heightScale == nil && map.style == .normal)
+            #expect(map.currentRenderer.style == .normal && MapContent(session: first).mapStyle == .normal)
+            first.saveView()
+            #expect(first.resources.settings.style(for: id) == .height)
+            first.close()
+            await first.waitUntilClosed()
+
+            // Reopen without the jar: saving a viewport must preserve the unavailable choice.
+            let reopened = try await open(), restored = try #require(reopened.map)
+            #expect(restored.heightScale == nil && restored.style == .normal)
+            reopened.saveView()
+            #expect(reopened.resources.settings.style(for: id) == .height)
+
+            // The document reread/move path copies the choice while both maps show Normal.
+            let reread = try await open(), rereadMap = try #require(reread.map)
+            rereadMap.setStyle(.waterDepth)
+            reread.restoreView(from: reopened)
+            reread.saveView()
+            #expect(reread.resources.settings.style(for: id) == .height)
+            await names.chooseMinecraftFolder(game.root)
+            for session in [reopened, reread] { await session.resources.waitForRefresh() }
+            for current in [restored, rereadMap] {
+                #expect(current.heightScale == scale && current.style == .height)
+                #expect(current.currentRenderer.style == .height)
+            }
+            #expect(MapContent(session: reopened).mapStyle == .height)
+            let region = RegionPosition(x: 0, z: 0)
+            let pixels = try #require(try await restored.currentRenderer.pixels(for: region))
+            let expected = MapStylePalette.heightColor(y: 40, scale: scale)
+            #expect(pixel(pixels, x: 4) == [expected.red, expected.green, expected.blue, 255])
+
+            for artwork in [false, true] {
+                names.minecraft.usesGameArtwork = artwork
+                await reopened.resources.waitForRefresh()
+                #expect(restored.style == .height && restored.currentRenderer.style == .height)
+            }
+            await names.chooseMinecraftFolder(game.root)
+            await reopened.resources.waitForRefresh()
+            #expect(restored.style == .height)
+            reopened.saveView()
+            #expect(reopened.resources.settings.style(for: id) == .height)
+        } catch { failure = error }
+        for session in sessions { session.close() }
+        for session in sessions { await session.waitUntilClosed() }
+        names.forgetMinecraftFolder()
+        await names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
     @Test func bothRampsCarryTheirOrderInLightnessAsWellAsHue() {
         func luminance(_ color: MapColor) -> Double {
             func linear(_ byte: UInt8) -> Double {
@@ -233,7 +316,7 @@ import Testing
         return try #require(MapHeightScale(settings: WorldDetails.read(try World(contentsOf: url)).dimensionSettings["minecraft:overworld"]))
     }
 
-    private func terrainWorld() throws -> URL {
+    private func terrainWorld(definitions: [String: NBT]? = nil) throws -> URL {
         let sections = (0..<4).map { section in
             Fixtures.section(y: section, palette: [.string("minecraft:air"), .string("minecraft:stone"), .string("minecraft:water")],
                 indices: (0..<4096).map { index in
@@ -246,6 +329,6 @@ import Testing
         }
         let chunk = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
             dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
-        return try TestWorld.make(chunks: [chunk], dimensionSettings: ["minecraft:overworld": definition(sea: 40)])
+        return try TestWorld.make(chunks: [chunk], dimensionSettings: definitions ?? ["minecraft:overworld": definition(sea: 40)])
     }
 }
