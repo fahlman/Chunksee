@@ -402,7 +402,6 @@ import Synchronization
 
             // A newly read archive under the same folder generation must be available before
             // its colors. A delayed read from the retired archive cannot reconnect it.
-            let source = WorldGameAssetSource(generation: names.minecraft.generation)
             await assetReads.publish(replacement, to: resources)
             for session in sessions {
                 #expect(session.map?.currentRenderer.gameData === replacement.data)

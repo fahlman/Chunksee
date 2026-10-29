@@ -1180,12 +1180,10 @@ RefreshLoader coalesces saves during a pass, retains the previous value after a 
 publishes successful empty values. Failure remains invalidated for the next request without starting
 a retry loop. Producers merge their typed requests; failed or interrupted demand retains its
 strength until retried, while only a new external request schedules a following pass after failure.
-The internal RefreshLoader API has Source, Request and Value parameters. The existing reread
-convenience accepts a prepared initial value, so opening's already interpreted source can be
-published without another read or temporary empty state. Closing clears the publication as well
-as canceling its scope, releasing the retained value while retired reads drain.
-The reread
-convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
+The internal RefreshLoader API has Source, Request and Value parameters and accepts a prepared
+initial value, so opening's already interpreted source can be published without another read or
+temporary empty state. Closing clears the publication as well as canceling its scope, releasing
+the retained value while retired reads drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
 language and heat-map consumers keep their existing contracts. Each loader declares whether an
 inactive read finishes or cancels: Time Spent keeps
 its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last

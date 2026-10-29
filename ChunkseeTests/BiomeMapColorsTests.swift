@@ -701,7 +701,6 @@ import Testing
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         resources.refreshDelay = .zero
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
         await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)

@@ -79,7 +79,6 @@ import Testing
         ])
         defer { fixture.remove() }
         let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
 
         await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
