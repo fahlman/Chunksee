@@ -458,8 +458,12 @@ available when maximum health cannot be established.
 Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
 definition demand dominates player-only demand. A failed dependent player read can still publish
 the independently read saved version, while keeping coherent facts and retrying the stronger
-request on the next external demand. Replacing game inputs cancels obsolete reads and removes
-incompatible facts. Prepared dimension additions extend only new settings synchronously; later
+request on the next external demand. Replacing game inputs cancels obsolete reads while retaining
+the completed definition/player facts until their coherent replacement is ready. Those retained
+facts carry the producing game generation and library identity; they are never relabeled as
+the new source. This producer's compatible projection preserves reader caches and explicit Height
+choices instead of publishing an unread unknown. Retired in-flight results still cannot publish.
+Prepared dimension additions extend only new settings synchronously; later
 definition reads remain authoritative. WorldDetails projects definitions and borders from this
 publication; its other opening facts remain for step 5b. Player/index/search consumers share the
 producer's immutable player snapshot rather than another editable roster. Maps observe explicit
@@ -1204,7 +1208,8 @@ coherent value and defers the interrupted refresh until demand returns; hiding a
 publication does not invalidate it. Source replacement clears incompatible values and cancels old
 work; its one active-read identity rejects late completions even when a source is selected again.
 Source and value publish together. A producer may project a compatible value during replacement;
-the default clears it, and the biome producer uses this only to retain numeric data across artwork changes.
+the default clears it. The biome producer retains numeric data across artwork changes; the definition
+producer retains its complete facts with their producing game source until replacement succeeds.
 The loader's BackgroundWork scope retains retired reads until they drain and rejects results after
 its own or its world's close. Heat-map reader replacement uses this same contract, without retiring
 and draining a second loader. Canceling a waiter does not cancel the shared read. WorldResources

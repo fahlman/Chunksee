@@ -12,11 +12,19 @@ nonisolated struct WorldDefinitionInput: Hashable, Sendable {
 /// metadata can advance even when the dependent player read needs to be retried.
 @Observable
 final class WorldDefinitionLoader: PlayerSnapshotSource {
+    nonisolated struct GameSource: Equatable, Sendable {
+        let generation: UUID
+        let libraryID: UUID?
+    }
+
     nonisolated struct Facts: Sendable {
         var definitions: WorldDefinitions
         let borders: [String: WorldBorder]
         let players: PlayerSnapshot
         let input: WorldDefinitionInput
+        /// The game source of the completed definition/player read, retained during replacement.
+        /// Prepared new dimensions may extend settings before the next complete read.
+        let source: GameSource
     }
 
     nonisolated struct Value: Sendable {
@@ -34,6 +42,8 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         /// Prepared metadata supplies only newly included dimensions. Completed definition reads
         /// remain authoritative thereafter; old seed values never replace a later read.
         var preparedDimensions: [String: DimensionInput]
+
+        var gameSource: GameSource { .init(generation: generation, libraryID: library?.identity) }
 
         func sharesGameData(with other: Self) -> Bool {
             generation == other.generation && library === other.library
@@ -90,12 +100,12 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         self.reads = reads
         requestedDefinitions = input
         unavailable = Value(facts: nil, savedVersion: savedVersion)
-        let initial = Value(facts: Facts(definitions: definitions, borders: borders,
-                                        players: PlayerSnapshot(players), input: input), savedVersion: savedVersion)
         let source = Source(generation: generation, library: library,
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
+        let initial = Value(facts: Facts(definitions: definitions, borders: borders,
+            players: PlayerSnapshot(players), input: input, source: source.gameSource), savedVersion: savedVersion)
         loader = RefreshLoader(partialRead: { source, request, previous in
             let readDefinitions = await reads.definitions, readPlayers = await reads.players
             try Task.checkCancellation()
@@ -109,23 +119,21 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                     return .partial(Value(facts: previous?.facts, savedVersion: updated.savedVersion))
                 }
                 return .complete(Value(facts: Facts(definitions: updated.definitions, borders: updated.borders,
-                    players: PlayerSnapshot(players), input: input), savedVersion: updated.savedVersion))
+                    players: PlayerSnapshot(players), input: input, source: source.gameSource), savedVersion: updated.savedVersion))
             case .players:
                 guard let previous, let facts = previous.facts,
                       let players = await readPlayers(world, facts.definitions.enchantments) else {
                     throw CancellationError()
                 }
                 return .complete(Value(facts: Facts(definitions: facts.definitions, borders: facts.borders,
-                    players: PlayerSnapshot(players), input: facts.input), savedVersion: previous.savedVersion))
+                    players: PlayerSnapshot(players), input: facts.input, source: facts.source), savedVersion: previous.savedVersion))
             }
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
             firstRequest: .definitions(input), merge: { $0.merging($1) }, retainingValue: { value, previous, current in
                 var retained = value
-                guard previous.sharesGameData(with: current) else {
-                    // The saved version belongs to the world, independently of the selected game.
-                    retained.facts = nil
-                    return retained
-                }
+                // An unread unknown would discard reader caches and the user's Height choice.
+                // Keep the complete facts with their original provenance until a replacement
+                // succeeds; RefreshLoader still cancels and rejects every retired in-flight read.
                 let added = Set(current.preparedDimensions.keys).subtracting(previous.preparedDimensions.keys)
                 for id in added {
                     retained.facts?.definitions.dimensionSettings[id] = current.preparedDimensions[id]?.settings

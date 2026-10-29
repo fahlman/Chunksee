@@ -14,7 +14,7 @@ import Testing
         let initial: WorldResources.DefinitionSnapshot
         let loader: WorldDefinitionLoader
 
-        init() throws {
+        init(library: GameDataLibrary? = nil) throws {
             root = try TestWorld.make(chunks: [], dimensionSettings: [
                 "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"),
                                                                noise: .string("minecraft:overworld"))
@@ -22,7 +22,7 @@ import Testing
             world = try World(contentsOf: root)
             initial = .init(definitions: try WorldDefinitions.read(world, assets: nil), borders: [:],
                             savedVersion: SavedMinecraftVersion(world.level))
-            loader = WorldDefinitionLoader(world: world, work: work, generation: generation, library: nil,
+            loader = WorldDefinitionLoader(world: world, work: work, generation: generation, library: library,
                 dimensions: world.dimensions(), definitions: initial.definitions, borders: initial.borders,
                 players: [], savedVersion: initial.savedVersion)
         }
@@ -104,7 +104,8 @@ import Testing
         loader.readDefinitions = { _, _ in try await definitions.read("definitions").get() }
         loader.readPlayers = { _, _ in await players.read("players") }
         let original = loader.snapshot, input = loader.requestedDefinitions
-        loader.refreshDefinitions(generation: fixture.generation, library: nil)
+        let initialSource = loader.value.facts?.source, generation = UUID()
+        loader.refreshDefinitions(generation: generation, library: nil)
         let requested = loader.requestedDefinitions
         await definitions.waitForRequest("definitions")
         await definitions.finish("definitions", with: .success(update))
@@ -113,6 +114,7 @@ import Testing
         #expect(loader.value.savedVersion == newerVersion)
         #expect(loader.snapshot === original && loader.value.facts?.definitions == fixture.initial.definitions)
         #expect(loader.value.facts?.input == input && loader.requestedDefinitions == requested)
+        #expect(loader.value.facts?.source == initialSource)
         #expect(await definitions.requested.count == 1)
         #expect(await players.requested.count == 1)
 
@@ -132,6 +134,7 @@ import Testing
         #expect(loader.snapshot.players.first?.position?.x == 30)
         #expect(loader.value.facts?.definitions == changed && loader.value.facts?.input == requested)
         #expect(loader.value.savedVersion == newerVersion)
+        #expect(loader.value.facts?.source.generation == generation)
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 
@@ -141,10 +144,12 @@ import Testing
         let gate = AsyncReadGate<WorldResources.DefinitionSnapshot>(), numbers = ReadNumbers()
         loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
         loader.readPlayers = { _, _ in [] }
+        let initialPlayers = loader.snapshot, initialSource = loader.value.facts?.source
         loader.refreshDefinitions(generation: fixture.generation, library: nil)
         await gate.waitForRequest("0")
         loader.refreshDefinitions(generation: UUID(), library: nil)
-        #expect(loader.value.facts == nil && loader.snapshot.players.isEmpty)
+        #expect(loader.value.facts?.source == initialSource && loader.snapshot === initialPlayers)
+        #expect(loader.value.facts?.definitions == fixture.initial.definitions)
         #expect(loader.value.savedVersion == fixture.initial.savedVersion)
         await gate.waitForCancellation("0"); await gate.waitForRequest("1")
         loader.refreshDefinitions(generation: fixture.generation, library: nil)
@@ -167,6 +172,55 @@ import Testing
         await fixture.work.waitUntilFinished()
         #expect(loader.value.facts == nil && loader.snapshot === closed && closed.players.isEmpty)
         #expect(await gate.requested == ["0", "1", "2", "3"])
+    }
+
+    @Test(arguments: [false, true])
+    func replacementRetainsCompletedProvenanceUntilBothNewReadsFinish(replacingGeneration: Bool) async throws {
+        let assets = try #require(GameAssets(data: Data(TestZIP.zip([
+            .init(path: "version.json", text: #"{"id":"fixture","world_version":5023}"#)
+        ]))))
+        let first = GameDataLibrary(assets: assets, sourceKey: "first")
+        let second = GameDataLibrary(assets: assets, sourceKey: "second")
+        let fixture = try Fixture(library: first), loader = fixture.loader
+        defer { fixture.close(); fixture.remove() }
+        let definitions = AsyncReadGate<WorldResources.DefinitionSnapshot>(), players = AsyncReadGate<[PlayerInfo]?>()
+        loader.readDefinitions = { _, library in await definitions.read(library?.sourceKey ?? "none") }
+        loader.readPlayers = { _, _ in await players.read("players") }
+        let original = loader.snapshot
+        let initialSource = WorldDefinitionLoader.GameSource(generation: fixture.generation, libraryID: first.identity)
+        let generation = replacingGeneration ? UUID() : fixture.generation
+        let nextSource = WorldDefinitionLoader.GameSource(generation: generation, libraryID: second.identity)
+        #expect(loader.value.facts?.source == initialSource)
+        var publishedDefinitions: [WorldDefinitions?] = []
+        loader.published = { _, current, _ in publishedDefinitions.append(current.facts?.definitions) }
+        loader.refreshDefinitions(generation: fixture.generation, library: first)
+        await definitions.waitForRequest("first")
+        loader.refreshDefinitions(generation: generation, library: second)
+        #expect(loader.value.facts?.source == initialSource && loader.snapshot === original)
+        await definitions.waitForCancellation("first"); await definitions.waitForRequest("second")
+        var updated = fixture.initial.definitions
+        updated.possibleBiomes = ["minecraft:overworld": ["example:current"]]
+        await definitions.finish("second", with: .init(definitions: updated, borders: [:],
+                                                       savedVersion: fixture.initial.savedVersion))
+        await players.waitForRequest("players")
+        #expect(loader.value.facts?.source == initialSource && loader.snapshot === original)
+        #expect(loader.value.facts?.definitions == fixture.initial.definitions)
+        var retired = fixture.initial.definitions
+        retired.possibleBiomes = ["minecraft:overworld": ["example:retired"]]
+        await definitions.finish("first", with: .init(definitions: retired, borders: [:],
+                                                      savedVersion: fixture.initial.savedVersion))
+        await players.finish("players", with: [player(40)])
+        await loader.work.waitUntilFinished()
+        #expect(loader.value.facts?.source == nextSource && loader.value.facts?.definitions == updated)
+        #expect(loader.snapshot.players.first?.position?.x == 40)
+        #expect(!publishedDefinitions.contains(nil) && !publishedDefinitions.contains(retired))
+        loader.refreshPlayers()
+        await players.waitForRequest("players", count: 2); await players.finish("players", with: [player(41)])
+        await loader.work.waitUntilFinished()
+        #expect(loader.value.facts?.source == nextSource && loader.value.facts?.definitions == updated)
+        #expect(loader.snapshot.players.first?.position?.x == 41)
+        fixture.close(); await fixture.work.waitUntilFinished()
+        #expect(loader.value.facts == nil)
     }
 
     @Test(arguments: [false, true])
@@ -200,7 +254,8 @@ import Testing
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 
-    @Test func preparedDimensionsExtendCurrentSettingsWithoutRestoringObsoleteOpeningValues() async throws {
+    @Test(arguments: [false, true])
+    func preparedDimensionsExtendCurrentSettingsWithoutRestoringObsoleteOpeningValues(replacingGame: Bool) async throws {
         let fixture = try Fixture(), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let addedRoot = try TestWorld.make(chunks: [], dimensionSettings: [
@@ -224,18 +279,22 @@ import Testing
         await gate.waitForRequest("0"); await gate.finish("0", with: updated)
         await loader.work.waitUntilFinished()
         let previousPlayers = loader.snapshot
-        loader.refreshDefinitions(generation: fixture.generation, library: nil)
+        let source = loader.value.facts?.source
+        let generation = replacingGame ? UUID() : fixture.generation
+        loader.refreshDefinitions(generation: generation, library: nil)
         await gate.waitForRequest("1")
         loader.include([dimension], settings: ["minecraft:overworld": opening, "example:added": opening])
         #expect(loader.value.facts?.definitions.dimensionSettings["minecraft:overworld"] == different)
         #expect(loader.value.facts?.definitions.dimensionSettings["example:added"] == opening)
         #expect(loader.snapshot === previousPlayers)
+        #expect(loader.value.facts?.source == source)
         await gate.waitForCancellation("1"); await gate.waitForRequest("2")
         changed.dimensionSettings["example:added"] = different
         await gate.finish("2", with: .init(definitions: changed, borders: [:], savedVersion: fixture.initial.savedVersion))
         await gate.finish("1", with: fixture.initial)
         await loader.work.waitUntilFinished()
         #expect(loader.value.facts?.definitions == changed)
+        #expect(loader.value.facts?.source.generation == generation)
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 }
