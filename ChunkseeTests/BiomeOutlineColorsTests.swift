@@ -36,12 +36,13 @@ import Testing
 
     @Test(.timeLimit(.minutes(1)))
     func packColorsRefreshAcrossTabsWithoutGameFilesAndRetireWithTheirSource() async throws {
+        let assetReads = TestGameAssets()
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         try pack(at: root, grass: 0xff0000)
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         defer { resources.close() }
         resources.refreshDelay = .zero
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
@@ -79,8 +80,8 @@ import Testing
         defer { fixture.remove() }
         let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source)
-        resources.setGameAssets(game, source: source)
+
+        await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x654321) && color(second) == MapColor(0x654321))
@@ -93,7 +94,7 @@ import Testing
         #expect(try color(first) == MapColor(0x00ff00))
         #expect(first.map?.currentRenderer.biomeColors?.sourceKey == terrainKey)
 
-        resources.setGameAssets(nil, source: source)
+        await assetReads.publish(nil, to: resources)
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x00ff00) && color(second) == MapColor(0x00ff00))

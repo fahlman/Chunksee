@@ -35,11 +35,14 @@ import Testing
         return root
     }
 
-    private func resources(_ root: URL) async throws -> WorldResources {
+    private func resources(_ root: URL, assetReads: TestGameAssets? = nil) async throws -> WorldResources {
         let defaults = TestDefaults.make()
         let result = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root.appendingPathComponent("test-cache"),
-            watchWorld: { _, _ in nil })
+            watchWorld: { _, _ in nil }, readGameAssets: { minecraft in
+                if let assetReads { return try await assetReads.read(minecraft) }
+                return try await minecraft.readLibrary()
+            })
         result.refreshDelay = .zero
         await result.index.waitForIndex()
         return result
@@ -151,13 +154,14 @@ import Testing
     }
 
     @Test func staleAndClosedWorldDefinitionReadsCannotPublish() async throws {
+        let assetReads = TestGameAssets()
         let root = try fixture(enchantment: "minecraft:protection")
         let game = try ItemPictureFixture(extraFiles: [
             "data/minecraft/enchantment/protection.json": Data(neutral.utf8),
             "data/minecraft/tags/block/leaves.json": Data(#"{"values":["example:needles"]}"#.utf8)
         ])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let resources = try await resources(root), first = try game.resources(), second = try game.resources(), third = try game.resources()
+        let resources = try await resources(root, assetReads: assetReads), first = try game.resources(), second = try game.resources(), third = try game.resources()
         defer { resources.close() }
         let blank = try await WorldResources.readDefinitions(resources.world, library: nil)
         let known = try await WorldResources.readDefinitions(resources.world, library: first.data)
@@ -166,18 +170,17 @@ import Testing
             guard let library else { return blank }
             return await gate.read(library.identity == first.identity ? "older" : library.identity == second.identity ? "newer" : "closing")
         }
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source)
-        resources.setGameAssets(first, source: source)
+
+        await assetReads.publish(first, to: resources)
         await gate.waitForRequest("older")
-        resources.setGameAssets(second, source: source)
+        await assetReads.publish(second, to: resources)
         await gate.waitForCancellation("older")
         await gate.waitForRequest("newer")
         await gate.finish("newer", with: known)
         await gate.finish("older", with: blank)
         try await expectHealth(20, in: resources)
         #expect(resources.details.definitions.leafTag?.members.map(\.id) == ["example:needles"])
-        resources.setGameAssets(third, source: source)
+        await assetReads.publish(third, to: resources)
         await gate.waitForRequest("closing")
         let original = resources.playerSnapshot, definitions = resources.details.definitions
         resources.close()

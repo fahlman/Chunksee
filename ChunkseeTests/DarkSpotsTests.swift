@@ -312,6 +312,7 @@ import Testing
     }
 
     @Test(.timeLimit(.minutes(1))) func replacingTheNightSourceClearsRulesAndRejectsRetiredReads() async throws {
+        let assetReads = TestGameAssets()
         let root = try world([]), changedRoot = try world([], hasSky: false, blockLimit: 15)
         let fixture = try ItemPictureFixture()
         defer {
@@ -323,14 +324,14 @@ import Testing
             try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                    withIntermediateDirectories: true)
         }
-        let resources = try await resources(root), first = WorldSession(resources: resources)
+        let resources = try await resources(root, assetReads: assetReads), first = WorldSession(resources: resources)
         let old = try resources.world.nightMonsterLighting(assets: nil)
         let updated = try World(contentsOf: changedRoot).nightMonsterLighting(assets: nil)
         #expect(old["minecraft:overworld"] != updated["minecraft:overworld"])
         let a = try fixture.resources(), b = try fixture.resources()
         let artwork = [a, b].compactMap { resources.names.minecraft.artwork(for: $0) }
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.setGameAssets(a, source: source); await resources.waitForRefresh()
+        await assetReads.publish(a, to: resources); await resources.waitForRefresh()
         let gate = AsyncReadGate<Result<[String: MonsterSpawnLight], CocoaError>>()
         resources.readNightLighting = { _, library in try await gate.read(library?.identity.uuidString ?? "none").get() }
         first.setDarkSpots(true)
@@ -342,7 +343,7 @@ import Testing
         #expect(await gate.requested.count == 1)
         #expect(first.map?.nightLighting == old["minecraft:overworld"])
 
-        resources.setGameAssets(b, source: source)
+        await assetReads.publish(b, to: resources)
         #expect(first.map?.nightLighting == nil)
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         #expect(second.map?.nightLighting == nil)
@@ -361,7 +362,7 @@ import Testing
 
         resources.worldChanged([root.appendingPathComponent("datapacks")])
         await gate.waitForRequest(b.identity.uuidString, count: 3)
-        resources.setGameAssets(a, source: source)
+        await assetReads.publish(a, to: resources)
         await gate.waitForCancellation(b.identity.uuidString)
         await gate.waitForRequest(a.identity.uuidString, count: 2)
         #expect(first.map?.nightLighting == nil && third.map?.nightLighting == nil)
@@ -371,7 +372,7 @@ import Testing
         await gate.finish(a.identity.uuidString, with: .success(old)); await resources.waitForRefresh()
         #expect(first.map?.nightLighting == nil)
         #expect(second.map?.nightLighting == old["minecraft:the_nether"])
-        resources.setGameAssets(nil, source: source)
+        await assetReads.publish(nil, to: resources)
         #expect(second.map?.nightLighting == nil && third.map?.nightLighting == nil)
         await gate.waitForRequest("none")
         let saveOnly = try resources.world.nightMonsterLighting(assets: nil)
@@ -592,10 +593,13 @@ import Testing
         return try ItemPictureFixture.pixels(#require(CGImageSourceCreateImageAtIndex(source, 0, nil))).bytes
     }
 
-    private func resources(_ root: URL) async throws -> WorldResources {
+    private func resources(_ root: URL, assetReads: TestGameAssets? = nil) async throws -> WorldResources {
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { minecraft in
+                if let assetReads { return try await assetReads.read(minecraft) }
+                return try await minecraft.readLibrary()
+            })
         resources.refreshDelay = .zero
         await resources.waitForRefresh()
         return resources

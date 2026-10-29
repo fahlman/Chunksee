@@ -33,6 +33,7 @@ import Testing
     }
 
     @Test func matchingAssetsAndRealSavedClockFilesRefreshEveryAttachedTab() async throws {
+        let assetReads = TestGameAssets()
         let timeline = try ItemPictureFixture.json(["clock": "test:light", "period_ticks": 100,
             "tracks": ["minecraft:visual/sun_angle": ["modifier": "override", "keyframes": [
                 ["ticks": 0, "value": 0], ["ticks": 50, "value": 180]]]]])
@@ -47,11 +48,10 @@ import Testing
             try Fixtures.writeGzippedNBT(.compound(["data": .compound(["test:light": .compound(["total_ticks": .long(ticks)])])]), to: clockFile)
         }
         try saveClock(0)
-        let resources = try await resources(url, defaults: TestDefaults.make())
+        let resources = try await resources(url, defaults: TestDefaults.make(), assetReads: assetReads)
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source); resources.setGameAssets(game, source: source)
+        await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
         #expect(first.map?.savedLighting?.saved.sunAngle == 0 && second.map?.savedLighting?.saved.sunAngle == 0)
         try saveClock(50); resources.worldChanged([clockFile]); await resources.waitForRefresh()
@@ -178,9 +178,10 @@ import Testing
     }
 
     @Test(.timeLimit(.minutes(1))) func replacementLibraryRetiresLightingForExistingAndNewDimensions() async throws {
+        let assetReads = TestGameAssets()
         let url = try world(), fixture = try ItemPictureFixture()
         defer { try? FileManager.default.removeItem(at: url); fixture.remove() }
-        let resources = try await resources(url, defaults: TestDefaults.make()), first = WorldSession(resources: resources)
+        let resources = try await resources(url, defaults: TestDefaults.make(), assetReads: assetReads), first = WorldSession(resources: resources)
         await resources.waitForRefresh()
         let a = try fixture.resources(), b = try fixture.resources(), c = try fixture.resources()
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
@@ -188,7 +189,7 @@ import Testing
         let oldValues = ["minecraft:overworld": old, "test:fixed_sky": old]
         let newValues = ["minecraft:overworld": updated, "test:fixed_sky": updated]
         resources.readLighting = { _, _ in oldValues }
-        resources.setGameAssets(a, source: source); await resources.waitForRefresh()
+        await assetReads.publish(a, to: resources); await resources.waitForRefresh()
         #expect(first.map?.savedLighting == old)
         resources.names.minecraft.usesGameArtwork = false
         await resources.waitForRefresh()
@@ -198,7 +199,7 @@ import Testing
         resources.readLighting = { _, library in
             try await gate.read(library?.identity.uuidString ?? "none").get()
         }
-        resources.setGameAssets(b, source: source)
+        await assetReads.publish(b, to: resources)
         #expect(first.map?.savedLighting == nil)
         let second = WorldSession(resources: resources, dimensionID: "test:fixed_sky")
         #expect(second.map?.savedLighting == nil)
@@ -214,7 +215,7 @@ import Testing
 
         resources.worldChanged([file]); await gate.waitForRequest(b.identity.uuidString, count: 3)
         #expect(first.map?.savedLighting == updated)
-        resources.setGameAssets(c, source: source)
+        await assetReads.publish(c, to: resources)
         await gate.waitForCancellation(b.identity.uuidString)
         await gate.waitForRequest(c.identity.uuidString)
         #expect(first.map?.savedLighting == nil && second.map?.savedLighting == nil)
@@ -224,7 +225,7 @@ import Testing
         await gate.finish(c.identity.uuidString, with: .success(newValues))
         await resources.waitForRefresh()
         #expect(second.map?.savedLighting == updated)
-        resources.setGameAssets(nil, source: source)
+        await assetReads.publish(nil, to: resources)
         #expect(second.map?.savedLighting == nil)
         await gate.waitForRequest("none")
         let saveOnly = try await WorldResources.readLighting(resources.world, library: nil)
@@ -353,9 +354,12 @@ import Testing
         return url
     }
 
-    private func resources(_ url: URL, defaults: UserDefaults) async throws -> WorldResources {
+    private func resources(_ url: URL, defaults: UserDefaults, assetReads: TestGameAssets? = nil) async throws -> WorldResources {
         let value = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { minecraft in
+                if let assetReads { return try await assetReads.read(minecraft) }
+                return try await minecraft.readLibrary()
+            })
         value.refreshDelay = .zero
         return value
     }

@@ -30,13 +30,14 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     @ObservationIgnored private var retry: Request?
 
     init(work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+         initialValue: Value? = nil,
          firstRequest: Request, merge: @escaping @Sendable (Request, Request) -> Request,
          retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil },
          read: @escaping @Sendable (Source, Request, Value?) async throws -> Value) {
         self.work = work.makeScope()
         self.priority = priority
         self.whenInactive = whenInactive
-        publication = (source, nil)
+        publication = (source, initialValue)
         self.firstRequest = firstRequest
         self.merge = merge
         self.retainingValue = retainingValue
@@ -111,6 +112,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
         pending = nil
         retry = nil
         work.close()
+        publication = (source, nil)
     }
 
     func waitUntilFinished() async {
@@ -120,8 +122,10 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
 
 extension RefreshLoader where Request == RefreshInvalidation {
     convenience init(work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+                     initialValue: Value? = nil,
                      read: @escaping @Sendable (Source, Value?) async throws -> Value) {
         self.init(work: work, priority: priority, whenInactive: whenInactive, source: source,
+                  initialValue: initialValue,
                   firstRequest: .refresh, merge: { _, _ in .refresh }) { source, _, previous in
             try await read(source, previous)
         }

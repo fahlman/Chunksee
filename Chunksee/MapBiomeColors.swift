@@ -1,7 +1,7 @@
 import ChunkseeKit
 import Foundation
 
-struct WorldGameAssetSource: Equatable {
+nonisolated struct WorldGameAssetSource: Equatable, Sendable {
     let generation: UUID
 }
 

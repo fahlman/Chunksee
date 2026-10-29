@@ -7,6 +7,25 @@ import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test func preparedValueIsAvailableWithoutReadingAndCloseReleasesIt() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "prepared", initialValue: 7) { _, _ in await gate.read("refresh") }
+        #expect(loader.value == 7)
+        loader.request(source: "prepared", isEnabled: true, reread: false)
+        await loader.waitUntilFinished()
+        #expect(await gate.requested.isEmpty && loader.value == 7)
+        loader.request(source: "prepared", isEnabled: true, reread: true)
+        await gate.waitForRequest("refresh")
+        #expect(loader.value == 7)
+        await gate.finish("refresh", with: 8)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 8)
+        loader.close()
+        #expect(loader.value == nil)
+        work.close(); await work.waitUntilFinished()
+    }
+
     nonisolated private enum Demand: String, Equatable, Sendable {
         case metadata, contents
         func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }

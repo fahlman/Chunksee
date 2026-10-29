@@ -296,24 +296,24 @@ import Testing
     }
 
     @Test(.timeLimit(.minutes(1))) func dimensionTabsCoalesceColorsAndClosingRejectsAnOldRead() async throws {
+        let assetReads = TestGameAssets()
         let fixture = try fixture()
         defer { fixture.remove() }
         let url = try world(), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         await resources.index.waitForIndex()
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         let game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         let snapshot = try await library.data.biomeColors(in: resources.world, artwork: library)
         let gate = AsyncReadGate<MapBiomeColors>()
         resources.readBiomeColors = { _, _, _, _, _ in await gate.read("initial") }
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source)
-        resources.setGameAssets(game, source: source)
+
+        await assetReads.publish(game, to: resources)
         await gate.waitForRequest("initial")
-        resources.prepareGameAssets(source)
-        resources.setGameAssets(game, source: source)
+
+        await assetReads.publish(game, to: resources)
         await gate.finish("initial", with: snapshot)
         await resources.waitForRefresh()
         #expect(await gate.requested == ["initial"])
@@ -333,19 +333,19 @@ import Testing
     }
 
     @Test(.timeLimit(.minutes(1))) func packChangesPublishProgressBeforeOneFollowupAndAutosavesCannotWeakenIt() async throws {
+        let assetReads = TestGameAssets()
         let fixture = try fixture()
         defer { fixture.remove() }
         let url = try world(), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
         try pack(at: url, grass: 0xff0000)
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         resources.refreshDelay = .zero
-        let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source)
-        resources.setGameAssets(game, source: source)
+
+        await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)
         let gate = AsyncReadGate<Void>(), numbers = ReadNumbers(), requests = ColorRequests()
@@ -691,17 +691,18 @@ import Testing
     }
 
     @Test(.timeLimit(.minutes(1))) func savedGenerationSeedRefreshesSharedColorIdentityWithoutChangingLevelMetadata() async throws {
+        let assetReads = TestGameAssets()
         let fixture = try fixture()
         defer { fixture.remove() }
         let url = try world(seed: 0), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil }, readGameAssets: { try await assetReads.read($0) })
         await resources.index.waitForIndex()
         let session = WorldSession(resources: resources), game = try fixture.resources(), library = try #require(resources.names.minecraft.artwork(for: game))
         resources.refreshDelay = .zero
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source); resources.setGameAssets(game, source: source)
+        await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
         let original = try #require(session.map?.currentRenderer.biomeColors)
         let file = url.appendingPathComponent("data/minecraft/world_gen_settings.dat")

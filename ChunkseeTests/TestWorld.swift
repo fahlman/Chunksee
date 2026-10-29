@@ -120,17 +120,34 @@ extension WorldResources {
                      defaults: UserDefaults, cacheRoot: URL?,
                      watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
                      readRegion: @escaping RegionReader.Read = RegionReader.scan,
+                     readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
                      maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) async throws {
         let folder = try WorldFolders(defaults: defaults).remember(snapshot.access.url)
         let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
         self.init(prepared: prepared, names: names, savedSearches: savedSearches,
                   settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot,
-                  watchWorld: watchWorld, readRegion: readRegion, maintainCache: maintainCache)
+                  watchWorld: watchWorld, readRegion: readRegion, readGameAssets: readGameAssets, maintainCache: maintainCache)
     }
 
     func includeDimensions(from snapshot: WorldSnapshot) async throws {
         guard !isClosed else { return }
         includeDimensions(from: try await WorldPreparation.read(snapshot, minecraft: names.minecraft))
+    }
+}
+
+/// Substitutes the file-read boundary; publication and its dependent reads remain real.
+final class TestGameAssets {
+    var result: Result<GameResourceLibrary?, any Error>?
+
+    func read(_ minecraft: MinecraftResources) async throws -> GameResourceLibrary? {
+        if let result { return try result.get() }
+        return try await minecraft.readLibrary()
+    }
+
+    func publish(_ library: GameResourceLibrary?, to resources: WorldResources) async {
+        result = .success(library)
+        resources.refreshGameAssets()
+        await resources.waitForGameAssets()
     }
 }
 
