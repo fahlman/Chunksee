@@ -176,7 +176,10 @@ import Testing
         let gate = AsyncReadGate<WorldResources.DefinitionSnapshot>()
         loader.readDefinitions = { _, _ in await gate.read("accepted") }
         loader.readPlayers = { _, _ in [] }
-        withObservationTracking(options: [.didSet]) { _ = loader.requestedDefinitions } onChange: { _ in
+        withObservationTracking(options: [.didSet]) { _ = loader.requestedDefinitions } onChange: { event in
+            // This observer makes exactly one replacement. Stop observing before mutating
+            // the same property, including during synchronous nested delivery.
+            event.cancel()
             MainActor.assumeIsolated {
                 if close { loader.close() }
                 else { loader.refreshDefinitions(generation: UUID(), library: nil) }

@@ -155,7 +155,8 @@ struct RefreshLoaderTests {
         let loader = RefreshLoader(partialRead: { source, request, _ in await gate.read(source + request.rawValue) },
             work: work, priority: .utility, whenInactive: .finish, source: "a", initialValue: 1,
             firstRequest: Demand.metadata, merge: { $0.merging($1) })
-        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { _ in
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { event in
+            event.cancel()
             MainActor.assumeIsolated {
                 if close { loader.close() }
                 else { loader.request(source: "b", isEnabled: true, refresh: .metadata) }
