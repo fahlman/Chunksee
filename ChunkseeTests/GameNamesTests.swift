@@ -246,6 +246,94 @@ enum GameNameFixture {
         await world.names.minecraft.waitUntilIdle()
     }
 
+    @Test func repeatedReloadsPublishProgressAndOnlyTheLastWindowCancelsSharedNames() async throws {
+        let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let world = try await resources(root, game: game)
+        let sessions = [WorldSession(resources: world), WorldSession(resources: world)]
+        let gate = AsyncReadGate<GameLanguage?>(), numbers = ReadNumbers()
+        var closeWaiter: Task<Void, Never>?
+        func close() async {
+            await gate.releaseAllAndFuture(with: nil)
+            sessions.forEach { $0.close() }
+            world.close()
+            await world.waitUntilClosed()
+            await closeWaiter?.value
+            await world.names.minecraft.waitUntilIdle()
+        }
+        do {
+            world.refreshGameLanguage(preferredLanguage: "en_US")
+            await world.waitForRefresh()
+            let library = try game.library()
+            let english = try #require(await library.data.language("en_US", minecraftDirectory: game.root))
+            let french = try #require(await library.data.language("fr_FR", minecraftDirectory: game.root))
+            let original = world.gameNames.identity
+            try #require(original != nil)
+            world.readLanguage = { _, _, _ in await gate.read(String(await numbers.next())) }
+            world.refreshGameLanguage(reload: true)
+            await gate.waitForRequest("0")
+            for _ in 0..<8 { world.refreshGameLanguage(reload: true) }
+            #expect(world.gameNames.identity == original)
+            sessions[0].close()
+            try #require(!world.isClosed)
+
+            await gate.finish("0", with: french)
+            await gate.waitForRequest("1")
+            // The first pass must publish before the coalesced pass finishes. Restarting every
+            // reload would discard this progress and leave the previous English names showing.
+            #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
+            #expect(world.gameNames.identity != original)
+            await gate.finish("1", with: english)
+            await world.waitForRefresh()
+            #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
+            #expect(await gate.requested == ["0", "1"])
+
+            world.refreshGameLanguage(reload: true)
+            await gate.waitForRequest("2")
+            sessions[1].close()
+            #expect(world.isClosed && world.gameNames.identity == nil)
+            var drained = false
+            await withCheckedContinuation { started in
+                closeWaiter = Task {
+                    started.resume()
+                    await world.waitUntilClosed()
+                    drained = true
+                }
+            }
+            await gate.waitForCancellation("2")
+            #expect(!drained)
+            await gate.finish("2", with: french)
+            await closeWaiter?.value
+            #expect(drained && world.gameNames.identity == nil)
+        } catch {
+            await close()
+            throw error
+        }
+        await close()
+    }
+
+    @Test func anUnavailableLanguageClearsNamesAndIsReusedUntilInvalidated() async throws {
+        let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let world = try await resources(root, game: game), gate = AsyncReadGate<GameLanguage?>()
+        world.refreshGameLanguage(preferredLanguage: "en_US")
+        await world.waitForRefresh()
+        #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
+        world.readLanguage = { _, _, _ in await gate.read("unavailable") }
+        world.refreshGameLanguage(reload: true)
+        await gate.waitForRequest("unavailable")
+        await gate.releaseAllAndFuture(with: nil)
+        await world.waitForRefresh()
+        #expect(world.gameNames.identity == nil)
+        #expect(world.gameNames.name("unluck", in: "effect") == "Unluck")
+        world.refreshGameLanguage()
+        await world.waitForRefresh()
+        #expect(await gate.requested == ["unavailable"])
+        world.close()
+        await world.waitUntilClosed()
+        await world.names.minecraft.waitUntilIdle()
+    }
+
     @Test func aLateLanguageReadCannotReplaceTheNewerPreference() async throws {
         let root = try TestWorld.make(chunks: []), game = try GameNameFixture.game()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
