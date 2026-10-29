@@ -78,7 +78,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let cache = ScanCache(directory: world.appendingPathComponent("scan-cache"))
-        let fingerprint = ScanCache.fingerprint([dimension.regionURL(x: 0, z: 0), dimension.regionURL(.entities, x: 0, z: 0)])
+        let fingerprint = ScanCache.legacyFingerprint([dimension.regionURL(x: 0, z: 0), dimension.regionURL(.entities, x: 0, z: 0)])
         var stale = StructureMarker(try #require(StructureStart.starts(inChunk: spec.nbt).first))
         stale.group = .other
         let oldFile = try #require(cache.directory).appendingPathComponent("structures.0.0.\(fingerprint).v16")

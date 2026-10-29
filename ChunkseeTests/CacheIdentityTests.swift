@@ -19,6 +19,15 @@ extension TileCache {
     }
 }
 
+extension ScanCache {
+    /// Fixtures for the retired cache format retain its original on-disk spelling.
+    nonisolated static func legacyFingerprint(_ sources: [URL]) -> String {
+        CacheKey.hash(sources.map { url in
+            CacheKey.fileStamp(for: url).map { "\($0.size):\($0.modified);" } ?? "-;"
+        }.joined())
+    }
+}
+
 extension RegionTileRenderer {
     /// Controlled asynchronous results retain the source and choices of their actual request.
     nonisolated func fixtureTile(_ image: CGImage, for region: RegionPosition) throws -> RenderedTile {
@@ -175,15 +184,19 @@ extension RegionTileRenderer {
         ])))
         var cache = InGameMapImage.Cache()
         let first = InGameMapImage.Source(map)
-        let image = try #require(cache.image(for: first))
-        #expect(cache.image(for: InGameMapImage.Source(map)) === image)
+        let firstImage = cache.image(for: first)
+        let image = try #require(firstImage)
+        let reused = cache.image(for: InGameMapImage.Source(map))
+        #expect(reused === image)
         var changed = map
         changed.colors[0] = 18
         let next = InGameMapImage.Source(changed)
         #expect(next.key != first.key)
-        let replacement = try #require(cache.image(for: next))
+        let nextImage = cache.image(for: next)
+        let replacement = try #require(nextImage)
         #expect(replacement !== image && replacement.dataProvider?.data as Data? != image.dataProvider?.data as Data?)
-        #expect(cache.image(for: next) === replacement)
+        let reusedReplacement = cache.image(for: next)
+        #expect(reusedReplacement === replacement)
         changed.centerX += 1
         #expect(InGameMapImage.Source(changed).key != next.key)
     }

@@ -138,13 +138,6 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct ScanCacheTests {
-    /// Fixtures for the retired cache format must retain its original on-disk spelling.
-    private func legacyFingerprint(_ sources: [URL]) -> String {
-        CacheKey.hash(sources.map { url in
-            CacheKey.fileStamp(for: url).map { "\($0.size):\($0.modified);" } ?? "-;"
-        }.joined())
-    }
-
     @Test(arguments: [13, 15]) func oldCreatureCacheIsRereadWithTheEntityChunksHealthDefaults(version: Int) async throws {
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
@@ -159,7 +152,7 @@ import Testing
         try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)])).write(to: entitiesFile)
         let cache = ScanCache(directory: world.appendingPathComponent("test-cache"))
-        let fingerprint = legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
+        let fingerprint = ScanCache.legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.0.0.mca"), entitiesFile])
         let oldFile = try #require(cache.directory).appendingPathComponent("creatures.0.0.\(fingerprint).v\(version)")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let stale = [Creature(id: "minecraft:cat", x: 4, y: 64, z: 4, owner: NBT.intArray([1, 2, 3, 4]).uuid, health: 6)]
@@ -169,7 +162,7 @@ import Testing
         let reader = RegionReader(dimension: dimension, cache: cache)
         let creatures = try #require(await reader.facts(region)).creatures
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.creatures
+        let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.creatures
         #expect(saved?.first?.maxHealth == 10)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
@@ -180,7 +173,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let region = RegionPosition(x: -1, z: 0)
         let cache = ScanCache(directory: world.appendingPathComponent("cache"))
-        let fingerprint = legacyFingerprint([
+        let fingerprint = ScanCache.legacyFingerprint([
             dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
             dimension.entitiesDirectory.appendingPathComponent("r.-1.0.mca"),
         ])
@@ -197,7 +190,7 @@ import Testing
         let index = await TestWorld.index(reader)
         let rebuilt = try #require(index.regions[region])
         #expect(rebuilt.structures.isEmpty)
-        let saved = cache.load(.init(dimension: dimension, region: region, options: RegionReader.options()))?.structures.map { StructureMarker($0) }
+        let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }
         #expect(saved == [])
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
