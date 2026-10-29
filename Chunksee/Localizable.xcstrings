@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Chunksee can’t read this folder as a world." : {
+      "comment" : "Folder-opening failure. The folder may be invalid, or a restored dimension may lack remembered access to its containing world. Do not assert that the world is invalid."
+    },
+    "Open the world’s folder inside your saves folder." : {
+      "comment" : "Recovery for a folder-opening failure: select the containing world folder to supply access to its saved dimensions."
+    },
     "Minecraft %@ doesn't recognize this block" : {
       "comment" : "Block notice. The placeholder is the selected game files' version name; do not translate it."
     },
