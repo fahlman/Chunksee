@@ -5,6 +5,7 @@ import AppKit
 final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
     private(set) var isTerminating = false
     var prepareForTermination: (() -> Void)?
+    private let mainMenu: () -> NSMenu?
     private var updateScheduled = false
     private static let editingActions: Set<Selector> = [
         #selector(NSDocument.save(_:)),
@@ -16,7 +17,12 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
         #selector(NSDocument.browseVersions(_:))
     ]
 
-    override init() {
+    override convenience init() {
+        self.init(mainMenu: { NSApp.mainMenu })
+    }
+
+    init(mainMenu: @escaping () -> NSMenu?) {
+        self.mainMenu = mainMenu
         super.init()
         // SwiftUI and AppKit update document items when opening menus and changing windows.
         for name in [NSMenu.didAddItemNotification, NSMenu.didChangeItemNotification] {
@@ -51,7 +57,7 @@ final class ReadOnlyDocumentMenus: NSObject, NSApplicationDelegate {
     }
 
     private func hideEditingCommands() {
-        guard let fileMenu = NSApp.mainMenu?.items.compactMap(\.submenu).first(where: { menu in
+        guard let fileMenu = mainMenu()?.items.compactMap(\.submenu).first(where: { menu in
             menu.items.contains { $0.action == #selector(NSDocumentController.openDocument(_:)) }
         }) else { return }
         var followsRevert = false
