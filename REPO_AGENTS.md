@@ -1418,9 +1418,12 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
 
 - **Scheme:** `Chunksee` is shared and tracked. It builds the app and runs `ChunkseeTests`
   (Swift Testing) in `ChunkseeTestHost`, a separate target with the fixed bundle ID
-  `com.fahlsing.Chunksee.Tests`. The host compiles the same app sources but starts an empty
-  settings scene instead of creating the real app's stores or restoring documents. Tests import
-  that host module. The test action defaults to Release, matching Ryan's configuration preference;
+  `com.fahlsing.Chunksee.Tests`. The host compiles the same app sources and registers the shared
+  `WorldDocumentScene`, with restoration disabled and no document factory until a test supplies
+  its isolated model. It creates no real app stores or documents at launch. Document-window tests
+  open synthetic dimensions through the native document controller; other tests can use the
+  model or view directly. Tests import that host module. The test action defaults to Release,
+  matching Ryan's configuration preference;
   the host and test targets enable testability in Release so Command-U and plain `xcodebuild test`
   work without a command-line override. The ordinary app target is not built for testing and
   does not enable testability in Release.
@@ -1482,6 +1485,18 @@ and the project's settings. Xcode 27.2 and Swift snapshots are previews, not the
 The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
 frame/native split item both enforce a 180-point minimum. Native resizing remains in charge.
+
+WorldView gives the navigation columns a 640-point minimum width before the inspector, so SwiftUI
+can add room when it opens. The 420-point height minimum follows the inspector, preserving the
+original window height instead of adding the navigation chrome twice. The document scene must
+not put another minimum-width frame around the loaded view: that masks the columns' combined
+minimum and lets them overflow. Only the opening placeholder has its own 640-by-420 frame.
+The app and regression tests share WorldDocumentScene. Tests open real document windows with
+synthetic files, shrink first to small and medium widths, then show World Info and a location
+inspector, with and without the newer-world banner. They verify the columns fit before any
+test-driven resize, hide the inspector, shrink again and invoke native Zoom. A disposable second
+tab exercises tab chrome without changing the saved Show Tab Bar preference. Foreground menu,
+keyboard and VoiceOver checks remain native review tasks.
 
 Time Spent uses `RegionFacts.inhabitedTimes`, including legacy `Level` chunks whose terrain
 cannot be rendered. Region-file URLs use `Dimension.regionURL` for terrain, entities and POI;

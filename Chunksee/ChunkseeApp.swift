@@ -14,14 +14,9 @@ struct ChunkseeApp: App {
     }
 
     var body: some Scene {
-        DocumentGroup { (document: WorldDocument) in
-            WorldDocumentView(document: document)
-                .frame(minWidth: 640, minHeight: 420)
-        } makeReadableDocument: { configuration, _ in
+        WorldDocumentScene { configuration in
             WorldDocument(configuration: configuration, model: model)
         }
-        .defaultLaunchBehavior(.suppressed)
-        .defaultSize(width: 1200, height: 800)
         .onChange(of: focusedSession?.viewID) {
             focusedSession?.becameActive(isTerminating: documentMenus.isTerminating)
         }
@@ -45,3 +40,18 @@ struct ChunkseeApp: App {
     }
 }
 #endif
+
+/// The app and isolated document-window tests use the same scene and sizing rules.
+struct WorldDocumentScene: Scene {
+    let makeDocument: @MainActor (URLDocumentConfiguration) throws -> WorldDocument
+
+    var body: some Scene {
+        DocumentGroup { (document: WorldDocument) in
+            WorldDocumentView(document: document)
+        } makeReadableDocument: { configuration, _ in
+            try makeDocument(configuration)
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 1200, height: 800)
+    }
+}

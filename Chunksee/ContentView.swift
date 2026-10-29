@@ -4,6 +4,8 @@ import ChunkseeIndex
 import SwiftUI
 
 struct WorldView: View {
+    static let minimumContentSize = CGSize(width: 640, height: 420)
+
     @Bindable var session: WorldSession
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -243,11 +245,15 @@ struct WorldView: View {
         .sheet(item: $annotations.portalDraft) { draft in
             PortalPlanView(session: session, draft: draft)
         }
+        // The inspector adds its width to the navigation columns' minimum. The document scene
+        // must forward that combined size instead of masking it with another outer frame.
+        .frame(minWidth: Self.minimumContentSize.width)
         .inspector(isPresented: inspectorShown) {
             WorldInspector(session: session)
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
+        .frame(minHeight: Self.minimumContentSize.height)
         .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
         .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
         .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
