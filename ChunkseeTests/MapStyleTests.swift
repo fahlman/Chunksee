@@ -289,8 +289,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
-            work: BackgroundWork(), dimension: dimension, center: .zero, heightScale: MapHeightScale(settings: settings))
+        let map = MapModel(definitions: { .init(settings: settings, water: nil) }, gameResources: { .unavailable },
+            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
         map.setDimensionSettings(nil, water: nil)
