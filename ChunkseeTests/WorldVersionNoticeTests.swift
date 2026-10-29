@@ -216,8 +216,7 @@ import Testing
         defer { session.close() }
         let controller = NSHostingController(rootView: WorldView(session: session)
             .environment(\.locale, Locale(identifier: "en_US"))
-            .environment(\.colorScheme, colorScheme)
-            .frame(minWidth: 640, minHeight: 420))
+            .environment(\.colorScheme, colorScheme))
         let window = NSWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
         window.setContentSize(CGSize(width: 1200, height: 800))

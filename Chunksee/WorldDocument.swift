@@ -289,8 +289,7 @@ struct WorldDocumentView: View {
     var body: some View {
         Group {
             if let dimensions = document.worldDimensions {
-                ProgressView("Opening world…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                opening
                     .task { await openInstead(dimensions) }
             } else if let session = document.session {
                 WorldView(session: session)
@@ -299,8 +298,7 @@ struct WorldDocumentView: View {
                     // Capture only the action: the session must not keep its own view or document alive.
                     .onAppear { session.routing.openDocument = { [openDocument] in try await openDocument(at: $0) } }
             } else {
-                ProgressView("Opening world…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                opening
             }
         }
         .task(id: document.configuration.fileURL) {
@@ -313,6 +311,12 @@ struct WorldDocumentView: View {
         } set: { if !$0 { errorMessage = nil; document.session?.routing.openFailure = nil } }) {
             Button("OK", role: .cancel) { if document.worldDimensions != nil { dismiss() } }
         } message: { Text(errorMessage ?? document.session?.routing.openFailure ?? "") }
+    }
+
+    private var opening: some View {
+        ProgressView("Opening world…")
+            .frame(minWidth: WorldView.minimumContentSize.width, maxWidth: .infinity,
+                   minHeight: WorldView.minimumContentSize.height, maxHeight: .infinity)
     }
 
     /// Opens a world folder's dimensions, then closes the folder's own window. Opened last, the
