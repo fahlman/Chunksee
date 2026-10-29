@@ -213,16 +213,16 @@ import Synchronization
         #expect(await updates.next(isolation: #isolation) == true)
     }
 
-    @Test func firstSourcePreparationNotifiesAnAlreadyRenderedView() async throws {
+    @Test func preparedOpeningExposesPicturesWithoutAnotherSceneEvent() async throws {
         let root = try TestWorld.make(chunks: []), game = try ItemPictureFixture()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let resources = try await resources(root, game: game)
         defer { resources.close() }
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        let observation = observe(resources, source: source)
-        #expect(resources.gameArtworkLibrary(for: source) == nil)
+        let library = try #require(resources.gameArtworkLibrary(for: source))
+        #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
         resources.prepareGameAssets(source)
-        await expectUpdate(observation)
+        #expect(resources.gameArtworkLibrary(for: source) === library)
         resources.close()
         await resources.waitUntilClosed()
         await resources.names.minecraft.waitUntilIdle()
@@ -231,12 +231,16 @@ import Synchronization
     @Test func asynchronousLoadAndJarReplacementPublishPicturesWithoutAnotherSceneEvent() async throws {
         let root = try TestWorld.make(chunks: []), game = try ItemPictureFixture()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
-        let resources = try await resources(root, game: game)
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil })
         defer { resources.close() }
+        // Choosing files after opening still publishes asynchronously to existing views.
+        names.minecraft.choose(game.root)
         let source = WorldGameAssetSource(generation: resources.names.minecraft.generation)
-        resources.prepareGameAssets(source)
+        #expect(resources.gameArtworkLibrary(for: source) == nil)
         let loading = observe(resources, source: source)
-        resources.refreshGameAssets()
         await resources.waitForRefresh()
         await expectUpdate(loading)
         let first = try #require(resources.gameArtworkLibrary(for: source))
