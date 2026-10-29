@@ -1643,7 +1643,8 @@ WorldResources observes each source/selection publication to refresh dependent d
 lighting, colors and names even when every tab is hidden. A completed same-library selection
 rechecks language objects without reloading unrelated definitions or colors.
 Dependent refreshes run after the asset notification returns, within the loader's existing work
-scope; source replacement cancels them and obsolete identities are rejected. This avoids nested
+scope, inheriting the notification's priority as the earlier synchronous requests did; source
+replacement cancels them and obsolete identities are rejected. This avoids nested
 publication notifications registering duplicate map observers and repeating drawing work.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks

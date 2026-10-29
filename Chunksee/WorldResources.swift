@@ -329,7 +329,9 @@ final class WorldResources {
                 let completed = self.assetLoader.value != nil
                 // Mutating dependent publications inside this notification can deliver the
                 // same map observation twice. Drain delivery before requesting those reads.
-                self.assetLoader.work.start(priority: .utility) { [weak self] in
+                // Preserve the notification's priority for loaders that inherit it, so
+                // temporary map work cannot outrun its replacement resource requests.
+                self.assetLoader.work.start(priority: nil) { [weak self] in
                     guard !Task.isCancelled, let self, !self.isClosed,
                           self.assetLoader.source == currentSource,
                           self.assetLoader.value?.library?.identity == currentIdentity else { return }
