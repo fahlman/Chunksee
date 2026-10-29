@@ -259,16 +259,19 @@ final class WorldResources {
         }
         assetLoader.published = { [weak self] previous, current in
             guard let self, !self.isClosed else { return }
-            if previous.source != current.source || previous.value == nil ||
-                previous.value?.library?.identity != current.value?.library?.identity {
+            let sourceChanged = previous.source != current.source ||
+                previous.value?.library?.identity != current.value?.library?.identity
+            if sourceChanged {
                 self.refreshGameLanguage()
                 self.refreshBiomeColors(reload: true)
                 self.refreshNightLighting(reread: true)
                 self.refreshLighting()
-                self.refreshDefinitions()
             } else if current.value != nil {
                 // A newly installed language object need not change the selected jar.
                 self.refreshGameLanguage(reload: true)
+            }
+            if sourceChanged || (previous.value == nil && current.value != nil) {
+                self.refreshDefinitions()
             }
         }
         watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
