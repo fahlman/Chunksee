@@ -182,12 +182,17 @@ import Testing
         #expect(resources.details.definitions.leafTag?.members.map(\.id) == ["example:needles"])
         await assetReads.publish(third, to: resources)
         await gate.waitForRequest("closing")
-        let original = resources.playerSnapshot, definitions = resources.details.definitions
+        let original = resources.playerSnapshot
         resources.close()
+        // Closing the shared loader releases its publication. A canceled completion must not
+        // restore those facts after closure, just as it cannot replace them while open.
+        let closed = resources.playerSnapshot, definitions = resources.details.definitions
+        #expect(resources.isClosed && closed !== original && closed.players.isEmpty)
+        #expect(definitions == WorldDefinitions())
         await gate.waitForCancellation("closing")
         await gate.finish("closing", with: blank)
         await resources.waitUntilClosed()
-        #expect(resources.playerSnapshot === original && resources.details.definitions == definitions)
+        #expect(resources.playerSnapshot === closed && resources.details.definitions == definitions)
     }
 
     @Test func oneDamagedResourceDoesNotHideOtherReadableDefinitions() throws {
