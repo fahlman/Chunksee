@@ -350,7 +350,7 @@ nonisolated enum WorldSearch {
         for entry in index.creatures {
             guard !Task.isCancelled else { return [] }
             let creature = entry.value.creature
-            guard creature.customName != nil, query.matches(gameNames.creatureSearchText(entry.value)) else { continue }
+            guard creature.customName != nil, query.matches(gameNames.creatureSearchText(creature)) else { continue }
             hits.append(layerHit(entry, gameNames: gameNames, y: Coordinates.block(creature.y), caption: gameNames.creatureCaption(entry.value),
                                  layer: .creature(entry.value.group)))
         }

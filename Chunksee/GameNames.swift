@@ -132,8 +132,11 @@ nonisolated struct GameNames: Sendable {
     }
 
     func creatureSearchText(_ marker: CreatureMarker) -> String {
-        let creature = marker.creature
-        var parts = [self.creature(creature), marker.group.name, entity(creature.id), creature.id]
+        creatureSearchText(marker.creature) + " " + marker.group.name
+    }
+
+    func creatureSearchText(_ creature: Creature) -> String {
+        var parts = [self.creature(creature), entity(creature.id), creature.id]
         if let villager = creature.villager {
             if let profession = profession(villager) { parts.append(profession) }
             if let id = villager.profession { parts.append(id) }

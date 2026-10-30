@@ -122,6 +122,8 @@ import Testing
             #expect(hits.map(\.title) == ["Bob"] && hits.map(\.detail) == ["Villageois"])
             #expect(hits.first?.position == villager.position)
         }
+        #expect(WorldSearch.search("villagers", in: index, players: [], gameNames: names) { _ in .named("") }.isEmpty)
+        #expect(WorldSearch.search("creature:villagers", in: index, players: [], gameNames: names) { _ in .named("") }.map(\.title) == ["Bob"])
     }
 
     @Test func twoWindowsKeepSelectionAndMapLocationsWhenSavedCreatureNamesChange() async throws {
