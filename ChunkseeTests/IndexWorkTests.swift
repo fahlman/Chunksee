@@ -34,7 +34,7 @@ struct IndexWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         var old: RegionReader? = RegionReader(dimension: dimension, cache: .off)
-        weak var retired = old
+        weak let retired = old
         let current = RegionReader(dimension: dimension, cache: .off)
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>(), numbers = ReadNumbers()
         let index = WorldIndexStore(readers: old.map { [$0] } ?? [], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
