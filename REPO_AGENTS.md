@@ -410,9 +410,11 @@ WorldDetails keeps game rules by saved ID and derives sorted display rows. Wande
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
 disables spawning. Rows use saved IDs so equal readable names remain distinct.
 
-`DimensionPresentation.NameStyle` owns world-aware dimension labels, derived from the live catalog
-for native Text and the `dimensionName` string adapter used by window titles and other consumers.
-It carries the locale and dimension IDs without retaining the document or introducing another catalog owner.
+`GameNames.DimensionStyle` owns world-aware dimension labels and map-title phrasing.
+DimensionPresentation supplies the live catalog to the world's GameNames service through
+`dimensionStyle(for:)`, for native Text and the `dimensionName` string adapter used by window titles
+and other consumers. The immutable style carries the locale and dimension IDs without retaining
+the document or introducing another catalog owner; captured styles retain their catalog context.
 Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
 `ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
@@ -423,9 +425,9 @@ IDs distinct. The RegionFacts cache and tile-renderer version 8 discard classifi
 made before this adoption. Structures retain their variant word order; the three vanilla dimension labels
 remain localized. Window titles and native tab labels use the same dimension name, with the world name as the
 subtitle. Names do not replace identifiers or document URLs.
-DimensionPresentation.mapTitle supplies the map's accessibility label and image-sharing preview
-with the same localized dimension-and-world title. Both callers pass their SwiftUI locale; custom
-dimension collisions still use NameStyle, and saved world names remain literal.
+DimensionPresentation.mapTitle supplies the world name to that same style for the map's accessibility
+label and image-sharing preview. Both callers pass their SwiftUI locale; custom dimension collisions
+still use GameNames.DimensionStyle, and saved world names remain literal.
 
 RegionTileRenderer uses Chunk.forEachColumnRun for normal surface, cutaway and roof scans.
 Kit owns WORLD_SURFACE/actual-block starts, checked heights and the section/column traversal;
@@ -529,7 +531,7 @@ older scan envelopes.
 | `AppModel.swift` | App-wide player names/saved searches, pending metadata reads and open-world resources shared by persistent world-folder identity |
 | `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime and per-window state, preserving those models across world-source replacement |
-| `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
+| `DimensionPresentation.swift` | Live context for dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift`, `MapGameResources.swift`, `MapShadow.swift` | Observes world-owned game resources; full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
@@ -1564,7 +1566,8 @@ and [Offering help](https://developer.apple.com/design/human-interface-guideline
   describe opposite relationships; Location, World Spawn, Last Death, Respawn Point and map Center
   identify different locations. Boolean On/Off describes an enabled setting; Modded Yes/No,
   Cheats Allowed and a pet's sitting order describe different facts. Do not invent missing data
-  to make labels match. Dimension names always come from DimensionPresentation, including in prose.
+  to make labels match. Dimension names use GameNames with DimensionPresentation's live catalog
+  context, including in prose.
 
 ## Build and test
 
@@ -2156,7 +2159,9 @@ The statistics table derives its named rows from the current GameNames value. Wo
 the service for difficulty, and villager details use it for ranks, including their fallbacks.
 Advancement consumers call `GameNames.advancement` directly; the old PlayerRecords naming
 forwarders are removed. These APIs preserve the existing text, source identity and read policy.
-The remaining item, enchantment, creature/profession, biome, dimension/structure and marker/search
+Dimension labels, collision suffixes and map titles come from GameNames.dimensionStyle(for:).
+DimensionPresentation supplies live context and holds no naming policy or separate catalog.
+The remaining item, enchantment, creature/profession, biome, structure and marker/search
 naming consumers remain part of foundation step 5e and #438.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use

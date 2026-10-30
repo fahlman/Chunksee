@@ -54,41 +54,14 @@ final class DimensionPresentation {
 
     /// Shared images and accessibility identify both the dimension and the world it belongs to.
     func mapTitle(in dimensionID: String, locale: Locale) -> String {
-        let dimension = dimensionNameStyle.locale(locale).format(dimensionID)
-        return String(localized: "Map of \(dimension) in \(displayName)", locale: locale)
+        dimensionNameStyle.locale(locale).mapTitle(in: dimensionID, world: displayName)
     }
 
-    var dimensionNameStyle: NameStyle {
-        NameStyle(dimensionIDs: source?.dimensions.map(\.id) ?? [])
-    }
-
-    /// Immutable naming context derived from the live catalog, without retaining the document.
-    nonisolated struct NameStyle: FormatStyle, Sendable {
-        private let dimensionIDs: [String]
-        private var locale = Locale.autoupdatingCurrent
-
-        init(dimensionIDs: [String]) { self.dimensionIDs = dimensionIDs }
-
-        func locale(_ locale: Locale) -> Self {
-            var copy = self
-            copy.locale = locale
-            return copy
+    var dimensionNameStyle: GameNames.DimensionStyle {
+        guard let source else {
+            return GameNames.unavailable.dimensionStyle(for: [])
         }
-
-        func format(_ id: String) -> String {
-            let name = name(id)
-            let isAmbiguous = dimensionIDs.contains { $0 != id && self.name($0) == name }
-            return isAmbiguous ? String(localized: "\(name) (\(id))", locale: locale) : name
-        }
-
-        private func name(_ id: String) -> String {
-            switch id {
-            case "minecraft:overworld": String(localized: "Overworld", locale: locale)
-            case "minecraft:the_nether": String(localized: "The Nether", locale: locale)
-            case "minecraft:the_end": String(localized: "The End", locale: locale)
-            default: ReadableName.from(id)
-            }
-        }
+        return source.resources.gameNames.dimensionStyle(for: source.dimensions.map(\.id))
     }
 
     var spawnPoint: CGPoint {
