@@ -22,7 +22,7 @@ final class SelectionModel {
 
     init(source: WorldSession) {
         self.source = source
-        observeInspector()
+        observeSelection()
     }
 
     var inspector: Inspector? {
@@ -281,14 +281,30 @@ final class SelectionModel {
         select(.inGameMap(map.id))
     }
 
+    /// A removed identity must not return as a selected row after its inspector was dismissed.
+    /// Hiding an inspector deliberately still preserves a selection that remains available.
+    private func discardMissingSelection() {
+        if let selectedItem, resolve(selectedItem) == nil {
+            self.selectedItem = nil
+            inspector = nil
+        } else if let overlayID, resolve(.inGameMap(overlayID)) == nil {
+            self.overlayID = nil
+        }
+    }
+
     /// Selection, including its live resolution, owns record demand even for hidden windows.
-    private func observeInspector() {
+    private func observeSelection() {
         guard !isClosed else { return }
-        withObservationTracking(options: [.didSet]) { _ = inspector } onChange: { [weak self] event in
+        withObservationTracking(options: [.didSet]) {
+            _ = selectedItem.flatMap(resolve)
+            if let overlayID { _ = resolve(.inGameMap(overlayID)) }
+            _ = inspector
+        } onChange: { [weak self] event in
             event.cancel()
             MainActor.assumeIsolated {
                 guard let self, !self.isClosed else { return }
-                self.observeInspector()
+                self.discardMissingSelection()
+                self.observeSelection()
                 self.updatePlayerRecords()
             }
         }

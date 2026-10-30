@@ -465,7 +465,11 @@ when available, and incomplete listings cannot remove absent maps. Without a pri
 readable fallback remains useful. A complete listing removes absent resolved IDs. Prepared picture
 keys publish with map values, and unchanged content reuses its source. Sidebar, inspector and kept
 overlays already resolve the live map ID; their independent selection, opacity and navigation
-choices do not move into the world. Non-region saved-data notifications refresh maps, while
+choices do not move into the world.
+SelectionModel clears a removed selected identity together with its inspector and kept overlay;
+restoring the file leaves it unselected and available to choose again. Deliberately hiding an
+inspector still keeps a selected identity that remains available.
+Non-region saved-data notifications refresh maps, while
 region writes, dimension catalog changes and game-resource changes do not. The map reader uses
 only the world's root and the metadata in each map file, so unreadable level metadata does not
 prevent readable maps from advancing. Close and source replacement reject retired results.

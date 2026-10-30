@@ -67,7 +67,21 @@ import Testing
         resources.worldChanged([one]); await resources.waitForRefresh()
         #expect(resources.details.maps.map(\.id) == [2])
         #expect(first.selection.sidebarSelection == nil && first.selection.inspectorItem == nil)
+        #expect(first.selection.inspector == nil)
         #expect(MapContent(session: first).inGameMap == nil)
+        #expect(MapContent(session: second).inGameMap?.image === secondImage)
+        // SwiftUI dismisses the now-empty inspector through ContentView's binding.
+        first.selection.inspector = nil
+        try write(1, at: root, center: 150, color: 12)
+        resources.worldChanged([one]); await resources.waitForRefresh()
+        #expect(resources.details.maps.map(\.id) == [1, 2])
+        #expect(first.selection.sidebarSelection == nil && first.selection.inspector == nil)
+        #expect(MapContent(session: first).inGameMap == nil)
+        first.selection.choose(.inGameMap(1))
+        #expect(first.selection.sidebarSelection == .inGameMap(1) && first.selection.inspector == .selection)
+        #expect(MapContent(session: first).inGameMap?.map.centerX == 150)
+        #expect(first.selection.inGameMapOpacity == 0.25)
+        #expect(second.selection.sidebarSelection == .inGameMap(2) && second.map?.viewport == secondView)
         #expect(MapContent(session: second).inGameMap?.image === secondImage)
         first.close(); await first.waitUntilClosed()
         #expect(!resources.isClosed)
@@ -76,6 +90,33 @@ import Testing
         #expect(MapContent(session: second).inGameMap?.map.centerX == 200)
         #expect(second.selection.inGameMapOpacity == 0.75 && second.map?.viewport == secondView)
         second.close(); await second.waitUntilClosed()
+    }
+
+    @Test func removingAKeptMapPreservesTheOtherSelectedLocationWithoutRestoringTheOverlay() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = try write(1, at: root)
+        let resources = try await open(root)
+        let session = WorldSession(resources: resources)
+        defer { session.close() }
+        session.selection.choose(.inGameMap(1))
+        let place = try #require(session.savedPlaces.add(name: "Location", dimension: session.selectedDimensionID, at: .zero))
+        session.selection.choose(.savedPlace(place.id))
+        #expect(MapContent(session: session).inGameMap?.map.id == 1)
+        let view = session.map?.viewport
+
+        try FileManager.default.removeItem(at: file)
+        resources.worldChanged([file]); await resources.waitForRefresh()
+        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.inspector == .selection)
+        #expect(MapContent(session: session).inGameMap == nil)
+        try write(1, at: root, center: 200)
+        resources.worldChanged([file]); await resources.waitForRefresh()
+        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.inspector == .selection)
+        #expect(MapContent(session: session).inGameMap == nil && session.map?.viewport == view)
+        session.selection.choose(.inGameMap(1))
+        #expect(session.selection.sidebarSelection == .inGameMap(1) && session.selection.inspector == .selection)
+        #expect(MapContent(session: session).inGameMap?.map.centerX == 200)
+        session.close(); await session.waitUntilClosed()
     }
 
     @Test func unreadableMapsAndListingsRetainPriorValuesWhileReadableMapsAdvanceAndRemovalClears() async throws {
