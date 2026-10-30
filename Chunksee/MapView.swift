@@ -344,7 +344,8 @@ struct MapView: View {
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 let block = Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots ? map.topBlock(at: hoverBlock) : nil
-                CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
+                CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock),
+                                                gameNames: content.gameNames, locale: locale)))
                 if let notice = map.blockDefinitionNotice(for: block) {
                     Label(notice.label(locale: locale), systemImage: "questionmark.square.dashed")
                         .help(notice.help(locale: locale))
@@ -380,19 +381,11 @@ struct MapView: View {
 
     /// "X 3307  Y 64  Z 938 · Sand · Desert": X, Y and Z together as Minecraft shows them, then the
     /// block and biome (Ryan, 2026-10-13). Without a block, only X and Z are known.
-    static func readout(at point: CGPoint, block: RegionTileRenderer.TopBlock?, biomes: String?) -> String {
+    static func readout(at point: CGPoint, block: RegionTileRenderer.TopBlock?, biomes: String?,
+                        gameNames: GameNames, locale: Locale = .current) -> String {
         let coordinates = block.map { Coordinates.text(point, y: $0.y) } ?? Coordinates.text(point)
-        return ([coordinates] + [block.map(describe), biomes].compactMap { $0 }).joined(separator: " · ")
-    }
-
-    /// "Sand", or for water "Water, 5 deep". Water is counted only to the renderer's limit, so
-    /// deeper water reads "at least 32 deep" rather than a wrong exact depth.
-    static func describe(_ block: RegionTileRenderer.TopBlock) -> String {
-        let name = ReadableName.from(block.id)
-        guard block.waterDepth > 0 else { return name }
-        return block.waterDepth >= RegionTileRenderer.maximumWaterDepth
-            ? String(localized: "\(name), at least \(block.waterDepth) deep")
-            : String(localized: "\(name), \(block.waterDepth) deep")
+        let block = block.map { gameNames.blockDescription($0, locale: locale) }
+        return ([coordinates] + [block, biomes].compactMap { $0 }).joined(separator: " · ")
     }
 
     /// Reads the block under the pointer, also when the map moves beneath a still pointer.
