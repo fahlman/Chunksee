@@ -25,11 +25,6 @@ nonisolated struct WorldDetails: Sendable {
         mapSnapshot.sources.first { $0.map.id == id }
     }
 
-    var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
-        gameRules.map { (id: $0.key, name: Self.readableRule($0.key), value: $0.value) }
-            .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
-    }
-
     var wanderingTradersAreOff: Bool {
         GameRule.wanderingTraderSpawning.value(in: gameRules) == .bool(false)
     }
@@ -46,17 +41,6 @@ nonisolated struct WorldDetails: Sendable {
         WorldDetails(definitions: (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions(),
                      info: WorldInfoSnapshot.read(world, dimensions: world.dimensions()).value,
                      mapSnapshot: WorldMapSnapshot.read(world).value)
-    }
-
-    /// `minecraft:keep_inventory` and the older `keepInventory` both become "Keep Inventory".
-    static func readableRule(_ id: String) -> String {
-        let base = ReadableName.identifierPath(id)
-        if base.contains("_") { return ReadableName.from(base) }
-        var words: [String] = []
-        for character in base {
-            if character.isUppercase || words.isEmpty { words.append(String(character)) } else { words[words.count - 1].append(character) }
-        }
-        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
     /// Minecraft's clock starts each day at 6:00 in the morning; 1,000 ticks make an hour.
@@ -159,7 +143,7 @@ struct WorldInfoView: View {
             }
             if !details.gameRules.isEmpty {
                 Section("Game Rules") {
-                    ForEach(details.gameRuleRows, id: \.id) { rule in
+                    ForEach(gameNames.gameRules(details.gameRules), id: \.id) { rule in
                         switch rule.value {
                         case .bool(let on): LabeledContent(rule.name, value: on ? String(localized: "On") : String(localized: "Off"))
                         case .int(let number): LabeledContent(rule.name, value: number.formatted())

@@ -68,6 +68,38 @@ nonisolated struct GameNames: Sendable {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
     }
 
+    func gameRule(_ id: String) -> String {
+        // Older saves keep literal rule names. Modern rules use the same description-key
+        // format as other registries; only the game's metadata can connect the two.
+        var keys: [String] = []
+        if !id.contains(":") { keys.append("gamerule." + id) }
+        if let identifier = Identifier(id) {
+            keys.append("gamerule.\(identifier.namespace).\(identifier.path.replacingOccurrences(of: "/", with: "."))")
+        }
+        for key in keys {
+            if let name = language?[key] { return name }
+            if let replacement = language?.replacementKey(for: key), let name = language?[replacement] { return name }
+        }
+        return Self.readableRule(id)
+    }
+
+    func gameRules(_ rules: [String: GameRuleValue]) -> [(id: String, name: String, value: GameRuleValue)] {
+        rules.map { (id: $0.key, name: gameRule($0.key), value: $0.value) }
+            .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+    }
+
+    /// Preserve the saved words when no language key is known, including older camel-case IDs.
+    private static func readableRule(_ id: String) -> String {
+        let base = ReadableName.identifierPath(id)
+        if base.contains("_") { return ReadableName.from(base) }
+        var words: [String] = []
+        for character in base {
+            if character.isUppercase || words.isEmpty { words.append(String(character)) }
+            else { words[words.count - 1].append(character) }
+        }
+        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+
     func equipmentSlot(_ slot: String, locale: Locale = .current) -> String {
         switch slot {
         case "body": String(localized: "Body", locale: locale)

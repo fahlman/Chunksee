@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.81.0`, resolved to `0.81.0` (`8151a2ad7bcfc2f02282368e1f475758ecabe389`).
+  minor" from `0.82.0`, resolved to `0.82.0` (`b745edb5bec8d8e02f708f4087f31e7f54fb87e4`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -2247,7 +2247,13 @@ MapView.readout requires an explicit naming snapshot, and its former describe po
 The shared equipment section gets its slot headings from GameNames.equipmentSlot, preserving the
 existing app wording and readable fallback for unfamiliar saved slots. EquipmentPresentation owns
 only the nonempty rows and their order; player and creature equipment membership is unchanged.
-Game-rule consumers and the final naming audit remain before foundation step 5e and #438 are
+World Info gets game-rule names and sorted rows from GameNames, retaining every raw saved ID and
+value. Modern IDs use the game's registry description-key format. Older literal keys can use the
+direct replacement exposed by Kit 0.82.0 from the selected game's language metadata; the app does
+not guess replacements or follow chains. Per-key selected-language/English fallback and readable
+saved words remain available without artwork or game files. WorldDetails retains the typed
+wandering-trader rule interpretation and no longer formats rule names.
+The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
