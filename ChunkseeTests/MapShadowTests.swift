@@ -102,9 +102,12 @@ import Testing
                                              width: side, height: side))
         let tile = MapTileImage(image), viewport = MapViewport(center: CGPoint(x: 8.5, y: 8.5), scale: 16)
         func draw(contrast: Bool, water: Bool) throws -> [UInt8] {
+            var choices = MapPresentation()
+            choices.style = water ? .waterDepth : .normal
+            let input = MapDrawingInput(presentation: choices, heightScale: nil, savedLighting: nil)
             let view = Canvas { context, size in
-                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, shadow: { _ in shadow },
-                                    protectsWater: water, increasedContrast: contrast, in: context, size: size)
+                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
+                                    shadow: { _ in shadow }, increasedContrast: contrast, in: context, size: size)
             }.frame(width: 16, height: 16)
             let renderer = ImageRenderer(content: view)
             let output = try #require(renderer.cgImage)
@@ -271,10 +274,11 @@ import Testing
     @Test func drawingAdjacentShadowTilesDoesNotAddADarkerJoin() throws {
         let image = try #require(CGImage.rgba([200, 200, 200, 255], width: 1, height: 1))
         let mask = try #require(CGImage.rgba([0, 0, 0, 255], width: 1, height: 1))
+        let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil)
         for scale in [0.125, 0.5, 1, 4] {
             let view = Canvas { context, size in
                 MapView.drawTerrain(viewport: MapViewport(center: CGPoint(x: 0, y: 8), scale: scale),
-                    regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) },
+                    regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) }, input: input,
                     shadow: { _ in mask }, in: context, size: size)
             }.frame(width: 16, height: 8)
             let renderer = ImageRenderer(content: view); renderer.scale = 2

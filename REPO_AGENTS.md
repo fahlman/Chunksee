@@ -574,6 +574,7 @@ older scan envelopes.
 | `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
+| `MapDrawingInput.swift` | Resolved terrain presentation shared by the screen, Copy/Share, area export and their legends |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
@@ -728,6 +729,14 @@ pixels, while retaining the viewport, cutaway height, named columns and pending 
 TileCache version 15 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
 styles' cached tiles. No scan-cache change is needed.
+MapStyle declares material-color, lighting, shadow and close-up-detail use and height-scale
+availability once. MapDrawingInput resolves the chosen presentation with current height and saved
+lighting facts; MapContent captures that value with its overlays. Screen drawing, Copy/Share,
+streamed area export and legends consume it without rebuilding lighting or style rules. Copy still
+draws only retained tiles, and area export keeps its bounded tile window and shader rasterizer.
+RegionTileRenderer resolves material access for its style, including direct renderer calls, before
+reading artwork or forming cache inputs. TileCache encodes those resolved inputs without applying a
+second style policy. Raw game data remains available to block-information reads even in Height.
 MapHeightScale derives only from Kit's saved dimension facts and is the shared height-colour scale.
 Sea level is the midpoint; if it is outside the build bounds, those bounds use only their side of
 the palette and the legend states that fact. Without sea level the scale runs linearly between known

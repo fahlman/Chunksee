@@ -60,19 +60,19 @@ nonisolated struct TileCache: Sendable {
         var nightLight: DarkSpots.Key? = nil
         var waterSource: [String]? = nil
 
-        init(context: MapSurfaceContext, cutawayY: Int?, style: MapStyle, heightScale: MapHeightScale?,
+        init(context: MapSurfaceContext, cutawayY: Int?, style: MapStyle, assets: InterpretationVersion?, heightScale: MapHeightScale?,
              blockFilter: MapBlockFilter, colorSource: RegionTileRenderer.ColorSource?,
              gameSource: GameResourceSource, samplesNeighborBiomes: Bool, darkSpots: DarkSpots?) {
-            assets = style == .height ? nil : GameAssets.interpretationVersion
+            self.assets = assets
             self.cutawayY = cutawayY
             // Explicit slices never use heightmaps or the normal view below a roof.
             buildHeight = cutawayY == nil ? context.buildHeight : nil
             ceilingY = cutawayY == nil ? context.ceilingY : nil
             self.style = style
-            self.heightScale = style == .height ? heightScale : nil
+            self.heightScale = heightScale
             filterKey = blockFilter.cacheKey
-            self.colorSource = style == .height ? nil : colorSource
-            self.gameSource = style == .height ? .unavailable : gameSource
+            self.colorSource = colorSource
+            self.gameSource = gameSource
             biomeBounds = samplesNeighborBiomes ? context.dimensionType.map { $0.minY...$0.maxY } : nil
             nightLight = darkSpots?.cacheKey
             waterSource = context.waterKey
@@ -185,7 +185,7 @@ nonisolated struct TileCache: Sendable {
     func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         guard let name = key.detailFileName,
-              case .game = key.inputs.gameSource.artwork, key.inputs.colorSource != nil, key.inputs.style != .height,
+              case .game = key.inputs.gameSource.artwork, key.inputs.colorSource != nil, key.inputs.style.inputs.detail,
               (key.inputs.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
               surface.heights.count == count, let detail = surface.detail.encoded() else { return }
         var bytes = Data(capacity: count * (key.inputs.nightLight == nil ? 4 : 5) + detail.count)

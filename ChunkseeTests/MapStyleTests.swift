@@ -13,6 +13,30 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct MapStyleTests {
+    @Test func heightRendersAndReusesItsKeyWithoutOpeningUnusedGameArtwork() async throws {
+        let root = try terrainWorld(), fixture = try ItemPictureFixture()
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let scale = try heightScale(sea: 40), artwork = try fixture.library()
+        let region = RegionPosition(x: 0, z: 0)
+        let plain = RegionTileRenderer(dimension: dimension, style: .height, heightScale: scale)
+        let supplied = RegionTileRenderer(dimension: dimension, style: .height, heightScale: scale,
+            gameData: artwork.data, gameArtwork: artwork, usesSavedLighting: true)
+        let expected = try #require(try await plain.tile(for: region))
+        #expect(supplied.cacheInputs == plain.cacheInputs && supplied.preparation == plain.preparation)
+        // A dependency that is not part of Height cannot break it after its access ends.
+        await artwork.close()
+        let actual = try #require(try await supplied.tile(for: region))
+        #expect(actual.key == expected.key)
+        #expect(actual.full.image.dataProvider?.data as Data? == expected.full.image.dataProvider?.data as Data?)
+        #expect(actual.full.normals == nil && actual.detail == nil && actual.heights == nil)
+        #expect(try await supplied.detail(for: region) == nil)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let actualColumns = try await supplied.topBlocks(in: file, localX: 0, localZ: 0)
+        let expectedColumns = try await plain.topBlocks(in: file, localX: 0, localZ: 0)
+        #expect(actualColumns == expectedColumns)
+    }
+
     @Test func heightScaleChangesPreparedPicturesWithoutRetiringUnlitNormalTiles() async throws {
         let root = try terrainWorld()
         defer { try? FileManager.default.removeItem(at: root) }

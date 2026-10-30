@@ -437,17 +437,15 @@ import Testing
         #expect((tile.normals != nil) == savedTime)
         let color = try ItemPictureFixture.pixels(tile.image).color(0, 0)
         #expect(color[0] > color[1]) // The dark-column tint survives preparation of lighting inputs.
-        var content = MapContent(gameNames: .unavailable)
-        content.showsDarkSpots = true
-        content.lighting = map.lighting
+        let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
         for scheme in [ColorScheme.light, .dark] {
             let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                 content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: Locale(identifier: "en_US"), progress: { _, _ in })
             let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(exported) == pngPixels(view))
-            let bare = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: plan.size,
-                scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
+            let bare = try #require(MapImage.renderWithoutLegend(map, content: content, size: plan.size,
+                colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(view) != pngPixels(bare))
         }
         await map.waitForRenders()

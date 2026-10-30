@@ -18,22 +18,18 @@ final class MapModel {
     var depth: MapDepth { presentation.depth }
     var chosenStyle: MapStyle { presentation.style }
     /// Missing game definitions can change the picture without replacing the saved choice.
-    var style: MapStyle { canShowStyle(chosenStyle) ? chosenStyle : .normal }
+    var style: MapStyle { chosenStyle.resolved(heightScale: heightScale) }
     var blendsBiomeColors: Bool { presentation.blendsBiomeColors }
     var lightingMode: MapLightingMode { presentation.lightingMode }
     @ObservationIgnored private let readSavedLighting: @MainActor () -> MapLighting?
     var savedLighting: MapLighting? { readSavedLighting() }
-    var lighting: MapLighting? { lighting(using: savedLighting) }
+    var drawingInput: MapDrawingInput { drawingInput(using: savedLighting) }
+    private func drawingInput(using saved: MapLighting?) -> MapDrawingInput {
+        MapDrawingInput(presentation: presentation, heightScale: heightScale, savedLighting: saved)
+    }
+    var lighting: MapLighting? { drawingInput.lighting }
     var castsShadows: Bool { presentation.castsShadows }
-    var shadowLight: MapShadow.Light? { shadowLight(using: savedLighting) }
-    private func lighting(using saved: MapLighting?) -> MapLighting? {
-        style != .height && lightingMode == .savedTime ? saved : nil
-    }
-    private func shadowLight(using saved: MapLighting?) -> MapShadow.Light? {
-        guard castsShadows, style != .height else { return nil }
-        if let lighting = lighting(using: saved) { return MapShadow.Light.saved(lighting.direction) }
-        return .daylight
-    }
+    var shadowLight: MapShadow.Light? { drawingInput.shadowLight }
     private(set) var shadowImages: [RegionPosition: CGImage] = [:]
     @ObservationIgnored private var shadowHeights: [RegionPosition: [Int32]] = [:]
     private var shadowSources: Set<RegionPosition> = []
@@ -80,16 +76,16 @@ final class MapModel {
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
     var currentRenderer: RegionTileRenderer? {
         guard var current = renderer else { return nil }
-        let resources = gameResources
-        current.cutawayY = depth.cutawayY
-        current.style = style
-        current.blendsBiomeColors = blendsBiomeColors
-        current.usesSavedLighting = lighting != nil
-        current.blockFilter = blockFilter
+        let resources = gameResources, drawing = drawingInput
+        current.cutawayY = drawing.depth.cutawayY
+        current.style = drawing.style
+        current.blendsBiomeColors = drawing.blendsBiomeColors
+        current.usesSavedLighting = drawing.lighting != nil
+        current.blockFilter = drawing.blockFilter
         current.darkSpots = darkSpots
-        current.gameData = style == .height ? nil : resources.data
-        current.gameArtwork = style == .height ? nil : resources.artwork
-        current.biomeColors = style == .height ? nil : resources.biomeColors
+        current.gameData = resources.data
+        current.gameArtwork = resources.artwork
+        current.biomeColors = resources.biomeColors
         return current
     }
     private let work: BackgroundWork
@@ -215,7 +211,7 @@ final class MapModel {
         wantsFullResolution = full
         // Keep both sides for the light's changing east/west direction. A clock update then
         // uses these immutable heights without starting any terrain read.
-        shadowSources = !castsShadows || style == .height ? [] : visible.reduce(into: Set<RegionPosition>()) {
+        shadowSources = !castsShadows || !style.inputs.shadows ? [] : visible.reduce(into: Set<RegionPosition>()) {
             $0.formUnion(MapShadow.retainedSources(for: $1, savedTime: lighting != nil).intersection(availableRegions))
         }
         shadowHeights = shadowHeights.filter { shadowSources.contains($0.key) }
@@ -380,7 +376,7 @@ final class MapModel {
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = CachedMapImage(key: tile.key, picture: tile.full)
-            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style != .height {
+            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style.inputs.detail {
                 detailSurfaces[region] = tile.detail.map { .init(key: tile.key.surface, surface: $0) }
             }
         } else if wasStale {
@@ -468,7 +464,7 @@ final class MapModel {
 
     private func requestDetail(visibleIn size: CGSize) {
         guard !isClosed else { return }
-        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameArtwork != nil && style != .height
+        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameArtwork != nil && style.inputs.detail
         detailRegionsWanted = enabled
             ? Set(viewport.visibleRegions(in: size, among: availableRegions).filter { tiles[$0] != nil && !stale.contains($0) }) : []
         detailSurfaces = detailSurfaces.filter { detailRegionsWanted.contains($0.key) }
@@ -656,14 +652,6 @@ final class MapModel {
         return chunks
     }
 
-    private var readoutRenderer: RegionTileRenderer? {
-        guard var renderer = currentRenderer else { return nil }
-        // Height style skips artwork when drawing, but selected-game definition evidence
-        // still belongs in block information. This renderer is used only for readouts.
-        renderer.gameData = gameData
-        return renderer
-    }
-
     func blockDefinitionNotice(for block: RegionTileRenderer.TopBlock?) -> BlockDefinitionNotice? {
         guard block?.hasGameDefinition == false else { return nil }
         return BlockDefinitionNotice(gameName: gameData?.version.id)
@@ -696,7 +684,7 @@ final class MapModel {
 
     private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        guard let renderer = readoutRenderer else { return }
+        guard let renderer = currentRenderer else { return }
         let cached = readoutRegion, read = readTopBlocksFor
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
@@ -847,12 +835,12 @@ final class MapModel {
         if style != previous { reloadTiles() }
     }
 
-    func canShowStyle(_ value: MapStyle) -> Bool { value != .height || heightScale != nil }
+    func canShowStyle(_ value: MapStyle) -> Bool { value.isAvailable(heightScale: heightScale) }
 
     func setBiomeBlending(_ enabled: Bool) {
         guard !isClosed, enabled != blendsBiomeColors else { return }
         presentation.blendsBiomeColors = enabled
-        if style != .height { reloadTiles() }
+        if style.inputs.materialColors { reloadTiles() }
     }
 
     /// The world owns the publication; the map only observes it and invalidates its drawing work.
@@ -873,20 +861,20 @@ final class MapModel {
                     return
                 }
                 guard previous != self.savedLighting else { return }
-                let prepared = self.lighting(using: previous) != nil
-                let previousLight = self.shadowLight(using: previous)
-                if prepared != (self.lighting != nil) { self.reloadTiles() }
-                else if previousLight != self.shadowLight { self.invalidateShadows(); self.updateLoadingState() }
+                let before = self.drawingInput(using: previous), after = self.drawingInput
+                if (before.lighting != nil) != (after.lighting != nil) { self.reloadTiles() }
+                else if before.shadowLight != after.shadowLight { self.invalidateShadows(); self.updateLoadingState() }
             }
         }
     }
 
     func setLightingMode(_ value: MapLightingMode) {
         guard !isClosed, value != lightingMode else { return }
-        let prepared = lighting != nil, previousLight = shadowLight
+        let before = drawingInput
         presentation.lightingMode = value
-        if prepared != (lighting != nil) { reloadTiles() }
-        else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
+        let after = drawingInput
+        if (before.lighting != nil) != (after.lighting != nil) { reloadTiles() }
+        else if before.shadowLight != after.shadowLight { invalidateShadows(); updateLoadingState() }
     }
 
     func setCastsShadows(_ value: Bool) {
@@ -948,7 +936,7 @@ final class MapModel {
                 guard previous != current else { return }
                 let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
                 if readoutsChanged { self.resetTopBlockReads() }
-                if self.style != .height { self.reloadTiles() }
+                if self.style.inputs.materialColors { self.reloadTiles() }
                 if readoutsChanged { self.updateTopBlockReads() }
             }
         }

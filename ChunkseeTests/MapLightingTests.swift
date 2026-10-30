@@ -272,8 +272,11 @@ import Testing
         let tile = try testTile()
         func draw(_ light: MapLighting, water: Bool = false, contrast: ColorSchemeContrast = .standard) throws -> [UInt8] {
             let context = try #require(MapImage.imageContext(width: 64, height: 32))
+            var choices = MapPresentation()
+            choices.style = water ? .waterDepth : .normal
+            let input = MapDrawingInput(presentation: choices, heightScale: nil, savedLighting: light)
             #expect(MapImage.drawTerrainLayer(tile, region: region, viewport: viewport, size: size, scale: 1,
-                                              lighting: light, protectsWater: water, contrast: contrast, into: context))
+                                              input: input, contrast: contrast, into: context))
             return try rgba(#require(context.makeImage()))
         }
         let morning = try draw(lighting(sun: 300)), evening = try draw(lighting(sun: 60))
@@ -289,20 +292,22 @@ import Testing
     @Test(arguments: [1.0, 2.0]) func croppedShaderExportMatchesNativeCanvasAcrossRasterPieces(scale: Double) throws {
         let size = CGSize(width: 1301, height: 129), viewport = MapViewport(center: CGPoint(x: -140, y: 8), scale: 4)
         let tile = try testTile(), region = RegionPosition(x: -1, z: 0), light = try lighting(sun: 300)
+        let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: light)
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, actualSize in
-            MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, lighting: light,
+            MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
                                 increasedContrast: true, in: context, size: actualSize)
         }.frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: canvas); renderer.scale = scale
         let expected = try rgba(#require(renderer.cgImage))
         let destination = try #require(MapImage.imageContext(width: Int(size.width * scale), height: Int(size.height * scale)))
         #expect(MapImage.drawTerrainLayer(tile, region: region, viewport: viewport, size: size, scale: scale,
-                                          lighting: light, protectsWater: false, contrast: .increased, into: destination))
+                                          input: input, contrast: .increased, into: destination))
         let actual = try rgba(#require(destination.makeImage()))
         #expect(actual == expected)
     }
 
-    @Test func exportedAreaAndCopiedViewShareLightingAndUnlitOverlays() async throws {
+    @Test(arguments: MapStyle.allCases)
+    func exportedAreaAndCopiedViewShareLightingAndUnlitOverlays(_ style: MapStyle) async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let resources = try await resources(url, defaults: TestDefaults.make()), session = WorldSession(resources: resources)
@@ -312,10 +317,14 @@ import Testing
         resources.readLighting = { _, _ in ["minecraft:overworld": light] }
         resources.worldChanged([url.appendingPathComponent("data/world_clocks.dat")])
         await resources.waitForRefresh()
+        map.setStyle(style)
+        #expect(map.style == style)
         for downsample in [1, 2] {
             let plan = try MapExportPlan(bounds: CGRect(x: -8, y: -8, width: 32, height: 32), blocksPerPixel: downsample)
             map.viewport = plan.viewport; map.requestTiles(visibleIn: plan.size, displayScale: 1); await map.waitUntilIdle()
             var content = MapContent(session: session); content.showsGrid = true
+            #expect(content.terrain.style == style)
+            #expect((content.terrain.lighting == nil) == (style == .height))
             for scheme in [ColorScheme.light, .dark] {
                 let copy = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                     scale: 1, colorScheme: scheme, locale: .current, contrast: .increased))
