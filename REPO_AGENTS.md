@@ -476,6 +476,7 @@ publication; its other opening facts remain for step 5b. Player/index/search con
 producer's immutable player snapshot rather than another editable roster. Maps observe explicit
 definition inputs, and Time Spent observes its reader; neither receives manual refresh pushes.
 
+MapDefinitions supplies one dimension-settings and water-tag derivation to both scans and drawing.
 MapSurfaceContext derives normal-view choices from resolved type/generation facts: known build
 height reaches the shared heightmap reader; a known ceiling with nonempty generation bounds uses
 the surface-rule range's upper plane for roof hiding and middle plane for biome sampling. Unknown
