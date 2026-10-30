@@ -2255,7 +2255,8 @@ saved words remain available without artwork or game files. WorldDetails retains
 wandering-trader rule interpretation and no longer formats rule names.
 The registry description-key format has one owner inside GameNames. Displayed rule, block,
 map-group and mob names use its shared localized natural comparison with saved IDs as the
-equal-name tie-break; storage uses that comparison after its existing quantity priority.
+equal-name tie-break; storage and search item summaries use that comparison after their existing
+quantity priority. Linked pets use it within each dimension, retaining dimension-first grouping.
 LayerGroups asks the service for ordered groups and does not choose its own name order.
 The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
