@@ -482,7 +482,7 @@ enum StructureTestWorld {
 }
 
 @Suite(.isolatedStores) struct HeatMapTests {
-    @Observable private final class Visibility { var isShown = false }
+    @Observable final class Visibility { var isShown = false }
 
     @Test func logarithmicScaleAndColors() throws {
         #expect(HeatMap.level(ofTicks: 1_199) == nil)

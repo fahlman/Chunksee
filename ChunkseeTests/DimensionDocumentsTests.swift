@@ -43,7 +43,7 @@ import Testing
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")
         #expect(source.map === map && source.map?.viewport == original)
-        #expect(source.visibility === visibility && source.annotations.ruler.distance == 5)
+        #expect(source.visibility == visibility && source.annotations.ruler.distance == 5)
         #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
         // A later normal opening must not replay an action that could not invoke its opener.
         let target = WorldSession(resources: resources, dimensionID: place.dimension)
