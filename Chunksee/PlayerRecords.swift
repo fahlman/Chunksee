@@ -17,8 +17,7 @@ nonisolated struct PlayerRecords: Equatable, Sendable {
         var records = previous ?? PlayerRecords(), complete = true
         try Task.checkCancellation()
         do {
-            records.statistics = try world.statistics(for: uuid)
-                ?? name.flatMap { try world.statistics(forName: $0) }
+            records.statistics = try readStatistics(from: world, uuid: uuid, name: name)
         } catch { complete = false }
         try Task.checkCancellation()
         do { records.advancements = try world.advancements(for: uuid) ?? [] }
@@ -42,6 +41,18 @@ nonisolated struct PlayerRecords: Equatable, Sendable {
         }
         try Task.checkCancellation()
         return complete ? .complete(records) : .partial(records)
+    }
+
+    private static func readStatistics(from world: World, uuid: UUID, name: String?) throws -> PlayerStatistics? {
+        let primary: PlayerStatistics?
+        do { primary = try world.statistics(for: uuid) }
+        catch {
+            // Preserve the existing readable legacy fallback even when the UUID file is bad.
+            // If neither can be read, this is failure rather than a successful removal.
+            if let name, let legacy = try? world.statistics(forName: name) { return legacy }
+            throw error
+        }
+        return try primary ?? name.flatMap { try world.statistics(forName: $0) }
     }
 
     /// Completed advancements, newest first; recipe unlocks aren't advancements in the game.

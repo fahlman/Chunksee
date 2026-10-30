@@ -6,7 +6,7 @@ import Testing
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1)))
 struct PlayerRecordsWorkTests {
-    @Observable private final class Input {
+    @Observable final class Input {
         var value: PlayerRecordStore.GameSource? = .init(generation: UUID(), selection: .loaded(nil))
     }
 

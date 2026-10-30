@@ -329,6 +329,10 @@ import Testing
         let records = try await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil).value
         #expect(records.statistics?.playTime == 144_000)
         #expect(records.completedAdvancements.map(\.id) == ["minecraft:story/mine_stone"])
+        try Data("{".utf8).write(to: stats.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
+        let fallback = try await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil)
+        #expect(fallback.value.statistics == records.statistics)
+        #expect(fallback.isComplete)
         #expect(try await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).value.statistics == nil)
     }
 }
