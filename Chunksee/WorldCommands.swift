@@ -18,34 +18,7 @@ private struct MapHeightPopoverKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
-private struct CoordinateSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
-private struct MapImageSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
-private struct MapBlockFilterSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
 extension FocusedValues {
-    var mapBlockFilterSheet: Binding<Bool>? {
-        get { self[MapBlockFilterSheetKey.self] }
-        set { self[MapBlockFilterSheetKey.self] = newValue }
-    }
-
-    var mapImageSheet: Binding<Bool>? {
-        get { self[MapImageSheetKey.self] }
-        set { self[MapImageSheetKey.self] = newValue }
-    }
-
-    var coordinateSheet: Binding<Bool>? {
-        get { self[CoordinateSheetKey.self] }
-        set { self[CoordinateSheetKey.self] = newValue }
-    }
-
     var mapHeightPopover: Binding<Bool>? {
         get { self[MapHeightPopoverKey.self] }
         set { self[MapHeightPopoverKey.self] = newValue }
@@ -68,9 +41,6 @@ struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
-    @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
-    @FocusedBinding(\.mapImageSheet) private var showsImageExport
-    @FocusedBinding(\.mapBlockFilterSheet) private var showsBlockFilter
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -123,8 +93,8 @@ struct WorldCommands: Commands {
                 } set: { session?.map?.setCastsShadows($0) })
             }
             .disabled(session?.map?.style.inputs.lighting != true)
-            Button("Show/Hide Blocks…") { showsBlockFilter = true }
-                .disabled(session?.map == nil || showsBlockFilter == nil)
+            Button("Show/Hide Blocks…") { session?.presentSheet(.blockFilter) }
+                .disabled(session?.map == nil)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)
@@ -136,8 +106,8 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("-", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(session?.map == nil || session?.map?.depth.y == Int.min)
-            Button("Create Map Image…") { showsImageExport = true }
-                .disabled(session?.map == nil || showsImageExport == nil)
+            Button("Create Map Image…") { session?.presentSheet(.imageExport) }
+                .disabled(session?.map == nil)
             Toggle("Surface", isOn: Binding {
                 session?.map?.depth.isSurface ?? true
             } set: { isSurface in
@@ -186,9 +156,9 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("]")
                 .disabled(session?.navigation.canGoForward != true)
             Divider()
-            Button("Go to Coordinates…") { showsCoordinateSheet = true }
+            Button("Go to Coordinates…") { session?.presentSheet(.coordinates) }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(session?.map == nil || showsCoordinateSheet == nil)
+                .disabled(session?.map == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") { session?.routing.goToSpawn() }
             .keyboardShortcut("h", modifiers: [.command, .shift])

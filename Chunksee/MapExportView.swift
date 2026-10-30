@@ -97,7 +97,6 @@ struct MapExportView: View {
         }
         .padding(20)
         .frame(width: 480)
-        .onDisappear { model.cancel() }
     }
 
     @ViewBuilder private var dimensions: some View {

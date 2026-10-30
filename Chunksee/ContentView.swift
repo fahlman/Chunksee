@@ -13,16 +13,12 @@ struct WorldView: View {
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
-    @State private var showsCoordinateSheet = false
-    @State private var showsImageExport = false
-    @State private var showsBlockFilter = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
     @State private var sidebarModifiers: EventModifiers = []
 
     var body: some View {
         @Bindable var search = session.search
-        @Bindable var annotations = session.annotations
         let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
             ScrollViewReader { proxy in
@@ -192,7 +188,7 @@ struct WorldView: View {
                                           preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
                                     Text("Share Current View")
                                 }
-                                Button("Create Map Image…") { showsImageExport = true }
+                                Button("Create Map Image…") { session.presentSheet(.imageExport) }
                             } label: {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
@@ -221,20 +217,8 @@ struct WorldView: View {
                 }
             }
         }
-        .sheet(isPresented: $showsCoordinateSheet) {
-            GoToCoordinatesView(session: session)
-        }
-        .sheet(isPresented: $showsImageExport) {
-            MapExportView(session: session)
-        }
-        .sheet(isPresented: $showsBlockFilter) {
-            if let map = session.map { MapBlockFilterView(session: session, map: map) }
-        }
-        .sheet(item: $annotations.draft) { draft in
-            SavedPlaceEditor(session: session, draft: draft)
-        }
-        .sheet(item: $annotations.portalDraft) { draft in
-            PortalPlanView(session: session, draft: draft)
+        .sheet(item: $session.sheet) { sheet in
+            WorldSheetView(session: session, sheet: sheet)
         }
         // The inspector adds its width to the navigation columns' minimum. The document scene
         // must forward that combined size instead of masking it with another outer frame.
@@ -245,11 +229,8 @@ struct WorldView: View {
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .frame(minHeight: Self.minimumContentSize.height)
-        .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
-        .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
-        .focusedSceneValue(\.mapImageSheet, $showsImageExport)
-        .focusedSceneValue(\.mapBlockFilterSheet, $showsBlockFilter)
+        .focusedSceneValue(\.worldSession, session.commandTarget)
+        .focusedSceneValue(\.focusSearch, session.commandTarget == nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
         .modifier(WorldGameAssets(world: session.resources))
     }

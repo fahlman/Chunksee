@@ -182,47 +182,54 @@ import Testing
         await map.waitForRenders()
     }
 
-    @Test(.timeLimit(.minutes(1))) func cancelAndDocumentCloseDrainTheOwnedExportBeforeAnotherCanStart() async throws {
-        for closeDocument in [false, true] {
-            let root = try TestWorld.make(chunks: [
-                TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
-            ])
-            defer { try? FileManager.default.removeItem(at: root) }
-            let defaults = TestDefaults.make()
-            let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
-                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
-            let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-            let session = WorldSession(resources: resources, renderTile: { renderer, _ in
-                #expect(renderer.cutawayY == 12)
-                #expect(renderer.style == .waterDepth)
-                #expect(renderer.blockFilter == MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
-                return await gate.read("tile")
-            })
-            await session.search.waitForIndex()
-            session.map?.setDepth(MapDepth(y: 12, isSurface: false))
-            session.map?.setStyle(.waterDepth)
-            session.map?.setBlockFilter(MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
-            let export = session.imageExport
-            export.options.area = .dimension
-            #expect(export.canCreate)
-            export.create(colorScheme: .light, locale: .current)
-            await gate.waitForRequest("tile")
-            #expect(export.isRunning && export.renderedDepth?.y == 12)
-            session.map?.setDepth(MapDepth(y: 3, isSurface: false))
-            session.map?.setStyle(.normal)
-            session.map?.setBlockFilter(MapBlockFilter())
-            #expect(export.renderedDepth?.y == 12)
-            if closeDocument { session.close() } else { export.cancel() }
-            #expect(export.isRunning && export.isCancelling && !export.canCreate)
-            export.create(colorScheme: .dark, locale: .current) // A draining export still owns its allocation.
-            await gate.waitForCancellation("tile")
-            await gate.finish("tile", with: nil)
-            await export.waitUntilIdle()
-            #expect(!export.isRunning && export.result == nil && export.preview == nil && export.error == nil)
-            #expect(export.canCreate == !closeDocument)
-            session.close()
-            await session.waitUntilClosed()
+    enum ExportEnd: CaseIterable { case cancel, dismissSheet, replaceSheet, closeDocument }
+
+    @Test(.timeLimit(.minutes(1)), arguments: ExportEnd.allCases)
+    func endingAnExportDrainsItsWorkBeforeAnotherCanStart(_ ending: ExportEnd) async throws {
+        let root = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
+        let session = WorldSession(resources: resources, renderTile: { renderer, _ in
+            #expect(renderer.cutawayY == 12)
+            #expect(renderer.style == .waterDepth)
+            #expect(renderer.blockFilter == MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
+            return await gate.read("tile")
+        })
+        await session.search.waitForIndex()
+        session.map?.setDepth(MapDepth(y: 12, isSurface: false))
+        session.map?.setStyle(.waterDepth)
+        session.map?.setBlockFilter(MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
+        let export = session.imageExport
+        export.options.area = .dimension
+        session.presentSheet(.imageExport)
+        #expect(export.canCreate)
+        export.create(colorScheme: .light, locale: .current)
+        await gate.waitForRequest("tile")
+        #expect(export.isRunning && export.renderedDepth?.y == 12)
+        session.map?.setDepth(MapDepth(y: 3, isSurface: false))
+        session.map?.setStyle(.normal)
+        session.map?.setBlockFilter(MapBlockFilter())
+        #expect(export.renderedDepth?.y == 12)
+        switch ending {
+        case .cancel: export.cancel()
+        case .dismissSheet: session.sheet = nil
+        case .replaceSheet: session.presentSheet(.coordinates)
+        case .closeDocument: session.close()
         }
+        #expect(export.isRunning && export.isCancelling && !export.canCreate)
+        export.create(colorScheme: .dark, locale: .current) // A draining export still owns its allocation.
+        await gate.waitForCancellation("tile")
+        await gate.finish("tile", with: nil)
+        await export.waitUntilIdle()
+        #expect(!export.isRunning && export.result == nil && export.preview == nil && export.error == nil)
+        #expect(export.canCreate == (ending != .closeDocument))
+        session.close()
+        await session.waitUntilClosed()
     }
 
     @Test func aFinishedImageCopiesToAnExplicitBoardWithoutChangingTheDocumentsViewOrLayers() async throws {

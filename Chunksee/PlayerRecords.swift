@@ -164,7 +164,7 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
     @Environment(\.gameNames) private var gameNames
-    @Binding var showsAllStatistics: Bool
+    let showAllStatistics: () -> Void
 
     var body: some View {
         if let records {
@@ -173,7 +173,7 @@ struct PlayerRecordsSections: View {
                     ForEach(records.summaryStatistics) { row in
                         LabeledContent(gameNames.statistic(row)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                     }
-                    Button("All Statistics…") { showsAllStatistics = true }
+                    Button("All Statistics…", action: showAllStatistics)
                 }
                 ranking("Most Mined", records.top("minecraft:mined"))
                 ranking("Most Killed", records.top("minecraft:killed"))

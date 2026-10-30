@@ -66,7 +66,7 @@ import Testing
         }
         // No native opener is needed to save a bookmark in another dimension.
         overworld.annotations.savePlace(at: CGPoint(x: -8, y: 20), in: "minecraft:the_nether")
-        let draft = try #require(overworld.annotations.draft)
+        let draft = try #require(overworld.sheet?.savedPlaceDraft)
         #expect(overworld.annotations.commit(draft, name: "Death Point"))
         #expect(resources.activeDimensionID == "minecraft:overworld")
         #expect(overworld.selectedDimensionID == "minecraft:overworld" && overworld.map?.viewport == sourceView)

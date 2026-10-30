@@ -3,12 +3,10 @@ import Foundation
 import ChunkseeKit
 import Observation
 
-/// A dimension's temporary plans, saved-place drafts and ruler. SavedPlaces remains the shared store.
+/// A dimension's annotation actions and ruler. The session owns sheets; SavedPlaces owns saved data.
 @Observable
 final class MapAnnotations {
     @ObservationIgnored private weak var source: WorldSession?
-    var draft: SavedPlaceDraft?
-    var portalDraft: PortalPlanDraft?
     var ruler = MapRuler()
 
     init(source: WorldSession) {
@@ -23,12 +21,13 @@ final class MapAnnotations {
     func savePlace(at point: CGPoint? = nil, in dimension: String? = nil) {
         guard let source, !source.isClosed, let point = point ?? source.map?.viewport.center,
               let coordinates = MapCoordinates(point: point), let dimension = dimension ?? source.selectedDimensionID else { return }
-        draft = SavedPlaceDraft(name: "", dimension: dimension, position: coordinates.position)
+        source.presentSheet(.savedPlace(SavedPlaceDraft(name: "", dimension: dimension, position: coordinates.position)))
     }
 
     func edit(_ place: SavedPlace) {
         guard let source, !source.isClosed else { return }
-        draft = SavedPlaceDraft(existingID: place.id, name: place.name, dimension: place.dimension, position: place.position)
+        source.presentSheet(.savedPlace(SavedPlaceDraft(existingID: place.id, name: place.name,
+                                                      dimension: place.dimension, position: place.position)))
     }
 
     func canPlanPortal(at point: CGPoint? = nil, in dimension: String? = nil) -> Bool {
@@ -44,10 +43,10 @@ final class MapAnnotations {
               let dimension = dimension ?? source.selectedDimensionID else { return }
         let height = y.flatMap(Coordinates.block)
         let plan = PortalPlanDraft(dimension: dimension, column: column, height: height)
-        portalDraft = plan
+        source.presentSheet(.portal(plan))
         if height == nil, let map = source.map, map.dimension.id == dimension {
             map.readTopBlock(at: column.position) { [weak self, weak plan] block in
-                guard let self, let plan, self.source?.isClosed == false, self.portalDraft === plan else { return }
+                guard let self, let plan, self.source?.isClosed == false, self.source?.sheet?.portalDraft === plan else { return }
                 plan.fillHeight(block?.y)
             }
         }

@@ -66,6 +66,16 @@ final class WorldSession {
     }
     @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     let navigation: MapNavigation
+    var sheet: WorldSheet? {
+        didSet {
+            // Cancellation belongs to dismissal, not the timing of a disappearing view.
+            if oldValue?.id == .imageExport, sheet?.id != .imageExport { imageExport.cancel() }
+            // A dismissed or replaced statistics sheet releases only its own demand. The
+            // inspector and sibling windows keep their handles to the same shared result.
+            if let previous = oldValue?.playerRecords, previous !== sheet?.playerRecords { previous.close() }
+        }
+    }
+    var commandTarget: WorldSession? { !isClosed && sheet == nil ? self : nil }
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
 
@@ -112,6 +122,7 @@ final class WorldSession {
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        sheet = nil
         saveView()
         search.cancel()
         heatMap.cancel()
@@ -130,6 +141,16 @@ final class WorldSession {
         }
         closingTask = task
         resources.detach(self)
+    }
+
+    func presentSheet(_ sheet: WorldSheet) {
+        guard !isClosed else { return }
+        self.sheet = sheet
+    }
+
+    func showStatistics(for player: UUID) {
+        guard !isClosed, let records = resources.playerRecords.acquire(player) else { return }
+        sheet = .statistics(records)
     }
 
     func waitUntilClosed() async {

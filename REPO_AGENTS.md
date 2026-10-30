@@ -532,6 +532,7 @@ older scan envelopes.
 | `AppModel.swift` | App-wide player names/saved searches, pending metadata reads and open-world resources shared by persistent world-folder identity |
 | `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime and per-window state, preserving those models across world-source replacement |
+| `WorldSheet.swift` | The single per-document sheet value and native SwiftUI presenter; carries annotation drafts or a handle to shared player records |
 | `DimensionPresentation.swift` | Live context for dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift`, `MapGameResources.swift`, `MapShadow.swift` | Observes world-owned game resources; full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
 | `MapPresentation.swift`, `MapLayers.swift` | One Codable value of map choices, including typed overlay visibility; MapModel owns the live value, and native layer controls edit it through WorldSession |
@@ -602,10 +603,13 @@ observation reapplies the model’s display name if native restoration resets it
 the view ends that observation. The adapter never edits a file URL or document contents.
 The subtitle names the world; document URLs and native Open Recent remain tied to their folders.
 Each dimension's map position is remembered in the world's `WorldSettings`.
-WorldView owns the transient Go to Coordinates sheet flag. Navigate's command uses the focused
-scene binding, while the sheet keeps its existing native controls and calls MapNavigation.
-Other map commands remain disabled under the coordinate or saved-place sheets. WorldDocument's
-existing per-session view identity resets this transient state on a native reread or move.
+WorldSession owns one transient WorldSheet value for Coordinates, Create Map Image, Block Filter,
+Saved Place, Portal Plan and All Statistics. WorldView has one native sheet presenter; commands,
+toolbars and inspectors send presentation requests to the session. Focused world commands and
+search derive their availability from the absence of that value, including All Statistics, so a
+new sheet cannot be omitted from a separate suppression list. Other windows keep their own
+command availability. Dismissal clears the value; document close clears it and refuses new
+presentation. The coordinate sheet keeps its existing native controls and calls MapNavigation.
 Go to Coordinates uses one native field for X Z or the copied Minecraft X Y Z format. MapCoordinates
 checks whole-number input, whitespace and typographic minus signs; X/Z retain their Int32 bounds,
 and optional Y accepts the same Int range as Map Height. Editing and Cancel do not move the map.
@@ -1228,7 +1232,9 @@ retain its derived compact Identity, without retaining a retired library just fo
 
 PlayerRecordStore owns the world's requested player records through one RefreshLoader per UUID.
 SelectionModel acquires a handle when its resolved inspector selects a player, independently of
-view tasks. Two windows can share a read or select different players; closing one handle never
+view tasks. All Statistics holds its own handle to the same shared entry, keeping live rows if
+the inspector changes. Dismissal, replacement or document close releases that sheet's handle.
+Two windows can share a read or select different players; closing one handle never
 cancels a sibling's read. Releasing the last handle cancels that entry, while BackgroundWork keeps
 its retired reads until they drain. World close cancels and drains every entry before access ends.
 Same-source save requests coalesce and retain completed records. Each read keeps failed fields
@@ -1436,10 +1442,10 @@ Committing a new place enables Saved Places in its destination through WorldReso
 open documents' LayerVisibility or remembers the layer for a later opening. It never opens or activates
 that dimension; choosing a saved place still performs the native cross-dimension jump.
 
-MapAnnotations owns each dimension’s draft sheet and ruler. Native document rereads restore the
-measurement without reviving a draft. It refers weakly to the document for existing navigation,
+MapAnnotations owns each dimension’s annotation actions and ruler; saved-place and portal drafts
+live in the session's single sheet value. It refers weakly to the document for existing navigation,
 selection and cross-dimension routing; SavedPlaces owns live annotations and WorldSettings persists them.
-Views bind to the model directly, and the document keeps no forwarding copy of annotation state.
+Views bind to the owners directly; no forwarding copy of annotation state remains.
 MapContent constructs its value directly from the document’s live models for drawing and export.
 It keeps no document reference or separate cache; SwiftUI observation follows those same models.
 DimensionPresentation supplies the shared labels and listings directly from WorldResources,
@@ -1498,8 +1504,9 @@ and duration labels. An enabled layer retains its key even when its current imag
 Exports use the document view's explicit appearance and locale. Transient reading activity and
 the pointer-dependent chunk readout stay in the live status bar.
 
-Create Map Image uses a native SwiftUI sheet from the toolbar Share menu and View menu. Its
-MapExportPlan shares Fit World's saved-region extent and MapViewport's transform; visible and
+Create Map Image uses the session's native SwiftUI sheet from the toolbar Share menu and View menu.
+Replacing or dismissing that sheet cancels its export through the session, without depending on
+a view-disappearance callback. MapExportPlan shares Fit World's saved-region extent and MapViewport's transform; visible and
 measurement areas preserve their origin and include both measured blocks. It refuses images over
 16,777,216 pixels or 16,384 pixels on either side before allocation, with smaller power-of-two
 scales and a Fit Image action. MapExportModel captures the map's renderer, style, depth and overlay values
@@ -1529,7 +1536,7 @@ MapContent applies the remembered flag once for live drawing and exported images
 border does not remove its World Info details or change any world data.
 
 Navigate > Plan Portal Here and the shared map/sidebar/location context menus open the same
-per-document SwiftUI sheet. MapAnnotations owns its temporary draft independently of the selected
+per-document SwiftUI sheet. WorldSheet owns its temporary draft independently of the selected
 item. A marker supplies its saved Y; otherwise MapModel's existing top-block reader supplies the
 displayed block's height. Missing height stays unknown. Late reads cannot replace a user's edits,
 a newer plan or a dismissed/closed document. Drafts are never restored or saved to the world.
