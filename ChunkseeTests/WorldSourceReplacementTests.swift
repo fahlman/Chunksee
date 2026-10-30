@@ -216,7 +216,7 @@ import Testing
         try await withFixture { f in
             let session = try await f.open(f.document(at: f.original)), resources = session.resources
             await resources.waitForRefresh(); await resources.index.waitForIndex()
-            weak var retiredAccess = resources.access
+            weak let retiredAccess = resources.access
             let gate = AsyncReadGate<BlockState?>()
             let position = try #require(BlockPosition(x: 0, y: 0, z: 0))
             resources.readHeadingBlock = { _, _ in await gate.read("old") }
