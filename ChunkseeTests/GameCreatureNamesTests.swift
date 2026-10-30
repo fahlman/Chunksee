@@ -83,7 +83,7 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
         for query in ["creature:fermier", "creature:zombie", "creature:minecraft:farmer"] {
             let hits = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
-            #expect(hits.map(\.title) == ["Zombie-villageois"])
+            #expect(hits.map { $0.title(in: names) } == ["Zombie-villageois"])
             #expect(hits.first?.position == marker.position)
         }
         var content = MapContent(gameNames: names)
@@ -163,16 +163,16 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(mobTypes: catalog))
         for query in ["loup", "minecraft:wolf", "creature:loup", "creature:minecraft:wolf"] {
             let hits = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
-            #expect(hits.map(\.title) == ["Berry"] && hits.map(\.detail) == ["Loup"])
+            #expect(hits.map { $0.title(in: names) } == ["Berry"] && hits.map { $0.detail(in: names) } == ["Loup"])
             #expect(hits.first?.position == wolf.position && hits.first?.count == 1)
         }
         for query in ["creature:apiculteur", "villager:test:keepers/hive", "apiculteur"] {
             let hits = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
-            #expect(hits.map(\.title) == ["Bob"] && hits.map(\.detail) == ["Villageois"])
+            #expect(hits.map { $0.title(in: names) } == ["Bob"] && hits.map { $0.detail(in: names) } == ["Villageois"])
             #expect(hits.first?.position == villager.position)
         }
         #expect(WorldSearch.search("villagers", in: index, players: [], gameNames: names) { _ in .named("") }.isEmpty)
-        #expect(WorldSearch.search("creature:villagers", in: index, players: [], gameNames: names) { _ in .named("") }.map(\.title) == ["Bob"])
+        #expect(WorldSearch.search("creature:villagers", in: index, players: [], gameNames: names) { _ in .named("") }.map { $0.title(in: names) } == ["Bob"])
     }
 
     @Test func twoWindowsKeepSelectionAndMapLocationsWhenSavedCreatureNamesChange() async throws {
@@ -223,7 +223,7 @@ import Testing
         first.selection.choose(.mobType("minecraft:sheep"))
         second.selection.choose(.creature(farmer.id))
         let original = first.search.results(for: "creature:")
-        #expect(original.count == 5 && Set(original.map(\.title)) == ["Sheep", "Berry", "Farmer", "Cat"])
+        #expect(original.count == 5 && Set(original.map { $0.title(in: world.gameNames) }) == ["Sheep", "Berry", "Farmer", "Cat"])
         #expect(first.search.results(for: "creature:fermier").isEmpty)
         let captured = MapContent(session: first)
         let viewport = MapViewport(center: CGPoint(x: 12, y: 4), scale: 8), size = CGSize(width: 800, height: 600)
@@ -239,8 +239,8 @@ import Testing
             await session.search.waitForSearch()
             let hits = session.search.results(for: "creature:")
             #expect(hits.map(\.id) == original.map(\.id) && hits.map(\.count) == original.map(\.count))
-            #expect(Set(hits.map(\.title)) == ["Mouton", "Berry", "Fermier", "Chat"])
-            #expect(session.search.results(for: "creature:fermier").map(\.title) == ["Fermier"])
+            #expect(Set(hits.map { $0.title(in: world.gameNames) }) == ["Mouton", "Berry", "Fermier", "Chat"])
+            #expect(session.search.results(for: "creature:fermier").map { $0.title(in: world.gameNames) } == ["Fermier"])
             #expect(session.visibility.mobTypes == ["minecraft:sheep"])
             #expect(session.presentation.selectedIndex.mobTypes.kind("minecraft:sheep")?.count == 2)
             let currentLinks = session.presentation.linkedPets(to: owner)

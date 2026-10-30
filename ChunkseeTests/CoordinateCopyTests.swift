@@ -59,8 +59,8 @@ import Testing
         content.places = [portal]
         examples.append((content, portal.position, "-8 -30 -2"))
         content = MapContent(gameNames: .unavailable)
-        let hit = SearchHit(id: "chest", source: .container(kind: "minecraft:chest"), dimension: "minecraft:overworld",
-                            position: CGPoint(x: -20.2, y: -30.8), y: -32, title: "Chest", detail: "", count: 1)
+        let hit = SearchHit(id: "chest", dimension: "minecraft:overworld",
+                            position: CGPoint(x: -20.2, y: -30.8), y: -32, content: .container(kind: "minecraft:chest", customName: nil, items: []))
         content.hits = [hit]
         examples.append((content, try #require(hit.position), "-21 -32 -31"))
         content = MapContent(gameNames: .unavailable)

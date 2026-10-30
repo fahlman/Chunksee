@@ -17,8 +17,8 @@ import Testing
     }
 
     private func search() -> SearchHit {
-        SearchHit(id: "fixture", source: .sign, dimension: "minecraft:overworld", position: .zero,
-                  y: 64, title: "Fixture", detail: "Sign", count: 1)
+        SearchHit(id: "fixture", dimension: "minecraft:overworld", position: .zero,
+                  y: 64, content: .sign(kind: "test:fixture", lines: ["Sign"]))
     }
 
     private func structure() throws -> StructureMarker {

@@ -17,7 +17,7 @@ import Testing
         for query in ["jeton", "test:token", "kept literally"] {
             let found = try #require(WorldSearch.summary(of: [token], query: SearchQuery(query), gameNames: french))
             #expect(found.count == 2 && found.items.map(\.id) == ["test:token"])
-            #expect(found.text == french.itemName(of: token, includingOne: true))
+            #expect(found.text(in: french) == french.itemName(of: token, includingOne: true))
         }
         let containers = ItemContainer.containers(inChunk: .compound(["block_entities": .list([
             .compound(["id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
@@ -71,7 +71,7 @@ import Testing
         for session in [first, second] { await session.search.waitForSearch() }
         let before = world.gameNames
         let original = try #require(first.search.results(for: "trade:").first)
-        #expect(original.detail == "1 Enchanted Book (Warding I) for 3 Trade Token")
+        #expect(original.detail(in: before) == "1 Enchanted Book (Warding I) for 3 Trade Token")
         #expect(first.search.results(for: "trade:warding").count == 1)
 
         let assets = try #require(try GameAssets(contentsOf: replacement.jar))
@@ -91,7 +91,7 @@ import Testing
             await session.search.waitForSearch()
             let result = try #require(session.search.results(for: "trade:").first)
             #expect(result.id == original.id && result.count == original.count)
-            #expect(result.detail == "1 Enchanted Book (Revised Ward) for 3 Trade Token")
+            #expect(result.detail(in: world.gameNames) == "1 Enchanted Book (Revised Ward) for 3 Trade Token")
             #expect(session.search.results(for: "trade:warding").isEmpty)
         }
         #expect(world.gameNames.identity?.language == before.identity?.language)
@@ -110,7 +110,7 @@ import Testing
             await session.search.waitForSearch()
             let result = try #require(session.search.results(for: "trade:").first)
             #expect(result.id == original.id && result.count == original.count)
-            #expect(result.detail == "1 Enchanted Book (Revised Ward) for 3 Jeton")
+            #expect(result.detail(in: world.gameNames) == "1 Enchanted Book (Revised Ward) for 3 Jeton")
         }
         #expect(world.gameNames.identity?.language != completed?.language)
         #expect(world.gameNames.identity?.enchantments == completed?.enchantments)

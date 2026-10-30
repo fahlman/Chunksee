@@ -57,7 +57,11 @@ extension GameNames {
         }
     }
 
-    nonisolated func biomeArea(_ area: BiomeArea) -> String { String(localized: "\(area.chunkCount) chunks") }
+    nonisolated func biomeArea(_ area: BiomeArea) -> String { biomeArea(chunkCount: area.chunkCount) }
+
+    nonisolated func biomeArea(chunkCount: Int, locale: Locale = .current) -> String {
+        String(localized: "\(chunkCount) chunks", locale: locale)
+    }
 
     nonisolated func biomeDescription(surface: String?, caves: [String], locale: Locale = .current) -> String? {
         let caves = caves.map(biome)

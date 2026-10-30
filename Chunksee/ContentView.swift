@@ -414,6 +414,7 @@ private struct SavedSearchesSection: View {
 private struct HitList: View {
     let session: WorldSession
     let query: String
+    @Environment(\.gameNames) private var gameNames
     var body: some View {
         let search = session.search
         let hits = session.search.listedHits(for: query, where: session.presentation.lists)
@@ -427,7 +428,7 @@ private struct HitList: View {
             ForEach(hits.rows) { hit in
                 let availability = session.routing.availability(of: hit.position.map { Coordinates($0, y: hit.y.map(Double.init)) },
                                                                 in: hit.dimension)
-                LocationLabel(title: Text(hit.title), isDimmed: !availability.canNavigate) {
+                LocationLabel(title: Text(hit.title(in: gameNames)), isDimmed: !availability.canNavigate) {
                     Image(systemName: MarkerStyle.search.symbol.name)
                 }
                 .tag(SidebarItem.hit(query: query, id: hit.id))

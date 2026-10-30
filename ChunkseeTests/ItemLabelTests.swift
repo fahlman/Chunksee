@@ -25,8 +25,8 @@ import Testing
             "block_entities": .list([container]),
         ]))))
         let hit = try #require(WorldSearch.search("keepsake", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.first)
-        #expect(hit.title == "Chest “Supplies”")
-        #expect(hit.detail == "5 Diamond “Keepsake”, 1 Emerald “Keepsake”")
+        #expect(hit.title(in: .unavailable) == "Chest “Supplies”")
+        #expect(hit.detail(in: .unavailable) == "5 Diamond “Keepsake”, 1 Emerald “Keepsake”")
         #expect(hit.count == 6)
         let diamond = try #require(ItemStack(item("minecraft:diamond", name: "Keepsake")))
         #expect(GameNames.unavailable.itemName(of: diamond) == "Diamond “Keepsake”")
@@ -35,7 +35,7 @@ import Testing
 
     @Test func summariesKeepDistinctNamespacedKindsAndUseLocalizedCounts() throws {
         let apples = [ItemStack(id: "first:apple", count: 2), ItemStack(id: "second:apple", count: 3)]
-        #expect(WorldSearch.summary(of: apples, query: SearchQuery("apple"), gameNames: .unavailable)?.text == "3 Apple, 2 Apple")
+        #expect(WorldSearch.summary(of: apples, query: SearchQuery("apple"), gameNames: .unavailable)?.text(in: .unavailable) == "3 Apple, 2 Apple")
         #expect(WorldSearch.summary(of: apples, query: SearchQuery("first:apple"), gameNames: .unavailable)?.count == 2)
         let plain = ItemStack(id: "minecraft:diamond", count: 1234)
         #expect(GameNames.unavailable.itemName(of: plain, locale: Locale(identifier: "en_US")) == "1,234 Diamond")
@@ -60,7 +60,7 @@ import Testing
         let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
         for word in ["token", "voucher", "excalibur", "sharpness", "diamond sword"] {
             let hit = try #require(WorldSearch.search("trade:\(word)", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.first)
-            #expect(hit.detail == "1 Diamond Sword “Excalibur” (Sharpness V) for 24 Emerald “Token” + 1 Book “Voucher”")
+            #expect(hit.detail(in: .unavailable) == "1 Diamond Sword “Excalibur” (Sharpness V) for 24 Emerald “Token” + 1 Book “Voucher”")
         }
     }
 
@@ -85,7 +85,7 @@ import Testing
         ])])
         let book = try #require(ItemStack(savedBook))
         #expect(GameNames.unavailable.itemName(of: book) == "Written Book “Travels” by Writer")
-        #expect(WorldSearch.summary(of: [book], query: SearchQuery("desert village"), gameNames: .unavailable)?.text == "1 Written Book “Travels” by Writer")
+        #expect(WorldSearch.summary(of: [book], query: SearchQuery("desert village"), gameNames: .unavailable)?.text(in: .unavailable) == "1 Written Book “Travels” by Writer")
         let trade = try #require(Trade(.compound(["buy": item("minecraft:emerald"), "sell": savedBook])))
         #expect(GameNames.unavailable.tradeSearchText(of: trade).contains("Travels"))
         var renamed = book

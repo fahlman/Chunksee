@@ -32,7 +32,7 @@ import Testing
             let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: [], gameNames: .unavailable) { _ in .named("") }
             #expect(villager.level == level.map(Int.init) ?? 1)
             #expect(marker.name(in: .unavailable) == "Farmer")
-            #expect(hits.map(\.title) == ["Farmer"])
+            #expect(hits.map { $0.title(in: .unavailable) } == ["Farmer"])
             #expect(GameNames.unavailable.profession(of: saved, definitions: nil) == expected)
         }
     }
@@ -42,7 +42,7 @@ import Testing
             let saved = try creature(level: Int32(index + 1))
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
             let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: [], gameNames: .unavailable) { _ in .named("") }
-            #expect(hits.map(\.title) == ["Farmer"])
+            #expect(hits.map { $0.title(in: .unavailable) } == ["Farmer"])
             #expect(GameNames.unavailable.profession(of: saved, definitions: nil) == "Farmer, \(name)")
             #expect(marker.name(in: .unavailable) == "Farmer")
         }

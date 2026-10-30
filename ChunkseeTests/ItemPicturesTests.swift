@@ -583,7 +583,7 @@ import UniformTypeIdentifiers
         #expect(found.count == 6)
         #expect(found.items.map(\.id) == ["minecraft:stone", "minecraft:redstone"])
         #expect(found.items.map(\.count) == [5, 1])
-        #expect(found.text == found.items.map(\.text).joined(separator: ", "))
+        #expect(found.text(in: .unavailable) == found.items.map { $0.text(in: .unavailable) }.joined(separator: ", "))
     }
 }
 

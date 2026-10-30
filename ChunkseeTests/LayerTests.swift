@@ -336,8 +336,8 @@ enum StructureTestWorld {
         session.search.text = "summer"
         await session.search.waitForIndex()
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == [summer.name(in: session.resources.gameNames)])
-        #expect(session.search.results.first?.detail == "Wolf")
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == [summer.name(in: session.resources.gameNames)])
+        #expect(session.search.results.first?.detail(in: session.resources.gameNames) == "Wolf")
         #expect(session.search.results.first?.source == .layer(.creature(.pet), markerID: summer.id))
     }
 }
@@ -364,7 +364,7 @@ enum StructureTestWorld {
         #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
         session.search.text = "place:zombie spawner"
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == ["Zombie Spawner"])
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Zombie Spawner"])
     }
 }
 
@@ -451,7 +451,7 @@ enum StructureTestWorld {
         #expect(MapContent(session: session).biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
         session.search.text = "biome:deep dark"
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == ["Deep Dark"])
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Deep Dark"])
     }
 
     @Test func unfinishedChunksPlaceholderBiomesAreIgnored() async throws {
