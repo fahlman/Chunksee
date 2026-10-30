@@ -2253,6 +2253,10 @@ direct replacement exposed by Kit 0.82.0 from the selected game's language metad
 not guess replacements or follow chains. Per-key selected-language/English fallback and readable
 saved words remain available without artwork or game files. WorldDetails retains the typed
 wandering-trader rule interpretation and no longer formats rule names.
+The registry description-key format has one owner inside GameNames. Displayed rule, block,
+map-group and mob names use its shared localized natural comparison with saved IDs as the
+equal-name tie-break; storage uses that comparison after its existing quantity priority.
+LayerGroups asks the service for ordered groups and does not choose its own name order.
 The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
