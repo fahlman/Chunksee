@@ -7,7 +7,7 @@ import Testing
 
 @Suite(.isolatedStores)
 struct SearchWorkTests {
-    @Observable private final class PlayerIdentity {
+    @Observable final class PlayerIdentity {
         var uuid: UUID?
         init(_ uuid: UUID) { self.uuid = uuid }
     }

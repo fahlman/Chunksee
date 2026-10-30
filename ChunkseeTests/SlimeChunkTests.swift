@@ -6,7 +6,7 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct SlimeChunkTests {
-    @Observable private final class Seed {
+    @Observable final class Seed {
         var value: Int64? = 42
     }
 
