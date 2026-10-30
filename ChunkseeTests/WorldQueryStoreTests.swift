@@ -6,6 +6,35 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldQueryStoreTests {
+    @Test func savingAQueryReusesOnlyItsOwnCompletedHits() async {
+        let defaults = TestDefaults.make(), work = BackgroundWork(), reads = AsyncReadGate<Void>()
+        await reads.releaseAllAndFuture(with: ())
+        let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults),
+            singleplayerUUID: { nil }, firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
+            execute: { request in
+                let query = request.queries[0]
+                await reads.read(query)
+                let hit = SearchHit(id: query, source: .sign, dimension: nil, position: .zero,
+                    y: 64, title: query, detail: query, count: 1)
+                return [query: [hit]]
+            }, gameNames: { .unavailable })
+        await model.waitForIndex()
+        model.text = "first"
+        await model.waitForSearch()
+        model.saveSearch()
+        model.text = "second"
+        #expect(model.results.map(\.title) == ["first"])
+        model.saveSearch()
+        model.text = ""
+        #expect(model.results(for: "first").map(\.title) == ["first"])
+        #expect(model.results(for: "second").isEmpty)
+        await model.waitForSearch()
+        #expect(model.results(for: "first").map(\.title) == ["first"])
+        #expect(model.results(for: "second").map(\.title) == ["second"])
+        #expect(await reads.requested == ["first", "second"])
+        await model.closeTestWorld()
+    }
+
     @Test func typingACompletedSavedQueryShowsItsResultsImmediately() async {
         let defaults = TestDefaults.make(), work = BackgroundWork()
         let saved = SavedSearches(defaults: defaults), gate = AsyncReadGate<WorldQueryStore.Results>()

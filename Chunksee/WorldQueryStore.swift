@@ -67,9 +67,11 @@ final class WorldQueryStore {
     }
 
     nonisolated fileprivate final class Value: Sendable {
+        let query: String
         let sources: SearchSources
         let hits: [SearchHit]
         init(source: Source, results: Results) {
+            query = source.query
             sources = source.context.key
             hits = results[source.query] ?? []
         }
@@ -152,14 +154,24 @@ final class WorldQueryStore {
 
     private func sharedEntry(for query: String) -> Shared {
         if let existing = shared[query] { return existing }
-        let execute = execute
-        let loader = loader(source: Source(query: query, context: context)) { [weak self] source in
+        let execute = execute, source = Source(query: query, context: context)
+        let loader = loader(source: source) { [weak self] source in
             let found = await execute(source.request)
             if Task.isCancelled {
                 await self?.cancelWaiters(query: source.query, source: source)
                 throw CancellationError()
             }
             return Value(source: source, results: found)
+        }
+        // Saving a completed typed query keeps its pins immediately. A window may still
+        // display its previous query while a new one loads, so match the value's query too.
+        if context.isReady {
+            for window in windows.values where window.loader.source == source {
+                guard let value = window.loader.value, value.query == query,
+                      value.sources == context.key else { continue }
+                loader.replace(source: source, value: value)
+                break
+            }
         }
         let entry = Shared(loader)
         loader.published = { [weak self, weak entry] _, publication in

@@ -21,7 +21,8 @@ nonisolated final class WorldIndexSnapshot: Sendable {
 /// One index pass per world, shared by every dimension's independent search controls.
 @Observable
 final class WorldIndexStore {
-    var snapshot: WorldIndexSnapshot { projection.value ?? .empty }
+    var snapshot: WorldIndexSnapshot { projection.value ?? closedSnapshot ?? .empty }
+    @ObservationIgnored private var closedSnapshot: WorldIndexSnapshot?
     var index: SearchIndex { snapshot.index }
     let playerRoster: any PlayerSnapshotSource
     var playerSnapshot: PlayerSnapshot { snapshot.players }
@@ -209,6 +210,10 @@ final class WorldIndexStore {
     /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
     /// still drains the cancelled reads.
     func cancel() {
+        guard !loader.isClosed else { return }
+        // Closing stops reads; it does not remove facts from a document still finishing
+        // its close. Retain the same immutable publication until its owner is released.
+        closedSnapshot = snapshot
         loader.close()
         projection.close()
     }

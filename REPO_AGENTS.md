@@ -961,6 +961,8 @@ player-snapshot identity, names, game-language identity and singleplayer identit
 is needed. A source change cancels old work through the loader. Previous coherent hits remain
 visible while replacements load, except changed language or singleplayer labels clear immediately.
 Clearing the current query clears its displayed hits immediately.
+Saving a completed typed query immediately shares that same result; retained hits from another
+query are never adopted as the new saved query's result.
 
 Saved queries have individual waiter leases. An active typed waiter survives removal of its saved
 query; the entry retires after its final use. Closing one window releases only its waiters and typed
@@ -979,6 +981,8 @@ the complete first pass even when an earlier dimension has published. WorldIndex
 the projected index, its player snapshot and revision atomically. Queries wait for this projection
 instead of mixing new players with old carried pets. Waiting for the current index does not join
 retired reads; BackgroundWork still drains all of them before access is released.
+Closing the index retains its final immutable snapshot while the closing document is still
+alive, without permitting later reads or publications to change it.
 
 `PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
 instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
