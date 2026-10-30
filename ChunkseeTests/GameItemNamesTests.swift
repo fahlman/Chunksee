@@ -75,8 +75,10 @@ import Testing
         #expect(first.search.results(for: "trade:warding").count == 1)
 
         let assets = try #require(try GameAssets(contentsOf: replacement.jar))
+        let replacementDefinitions = try saved.enchantmentDefinitions(assets: assets)
+        let ward: EnchantmentDefinition = try #require(replacementDefinitions["test:ward"])
         var updated = world.details.definitions
-        updated.enchantments["test:ward"] = try #require(saved.enchantmentDefinitions(assets: assets)["test:ward"])
+        updated.enchantments["test:ward"] = ward
         let gate = AsyncReadGate<WorldDefinitions>()
         world.readDefinitions = { _, _ in await gate.read("definitions") }
         world.worldChanged([root.appendingPathComponent("datapacks/changed.zip")])

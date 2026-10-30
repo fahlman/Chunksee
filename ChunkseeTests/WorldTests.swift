@@ -387,7 +387,8 @@ import Testing
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
         #expect(VillagerText.inspectorProfession(librarian, gameNames: .unavailable) == "Librarian, Level 5")
-        #expect(mending.first?.detail == "1 Enchanted Book (Mending) for 24 Emerald + 1 Book")
+        // With no definition, the saved level stays visible even for a familiar vanilla ID.
+        #expect(mending.first?.detail == "1 Enchanted Book (Mending I) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))
         #expect(mending.first?.source == .layer(.creature(.villager), markerID: marker.id))
         // Buying counts too, and sold-out trades say so.
