@@ -2,6 +2,7 @@ import ChunkseeKit
 import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
+import Observation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -158,6 +159,103 @@ import Testing
             _ = try await f.open(f.document(at: f.original), reusing: first, reread: true)
             #expect(second.map === map && (try #require(map.currentRenderer)).dimension.url == netherURL)
             #expect(map.chosenStyle == .waterDepth && map.viewport == view)
+        }
+    }
+
+    @Test func aNewerRereadRetiresAnOlderReadThatFinishesLast() async throws {
+        try await withFixture { f in
+            let document = f.document(at: f.original)
+            let session = try await f.open(document)
+            let folder = try #require(f.model.worldFolders.world(containing: document))
+            let olderValue = try await WorldSnapshot.read(f.original)
+            try Fixture.writeMap(at: f.original, center: 200)
+            let newerValue = try await WorldSnapshot.read(f.original)
+            let gate = AsyncReadGate<WorldSnapshot?>()
+            var tasks: [Task<DimensionSnapshot, any Error>] = []
+            var failure: (any Error)?
+            do {
+                let older = Task {
+                    try await f.model.rereadDimension(at: document, in: folder) { _ in
+                        guard let value = await gate.read("old") else { throw CancellationError() }
+                        return value
+                    }
+                }
+                tasks.append(older)
+                await gate.waitForRequest("old")
+                let newer = Task {
+                    try await f.model.rereadDimension(at: document, in: folder) { _ in
+                        guard let value = await gate.read("new") else { throw CancellationError() }
+                        return value
+                    }
+                }
+                tasks.append(newer)
+                await gate.waitForRequest("new"); await gate.waitForCancellation("old")
+                await gate.finish("new", with: newerValue)
+                let accepted = try await newer.value
+                let current = try await accepted.makeSession(in: f.model, reusing: session)
+                #expect(current === session && current.resources.details.maps.first?.centerX == 200)
+                await gate.finish("old", with: olderValue)
+                switch await older.result {
+                case .success(let retired):
+                    retired.discardUnused()
+                    Issue.record("The retired reread was accepted after the newer source")
+                case .failure(let error): #expect(error is CancellationError)
+                }
+                #expect(session.resources.details.maps.first?.centerX == 200 && f.model.openingRequestCount == 0)
+            } catch { failure = error }
+            await gate.releaseAllAndFuture(with: nil)
+            for task in tasks {
+                if case .success(let value) = await task.result { value.discardUnused() }
+            }
+            if let failure { throw failure }
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func retiredAccessOutlivesHeldReadsIncludingCloseDuringReplacement(closeDuringReplacement: Bool) async throws {
+        try await withFixture { f in
+            let session = try await f.open(f.document(at: f.original)), resources = session.resources
+            await resources.waitForRefresh(); await resources.index.waitForIndex()
+            weak var retiredAccess = resources.access
+            let gate = AsyncReadGate<BlockState?>()
+            resources.readHeadingBlock = { _, _ in await gate.read("old") }
+            let reading = Task { await resources.headingBlock(at: BlockPosition(x: 0, y: 0, z: 0), in: "minecraft:overworld") }
+            await gate.waitForRequest("old")
+            var failure: (any Error)?
+            do {
+                try FileManager.default.moveItem(at: f.original, to: f.moved)
+                if closeDuringReplacement {
+                    withObservationTracking(options: [.didSet]) { _ = resources.url } onChange: { event in
+                        event.cancel()
+                        MainActor.assumeIsolated { resources.close() }
+                    }
+                    do {
+                        _ = try await f.open(f.document(at: f.moved), reusing: session, reread: true)
+                        Issue.record("A closed world accepted a replacement opening")
+                    } catch is CancellationError {}
+                    #expect(resources.isClosed)
+                } else {
+                    _ = try await f.open(f.document(at: f.moved), reusing: session, reread: true)
+                    #expect(resources.access !== retiredAccess)
+                }
+                #expect(retiredAccess != nil)
+            } catch { failure = error }
+            await gate.releaseAllAndFuture(with: BlockState("minecraft:stone"))
+            let obsolete = await reading.value
+            #expect(obsolete == nil)
+            await resources.backgroundWork.waitUntilFinished()
+            await resources.waitUntilClosed()
+            #expect(retiredAccess == nil)
+            if !resources.isClosed {
+                let expected = f.document(at: f.moved).resolvingSymlinksInPath()
+                resources.readHeadingBlock = { dimension, _ in
+                    #expect(dimension.url.resolvingSymlinksInPath() == expected)
+                    return BlockState("minecraft:dirt")
+                }
+                let current = await resources.headingBlock(at: BlockPosition(x: 0, y: 0, z: 0), in: "minecraft:overworld")
+                #expect(current?.id == "minecraft:dirt")
+            }
+            if let failure { throw failure }
         }
     }
 }
