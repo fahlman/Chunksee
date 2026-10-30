@@ -24,7 +24,7 @@ actor RegionReader {
         }
 
         init(dimensionID: String, definitions: WorldDefinitions) {
-            let context = MapSurfaceContext(settings: definitions.dimensionSettings[dimensionID], water: definitions.water)
+            let context = MapDefinitions(dimensionID: dimensionID, definitions: definitions).context
             self.init(options: RegionReader.options(context: context, definitions: definitions),
                       notableBlocks: definitions.notableBlocks, structureGroups: definitions.structureGroups)
         }

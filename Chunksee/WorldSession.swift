@@ -102,8 +102,7 @@ final class WorldSession {
         // otherwise at the origin.
         let map = MapModel(definitions: { [weak resources] in
                                guard let resources else { return .unknown }
-                               return MapDefinitions(settings: resources.details.dimensionSettings[dimension.id],
-                                                     water: resources.details.definitions.water)
+                               return MapDefinitions(dimensionID: dimension.id, definitions: resources.details.definitions)
                            },
                            gameResources: { [weak resources] in resources?.mapGameResources ?? .unavailable },
                            savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },

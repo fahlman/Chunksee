@@ -15,6 +15,10 @@ nonisolated struct MapDefinitions: Equatable, Sendable {
         context = MapSurfaceContext(settings: settings, water: water)
         heightScale = MapHeightScale(settings: settings)
     }
+
+    init(dimensionID: String, definitions: WorldDefinitions) {
+        self.init(settings: definitions.dimensionSettings[dimensionID], water: definitions.water)
+    }
 }
 
 /// Display choices derived once from the reader's saved dimension facts. They describe the
