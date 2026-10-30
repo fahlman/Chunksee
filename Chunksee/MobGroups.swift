@@ -100,11 +100,11 @@ struct MobTypeDetails: View {
                 }) {
                     Text("All Appearances").tag(Optional<MobAppearance>.none)
                     ForEach(kind.variants) { variant in
-                        Text(gameNames.creatureAppearance(variant.appearance.saved, locale: locale)).tag(Optional(variant.appearance))
+                        Text(gameNames.creatureAppearance(variant.appearance.saved, for: kind.id, locale: locale)).tag(Optional(variant.appearance))
                     }
                 }
                 ForEach(kind.variants) { variant in
-                    LabeledContent(gameNames.creatureAppearance(variant.appearance.saved, locale: locale), value: variant.count.formatted(.number.locale(locale)))
+                    LabeledContent(gameNames.creatureAppearance(variant.appearance.saved, for: kind.id, locale: locale), value: variant.count.formatted(.number.locale(locale)))
                 }
             }
         }

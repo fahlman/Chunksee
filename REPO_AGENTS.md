@@ -2196,9 +2196,15 @@ identities, counts and appearance membership; GameNames computes translated kind
 collision labels. The retired Creature.displayName, VillagerText and PetDetailText policies are
 removed. Entity keys follow EntityType's description-ID convention. Profession keys follow
 VillagerProfession.register: `entity.<namespace>.villager.<literal path>`, preserving slashes in
-the profession path. That source proof and the installed language keys are retained in
-Chunksee-runs/creature-name-owner-evidence/game-source-1. Generic appearance IDs remain readable;
-only collar and the explicitly normalized base_color/pattern_color fields use dye-name keys.
+the profession path. Only villagers use that profession name as their creature name, including
+the game's distinct `villager.none` label; zombie villagers retain their entity name. Their separate
+profession details and search terms remain available. Missing or unreadable profession data is not
+defaulted by the app. That source proof and the installed language keys are retained in
+Chunksee-runs/creature-name-owner-evidence/game-source-1 and game-source-review-1.
+Appearance naming requires the creature ID: TropicalFish.Pattern's serialized variant uses
+`entity.minecraft.tropical_fish.type.<pattern>`, with a readable-ID fallback. Other species,
+custom namespaces and generic appearance IDs remain readable; collar and the explicitly normalized
+base_color/pattern_color fields use dye-name keys. No pattern-name list is maintained.
 MapContent requires an explicit GameNames value, captured from WorldResources by its session
 initializer. MapScene resolves creature labels lazily with that snapshot; picking still does not
 format names. MapLayerMarker name/search methods require the snapshot, while the other marker

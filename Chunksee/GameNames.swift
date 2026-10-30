@@ -72,15 +72,28 @@ nonisolated struct GameNames: Sendable {
 
     func creature(_ creature: Creature) -> String {
         if let customName = creature.customName { return customName }
-        if let villager = creature.villager, let profession = profession(villager) { return profession }
+        // Villager.getTypeName uses its profession, including none. ZombieVillager inherits
+        // the entity-type name even when it retains VillagerData.
+        if creature.id == "minecraft:villager", let villager = creature.villager {
+            if let id = villager.profession, let translated = professionTranslation(id) { return translated }
+            if let profession = profession(villager) { return profession }
+        }
         return entity(creature.id)
     }
 
     func profession(_ villager: Villager) -> String? {
         guard villager.isUnemployed == false, let profession = villager.profession else { return nil }
-        guard let id = Identifier(profession) else { return ReadableName.from(profession) }
+        return self.profession(profession)
+    }
+
+    func profession(_ id: String) -> String {
+        professionTranslation(id) ?? ReadableName.from(id)
+    }
+
+    private func professionTranslation(_ profession: String) -> String? {
+        guard let id = Identifier(profession), !id.path.isEmpty else { return nil }
         // VillagerProfession.register uses the namespace and literal path, without replacing slashes.
-        return name(key: "entity.\(id.namespace).villager.\(id.path)", fallback: ReadableName.from(profession))
+        return language?["entity.\(id.namespace).villager.\(id.path)"]
     }
 
     func profession(of creature: Creature, definitions: TradingDefinitions?, locale: Locale = .current) -> String? {
@@ -103,9 +116,18 @@ nonisolated struct GameNames: Sendable {
 
     func dyeColor(_ id: String) -> String { name(id, in: "color") }
 
-    func creatureAppearance(_ appearance: CreatureAppearance, locale: Locale = .current) -> String {
+    private func appearanceVariant(_ variant: String, for creatureID: String) -> String {
+        // TropicalFish.Pattern constructs this key from its serialized name. Other species'
+        // variants, markings and custom namespaces do not use that convention.
+        if creatureID == "minecraft:tropical_fish", let id = Identifier(variant), id.namespace == "minecraft" {
+            return name(key: "entity.minecraft.tropical_fish.type.\(id.path)", fallback: appearanceValue(variant))
+        }
+        return appearanceValue(variant)
+    }
+
+    func creatureAppearance(_ appearance: CreatureAppearance, for creatureID: String, locale: Locale = .current) -> String {
         var parts: [String] = []
-        if let variant = appearance.variant { parts.append(appearanceValue(variant)) }
+        if let variant = appearance.variant { parts.append(appearanceVariant(variant, for: creatureID)) }
         if let markings = appearance.markings { parts.append(appearanceValue(markings)) }
         for (key, value) in (appearance.traits ?? [:]).sorted(by: { $0.key < $1.key }) {
             // These normalized fields are dye identities. Other appearance values are not color names.
@@ -121,7 +143,7 @@ nonisolated struct GameNames: Sendable {
         // A saved variant describes a symbol tint without guessing a name from sampled pixels.
         if let appearance = creature.appearance, let variant = appearance.variant,
            appearance.colorSource(for: creature.id) != nil {
-            return String(localized: "\(appearanceValue(variant)) \(name)", locale: locale)
+            return String(localized: "\(appearanceVariant(variant, for: creature.id)) \(name)", locale: locale)
         }
         return name
     }
