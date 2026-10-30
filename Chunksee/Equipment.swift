@@ -13,7 +13,7 @@ struct EquipmentSection: View {
             Section("Equipment") {
                 ForEach(rows) { row in
                     VStack(alignment: .leading) {
-                        LabeledContent(EquipmentPresentation.slot(row.slot)) {
+                        LabeledContent(gameNames.equipmentSlot(row.slot, locale: locale)) {
                             VStack(alignment: .trailing) {
                                 ItemLabel(item: row.item, title: Text(gameNames.itemName(of: row.item, locale: locale)))
                                 .foregroundStyle(.primary)
@@ -49,19 +49,4 @@ nonisolated enum EquipmentPresentation {
     }
 
     private static let slotOrder = ["head", "chest", "legs", "feet", "mainhand", "offhand", "body", "saddle", "storage"]
-
-    static func slot(_ slot: String) -> String {
-        switch slot {
-        case "body": String(localized: "Body")
-        case "saddle": String(localized: "Saddle")
-        case "storage": String(localized: "Storage")
-        case "head": String(localized: "Head")
-        case "chest": String(localized: "Chest")
-        case "legs": String(localized: "Legs")
-        case "feet": String(localized: "Feet")
-        case "mainhand": String(localized: "Main Hand")
-        case "offhand": String(localized: "Off Hand")
-        default: ReadableName.from(slot)
-        }
-    }
 }

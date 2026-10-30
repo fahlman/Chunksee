@@ -2244,7 +2244,10 @@ an item-only key does not name a block. Filter queries accept current labels and
 with ID tie-breaking for equal names. The catalog still comes from saved palettes plus retained
 choices; language changes do not change membership, choices, coordinates or terrain reads.
 MapView.readout requires an explicit naming snapshot, and its former describe policy is removed.
-Equipment-slot and game-rule consumers still need audit before foundation step 5e and #438 are
+The shared equipment section gets its slot headings from GameNames.equipmentSlot, preserving the
+existing app wording and readable fallback for unfamiliar saved slots. EquipmentPresentation owns
+only the nonempty rows and their order; player and creature equipment membership is unchanged.
+Game-rule consumers and the final naming audit remain before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
