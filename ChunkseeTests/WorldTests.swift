@@ -356,7 +356,7 @@ import Testing
         #expect(search("villager:").first?.detail == "Villager")
         // Plain and filtered searches present the same creature without changing its selection identity or location.
         let named = try #require(search("summer").first)
-        #expect(named.title == wolf.name && named.detail == "Wolf")
+        #expect(named.title == wolf.name(in: .unavailable) && named.detail == "Wolf")
         for query in ["pet:summer", "creature:summer", "pet:minecraft:wolf"] {
             let hit = try #require(search(query).first)
             #expect(hit.detail == named.detail && hit.title == named.title)
