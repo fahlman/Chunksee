@@ -20,6 +20,10 @@ import Testing
             "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json([
                 "language.code": "fr_fr", "pack.words.guard": "Garde", "item.test.token": "Jeton",
             ]),
+            "assets/minecraft/lang/el_gr.json": ItemPictureFixture.json([
+                "language.code": "el_gr", "pack.words.guard": "Φύλαξη",
+                "effect.minecraft.strength": "Ισχύς", "enchantment.level.2": "Β'",
+            ]),
             "data/minecraft/enchantment/mending.json": definition(["translate": "enchantment.minecraft.mending"], maximum: 1),
             "data/test/enchantment/ward.json": definition(["translate": "pack.words.guard"], maximum: maximumLevel),
             "data/test/enchantment/literal.json": definition(["text": literal], maximum: 1),
@@ -84,6 +88,20 @@ import Testing
             #expect(names.enchantmentName("test:ward", level: 1, locale: locale) == "Garde I")
             #expect(names.enchantmentName("minecraft:mending", level: 1, locale: locale) == "Mending")
             #expect(names.enchantmentName("example:mending", level: 1, locale: locale) == "Mending I")
+        }
+    }
+
+    @Test func effectsAndEnchantmentsShareTheGamesNonEnglishLevelText() async throws {
+        let names = try await EnchantmentNameFixture.names("el_GR")
+        for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
+            let effect = StatusEffect(id: "minecraft:strength", amplifier: 1, durationTicks: 20)
+            #expect(names.effect(effect, locale: locale) == "Ισχύς Β'")
+            #expect(names.enchantmentName("test:ward", level: 2, locale: locale) == "Φύλαξη Β'")
+            let missingKey = StatusEffect(id: effect.id, amplifier: 2, durationTicks: 20)
+            #expect(names.effect(missingKey, locale: locale) == "Ισχύς III")
+            #expect(names.enchantmentName("test:ward", level: 3, locale: locale) == "Φύλαξη III")
+            #expect(GameNames.unavailable.effect(effect, locale: locale) == "Strength II")
+            #expect(GameNames.unavailable.enchantmentName("test:ward", level: 2, locale: locale) == "Ward II")
         }
     }
 }
