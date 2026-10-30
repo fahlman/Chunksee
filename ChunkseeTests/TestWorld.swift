@@ -6,6 +6,11 @@ import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
+/// Tests that need a readable dimension fail at their call site if its renderer is absent.
+func requiredRenderer(_ map: MapModel?, sourceLocation: SourceLocation = #_sourceLocation) throws -> RegionTileRenderer {
+    try #require(map?.currentRenderer, sourceLocation: sourceLocation)
+}
+
 /// App scenarios built with the library's shared synthetic save builders.
 nonisolated enum TestWorld {
     /// Exercise the app's production dimension read, not a separate per-layer scan path.

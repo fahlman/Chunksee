@@ -169,7 +169,7 @@ import Testing
                 content.heightScale = scale
                 for appearance in [ColorScheme.light, .dark] {
                     let image = try await MapImage.export(plan: plan, regions: map.availableRegions,
-                        renderer: (try #require(map.currentRenderer)), content: content, portalStatus: { _ in nil },
+                        renderer: (try requiredRenderer(map)), content: content, portalStatus: { _ in nil },
                         colorScheme: appearance, locale: Locale(identifier: "en_US"), progress: { _, _ in })
                     let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
                         size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))

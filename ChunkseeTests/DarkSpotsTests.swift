@@ -185,7 +185,7 @@ import Testing
         await resources.waitForRefresh()
         #expect(second.map?.nightLighting == rules["minecraft:the_nether"])
         #expect(second.map?.nightLighting?.hasSkylight == false)
-        #expect((try #require(first.map?.currentRenderer)).darkSpots == nil)
+        #expect(try requiredRenderer(first.map).darkSpots == nil)
         resources.refreshDelay = .zero
         resources.readNightLighting = { _, _ in await gate.read("late") }
         resources.worldChanged([root.appendingPathComponent("datapacks")])
@@ -441,7 +441,7 @@ import Testing
         content.showsDarkSpots = true
         content.lighting = map.lighting
         for scheme in [ColorScheme.light, .dark] {
-            let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try #require(map.currentRenderer)),
+            let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                 content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: Locale(identifier: "en_US"), progress: { _, _ in })
             let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))

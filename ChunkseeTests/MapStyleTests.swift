@@ -149,14 +149,14 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("normal")
-        let previousRenderer = (try #require(map.currentRenderer))
+        let previousRenderer = (try requiredRenderer(map))
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setStyle(.height)
         await render.waitForCancellation("normal")
         await render.waitForRequest("height")
         let heightImage = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("height", with: try (try #require(map.currentRenderer)).fixtureTile(heightImage, for: .init(x: 0, z: 0)))
+        await render.finish("height", with: try (try requiredRenderer(map)).fixtureTile(heightImage, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let normalImage = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
         await render.finish("normal", with: try previousRenderer.fixtureTile(normalImage, for: .init(x: 0, z: 0)))
@@ -182,7 +182,7 @@ import Testing
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         first.map?.setStyle(.height)
         first.map?.setBiomeBlending(true)
-        #expect((try #require(first.map?.currentRenderer)).samplesNeighborBiomes == false)
+        #expect(try requiredRenderer(first.map).samplesNeighborBiomes == false)
         second.map?.setStyle(.waterDepth)
         first.saveView()
         second.saveView()
@@ -241,7 +241,7 @@ import Testing
             names.forgetMinecraftFolder()
             await first.resources.waitForRefresh()
             #expect(map.heightScale == nil && map.style == .normal)
-            #expect((try #require(map.currentRenderer)).style == .normal && MapContent(session: first).mapStyle == .normal)
+            #expect(try requiredRenderer(map).style == .normal && MapContent(session: first).mapStyle == .normal)
             first.saveView()
             #expect(first.resources.settings.style(for: id) == .height)
             first.close()
@@ -261,17 +261,17 @@ import Testing
             await names.chooseMinecraftFolder(game.root)
             await reopened.resources.waitForRefresh()
             #expect(restored.heightScale == scale && restored.style == .height)
-            #expect((try #require(restored.currentRenderer)).style == .height)
+            #expect(try requiredRenderer(restored).style == .height)
             #expect(MapContent(session: reopened).mapStyle == .height)
             let region = RegionPosition(x: 0, z: 0)
-            let pixels = try #require(try await (try #require(restored.currentRenderer)).pixels(for: region))
+            let pixels = try #require(try await (try requiredRenderer(restored)).pixels(for: region))
             let expected = MapStylePalette.heightColor(y: 40, scale: scale)
             #expect(pixel(pixels, x: 4) == [expected.red, expected.green, expected.blue, 255])
 
             for artwork in [false, true] {
                 names.minecraft.usesGameArtwork = artwork
                 await reopened.resources.waitForRefresh()
-                #expect(restored.style == .height && (try #require(restored.currentRenderer)).style == .height)
+                #expect(try restored.style == .height && requiredRenderer(restored).style == .height)
             }
             await names.chooseMinecraftFolder(game.root)
             await reopened.resources.waitForRefresh()
@@ -309,7 +309,7 @@ import Testing
         #expect(map.chosenStyle == choice && map.style == choice)
         definitions.value = .init(settings: settings, water: nil)
         #expect(map.chosenStyle == choice && map.style == choice)
-        #expect((try #require(map.currentRenderer)).style == choice)
+        #expect(try requiredRenderer(map).style == choice)
     }
 
     @Test func bothRampsCarryTheirOrderInLightnessAsWellAsHue() {

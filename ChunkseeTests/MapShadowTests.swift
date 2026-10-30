@@ -255,7 +255,7 @@ import Testing
                     for contrast in [ColorSchemeContrast.standard, .increased] {
                         let copy = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                             scale: 1, colorScheme: appearance, locale: .current, contrast: contrast))
-                        let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try #require(map.currentRenderer)),
+                        let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                             content: content, portalStatus: { _ in nil }, colorScheme: appearance, locale: .current,
                             contrast: contrast, progress: { _, _ in })
                         #expect(try pixels(copy) == pixels(export))

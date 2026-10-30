@@ -90,9 +90,9 @@ import Testing
             #expect(first.resources === resources && second.resources === resources && resources.index === index)
             #expect(resources.url.resolvingSymlinksInPath() == f.moved.resolvingSymlinksInPath())
             #expect(resources.index.readers.count == 2)
-            #expect(resources.index.readers.allSatisfy { $0.dimension.url.path.hasPrefix(f.moved.path + "/") })
-            #expect((try #require(firstMap.currentRenderer)).dimension.url == f.document(at: f.moved))
-            #expect((try #require(secondMap.currentRenderer)).dimension.url == f.document("the_nether", at: f.moved))
+            #expect(resources.dimensions.allSatisfy { $0.url.resolvingSymlinksInPath().path.hasPrefix(f.moved.resolvingSymlinksInPath().path + "/") })
+            #expect(try requiredRenderer(firstMap).dimension.url == f.document(at: f.moved))
+            #expect(try requiredRenderer(secondMap).dimension.url == f.document("the_nether", at: f.moved))
             #expect(firstMap.viewport == view && firstMap.depth == MapDepth(y: 20, isSurface: false))
             #expect(firstMap.chosenStyle == .height && !firstMap.castsShadows && secondMap.chosenStyle == .waterDepth)
             #expect(first.navigation.canGoBack && first.annotations.ruler == ruler)
@@ -157,7 +157,7 @@ import Testing
             #expect(!second.imageExport.canCreate && map.chosenStyle == .waterDepth && map.viewport == view)
             try FileManager.default.createDirectory(at: netherURL.appendingPathComponent("region"), withIntermediateDirectories: true)
             _ = try await f.open(f.document(at: f.original), reusing: first, reread: true)
-            #expect(second.map === map && (try #require(map.currentRenderer)).dimension.url == netherURL)
+            #expect(try second.map === map && requiredRenderer(map).dimension.url == netherURL)
             #expect(map.chosenStyle == .waterDepth && map.viewport == view)
         }
     }
@@ -218,8 +218,9 @@ import Testing
             await resources.waitForRefresh(); await resources.index.waitForIndex()
             weak var retiredAccess = resources.access
             let gate = AsyncReadGate<BlockState?>()
+            let position = try #require(BlockPosition(x: 0, y: 0, z: 0))
             resources.readHeadingBlock = { _, _ in await gate.read("old") }
-            let reading = Task { await resources.headingBlock(at: BlockPosition(x: 0, y: 0, z: 0), in: "minecraft:overworld") }
+            let reading = Task { await resources.headingBlock(at: position, in: "minecraft:overworld") }
             await gate.waitForRequest("old")
             var failure: (any Error)?
             do {
@@ -252,7 +253,7 @@ import Testing
                     #expect(dimension.url.resolvingSymlinksInPath() == expected)
                     return BlockState("minecraft:dirt")
                 }
-                let current = await resources.headingBlock(at: BlockPosition(x: 0, y: 0, z: 0), in: "minecraft:overworld")
+                let current = await resources.headingBlock(at: position, in: "minecraft:overworld")
                 #expect(current?.id == "minecraft:dirt")
             }
             if let failure { throw failure }

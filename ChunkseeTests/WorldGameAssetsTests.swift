@@ -45,7 +45,7 @@ import Synchronization
                 #expect(!actual.isEmpty)
                 #expect(actual.count == distinct.count,
                         "One source transition must not restart the same map drawing through duplicate observers")
-                #expect(((try #require(map.currentRenderer)).gameData != nil) == available)
+                #expect(try (requiredRenderer(map).gameData != nil) == available)
             }
         }
         map.close(); session.close(); resources.close()
@@ -65,23 +65,23 @@ import Synchronization
         let first = WorldSession(resources: resources), hidden = WorldSession(resources: resources)
         var failure: (any Error)?
         do {
-            let original = try #require((try #require(first.map?.currentRenderer)).gameData)
+            let original = try #require((try requiredRenderer(first.map)).gameData)
             await resources.waitForRefresh()
             #expect(await gate.requested.isEmpty)
             let a = try game.resources(), b = try game.resources()
             resources.refreshGameAssets()
             await gate.waitForRequest("0")
-            #expect((try #require(first.map?.currentRenderer)).gameData === original)
+            #expect(try requiredRenderer(first.map).gameData === original)
             resources.refreshGameAssets(); resources.refreshGameAssets(); resources.refreshGameAssets()
             await gate.finish("0", with: a)
             await gate.waitForRequest("1")
-            #expect((try #require(first.map?.currentRenderer)).gameData === a.data && (try #require(hidden.map?.currentRenderer)).gameData === a.data)
+            #expect(try requiredRenderer(first.map).gameData === a.data && requiredRenderer(hidden.map).gameData === a.data)
             #expect(await gate.requested == ["0", "1"])
             first.close()
             #expect(!resources.isClosed)
             await gate.finish("1", with: b)
             await resources.waitForRefresh()
-            #expect((try #require(hidden.map?.currentRenderer)).gameData === b.data)
+            #expect(try requiredRenderer(hidden.map).gameData === b.data)
             #expect(await gate.requested == ["0", "1"])
         } catch { failure = error }
         await gate.releaseAllAndFuture(with: nil)
@@ -98,7 +98,7 @@ import Synchronization
         var failure: (any Error)?
         do {
             await resources.waitForRefresh()
-            let original = try #require((try #require(session.map?.currentRenderer)).gameData), readers = resources.readers
+            let original = try #require((try requiredRenderer(session.map)).gameData), readers = resources.readers
             let definitions = resources.details.definitions
             let versions = game.root.appendingPathComponent("versions"), parked = game.root.appendingPathComponent("saved-versions")
             try FileManager.default.moveItem(at: versions, to: parked)
@@ -109,18 +109,18 @@ import Synchronization
             } catch { /* Expected file-read failure. */ }
             resources.refreshGameAssets()
             await resources.waitForRefresh()
-            #expect((try #require(session.map?.currentRenderer)).gameData === original)
+            #expect(try requiredRenderer(session.map).gameData === original)
             #expect(resources.details.definitions == definitions)
             #expect(resources.readers["minecraft:overworld"] === readers["minecraft:overworld"])
             try FileManager.default.removeItem(at: versions)
             try FileManager.default.moveItem(at: parked, to: versions)
             resources.refreshGameAssets()
             await resources.waitForRefresh()
-            #expect((try #require(session.map?.currentRenderer)).gameData === original)
+            #expect(try requiredRenderer(session.map).gameData === original)
             try FileManager.default.removeItem(at: game.jar)
             resources.refreshGameAssets()
             await resources.waitForRefresh()
-            #expect((try #require(session.map?.currentRenderer)).gameData == nil && (try #require(session.map?.currentRenderer)).gameArtwork == nil)
+            #expect(try requiredRenderer(session.map).gameData == nil && requiredRenderer(session.map).gameArtwork == nil)
             #expect(resources.details.definitions.enchantments["test:sample"] == nil)
             // A missing versions directory is also successful absence, not a retrying failure.
             try FileManager.default.removeItem(at: versions)
@@ -149,21 +149,21 @@ import Synchronization
             resources.refreshGameAssets()
             await gate.waitForRequest("0")
             names.minecraft.choose(replacement.root)
-            #expect((try #require(first.map?.currentRenderer)).gameData == nil && (try #require(hidden.map?.currentRenderer)).gameData == nil)
+            #expect(try requiredRenderer(first.map).gameData == nil && requiredRenderer(hidden.map).gameData == nil)
             #expect(resources.gameNames.identity == GameNames.unavailable.identity && resources.newerWorldNotice == nil)
             await gate.waitForCancellation("0"); await gate.waitForRequest("1")
             await gate.finish("1", with: current)
             for await ready in Observations({ hidden.map?.currentRenderer?.gameData === current.data }) where ready { break }
             await gate.finish("0", with: old)
             await resources.waitForRefresh()
-            #expect((try #require(first.map?.currentRenderer)).gameData === current.data && (try #require(hidden.map?.currentRenderer)).gameData === current.data)
+            #expect(try requiredRenderer(first.map).gameData === current.data && requiredRenderer(hidden.map).gameData === current.data)
             resources.refreshGameAssets()
             await gate.waitForRequest("2")
             resources.close()
             await gate.waitForCancellation("2")
             await gate.finish("2", with: old)
             await resources.waitUntilClosed()
-            #expect(resources.mapGameResources.data == nil && (try #require(first.map?.currentRenderer)).gameData == nil)
+            #expect(try resources.mapGameResources.data == nil && requiredRenderer(first.map).gameData == nil)
         } catch { failure = error }
         await gate.releaseAllAndFuture(with: nil)
         resources.close(); await resources.waitUntilClosed()
@@ -220,7 +220,7 @@ import Synchronization
         await map.waitForRenders()
         let original = try #require(map.tiles[.init(x: 0, z: 0)])
         let originalPixels = try ItemPictureFixture.pixels(original.image).bytes
-        let artworkKey = try #require((try #require(map.currentRenderer)).colorSourceKey)
+        let artworkKey = try #require((try requiredRenderer(map)).colorSourceKey)
         #expect(!map.detailImages.isEmpty)
         let observation = observe(first, source: source)
 
@@ -228,10 +228,10 @@ import Synchronization
         await expectUpdate(observation)
         for resources in [first, second] { #expect(resources.gameArtworkLibrary(for: source) == nil && resources.biomeColors?.source.artwork == .unavailable) }
         for session in [a, hidden, b] {
-            #expect((try #require(session.map?.currentRenderer)).gameArtwork == nil && (try #require(session.map?.currentRenderer)).gameData === library.data
-                && (try #require(session.map?.currentRenderer)).biomeColors?.source.artwork == .unavailable)
+            #expect(try requiredRenderer(session.map).gameArtwork == nil && requiredRenderer(session.map).gameData === library.data
+                && (try requiredRenderer(session.map)).biomeColors?.source.artwork == .unavailable)
         }
-        #expect(map.detailImages.isEmpty && (try #require(map.currentRenderer)).gameSource.artwork == .unavailable)
+        #expect(try map.detailImages.isEmpty && requiredRenderer(map).gameSource.artwork == .unavailable)
         await first.waitForRefresh(); await second.waitForRefresh(); await map.waitForRenders()
         let fallbackPixels = try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes
         #expect(fallbackPixels != originalPixels)
@@ -242,7 +242,7 @@ import Synchronization
         names.minecraft.usesGameArtwork = true
         await first.waitForRefresh(); await second.waitForRefresh(); await map.waitForRenders()
         #expect(first.gameArtworkLibrary(for: source) === library && second.gameArtworkLibrary(for: source) === library)
-        #expect((try #require(map.currentRenderer)).colorSourceKey == artworkKey && !map.detailImages.isEmpty)
+        #expect(try requiredRenderer(map).colorSourceKey == artworkKey && !map.detailImages.isEmpty)
         #expect(try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes == originalPixels)
         #expect(first.details.definitions == definitions)
         first.close(); second.close()
@@ -311,13 +311,13 @@ import Synchronization
         let map = try #require(session.map), region = RegionPosition(x: 0, z: 0)
         let definitions = resources.details.definitions
         #expect(definitions.enchantments["test:sample"] != nil)
-        #expect((try #require(map.currentRenderer)).gameData === library.data)
+        #expect(try requiredRenderer(map).gameData === library.data)
         #expect(names.minecraft.artwork(for: library) == nil && resources.gameArtworkLibrary(for: source) == nil)
         #expect(try await library.data.mapMaterials(for: [.init("minecraft:stone")]).first?.model != nil)
-        let colors = try #require((try #require(map.currentRenderer)).biomeColors)
+        let colors = try #require((try requiredRenderer(map)).biomeColors)
         #expect(colors.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
         func rendered() async throws -> RegionTileRenderer.RenderedTile {
-            var renderer = (try #require(map.currentRenderer))
+            var renderer = (try requiredRenderer(map))
             renderer.cache = TileCache(directory: root.appendingPathComponent("artwork-test-cache"))
             return try #require(try await renderer.tile(for: region))
         }
@@ -336,7 +336,7 @@ import Synchronization
         #expect(on.heights == off.heights)
         #expect(on.cacheWrite?.surface.isWater == off.cacheWrite?.surface.isWater)
         #expect(onKey.inputs.gameSource.artwork == .game(library.sourceKey) && onKey != offKey)
-        #expect((try #require(map.currentRenderer)).biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+        #expect(try requiredRenderer(map).biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
         #expect(!reads.withLock { $0.isEmpty })
 
         names.minecraft.usesGameArtwork = false
@@ -440,18 +440,18 @@ import Synchronization
             let oldColors = try await original.data.biomeColors(in: resources.world, artwork: originalArtwork)
             sessions.append(WorldSession(resources: resources))
             for session in sessions {
-                #expect((try #require(session.map?.currentRenderer)).gameData === original.data)
-                #expect((try #require(session.map?.currentRenderer)).gameArtwork === originalArtwork)
-                #expect((try #require(session.map?.currentRenderer)).biomeColors == nil)
+                #expect(try requiredRenderer(session.map).gameData === original.data)
+                #expect(try requiredRenderer(session.map).gameArtwork === originalArtwork)
+                #expect(try requiredRenderer(session.map).biomeColors == nil)
             }
 
             // A newly read archive under the same folder generation must be available before
             // its colors. A delayed read from the retired archive cannot reconnect it.
             await assetReads.publish(replacement, to: resources)
             for session in sessions {
-                #expect((try #require(session.map?.currentRenderer)).gameData === replacement.data)
-                #expect((try #require(session.map?.currentRenderer)).gameArtwork === replacementArtwork)
-                #expect((try #require(session.map?.currentRenderer)).biomeColors == nil)
+                #expect(try requiredRenderer(session.map).gameData === replacement.data)
+                #expect(try requiredRenderer(session.map).gameArtwork === replacementArtwork)
+                #expect(try requiredRenderer(session.map).biomeColors == nil)
             }
             await gate.waitForCancellation("0")
             await gate.waitForRequest("1")
@@ -460,17 +460,17 @@ import Synchronization
             await gate.finish("0", with: oldColors)
             await resources.waitForRefresh()
             for session in sessions {
-                #expect((try #require(session.map?.currentRenderer)).gameData === replacement.data)
-                #expect((try #require(session.map?.currentRenderer)).biomeColors?.sourceKey == current.sourceKey)
+                #expect(try requiredRenderer(session.map).gameData === replacement.data)
+                #expect(try requiredRenderer(session.map).biomeColors?.sourceKey == current.sourceKey)
             }
 
             sessions[0].close()
             #expect(!resources.isClosed)
             names.minecraft.forget()
             for session in sessions {
-                #expect((try #require(session.map?.currentRenderer)).gameData == nil)
-                #expect((try #require(session.map?.currentRenderer)).gameArtwork == nil)
-                #expect((try #require(session.map?.currentRenderer)).biomeColors == nil)
+                #expect(try requiredRenderer(session.map).gameData == nil)
+                #expect(try requiredRenderer(session.map).gameArtwork == nil)
+                #expect(try requiredRenderer(session.map).biomeColors == nil)
             }
         } catch {
             await close()
