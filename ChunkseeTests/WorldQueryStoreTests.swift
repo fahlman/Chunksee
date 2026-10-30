@@ -4,6 +4,31 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldQueryStoreTests {
+    @Test func typingACompletedSavedQueryShowsItsResultsImmediately() async {
+        let defaults = TestDefaults.make(), work = BackgroundWork()
+        let saved = SavedSearches(defaults: defaults), gate = AsyncReadGate<WorldQueryStore.Results>()
+        saved.add("saved")
+        func hit(_ title: String) -> SearchHit {
+            SearchHit(id: title, source: .sign, dimension: nil, position: .zero,
+                      y: 64, title: title, detail: title, count: 1)
+        }
+        let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults),
+            singleplayerUUID: { nil }, firstDimension: nil, savedSearches: saved,
+            execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
+        await gate.waitForRequest("saved")
+        await gate.finish("saved", with: ["saved": [hit("Saved")]])
+        await model.waitForSearch()
+        model.text = "first"
+        await gate.waitForRequest("first")
+        await gate.finish("first", with: ["first": [hit("First")]])
+        await model.waitForSearch()
+        model.text = "saved"
+        #expect(model.results.map(\.title) == ["Saved"] && !model.isSearching)
+        await model.waitForSearch()
+        #expect(await gate.requested == ["saved", "first"])
+        await model.closeTestWorld()
+    }
+
     @Test func queriesWaitForTheMatchingPlayerAndCarriedPetProjection() async throws {
         let fixtures = ShoulderPetTests(), url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }

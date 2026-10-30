@@ -196,7 +196,18 @@ final class WorldQueryStore {
             // window's task starts must still let the already requested query finish.
             if let previous { update(previous, query: previous.loader.source.query) }
         }
-        if let shared = window.shared { update(shared, query: query) }
+        if let shared = window.shared {
+            update(shared, query: query)
+            // A completed saved result is already ready to display. Switching back to it
+            // must not briefly show the previous typed query while another waiter starts.
+            if source.context.isReady, shared.loader.source == source,
+               let value = shared.loader.value, value.sources == source.context.key {
+                if window.loader.source != source || window.loader.value !== value {
+                    window.loader.replace(source: source, value: value)
+                }
+                return
+            }
+        }
         window.loader.request(source: source, isEnabled: source.isActive && source.context.isReady, reread: false)
     }
 
