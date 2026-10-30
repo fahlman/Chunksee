@@ -68,7 +68,7 @@ import Testing
         let session = WorldSession(resources: resources), map = try #require(session.map)
         resources.refreshGameAssets()
         await resources.waitForRefresh()
-        let point = CGPoint(x: 8, y: 8), data = try #require(map.currentRenderer.gameData)
+        let point = CGPoint(x: 8, y: 8), data = try #require((try #require(map.currentRenderer)).gameData)
         let reader = resources.readers["minecraft:overworld"]
         map.loadTopBlocks(at: point)
         await map.waitForTopBlocks()
@@ -77,14 +77,14 @@ import Testing
         names.minecraft.usesGameArtwork = false
         await resources.waitForRefresh()
         await map.waitForTopBlocks()
-        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect((try #require(map.currentRenderer)).gameData === data && resources.readers["minecraft:overworld"] === reader)
         #expect(map.topBlock(at: point)?.id == "minecraft:torch")
         #expect(map.topBlock(at: point)?.hasGameDefinition == true)
 
         names.minecraft.usesGameArtwork = true
         await resources.waitForRefresh()
         await map.waitForTopBlocks()
-        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect((try #require(map.currentRenderer)).gameData === data && resources.readers["minecraft:overworld"] === reader)
         #expect(map.topBlock(at: point)?.id == "test:ground")
         session.close()
         await session.waitUntilClosed()

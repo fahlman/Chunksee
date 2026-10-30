@@ -43,11 +43,12 @@ nonisolated struct WorldInfoSnapshot: Sendable {
 
 /// Catalog changes replace a read's inputs; ordinary saves keep this source and coalesce.
 nonisolated struct WorldInfoSource: Equatable, Sendable {
-    let url: URL
+    let worldSource: WorldReadSource
+    var url: URL { worldSource.world.url }
     let dimensions: [ChunkseeKit.Dimension]
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.url == rhs.url && lhs.dimensions.count == rhs.dimensions.count &&
+        lhs.worldSource == rhs.worldSource && lhs.dimensions.count == rhs.dimensions.count &&
             zip(lhs.dimensions, rhs.dimensions).allSatisfy { $0.0.id == $0.1.id && $0.0.url == $0.1.url }
     }
 

@@ -56,7 +56,7 @@ import Testing
                 size: CGSize(width: 100, height: 100)).biomeAreas.first).color
         }
         #expect(try color(first) == MapColor(0xff0000) && color(second) == MapColor(0xff0000))
-        #expect(first.map?.currentRenderer.biomeColors?.biome("test:land").color(.water, x: 0, z: 0) == 0x654321)
+        #expect((try #require(first.map?.currentRenderer)).biomeColors?.biome("test:land").color(.water, x: 0, z: 0) == 0x654321)
         let map = try #require(first.map)
         map.viewport = .init(center: CGPoint(x: 8, y: 8), scale: 4)
         map.requestTiles(visibleIn: CGSize(width: 100, height: 100), displayScale: 1)
@@ -84,20 +84,20 @@ import Testing
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x654321) && color(second) == MapColor(0x654321))
-        let terrainKey = try #require(first.map?.currentRenderer.biomeColors?.sourceKey)
+        let terrainKey = try #require((try #require(first.map?.currentRenderer)).biomeColors?.sourceKey)
         try write(ItemPictureFixture.json(["replace": true, "values": [String]()]),
                   to: root.appendingPathComponent("datapacks/outline/data/minecraft/tags/worldgen/biome/is_ocean.json"))
         resources.worldChanged([root.appendingPathComponent("datapacks/outline")])
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x00ff00))
-        #expect(first.map?.currentRenderer.biomeColors?.sourceKey == terrainKey)
+        #expect((try #require(first.map?.currentRenderer)).biomeColors?.sourceKey == terrainKey)
 
         await assetReads.publish(nil, to: resources)
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         #expect(try color(first) == MapColor(0x00ff00) && color(second) == MapColor(0x00ff00))
-        #expect(first.map?.currentRenderer.biomeColors?.source.data == nil)
+        #expect((try #require(first.map?.currentRenderer)).biomeColors?.source.data == nil)
         try FileManager.default.removeItem(at: root.appendingPathComponent("datapacks/outline"))
         resources.worldChanged([root.appendingPathComponent("datapacks/outline")])
         await resources.waitForRefresh()

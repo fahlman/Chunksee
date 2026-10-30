@@ -307,8 +307,10 @@ import Testing
             let newDimension = f.url.appendingPathComponent("dimensions/example/new_dimension")
             try FileManager.default.createDirectory(at: newDimension.appendingPathComponent("region"), withIntermediateDirectories: true)
             guard case .dimension(let value) = try await f.reader.readFolder(newDimension),
-                  case .snapshot(let fresh) = value.source else { Issue.record("Unknown catalog path was not freshly validated"); return }
-            #expect(value.dimensionID == "example:new_dimension" && fresh.dimensions.contains { $0.id == value.dimensionID })
+                  case .opening(let fresh) = value.source else { Issue.record("Unknown catalog path was not freshly validated"); return }
+            #expect(value.dimensionID == "example:new_dimension" && fresh.resources === session.resources)
+            #expect(session.resources.dimensions.contains { $0.id == value.dimensionID })
+            #expect(await f.probe.count == 2)
             value.discardUnused()
             #expect(!session.resources.isClosed)
         }

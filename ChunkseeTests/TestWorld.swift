@@ -118,7 +118,7 @@ extension WorldSession {
 extension WorldResources {
     convenience init(snapshot: WorldSnapshot, names: PlayerNames, savedSearches: SavedSearches,
                      defaults: UserDefaults, cacheRoot: URL?,
-                     watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
+                     watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
                      readRegion: @escaping RegionReader.Read = RegionReader.scan,
                      readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
                      maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) async throws {
@@ -132,6 +132,10 @@ extension WorldResources {
     func includeDimensions(from snapshot: WorldSnapshot) async throws {
         guard !isClosed else { return }
         includeDimensions(from: try await WorldPreparation.read(snapshot, minecraft: names.minecraft))
+    }
+
+    func replaceSource(from snapshot: WorldSnapshot) async throws {
+        try replaceSource(with: await WorldPreparation.read(snapshot, minecraft: names.minecraft))
     }
 }
 

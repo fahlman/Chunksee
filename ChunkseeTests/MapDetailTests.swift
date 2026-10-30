@@ -92,7 +92,7 @@ import Testing
         await map.waitForRenders()
         #expect(await gate.requested.isEmpty)
         #expect(map.detailImages.isEmpty)
-        let surface = try #require(try await map.currentRenderer.detail(for: .init(x: -1, z: -1)))
+        let surface = try #require(try await (try #require(map.currentRenderer)).detail(for: .init(x: -1, z: -1)))
 
         map.viewport.scale = 8
         map.requestTiles(visibleIn: size)

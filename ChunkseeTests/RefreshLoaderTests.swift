@@ -7,6 +7,72 @@ import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test(.timeLimit(.minutes(1))) func preparedReplacementRejectsAHeldReadEvenAtTheSameSource() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "world", initialValue: 1) { _, _ in
+            await gate.read(String(await numbers.next()))
+        }
+        loader.request(source: "world", isEnabled: true, reread: true)
+        await gate.waitForRequest("0")
+        loader.replace(source: "world", value: 2)
+        #expect(loader.source == "world" && loader.value == 2)
+        await gate.waitForCancellation("0")
+        await gate.finish("0", with: 99)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2)
+        loader.request(source: "world", isEnabled: true, reread: true)
+        await gate.waitForRequest("1"); await gate.finish("1", with: 3)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 3)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(arguments: [false, true])
+    func preparedPublicationCanReplaceOrCloseItselfBeforeTheProducerContinuation(close: Bool) {
+        let work = BackgroundWork()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "world", initialValue: 1) { _, _ in
+            Issue.record("Prepared replacements must not start a redundant read")
+            return 0
+        }
+        var published: [Int?] = []
+        loader.published = { _, current in published.append(current.value) }
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                if close { loader.close() }
+                else { loader.replace(source: "world", value: 3) }
+            }
+        }
+        loader.replace(source: "world", value: 2)
+        if close { #expect(loader.isClosed && loader.value == nil && published.isEmpty) }
+        else { #expect(loader.value == 3 && published == [3]) }
+        loader.close(); work.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func retiringAccessWaitsForAcceptedWorkWithoutWaitingForFutureWork() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Void>()
+        let (completed, continuation) = AsyncStream.makeStream(of: Bool.self)
+        defer { continuation.finish() }
+        var iterator = completed.makeAsyncIterator(), futureFinished = false
+        work.start(priority: .utility) { await gate.read("old") }
+        await gate.waitForRequest("old")
+        work.afterCurrentWork { continuation.yield(true) }
+        work.start(priority: .utility) {
+            await gate.read("new")
+            futureFinished = true
+        }
+        await gate.waitForRequest("new")
+        await gate.finish("old", with: ())
+        let retired = await iterator.next(isolation: #isolation)
+        #expect(retired == true && !futureFinished)
+        await gate.finish("new", with: ())
+        await work.waitUntilFinished()
+        #expect(futureFinished)
+        work.close()
+    }
+
     @Test(.timeLimit(.minutes(1))) func producerContinuesAfterDeliveryInThePublishingTurnAndNotAfterFailure() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Result<Int, CocoaError>>()
         let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,

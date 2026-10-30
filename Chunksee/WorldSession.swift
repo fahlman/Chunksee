@@ -29,7 +29,8 @@ final class WorldSession {
     @ObservationIgnored private(set) lazy var imageExport = MapExportModel(source: self)
 
     let selectedDimensionID: String?
-    let map: MapModel?
+    private(set) var map: MapModel?
+    @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     let navigation: MapNavigation
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
@@ -38,6 +39,7 @@ final class WorldSession {
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) }) {
         self.resources = resources
+        self.renderTile = renderTile
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(settings: resources.settings, dimension: selected)
         search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
@@ -56,6 +58,27 @@ final class WorldSession {
         heatMap.restoreVisibility(from: visibility)
         slimeChunks.restoreVisibility(from: visibility)
         resources.attach(self)
+    }
+
+    func prepareWorldSourceReplacement() {
+        imageExport.cancel()
+        map?.replaceSource(nil, cacheDirectory: nil)
+    }
+
+    /// The session and all of its window state stay alive while the shared world changes inputs.
+    func replaceWorldSource() {
+        guard !isClosed else { return }
+        let dimension = resources.dimensions.first { $0.id == selectedDimensionID }
+        if let map {
+            map.replaceSource(dimension, cacheDirectory: dimension.flatMap {
+                TileCache.directory(forWorldAt: resources.url, dimensionID: $0.id, root: resources.cacheRoot)
+            })
+        } else if dimension != nil {
+            map = Self.initialMap(resources: resources, dimensionID: selectedDimensionID, renderTile: renderTile)
+            map?.setDarkSpots(visibility.rememberedDarkSpots)
+            navigation.replaceMap(map)
+        }
+        slimeChunks.regionsChanged(map?.availableRegions ?? [])
     }
 
     /// Closing drains this dimension's reads; the world's shared reads stay alive for the others.
@@ -85,13 +108,6 @@ final class WorldSession {
     func waitUntilClosed() async {
         await closingTask?.value
         if resources.isClosed { await resources.waitUntilClosed() }
-    }
-
-    /// A native document reread or move replaces readers, while keeping window navigation.
-    func restoreView(from previous: WorldSession) {
-        guard !isClosed, selectedDimensionID == previous.selectedDimensionID, map != nil, previous.map != nil else { return }
-        navigation.restore(from: previous.navigation)
-        annotations.restore(from: previous.annotations)
     }
 
     private static func initialMap(resources: WorldResources, dimensionID: String?,

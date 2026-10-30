@@ -1235,8 +1235,15 @@ using the current path and the bookmark's original path even after a rename whil
 move collisions keep source view choices and destination annotation names, as before. Thereafter
 no settings relocation is needed. WorldResources shares this owner; SavedPlaces and each dimension's
 LayerVisibility retain their live state. Annotation JSON is encoded only for annotation edits or
-legacy move merging, never for viewport/layer saves. Live file readers still follow the native
-document's new URL. Direct world/session opening conveniences exist only in TestWorld; production
+legacy move merging, never for viewport/layer saves. AppModel registers both shared resources and
+pending reads by that folder ID. A move or reread admits one new WorldReadSource, replacing file
+inputs under the existing WorldResources and all attached sessions. The old watcher and reads
+retire; BackgroundWork drains their accepted work before releasing the old access. Compatible
+completed region facts remain visible while the replacement readers check the same world's files.
+MapModel keeps its view and chosen style, but has no currentRenderer while its dimension is absent;
+display, detail and export cannot read a retired path. Document rereads retain the same session,
+selection, navigation, search and SwiftUI view identity instead of copying a subset into a new one.
+Direct world/session opening conveniences exist only in TestWorld; production
 always obtains identity through its document reader. App-wide preferences stay separate.
 
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,

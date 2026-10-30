@@ -20,6 +20,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
 
     nonisolated private struct Source: Equatable, Sendable {
         var game: WorldGameDataSource
+        let world: WorldReadSource
         /// Prepared metadata supplies only newly included dimensions. Completed definition reads
         /// remain authoritative thereafter; old seed values never replace a later read.
         var preparedDimensions: [String: DimensionInput]
@@ -62,12 +63,12 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         set { reads.players = newValue }
     }
 
-    init(world: World, work: BackgroundWork, gameSource: WorldGameDataSource,
+    init(world: WorldReadSource, work: BackgroundWork, gameSource: WorldGameDataSource,
          dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions,
          players: [PlayerInfo]) {
         let reads = Reads()
         self.reads = reads
-        let source = Source(game: gameSource,
+        let source = Source(game: gameSource, world: world,
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
@@ -78,16 +79,16 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
             switch request {
             case .definitions:
                 guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
-                let updated = try await readDefinitions(world, library)
+                let updated = try await readDefinitions(source.world.world, library)
                 try Task.checkCancellation()
-                guard let players = await readPlayers(world, updated.enchantments) else {
+                guard let players = await readPlayers(source.world.world, updated.enchantments) else {
                     throw CancellationError()
                 }
                 try Task.checkCancellation()
                 return .complete(Facts(definitions: updated, players: PlayerSnapshot(players), source: source.game.identity))
             case .players:
                 guard let previous,
-                      let players = await readPlayers(world, previous.definitions.enchantments) else {
+                      let players = await readPlayers(source.world.world, previous.definitions.enchantments) else {
                     throw CancellationError()
                 }
                 try Task.checkCancellation()
@@ -96,6 +97,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
             }
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
             firstRequest: .definitions, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
+                guard previous.world == current.world else { return nil }
                 var retained = value
                 // An unread unknown would discard reader caches and the user's Height choice.
                 // Keep the complete facts with their original provenance until a replacement
@@ -110,6 +112,16 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
             guard let self, !self.isClosed else { return }
             self.published(current.value)
         }
+    }
+
+    func replaceWorld(_ world: WorldReadSource, gameSource: WorldGameDataSource,
+                      dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions, players: [PlayerInfo]) {
+        let source = Source(game: gameSource, world: world,
+            preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
+                ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
+            }))
+        loader.replace(source: source,
+            value: Facts(definitions: definitions, players: PlayerSnapshot(players), source: gameSource.identity))
     }
 
     func refreshDefinitions(gameSource: WorldGameDataSource) {

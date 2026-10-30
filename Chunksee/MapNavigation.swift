@@ -5,10 +5,12 @@ import Observation
 /// Local jumps and history for one document. MapModel remains the viewport and depth owner.
 @Observable
 final class MapNavigation {
-    private let map: MapModel?
+    private var map: MapModel?
     private var history = MapNavigationHistory()
 
     init(map: MapModel?) { self.map = map }
+
+    func replaceMap(_ map: MapModel?) { self.map = map }
 
     var canGoBack: Bool { map?.isClosed == false && history.canGoBack }
     var canGoForward: Bool { map?.isClosed == false && history.canGoForward }
@@ -49,18 +51,6 @@ final class MapNavigation {
     func goForward() {
         guard let map, !map.isClosed, let destination = history.goForward(from: map.viewport) else { return }
         map.viewport = destination
-    }
-
-    /// A native reread/move copies navigation into a new map; the old document may already be closed.
-    func restore(from previous: MapNavigation) {
-        guard let map, !map.isClosed, let oldMap = previous.map,
-              map.dimension.id == oldMap.dimension.id else { return }
-        history = previous.history
-        map.viewport = oldMap.viewport
-        map.setDepth(oldMap.depth)
-        map.setStyle(oldMap.chosenStyle)
-        map.setBiomeBlending(oldMap.blendsBiomeColors)
-        map.setBlockFilter(oldMap.blockFilter)
     }
 
     private func navigate(_ change: (MapModel) -> Void) {

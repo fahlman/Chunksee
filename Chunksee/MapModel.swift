@@ -6,7 +6,7 @@ import Observation
 /// Tiles and viewport for one dimension's top-down map.
 @Observable
 final class MapModel {
-    let dimension: ChunkseeKit.Dimension
+    private(set) var dimension: ChunkseeKit.Dimension
     var viewport: MapViewport {
         didSet {
             if Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
@@ -69,15 +69,16 @@ final class MapModel {
     @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
-    private var renderer: RegionTileRenderer
+    private var renderer: RegionTileRenderer?
+    private let chunkConcurrency: Int
     @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
     @ObservationIgnored private let readDefinitions: @MainActor () -> MapDefinitions
     private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
     private var gameData: GameDataLibrary? { gameResources.data }
     private var gameArtwork: GameArtworkLibrary? { gameResources.artwork }
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
-    var currentRenderer: RegionTileRenderer {
-        var current = renderer
+    var currentRenderer: RegionTileRenderer? {
+        guard var current = renderer else { return nil }
         let resources = gameResources
         current.cutawayY = depth.cutawayY
         current.style = style
@@ -136,6 +137,7 @@ final class MapModel {
         self.readDetail = readDetail
         shadowWork = work.makeScope()
         self.dimension = dimension
+        self.chunkConcurrency = max(1, chunkConcurrency)
         self.heightScale = definitions.heightScale
         self.readTopBlocksFor = readTopBlocks
         self.renderTile = renderTile
@@ -152,6 +154,31 @@ final class MapModel {
         observeGameResources()
         observeDefinitions()
         updateTopBlockReads()
+    }
+
+    /// A world reread changes file inputs, never this window's chosen view or navigation.
+    /// A missing dimension has no renderer, so neither display nor export can read its old path.
+    func replaceSource(_ dimension: ChunkseeKit.Dimension?, cacheDirectory: URL?) {
+        guard !isClosed else { return }
+        coordinateWork.cancel()
+        cacheWork.cancel()
+        resetTopBlockReads()
+        clearRenderedTiles()
+        if let dimension {
+            precondition(dimension.id == self.dimension.id)
+            let definitions = readDefinitions()
+            self.dimension = dimension
+            heightScale = definitions.heightScale
+            renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
+                chunkConcurrency: chunkConcurrency, cache: cacheDirectory.map(TileCache.init(directory:)),
+                heightScale: heightScale)
+            availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        } else {
+            renderer = nil
+            heightScale = nil
+            availableRegions = []
+        }
+        surfaceChanged()
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
@@ -171,6 +198,7 @@ final class MapModel {
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
         guard !isClosed, size.width > 0, size.height > 0 else { return }
         lastView = (size, displayScale)
+        guard renderer != nil else { return }
         requestDetail(visibleIn: size)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
@@ -225,7 +253,7 @@ final class MapModel {
     private func startQueued() {
         while !isClosed, inFlight.count < regionConcurrency, !queue.isEmpty {
             let region = queue.removeFirst()
-            let renderer = currentRenderer
+            guard let renderer = currentRenderer else { return }
             nextJobID += 1
             let id = nextJobID, render = renderTile
             guard let task = renderWork.start(priority: nil, operation: { [weak self] in
@@ -259,7 +287,7 @@ final class MapModel {
         case .success(let tile?):
             // Job identity guards source replacement and file-change notifications. The typed
             // key independently guards every drawing input before pixels or disk work publish.
-            if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer.accepts(tile.key) {
+            if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer?.accepts(tile.key) == true {
                 store(tile, for: region)
                 if let operation = tile.cacheWrite, operation.key == tile.key.surface {
                     let write = writeCache
@@ -298,6 +326,7 @@ final class MapModel {
 
     /// Redraws regions whose files the game saved, and shows regions it just created.
     func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
+        guard !isClosed, let currentRenderer else { return }
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
         let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
@@ -480,7 +509,8 @@ final class MapModel {
               let region = viewport.visibleRegions(in: lastView.size, among: detailRegionsWanted).first(where: {
                   detailSurfaces[$0] == nil && !detailLoadsAttempted.contains($0)
               }) else { return }
-        let id = UUID(), reader = readDetail, renderer = currentRenderer, work = work, cacheWork = cacheWork
+        guard let renderer = currentRenderer else { return }
+        let id = UUID(), reader = readDetail, work = work, cacheWork = cacheWork
         guard let task = detailWork.start(priority: nil, operation: { [weak self] in
             // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
             // writes before loading, so zooming cannot cause a redundant world read.
@@ -520,7 +550,7 @@ final class MapModel {
     }
 
     private func startDetail() {
-        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork else { return }
+        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork, let currentRenderer else { return }
         let chunk = detailQueue.removeFirst()
         guard let surface = detailSurfaces[chunk.region], surface.key == tiles[chunk.region]?.key.surface else { return }
         let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
@@ -531,7 +561,7 @@ final class MapModel {
             catch { image = nil }
             guard let self, self.detailJob?.id == id, !self.isClosed else { return }
             self.detailJob = nil
-            if !Task.isCancelled, self.currentRenderer.accepts(key), self.tiles[chunk.region]?.key.surface == key.surface {
+            if !Task.isCancelled, self.currentRenderer?.accepts(key) == true, self.tiles[chunk.region]?.key.surface == key.surface {
                 self.detailImages[chunk] = image.map { CachedMapImage(key: key, picture: $0) }
                 self.detailAttempted.insert(chunk)
                 self.trimDetailCache()
@@ -596,7 +626,8 @@ final class MapModel {
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
         let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
-        let renderer = currentRenderer, cached = readoutRegion, read = readTopBlocksFor
+        guard let renderer = currentRenderer else { completion(nil); return }
+        let cached = readoutRegion, read = readTopBlocksFor
         coordinateWork.start(priority: nil) { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self else { return }
@@ -622,8 +653,8 @@ final class MapModel {
         return chunks
     }
 
-    private var readoutRenderer: RegionTileRenderer {
-        var renderer = currentRenderer
+    private var readoutRenderer: RegionTileRenderer? {
+        guard var renderer = currentRenderer else { return nil }
         // Height style skips artwork when drawing, but selected-game definition evidence
         // still belongs in block information. This renderer is used only for readouts.
         renderer.gameData = gameData
@@ -662,7 +693,8 @@ final class MapModel {
 
     private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        let renderer = readoutRenderer, cached = readoutRegion, read = readTopBlocksFor
+        guard let renderer = readoutRenderer else { return }
+        let cached = readoutRegion, read = readTopBlocksFor
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }
@@ -745,9 +777,9 @@ final class MapModel {
 
     private func adoptDefinitions() {
         let definitions = readDefinitions(), context = definitions.context, scale = definitions.heightScale
-        guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
-        renderer.surfaceContext = context
-        renderer.heightScale = scale
+        guard !isClosed, context != renderer?.surfaceContext || scale != heightScale else { return }
+        renderer?.surfaceContext = context
+        renderer?.heightScale = scale
         heightScale = scale
         surfaceChanged()
     }

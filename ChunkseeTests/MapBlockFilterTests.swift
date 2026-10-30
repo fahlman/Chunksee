@@ -221,8 +221,9 @@ import Testing
         let restoredNether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         #expect(restored.map?.blockFilter == hiddenLeaves && restoredNether.map?.blockFilter == other)
         first.map?.setBlockFilter(hiddenLeaves.enabled(false))
-        restored.restoreView(from: first)
-        #expect(restored.map?.blockFilter == hiddenLeaves.enabled(false) && second.map?.blockFilter == other)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
+        #expect(first.map?.blockFilter == hiddenLeaves.enabled(false) && restored.map?.blockFilter == hiddenLeaves)
+        #expect(second.map?.blockFilter == other)
         [first, second, restored, restoredNether].forEach { $0.close() }
         resources.close()
         await resources.waitUntilClosed()
@@ -243,7 +244,7 @@ import Testing
         var content = MapContent()
         content.blockFilter = filter
         for appearance in [ColorScheme.light, .dark] {
-            let actual = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+            let actual = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try #require(map.currentRenderer)),
                 content: content, portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),
                 progress: { _, _ in })
             let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,

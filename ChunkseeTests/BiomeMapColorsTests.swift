@@ -317,8 +317,8 @@ import Testing
         await gate.finish("initial", with: snapshot)
         await resources.waitForRefresh()
         #expect(await gate.requested == ["initial"])
-        #expect(first.map?.currentRenderer.biomeColors?.sourceKey == snapshot.sourceKey)
-        #expect(second.map?.currentRenderer.biomeColors?.sourceKey == snapshot.sourceKey)
+        #expect((try #require(first.map?.currentRenderer)).biomeColors?.sourceKey == snapshot.sourceKey)
+        #expect((try #require(second.map?.currentRenderer)).biomeColors?.sourceKey == snapshot.sourceKey)
         resources.refreshDelay = .zero
         resources.readBiomeColors = { _, _, _, _, _ in await gate.read("late") }
         resources.worldChanged([url.appendingPathComponent("datapacks")])
@@ -328,7 +328,7 @@ import Testing
         await gate.finish("late", with: snapshot)
         await resources.waitUntilClosed()
         #expect(first.isClosed && second.isClosed && resources.isClosed)
-        #expect(first.map?.currentRenderer.biomeColors == nil && second.map?.currentRenderer.gameArtwork == nil)
+        #expect((try #require(first.map?.currentRenderer)).biomeColors == nil && (try #require(second.map?.currentRenderer)).gameArtwork == nil)
         await library.close()
     }
 
@@ -347,7 +347,7 @@ import Testing
 
         await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
-        let original = try #require(session.map?.currentRenderer.biomeColors)
+        let original = try #require((try #require(session.map?.currentRenderer)).biomeColors)
         let gate = AsyncReadGate<Void>(), numbers = ReadNumbers(), requests = ColorRequests()
         let delivered = AsyncReadGate<Void>()
         await delivered.releaseAllAndFuture(with: ())
@@ -384,12 +384,12 @@ import Testing
             try #require(entered == ["0"])
             await gate.finish("0", with: ())
             await gate.waitForRequest("1")
-            #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
+            #expect((try #require(session.map?.currentRenderer)).biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == 0x0000ff)
             let readRequests = await requests.values
             try #require(readRequests == [true, true])
             await gate.finish("1", with: ())
             await resources.waitForRefresh()
-            let updated = session.map?.currentRenderer.biomeColors
+            let updated = (try #require(session.map?.currentRenderer)).biomeColors
             #expect(updated?.sourceKey != original.sourceKey)
             #expect(updated?.biome("test:a").color(.grass, x: 0, z: 0) == 0x800080)
             #expect(await gate.requested == ["0", "1"])
@@ -436,7 +436,7 @@ import Testing
             try FileManager.default.removeItem(at: file)
             resources.worldChanged([file]); await resources.waitForRefresh()
             #expect(resources.biomeColors != nil && resources.biomeColors?.sourceKey != updated.sourceKey)
-            #expect(session.map?.currentRenderer.biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == nil)
+            #expect((try #require(session.map?.currentRenderer)).biomeColors?.biome("test:a").color(.grass, x: 0, z: 0) == nil)
             #expect(await requests.values == [true, true, false, true])
         } catch {
             failure = error
@@ -703,18 +703,18 @@ import Testing
         resources.refreshDelay = .zero
         await assetReads.publish(game, to: resources)
         await resources.waitForRefresh()
-        let original = try #require(session.map?.currentRenderer.biomeColors)
+        let original = try #require((try #require(session.map?.currentRenderer)).biomeColors)
         let file = url.appendingPathComponent("data/minecraft/world_gen_settings.dat")
         try Fixtures.writeGzippedNBT(.compound(["data": .compound(["seed": .long(1)])]), to: file)
         resources.worldChanged([file])
         await resources.waitForRefresh()
-        let changed = try #require(session.map?.currentRenderer.biomeColors)
+        let changed = try #require((try #require(session.map?.currentRenderer)).biomeColors)
         #expect(original.seed == 0 && changed.seed == 1 && original.sourceKey != changed.sourceKey)
         #expect(try !original.matchesMetadata(World(contentsOf: url), source: .init(data: library.data, artwork: library)))
         #expect(try changed.matchesMetadata(World(contentsOf: url), source: .init(data: library.data, artwork: library)))
         try Data([0]).write(to: file) // A transient unreadable source must retain the last good snapshot.
         resources.worldChanged([file]); await resources.waitForRefresh()
-        #expect(session.map?.currentRenderer.biomeColors?.sourceKey == changed.sourceKey)
+        #expect((try #require(session.map?.currentRenderer)).biomeColors?.sourceKey == changed.sourceKey)
         resources.close(); await resources.waitUntilClosed(); await library.close()
     }
 
@@ -952,7 +952,7 @@ import Testing
             await map.waitForRenders()
             let expected: [UInt8] = blends ? [153, 0, 102, 255] : [255, 0, 0, 255]
             #expect(try shownColor() == expected)
-            let renderer = map.currentRenderer
+            let renderer = (try #require(map.currentRenderer))
             let hit = try #require(try await renderer.tile(for: region))
             #expect(hit.cacheWrite == nil && hit.detail == nil)
             let surface = try #require(try await renderer.detail(for: region)).surface
@@ -986,7 +986,7 @@ import Testing
             return try #require(decoded.dataProvider?.data as Data?)
         }
         for appearance in [ColorScheme.light, .dark] {
-            let area = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+            let area = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try #require(map.currentRenderer)),
                 content: MapContent(), portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),
                 progress: { _, _ in })
             let view = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: plan.size,

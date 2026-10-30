@@ -18,7 +18,7 @@ struct PlayerRecordsWorkTests {
         init(names: PlayerNames? = nil) throws {
             root = try TestWorld.make(chunks: [])
             let input = input
-            store = PlayerRecordStore(world: try World(contentsOf: root), work: work,
+            store = PlayerRecordStore(world: WorldReadSource(try World(contentsOf: root)), work: work,
                 names: names ?? PlayerNames(defaults: TestDefaults.make()), gameSource: { input.value })
         }
         func close() { store.close(); work.close() }

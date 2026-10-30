@@ -52,7 +52,7 @@ import Testing
         await resources.waitUntilClosed()
     }
 
-    @Test func restoringAnotherDimensionKeepsTheTargetDocumentIdentity() async throws {
+    @Test func rereadingSharedWorldInputsKeepsEachDocumentIdentity() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -63,11 +63,13 @@ import Testing
         source.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         let target = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         let map = try #require(target.map), original = map.viewport
-        target.restoreView(from: source)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
         #expect(target.selectedDimensionID == "minecraft:the_nether")
         #expect(target.map === map && target.map?.viewport == original)
         #expect(!target.navigation.canGoBack && !target.navigation.canGoForward)
         #expect(target.annotations.ruler.start == nil && target.annotations.ruler.end == nil)
+        #expect(source.navigation.canGoBack && source.annotations.ruler.distance == 5)
+        #expect(source.map?.viewport.center == CGPoint(x: 500.5, y: 600.5))
         resources.close()
         await resources.waitUntilClosed()
     }

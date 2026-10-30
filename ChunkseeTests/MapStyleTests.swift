@@ -149,14 +149,14 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("normal")
-        let previousRenderer = map.currentRenderer
+        let previousRenderer = (try #require(map.currentRenderer))
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setStyle(.height)
         await render.waitForCancellation("normal")
         await render.waitForRequest("height")
         let heightImage = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("height", with: try map.currentRenderer.fixtureTile(heightImage, for: .init(x: 0, z: 0)))
+        await render.finish("height", with: try (try #require(map.currentRenderer)).fixtureTile(heightImage, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let normalImage = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
         await render.finish("normal", with: try previousRenderer.fixtureTile(normalImage, for: .init(x: 0, z: 0)))
@@ -182,7 +182,7 @@ import Testing
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         first.map?.setStyle(.height)
         first.map?.setBiomeBlending(true)
-        #expect(first.map?.currentRenderer.samplesNeighborBiomes == false)
+        #expect((try #require(first.map?.currentRenderer)).samplesNeighborBiomes == false)
         second.map?.setStyle(.waterDepth)
         first.saveView()
         second.saveView()
@@ -190,8 +190,8 @@ import Testing
         let restoredNether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         #expect(restored.map?.style == .height && restoredNether.map?.style == .waterDepth)
         first.map?.setStyle(.waterDepth)
-        restored.restoreView(from: first)
-        #expect(restored.map?.style == .waterDepth)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
+        #expect(restored.map?.style == .height && first.map?.style == .waterDepth)
         #expect(second.map?.style == .waterDepth)
         // An unreadable saved build range cannot enable a guessed height scale.
         let dimension = try #require(resources.world.dimension("overworld"))
@@ -241,7 +241,7 @@ import Testing
             names.forgetMinecraftFolder()
             await first.resources.waitForRefresh()
             #expect(map.heightScale == nil && map.style == .normal)
-            #expect(map.currentRenderer.style == .normal && MapContent(session: first).mapStyle == .normal)
+            #expect((try #require(map.currentRenderer)).style == .normal && MapContent(session: first).mapStyle == .normal)
             first.saveView()
             #expect(first.resources.settings.style(for: id) == .height)
             first.close()
@@ -253,28 +253,25 @@ import Testing
             reopened.saveView()
             #expect(reopened.resources.settings.style(for: id) == .height)
 
-            // The document reread/move path copies the choice while both maps show Normal.
-            let reread = try await open(), rereadMap = try #require(reread.map)
-            rereadMap.setStyle(.waterDepth)
-            reread.restoreView(from: reopened)
-            reread.saveView()
-            #expect(reread.resources.settings.style(for: id) == .height)
+            // Rereading the source keeps the unavailable choice in the same window.
+            try await reopened.resources.replaceSource(from: WorldSnapshot.read(root))
+            #expect(reopened.map === restored && restored.style == .normal)
+            reopened.saveView()
+            #expect(reopened.resources.settings.style(for: id) == .height)
             await names.chooseMinecraftFolder(game.root)
-            for session in [reopened, reread] { await session.resources.waitForRefresh() }
-            for current in [restored, rereadMap] {
-                #expect(current.heightScale == scale && current.style == .height)
-                #expect(current.currentRenderer.style == .height)
-            }
+            await reopened.resources.waitForRefresh()
+            #expect(restored.heightScale == scale && restored.style == .height)
+            #expect((try #require(restored.currentRenderer)).style == .height)
             #expect(MapContent(session: reopened).mapStyle == .height)
             let region = RegionPosition(x: 0, z: 0)
-            let pixels = try #require(try await restored.currentRenderer.pixels(for: region))
+            let pixels = try #require(try await (try #require(restored.currentRenderer)).pixels(for: region))
             let expected = MapStylePalette.heightColor(y: 40, scale: scale)
             #expect(pixel(pixels, x: 4) == [expected.red, expected.green, expected.blue, 255])
 
             for artwork in [false, true] {
                 names.minecraft.usesGameArtwork = artwork
                 await reopened.resources.waitForRefresh()
-                #expect(restored.style == .height && restored.currentRenderer.style == .height)
+                #expect(restored.style == .height && (try #require(restored.currentRenderer)).style == .height)
             }
             await names.chooseMinecraftFolder(game.root)
             await reopened.resources.waitForRefresh()
@@ -312,7 +309,7 @@ import Testing
         #expect(map.chosenStyle == choice && map.style == choice)
         definitions.value = .init(settings: settings, water: nil)
         #expect(map.chosenStyle == choice && map.style == choice)
-        #expect(map.currentRenderer.style == choice)
+        #expect((try #require(map.currentRenderer)).style == choice)
     }
 
     @Test func bothRampsCarryTheirOrderInLightnessAsWellAsHue() {

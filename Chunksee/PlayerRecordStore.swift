@@ -6,6 +6,7 @@ import Observation
 final class PlayerRecordStore {
     nonisolated fileprivate struct Source: Equatable, Sendable {
         let game: WorldGameDataSource?
+        let world: WorldReadSource
         let name: String?
         var isReady: Bool { game?.selection.isLoaded == true }
     }
@@ -19,14 +20,14 @@ final class PlayerRecordStore {
         init(_ loader: RefreshLoader<Source, RefreshInvalidation, PlayerRecords>) { self.loader = loader }
     }
 
-    private let world: World
+    private var world: WorldReadSource
     private let work: BackgroundWork
     private let names: PlayerNames
     private let gameSource: @MainActor () -> WorldGameDataSource?
     private var entries: [UUID: Entry] = [:]
     private var isClosed = false
 
-    init(world: World, work: BackgroundWork, names: PlayerNames,
+    init(world: WorldReadSource, work: BackgroundWork, names: PlayerNames,
          gameSource: @escaping @MainActor () -> WorldGameDataSource?) {
         self.world = world
         self.work = work
@@ -41,16 +42,16 @@ final class PlayerRecordStore {
         if let existing = entries[uuid] {
             entry = existing
         } else {
-            let loader = RefreshLoader<Source, RefreshInvalidation, PlayerRecords>(partialRead: { [weak self, world] source, _, previous in
+            let loader = RefreshLoader<Source, RefreshInvalidation, PlayerRecords>(partialRead: { [weak self] source, _, previous in
                 guard case .loaded(let library) = source.game?.selection, let read = await self?.read else {
                     throw CancellationError()
                 }
-                return try await read(world, uuid, source.name, library, previous)
+                return try await read(source.world.world, uuid, source.name, library, previous)
             }, work: work, priority: .utility, whenInactive: .cancel, source: source(for: uuid),
                 firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, old, new in
                     // Game replacement changes title definitions, not this player's saved progress.
                     // A legacy-name replacement can also change which statistics file is read.
-                    guard new.game != nil else { return nil }
+                    guard new.game != nil, old.world == new.world else { return nil }
                     var retained = previous
                     if let name = previous.statisticsName, name != new.name {
                         retained.statistics = nil
@@ -67,6 +68,12 @@ final class PlayerRecordStore {
         return Handle(uuid: uuid, entry: entry, owner: self)
     }
 
+    func replaceWorld(_ world: WorldReadSource) {
+        guard !isClosed else { return }
+        self.world = world
+        refresh()
+    }
+
     /// Save notifications are demand, not evidence that any displayed title has changed.
     func refresh() {
         guard !isClosed else { return }
@@ -74,7 +81,7 @@ final class PlayerRecordStore {
     }
 
     private func source(for uuid: UUID) -> Source {
-        Source(game: gameSource(), name: names.name(for: uuid))
+        Source(game: gameSource(), world: world, name: names.name(for: uuid))
     }
 
     private func update(_ entry: Entry, uuid: UUID, reread: Bool) {

@@ -173,15 +173,31 @@ final class WorldIndexStore {
     /// Definitions are part of the readers' immutable cache identity. Retire a previous pass
     /// immediately; ordinary region saves still use the queued-pass behavior above.
     func replace(readers: [RegionReader], firstDimension: String?) {
+        replace(readers: readers, firstDimension: firstDimension, retaining: SearchIndex(), projection: SearchIndex())
+    }
+
+    /// A reread or move keeps this world's compatible completed facts while new readers check
+    /// its files. Publishing an empty intermediate index would falsely remove selected items.
+    func replaceWorldSource(readers: [RegionReader], firstDimension: String?) {
+        let previous = Dictionary(uniqueKeysWithValues: self.readers.map { ($0.dimension.id, $0.inputs) })
+        let compatible = Set(readers.filter { previous[$0.dimension.id] == $0.inputs }.map { $0.dimension.id })
+        var retained = regionIndex, projected = index
+        retained.dimensions = retained.dimensions.filter { compatible.contains($0.key) }
+        projected.dimensions = projected.dimensions.filter { compatible.contains($0.key) }
+        replace(readers: readers, firstDimension: firstDimension, retaining: retained, projection: projected)
+    }
+
+    private func replace(readers: [RegionReader], firstDimension: String?,
+                         retaining retained: SearchIndex, projection: SearchIndex) {
         guard !isClosed else { return }
         readerGeneration += 1
         indexTask?.cancel()
         indexTask = nil
         queuedPass = nil
         self.readers = readers
-        regionIndex = SearchIndex()
-        index = SearchIndex()
-        portals = [:]
+        regionIndex = retained
+        index = projection
+        portals = retained.dimensions.mapValues { $0.places.compactMap(\.portal) }
         sourceRevision += 1
         projectionTask?.cancel()
         projectionTask = nil

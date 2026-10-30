@@ -35,6 +35,16 @@ final class BackgroundWork {
         for entry in tasks.values { entry.task.cancel() }
     }
 
+    /// A source's access must outlive its accepted work, but must not wait for the next source.
+    /// Capture before replacing inputs; register the drain before observers can close the world.
+    func afterCurrentWork(_ completion: @escaping @MainActor () -> Void) {
+        let retiring = tasks.values.map(\.task)
+        start(priority: .utility) {
+            for task in retiring { await task.value }
+            completion()
+        }
+    }
+
     /// Recheck after each suspension: a running operation may have scheduled more work.
     func waitUntilFinished() async {
         while let task = tasks.values.first?.task { await task.value }
