@@ -75,8 +75,13 @@ nonisolated struct GameNames: Sendable {
 
     func effect(_ effect: StatusEffect, locale: Locale = .current) -> String {
         let base = name(effect.id, in: "effect")
-        guard effect.level > 1 else { return base }
-        return String(localized: "\(base) \(LevelText.numeral(effect.level))", locale: locale)
+        // EffectsInInventory.getEffectName shows a suffix only for amplifiers one through nine.
+        guard (1...9).contains(effect.amplifier) else { return base }
+        return String(localized: "\(base) \(levelName(effect.level))", locale: locale)
+    }
+
+    private func levelName(_ level: Int) -> String {
+        name(key: "enchantment.level.\(level)", fallback: LevelText.numeral(level))
     }
 
     func merchantLevel(_ level: Int?) -> String? {
@@ -201,8 +206,7 @@ nonisolated struct GameNames: Sendable {
         // Minecraft's full name uses the actual description and hides I only when both levels
         // are one. A missing definition cannot establish that the enchantment has one level.
         if level == 1, enchantments.definitions[id]?.maximumLevel == 1 { return base }
-        let level = name(key: "enchantment.level.\(level)", fallback: LevelText.numeral(level))
-        return String(localized: "\(base) \(level)", locale: locale)
+        return String(localized: "\(base) \(levelName(level))", locale: locale)
     }
 
     func tradeDescription(_ item: ItemStack, locale: Locale = .current) -> String {

@@ -1164,7 +1164,12 @@ Each activation requests SwiftUI ancestor expansion and scrolling, including a r
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
 not a live countdown. Effect views get their names from the world’s GameNames snapshot;
-there is no effect-name exception list. Effects and enchantments share level numeral presentation.
+there is no effect-name exception list. GameNames gives effects and enchantments one level-text
+owner using the game's `enchantment.level.N` keys, with LevelText only for an unavailable key.
+Effect names follow EffectsInInventory.getEffectName's suffix range: amplifiers one through nine
+(levels two through ten). Higher saved amplifiers remain in Kit's facts; their names omit the suffix
+as Minecraft does. The inspected method is retained in
+Chunksee-runs/item-name-owner-evidence/effect-level-source-1/EffectsInInventory.javap.
 Visible effect rows and their accessibility representation use the same resolved name.
 Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
