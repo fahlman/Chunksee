@@ -7,6 +7,115 @@ import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func activityObserversCanReplaceOrCloseWithoutRevivingRetiredWork(close: Bool) async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "old") { source, _ in
+            await gate.read(source)
+        }
+        loader.request(source: "old", isEnabled: true, reread: true)
+        await gate.waitForRequest("old")
+        withObservationTracking(options: [.didSet]) { _ = loader.isReading } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                if close { loader.close() }
+                else { loader.request(source: "current", isEnabled: true, reread: true) }
+            }
+        }
+        loader.request(source: "intermediate", isEnabled: true, reread: true)
+        if !close {
+            await gate.waitForRequest("current")
+            await gate.finish("current", with: 2)
+            await loader.waitForCurrentRead()
+        }
+        await gate.releaseAllAndFuture(with: 99)
+        await loader.waitUntilFinished()
+        #expect(loader.value == (close ? nil : 2))
+        #expect(await gate.requested == (close ? ["old"] : ["old", "current"]))
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func incrementalProgressStaysVisibleAndLaterDemandCoalescesAfterThePass() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
+        let requests = Mutex<[(Set<Int>, Int?)]>([])
+        let loader = RefreshLoader<String, Set<Int>, Int>(progressRead: { _, request, previous, publish in
+            requests.withLock { $0.append((request, previous)) }
+            let number = String(await numbers.next())
+            let progress = await gate.read(number + ".progress")
+            guard await publish(progress) else { throw CancellationError() }
+            return .complete(await gate.read(number + ".finish"))
+        }, work: work, priority: .utility, whenInactive: .finish, source: "world", initialValue: 0,
+            firstRequest: [1], merge: { $0.union($1) })
+        loader.request(source: "world", isEnabled: true, refresh: [1])
+        await gate.waitForRequest("0.progress")
+        loader.request(source: "world", isEnabled: true, refresh: [2])
+        loader.request(source: "world", isEnabled: true, refresh: [3])
+        await gate.finish("0.progress", with: 1)
+        await gate.waitForRequest("0.finish")
+        #expect(loader.value == 1 && loader.isReading && loader.valueAtReadStart == 0)
+        #expect(requests.withLock { $0.count } == 1)
+        await gate.finish("0.finish", with: 10)
+        await gate.waitForRequest("1.progress")
+        #expect(loader.value == 10 && loader.valueAtReadStart == 10)
+        #expect(requests.withLock { $0.map(\.0) } == [[1], [2, 3]])
+        #expect(requests.withLock { $0.map(\.1) } == [0, 10])
+        await gate.finish("1.progress", with: 11)
+        await gate.waitForRequest("1.finish")
+        #expect(loader.value == 11)
+        await gate.finish("1.finish", with: 20)
+        await loader.waitForCurrentRead()
+        #expect(loader.value == 20 && !loader.isReading)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func progressReplacementOrClosureRejectsTheOldFinalValue(close: Bool) async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let accepted = Mutex<Bool?>(nil)
+        let loader = RefreshLoader<String, RefreshInvalidation, Int>(progressRead: { _, _, _, publish in
+            let value = await gate.read("progress")
+            let result = await publish(value)
+            accepted.withLock { $0 = result }
+            return .complete(99) // Deliberately ignore cancellation to exercise admission of the final result too.
+        }, work: work, priority: .utility, whenInactive: .finish, source: "world", initialValue: 1,
+            firstRequest: .refresh, merge: { _, _ in .refresh })
+        loader.request(source: "world", isEnabled: true, reread: true)
+        await gate.waitForRequest("progress")
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                if close { loader.close() }
+                else { loader.replace(source: "world", value: 3) }
+            }
+        }
+        await gate.finish("progress", with: 2)
+        await loader.waitUntilFinished()
+        #expect(accepted.withLock { $0 } == false)
+        #expect(loader.value == (close ? nil : 3))
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func waitingForTheCurrentResultDoesNotJoinARetiredRead() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let oldFinished = Mutex(false)
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "old") { source, _ in
+            let value = await gate.read(source)
+            if source == "old" { oldFinished.withLock { $0 = true } }
+            return value
+        }
+        loader.request(source: "old", isEnabled: true, reread: true)
+        await gate.waitForRequest("old")
+        loader.request(source: "new", isEnabled: true, reread: true)
+        await gate.waitForCancellation("old"); await gate.waitForRequest("new")
+        await gate.finish("new", with: 2)
+        await loader.waitForCurrentRead()
+        #expect(loader.value == 2 && !oldFinished.withLock { $0 })
+        await gate.finish("old", with: 99)
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func preparedReplacementRejectsAHeldReadEvenAtTheSameSource() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>(), numbers = ReadNumbers()
         let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
