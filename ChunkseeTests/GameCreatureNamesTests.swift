@@ -136,10 +136,11 @@ import Testing
         let entities = [
             entity("minecraft:sheep", number: 1, fields: ["Color": .byte(0)]),
             entity("minecraft:sheep", number: 2, fields: ["Color": .byte(14)]),
-            entity("minecraft:wolf", number: 3, fields: ["CustomName": .string("Berry")]),
+            entity("minecraft:wolf", number: 3, fields: ["CustomName": .string("Berry"), "Owner": .intArray([10, 20, 30, 40])]),
             entity("minecraft:villager", number: 4, fields: [
                 "VillagerData": .compound(["profession": .string("minecraft:farmer"), "level": .int(1)]),
             ]),
+            entity("minecraft:cat", number: 5, fields: ["Owner": .intArray([10, 20, 30, 40])]),
         ]
         try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
         let chunk = NBT.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Position": .intArray([0, 0]), "Entities": .list(entities)])
@@ -159,20 +160,24 @@ import Testing
         await world.index.waitForIndex()
         for session in [first, second] {
             await session.search.waitForSearch()
-            session.visibility.creatures = [.named, .villager]
+            session.visibility.creatures = [.named, .pet, .villager]
             session.visibility.mobTypes = ["minecraft:sheep"]
         }
         let catalog = first.presentation.selectedIndex.mobTypes
         let farmer = try #require(catalog.specialCreatures.first { $0.creature.id == "minecraft:villager" })
+        let cat = try #require(catalog.specialCreatures.first { $0.creature.id == "minecraft:cat" })
+        let owner = try #require(cat.creature.owner)
+        let linked = first.presentation.linkedPets(to: owner)
+        #expect(linked.map { world.gameNames.creature($0.creature) } == ["Berry", "Cat"])
         first.selection.choose(.mobType("minecraft:sheep"))
         second.selection.choose(.creature(farmer.id))
         let original = first.search.results(for: "creature:")
-        #expect(original.count == 4 && Set(original.map(\.title)) == ["Sheep", "Berry", "Farmer"])
+        #expect(original.count == 5 && Set(original.map(\.title)) == ["Sheep", "Berry", "Farmer", "Cat"])
         #expect(first.search.results(for: "creature:fermier").isEmpty)
         let captured = MapContent(session: first)
         let viewport = MapViewport(center: CGPoint(x: 12, y: 4), scale: 8), size = CGSize(width: 800, height: 600)
         let oldLocations = captured.accessibleLocations(viewport: viewport, size: size)
-        #expect(Set(oldLocations.map(\.name)) == ["Sheep", "Berry", "Farmer"])
+        #expect(Set(oldLocations.map(\.name)) == ["Sheep", "Berry", "Farmer", "Cat"])
         let identity = world.gameNames.identity
         world.names.minecraft.usesGameArtwork = false
         await world.waitForRefresh()
@@ -183,16 +188,19 @@ import Testing
             await session.search.waitForSearch()
             let hits = session.search.results(for: "creature:")
             #expect(hits.map(\.id) == original.map(\.id) && hits.map(\.count) == original.map(\.count))
-            #expect(Set(hits.map(\.title)) == ["Mouton", "Berry", "Fermier"])
+            #expect(Set(hits.map(\.title)) == ["Mouton", "Berry", "Fermier", "Chat"])
             #expect(session.search.results(for: "creature:fermier").map(\.title) == ["Fermier"])
             #expect(session.visibility.mobTypes == ["minecraft:sheep"])
             #expect(session.presentation.selectedIndex.mobTypes.kind("minecraft:sheep")?.count == 2)
+            let currentLinks = session.presentation.linkedPets(to: owner)
+            #expect(currentLinks.map(\.id) == linked.map(\.id))
+            #expect(currentLinks.map { world.gameNames.creature($0.creature) } == ["Berry", "Chat"])
         }
         #expect(first.selection.sidebarSelection == .mobType("minecraft:sheep"))
         #expect(second.selection.sidebarSelection == .creature(farmer.id))
         let current = MapContent(session: first)
         let locations = current.accessibleLocations(viewport: viewport, size: size)
-        #expect(Set(locations.map(\.name)) == ["Mouton", "Berry", "Fermier"])
+        #expect(Set(locations.map(\.name)) == ["Mouton", "Berry", "Fermier", "Chat"])
         #expect(locations.map(\.id) == oldLocations.map(\.id) && locations.map(\.target) == oldLocations.map(\.target))
         #expect(locations.map(\.position) == oldLocations.map(\.position) && locations.map(\.y) == oldLocations.map(\.y))
         let scene = current.scene(viewport: viewport, size: size)
