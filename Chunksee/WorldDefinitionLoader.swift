@@ -2,12 +2,6 @@ import ChunkseeKit
 import Foundation
 import Observation
 
-/// Provenance of a definition request, also used by independently loaded advancement titles.
-/// A newer request invalidates those titles immediately; it does not cancel a same-source pass.
-nonisolated struct WorldDefinitionInput: Hashable, Sendable {
-    private let identity = UUID()
-}
-
 /// Definitions and players interpreted with them have one publication. Independent saved-version
 /// metadata can advance even when the dependent player read needs to be retried.
 @Observable
@@ -42,7 +36,6 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         var definitions: WorldDefinitions
         let borders: [String: WorldBorder]
         let players: PlayerSnapshot
-        let input: WorldDefinitionInput
         /// The game source of the completed definition/player read, retained during replacement.
         /// Prepared new dimensions may extend settings before the next complete read.
         let source: GameSource
@@ -77,7 +70,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
 
     nonisolated private enum Request: Sendable {
         case players
-        case definitions(WorldDefinitionInput)
+        case definitions
 
         func merging(_ newer: Self) -> Self {
             if case .definitions = newer { return newer }
@@ -98,7 +91,6 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
     private let reads: Reads
     private let unavailable: Value
     private let emptyPlayers = PlayerSnapshot([])
-    private(set) var requestedDefinitions: WorldDefinitionInput
     @ObservationIgnored var published: @MainActor (Value) -> Void = { _ in }
 
     var value: Value { loader.value ?? unavailable }
@@ -117,21 +109,20 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
     init(world: World, work: BackgroundWork, generation: UUID, library: GameDataLibrary?,
          dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions,
          borders: [String: WorldBorder], players: [PlayerInfo], savedVersion: SavedMinecraftVersion) {
-        let input = WorldDefinitionInput(), reads = Reads()
+        let reads = Reads()
         self.reads = reads
-        requestedDefinitions = input
         unavailable = Value(facts: nil, savedVersion: savedVersion)
         let source = Source(generation: generation, selection: .loaded(library),
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
         let initial = Value(facts: Facts(definitions: definitions, borders: borders,
-            players: PlayerSnapshot(players), input: input, source: source.gameSource), savedVersion: savedVersion)
+            players: PlayerSnapshot(players), source: source.gameSource), savedVersion: savedVersion)
         loader = RefreshLoader(partialRead: { source, request, previous in
             let readDefinitions = await reads.definitions, readPlayers = await reads.players
             try Task.checkCancellation()
             switch request {
-            case .definitions(let input):
+            case .definitions:
                 guard case .loaded(let library) = source.selection else { throw CancellationError() }
                 let updated = try await readDefinitions(world, library)
                 try Task.checkCancellation()
@@ -141,17 +132,17 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                     return .partial(Value(facts: previous?.facts, savedVersion: updated.savedVersion))
                 }
                 return .complete(Value(facts: Facts(definitions: updated.definitions, borders: updated.borders,
-                    players: PlayerSnapshot(players), input: input, source: source.gameSource), savedVersion: updated.savedVersion))
+                    players: PlayerSnapshot(players), source: source.gameSource), savedVersion: updated.savedVersion))
             case .players:
                 guard let previous, let facts = previous.facts,
                       let players = await readPlayers(world, facts.definitions.enchantments) else {
                     throw CancellationError()
                 }
                 return .complete(Value(facts: Facts(definitions: facts.definitions, borders: facts.borders,
-                    players: PlayerSnapshot(players), input: facts.input, source: facts.source), savedVersion: previous.savedVersion))
+                    players: PlayerSnapshot(players), source: facts.source), savedVersion: previous.savedVersion))
             }
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
-            firstRequest: .definitions(input), merge: { $0.merging($1) }, retainingValue: { value, previous, current in
+            firstRequest: .definitions, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
                 var retained = value
                 // An unread unknown would discard reader caches and the user's Height choice.
                 // Keep the complete facts with their original provenance until a replacement
@@ -186,13 +177,9 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
 
     private func requestDefinitions(source: Source) {
         guard !isClosed else { return }
-        let input = WorldDefinitionInput()
-        requestedDefinitions = input
-        // A synchronous title observer can request a newer source or close the world.
-        guard !isClosed, requestedDefinitions == input else { return }
-        // Source replacement invalidates titles and cancels retired reads immediately. An
-        // unread selection cannot yet say which definitions are missing from the new source.
-        loader.request(source: source, isEnabled: source.selection.isLoaded, refresh: .definitions(input))
+        // An unread selection cannot yet say which definitions are missing. Source
+        // replacement and late-publication rejection belong to the shared loader.
+        loader.request(source: source, isEnabled: source.selection.isLoaded, refresh: .definitions)
     }
 
     func refreshPlayers() {

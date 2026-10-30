@@ -49,17 +49,13 @@ import Testing
         let players = AsyncReadGate<[PlayerInfo]?>(), numbers = ReadNumbers()
         loader.readDefinitions = { _, _ in await definitions.read("definitions") }
         loader.readPlayers = { _, _ in await players.read(String(await numbers.next())) }
-        let initialInput = loader.requestedDefinitions
         loader.refreshPlayers()
         await players.waitForRequest("0")
         loader.refreshPlayers()
         loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
-        let superseded = loader.requestedDefinitions
         loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
-        let newest = loader.requestedDefinitions
         loader.refreshPlayers()
-        #expect(initialInput != superseded && superseded != newest)
-        #expect(loader.requestedDefinitions == newest && loader.value.facts?.input == initialInput)
+        #expect(loader.value.facts?.definitions == fixture.initial.definitions)
         await players.finish("0", with: [player(10)])
         await definitions.waitForRequest("definitions")
         #expect(loader.snapshot.players.first?.position?.x == 10)
@@ -75,14 +71,13 @@ import Testing
         await players.finish("1", with: [player(20)])
         await loader.work.waitUntilFinished()
         #expect(loader.snapshot.players.first?.position?.x == 20)
-        #expect(loader.value.facts?.definitions == updated && loader.value.facts?.input == newest)
+        #expect(loader.value.facts?.definitions == updated)
         #expect(await definitions.requested == ["definitions"])
         #expect(await players.requested == ["0", "1"])
         loader.refreshPlayers()
         await players.waitForRequest("2"); await players.finish("2", with: [])
         await loader.work.waitUntilFinished()
         #expect(loader.snapshot.players.isEmpty && loader.value.facts?.definitions == updated)
-        #expect(loader.requestedDefinitions == newest && loader.value.facts?.input == newest)
         #expect(await definitions.requested == ["definitions"])
         fixture.close(); await fixture.work.waitUntilFinished()
     }
@@ -103,17 +98,15 @@ import Testing
         let players = AsyncReadGate<[PlayerInfo]?>()
         loader.readDefinitions = { _, _ in try await definitions.read("definitions").get() }
         loader.readPlayers = { _, _ in await players.read("players") }
-        let original = loader.snapshot, input = loader.requestedDefinitions
+        let original = loader.snapshot
         let initialSource = loader.value.facts?.source, generation = UUID()
         loader.refreshDefinitions(generation: generation, selection: .loaded(nil))
-        let requested = loader.requestedDefinitions
         await definitions.waitForRequest("definitions")
         await definitions.finish("definitions", with: .success(update))
         await players.waitForRequest("players"); await players.finish("players", with: nil)
         await loader.work.waitUntilFinished()
         #expect(loader.value.savedVersion == newerVersion)
         #expect(loader.snapshot === original && loader.value.facts?.definitions == fixture.initial.definitions)
-        #expect(loader.value.facts?.input == input && loader.requestedDefinitions == requested)
         #expect(loader.value.facts?.source == initialSource)
         #expect(await definitions.requested.count == 1)
         #expect(await players.requested.count == 1)
@@ -132,7 +125,7 @@ import Testing
         await players.finish("players", with: [player(30)])
         await loader.work.waitUntilFinished()
         #expect(loader.snapshot.players.first?.position?.x == 30)
-        #expect(loader.value.facts?.definitions == changed && loader.value.facts?.input == requested)
+        #expect(loader.value.facts?.definitions == changed)
         #expect(loader.value.savedVersion == newerVersion)
         #expect(loader.value.facts?.source.generation == generation)
         fixture.close(); await fixture.work.waitUntilFinished()
@@ -153,10 +146,10 @@ import Testing
         #expect(loader.value.savedVersion == fixture.initial.savedVersion)
         await gate.waitForCancellation("0"); await gate.waitForRequest("1")
         loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
-        let currentInput = loader.requestedDefinitions
+        let beforeAcceptance = loader.snapshot
         await gate.waitForCancellation("1"); await gate.waitForRequest("2")
         await gate.finish("2", with: fixture.initial)
-        for await value in Observations({ loader.value.facts?.input }) where value == currentInput { break }
+        for await value in Observations({ loader.snapshot }) where value !== beforeAcceptance { break }
         let accepted = loader.snapshot
         var stale = fixture.initial.definitions
         stale.possibleBiomes = ["minecraft:overworld": ["example:retired"]]
@@ -233,10 +226,8 @@ import Testing
         let original = loader.snapshot, initial = loader.value.facts
         loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
         await definitions.waitForRequest("definitions")
-        let oldInput = loader.requestedDefinitions
         let generation = replacingGeneration ? UUID() : fixture.generation
         loader.refreshDefinitions(generation: generation, selection: .loading)
-        #expect(loader.requestedDefinitions != oldInput)
         await definitions.waitForCancellation("definitions")
         loader.refreshPlayers()
         var retired = fixture.initial.definitions
@@ -246,10 +237,9 @@ import Testing
         await loader.work.waitUntilFinished()
         #expect(await definitions.requested == ["definitions"])
         #expect(loader.snapshot === original && loader.value.facts?.definitions == initial?.definitions)
-        #expect(loader.value.facts?.source == initial?.source && loader.value.facts?.input == initial?.input)
+        #expect(loader.value.facts?.source == initial?.source)
 
         loader.refreshDefinitions(generation: generation, selection: .loaded(nil))
-        let completedInput = loader.requestedDefinitions
         await definitions.waitForRequest("definitions", count: 2)
         await definitions.finish("definitions", with: .init(definitions: WorldDefinitions(), borders: [:],
                                                               savedVersion: fixture.initial.savedVersion))
@@ -257,38 +247,7 @@ import Testing
         #expect(await definitions.requested == ["definitions", "definitions"])
         #expect(loader.value.facts?.definitions == WorldDefinitions())
         #expect(loader.value.facts?.source == WorldDefinitionLoader.GameSource(generation: generation, libraryID: nil))
-        #expect(loader.value.facts?.input == completedInput && loader.snapshot !== original)
-        fixture.close(); await fixture.work.waitUntilFinished()
-    }
-
-    @Test(arguments: [false, true])
-    func requestTimeObserversMayReplaceTheSourceOrCloseBeforeAReadStarts(close: Bool) async throws {
-        let fixture = try Fixture(), loader = fixture.loader
-        defer { fixture.close(); fixture.remove() }
-        let gate = AsyncReadGate<WorldResources.DefinitionSnapshot>()
-        loader.readDefinitions = { _, _ in await gate.read("accepted") }
-        loader.readPlayers = { _, _ in [] }
-        withObservationTracking(options: [.didSet]) { _ = loader.requestedDefinitions } onChange: { event in
-            // This observer makes exactly one replacement. Stop observing before mutating
-            // the same property, including during synchronous nested delivery.
-            event.cancel()
-            MainActor.assumeIsolated {
-                if close { loader.close() }
-                else { loader.refreshDefinitions(generation: UUID(), selection: .loaded(nil)) }
-            }
-        }
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
-        let input = loader.requestedDefinitions
-        if close {
-            await loader.work.waitUntilFinished()
-            #expect(loader.isClosed && loader.value.facts == nil)
-            #expect(await gate.requested.isEmpty)
-        } else {
-            await gate.waitForRequest("accepted"); await gate.finish("accepted", with: fixture.initial)
-            await loader.work.waitUntilFinished()
-            #expect(loader.value.facts?.input == input)
-            #expect(await gate.requested == ["accepted"])
-        }
+        #expect(loader.snapshot !== original)
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 

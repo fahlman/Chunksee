@@ -4,31 +4,44 @@ import Observation
 import SwiftUI
 
 /// A player's statistics and advancements, read from their JSON files.
-nonisolated struct PlayerRecords: Sendable {
+nonisolated struct PlayerRecords: Equatable, Sendable {
     var statistics: PlayerStatistics?
     var advancements: [AdvancementProgress] = []
     var advancementDefinitions: [String: AdvancementDefinition] = [:]
-    var definitionInput: WorldDefinitionInput?
 
     /// Reads both files off the main actor. Statistics from before 1.7.6 are stored under the
     /// player's name, so `name` is tried when there's no file for the UUID.
     @concurrent
-    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary?) async -> PlayerRecords {
-        var records = PlayerRecords()
-        guard !Task.isCancelled else { return records }
-        records.statistics = (try? world.statistics(for: uuid)) ?? name.flatMap { try? world.statistics(forName: $0) }
-        guard !Task.isCancelled else { return records }
-        records.advancements = ((try? world.advancements(for: uuid)) ?? nil) ?? []
-        // Only displayed titles need definitions. Progress/counts remain independent
-        // of missing game files, malformed titles or unavailable live game context.
+    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary?,
+                     previous: PlayerRecords? = nil) async throws -> RefreshRead<PlayerRecords> {
+        var records = previous ?? PlayerRecords(), complete = true
+        try Task.checkCancellation()
+        do {
+            records.statistics = try world.statistics(for: uuid)
+                ?? name.flatMap { try world.statistics(forName: $0) }
+        } catch { complete = false }
+        try Task.checkCancellation()
+        do { records.advancements = try world.advancements(for: uuid) ?? [] }
+        catch { complete = false }
+        try Task.checkCancellation()
+        // Titles belong to this completed progress snapshot. A failed read retains the prior
+        // content; a successful empty definition set removes titles that no longer exist.
         let identifiers = Set(records.displayedAdvancements.map(\.id))
-        guard !Task.isCancelled, !identifiers.isEmpty, let current = try? World(contentsOf: world.url) else { return records }
-        if let library {
-            records.advancementDefinitions = (try? await library.advancementDefinitions(in: current, for: identifiers)) ?? [:]
+        records.advancementDefinitions = records.advancementDefinitions.filter { identifiers.contains($0.key) }
+        if identifiers.isEmpty {
+            records.advancementDefinitions = [:]
         } else {
-            records.advancementDefinitions = (try? current.advancementDefinitions(for: identifiers, assets: nil)) ?? [:]
+            do {
+                let current = try World(contentsOf: world.url)
+                if let library {
+                    records.advancementDefinitions = try await library.advancementDefinitions(in: current, for: identifiers)
+                } else {
+                    records.advancementDefinitions = try current.advancementDefinitions(for: identifiers, assets: nil)
+                }
+            } catch { complete = false }
         }
-        return records
+        try Task.checkCancellation()
+        return complete ? .complete(records) : .partial(records)
     }
 
     /// Completed advancements, newest first; recipe unlocks aren't advancements in the game.
@@ -74,8 +87,8 @@ nonisolated struct PlayerRecords: Sendable {
         gameNames.advancement(id, title: title)
     }
 
-    func title(for id: String, input: WorldDefinitionInput) -> TextComponent.Content? {
-        guard definitionInput == input, let identifier = Identifier(id) else { return nil }
+    func title(for id: String) -> TextComponent.Content? {
+        guard let identifier = Identifier(id) else { return nil }
         return advancementDefinitions[identifier.description]?.title
     }
 
@@ -88,54 +101,6 @@ nonisolated struct PlayerRecords: Sendable {
 
     private func row(id: String, value: Int, in category: String) -> StatisticRow {
         StatisticRow(categoryID: category, statisticID: id, value: value, unit: statistics?.unit(of: id, in: category))
-    }
-}
-
-/// The inspector's current read. A result must still belong to the selected player and request.
-@Observable
-final class PlayerRecordsModel {
-    private(set) var uuid: UUID?
-    private(set) var records: PlayerRecords?
-    @ObservationIgnored private var generation = UUID()
-    private let work: BackgroundWork.Scope
-    private let read: @Sendable (UUID, String?) async -> PlayerRecords?
-
-    init(work: BackgroundWork, read: @escaping @Sendable (UUID, String?) async -> PlayerRecords?) {
-        self.work = work.makeScope()
-        self.read = read
-    }
-
-    func load(_ uuid: UUID, name: String?) async {
-        guard !work.isClosed, !Task.isCancelled else { return }
-        let previous = self.uuid == uuid ? records : nil
-        cancel()
-        self.uuid = uuid
-        records = previous
-        let id = generation, read = read
-        guard let task = work.start(priority: nil, operation: { [weak self] in
-            guard let records = await read(uuid, name) else { return }
-            guard !Task.isCancelled, let self, self.generation == id, self.uuid == uuid else { return }
-            self.records = records
-        }) else { return }
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: { task.cancel() }
-    }
-
-    func cancel() {
-        generation = UUID()
-        work.cancel()
-        uuid = nil
-        records = nil
-    }
-
-    func waitForReads() async {
-        await work.waitUntilFinished()
-    }
-
-    func close() {
-        cancel()
-        work.close()
     }
 }
 
@@ -206,7 +171,6 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 /// Statistics and advancements sections of the player inspector.
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
-    let definitionInput: WorldDefinitionInput
     @Environment(\.gameNames) private var gameNames
     @Binding var showsAllStatistics: Bool
 
@@ -227,7 +191,7 @@ struct PlayerRecordsSections: View {
                 Section {
                     ForEach(records.displayedAdvancements, id: \.id) { advancement in
                         LabeledContent(PlayerRecords.advancementName(advancement.id,
-                            title: records.title(for: advancement.id, input: definitionInput), gameNames: gameNames)) {
+                            title: records.title(for: advancement.id), gameNames: gameNames)) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }

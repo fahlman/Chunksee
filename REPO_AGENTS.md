@@ -465,7 +465,7 @@ the new source. This producer's compatible projection retains the completed scal
 inputs instead of publishing an unread unknown. MapModel owns the retained style choice.
 Retired in-flight results still cannot publish.
 The definition input distinguishes a game selection still loading from a completed selection
-with no library. Loading invalidates titles and cancels old reads immediately, but queues the
+with no library. Loading cancels old reads immediately, but queues the
 replacement read until discovery completes; failed discovery retains the coherent facts. A
 completed absence starts a real no-game read and removes facts the remaining world packs cannot
 supply. This preserves Height when reselecting game files without retaining an unavailable scale
@@ -529,7 +529,7 @@ older scan envelopes.
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
-| `PlayerRecords.swift` | Statistics and advancements, and inspector-scoped reads registered with the world |
+| `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
@@ -1162,12 +1162,18 @@ Kit supplies scaled units, while the app uses native elapsed time,
 metric distance and the shared heart wording. Unknown units retain their raw numbers. The inspector
 keeps its primary counts and 100-meter travel cutoff; the complete table retains every saved row.
 
-PlayerRecordsModel keeps the selected player's request identity and rejects replaced results.
-Its reads register in a BackgroundWork scope: cancellation and draining affect only that inspector,
-including older canceled reads, while world close still cancels and drains every scope. Closing
-or dropping a scope refuses future work and cancels its pending reads. A caller's cancellation
-continues to cancel only its own player-record read; selection replacement is not a coalesced
-Time Spent refresh. The model no longer keeps a second task registry or close loop.
+PlayerRecordStore owns the world's requested player records through one RefreshLoader per UUID.
+SelectionModel acquires a handle when its resolved inspector selects a player, independently of
+view tasks. Two windows can share a read or select different players; closing one handle never
+cancels a sibling's read. Releasing the last handle cancels that entry, while BackgroundWork keeps
+its retired reads until they drain. World close cancels and drains every entry before access ends.
+Same-source save requests coalesce and retain completed records. Each read keeps failed fields
+while publishing independently readable facts; successful empty files remove old facts. The
+actual advancement definition dictionary is the title content authority. Game replacement clears
+incompatible titles, and a legacy player-name change clears incompatible statistics, while saved
+progress remains readable. The loader rejects late source results, including a return to an
+old source. Region-only notifications do not reread records; other world changes conservatively
+refresh only requested players, leaving record-file discovery and older layouts in Kit.
 
 Tile-cache renderer version 7 refreshes surfaces affected by Kit 0.29's heightmap correction.
 When a packed heightmap has an ambiguous width, the renderer's existing block scan finds the
@@ -2093,12 +2099,11 @@ using enabled world packs over the selected game jar through GameDataLibrary, in
 of the artwork setting. It never guesses a translation key from
 an advancement ID. Saved progress, dates and counts remain independent of unavailable titles;
 the readable ID is their fallback. Definitions reread fresh world metadata off the main actor.
-The loader's typed definition request identity restarts an open player's read on game/pack
-changes and rejects obsolete records. A refresh retains that player's progress while old titles
-become unavailable immediately; selecting a different player clears the previous records.
-Record reads require an explicit data library and the inspector model requires the world's
-guarded reader. Title presentation requires an explicit title and current definition input;
-unpublished or retired definitions cannot bypass that check.
+PlayerRecordStore publishes the completed record and title content together. Same-source refreshes
+and failures retain titles until a replacement read completes; title-only pack edits update that
+content without using WorldDefinitions equality or a request generation as a content proxy.
+Views read their selection's world-owned handle and never validate a title against a refresh
+request. Source replacement and closure still reject stale reads through the shared loader.
 
 GameText lays out Kit's interpreted literal, sequence and translated title components using the
 same GameNames language snapshot as the rest of the window. Minecraft's substitution semantics

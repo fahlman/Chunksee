@@ -12,6 +12,40 @@ import Testing
     let missingDimensionPlayerID = UUID(uuidString: "00000005-0000-0006-0000-000700000008")!
 
     @Test(.timeLimit(.minutes(1)))
+    func playerRecordDemandBelongsToSelectionAndTwoWindowsShareIt() async throws {
+        let root = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
+        defer { first.close(); second.close() }
+        await first.search.waitForIndex(); await second.search.waitForIndex()
+        let gate = AsyncReadGate<PlayerRecords>()
+        resources.playerRecords.read = { _, uuid, _, _, _ in .complete(await gate.read(uuid.uuidString)) }
+        // No PlayerDetailView or SwiftUI task is created: selecting starts the shared demand.
+        first.selection.choose(.player(playerID))
+        second.selection.choose(.player(playerID))
+        await gate.waitForRequest(playerID.uuidString)
+        #expect(first.selection.playerRecords?.uuid == playerID && second.selection.playerRecords?.uuid == playerID)
+        #expect(await gate.requested == [playerID.uuidString])
+        first.close(); await first.waitUntilClosed() // Must not join the other window's held read.
+        #expect(first.selection.playerRecords == nil && !resources.isClosed)
+        let records = PlayerRecords(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 4]]))
+        await gate.finish(playerID.uuidString, with: records)
+        await resources.playerRecords.waitUntilFinished()
+        #expect(second.selection.playerRecords?.records == records)
+        second.selection.choose(.player(missingDimensionPlayerID))
+        await gate.waitForRequest(missingDimensionPlayerID.uuidString)
+        #expect(second.selection.playerRecords?.records == nil)
+        second.selection.choose(.worldInfo)
+        await gate.waitForCancellation(missingDimensionPlayerID.uuidString)
+        await gate.finish(missingDimensionPlayerID.uuidString, with: records)
+        #expect(second.selection.playerRecords == nil)
+        second.close(); await second.waitUntilClosed()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
     func selectionObservationReachesTheInspectorAndMapWithoutRetainingItsDocument() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }

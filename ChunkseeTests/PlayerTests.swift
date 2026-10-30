@@ -326,9 +326,9 @@ import Testing
         try Data(#"{"minecraft:story/mine_stone":{"criteria":{"get_stone":"2012-01-01 10:00:00 +0000"},"done":true},"minecraft:recipes/misc/x":{"criteria":{},"done":true},"DataVersion":5023}"#.utf8)
             .write(to: advancements.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
         let world = try World(contentsOf: worldURL)
-        let records = await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil)
+        let records = try await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil).value
         #expect(records.statistics?.playTime == 144_000)
         #expect(records.completedAdvancements.map(\.id) == ["minecraft:story/mine_stone"])
-        #expect(await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).statistics == nil)
+        #expect(try await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).value.statistics == nil)
     }
 }
