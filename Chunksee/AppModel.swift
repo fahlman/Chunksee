@@ -19,7 +19,7 @@ final class AppModel {
     /// Readers waiting for initial metadata; returned snapshots hold their own opening instead.
     var openingRequestCount: Int { openingReads.values.reduce(0) { $0 + $1.requests.count } }
 
-    private enum ReadPurpose { case opening, replacement }
+    private enum ReadPurpose { case opening, catalog, replacement }
 
     private struct OpeningRead {
         let url: URL
@@ -65,7 +65,7 @@ final class AppModel {
         try Task.checkCancellation()
         openWorlds = openWorlds.filter { $0.value.value.map { !$0.isClosed } ?? false }
         let key = folder.id
-        if purpose == .opening, let open = openWorlds[key]?.value,
+        if purpose != .replacement, let open = openWorlds[key]?.value,
            open.url.resolvingSymlinksInPath() == snapshot.access.url.resolvingSymlinksInPath(),
            Set(snapshot.dimensions.map(\.id)).isSubset(of: Set(open.dimensions.map(\.id))) {
             return open
@@ -104,10 +104,10 @@ final class AppModel {
             try Task.checkCancellation()
             guard let resources = opening.resources else { throw CancellationError() }
             guard let dimensionID = resources.dimensionDocuments[documentURL.resolvingSymlinksInPath().path] else {
-                // A live catalog may predate a new dimension. Validate it through the same
-                // replacement coordinator so an older independent read cannot win afterward.
+                // Discover additions through the same read coordinator, without retiring
+                // existing readers. A move or explicit reread still supersedes this read.
                 opening.finish()
-                return try await rereadDimension(at: documentURL, in: folder)
+                return try await dimensionSnapshot(at: documentURL, in: folder, purpose: .catalog, read: readWorld)
             }
             return DimensionSnapshot(source: .opening(opening), folder: folder,
                                      dimensionID: dimensionID, documentURL: documentURL)
@@ -123,7 +123,12 @@ final class AppModel {
 
     func rereadDimension(at documentURL: URL, in folder: WorldFolders.Folder,
                          read: @escaping @MainActor (URL) async throws -> WorldSnapshot) async throws -> DimensionSnapshot {
-        let opening = try await openingWorld(folder, documentURL: documentURL, purpose: .replacement, read: read)
+        try await dimensionSnapshot(at: documentURL, in: folder, purpose: .replacement, read: read)
+    }
+
+    private func dimensionSnapshot(at documentURL: URL, in folder: WorldFolders.Folder, purpose: ReadPurpose,
+                                   read: @escaping @MainActor (URL) async throws -> WorldSnapshot) async throws -> DimensionSnapshot {
+        let opening = try await openingWorld(folder, documentURL: documentURL, purpose: purpose, read: read)
         do {
             try Task.checkCancellation()
             guard let resources = opening.resources else { throw CancellationError() }

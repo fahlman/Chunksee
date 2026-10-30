@@ -15,12 +15,12 @@ import Testing
         let model: AppModel
         var sessions: [WorldSession] = []
 
-        init() throws {
+        init(readRegion: @escaping RegionReader.Read = RegionReader.scan) throws {
             original = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
             moved = original.appendingPathExtension("moved")
             copy = original.appendingPathExtension("copy")
             alias = original.appendingPathExtension("alias")
-            model = AppModel(defaults: TestDefaults.make(), cacheRoot: nil)
+            model = AppModel(defaults: TestDefaults.make(), cacheRoot: nil, readRegion: readRegion)
             try FileManager.default.createDirectory(at: document("the_nether", at: original).appendingPathComponent("region"), withIntermediateDirectories: true)
             try Self.writeMap(at: original, center: 10)
             try model.worldFolders.remember(original)
@@ -53,8 +53,9 @@ import Testing
         }
     }
 
-    private func withFixture(_ body: (Fixture) async throws -> Void) async throws {
-        let fixture = try Fixture()
+    private func withFixture(readRegion: @escaping RegionReader.Read = RegionReader.scan,
+                             _ body: (Fixture) async throws -> Void) async throws {
+        let fixture = try Fixture(readRegion: readRegion)
         do { try await body(fixture) }
         catch { await fixture.close(); throw error }
         await fixture.close()
@@ -123,6 +124,58 @@ import Testing
             #expect(copy.resources !== first.resources && copy.resources.settings.worldID != first.resources.settings.worldID)
             let place = try #require(copy.savedPlaces.add(name: "Copy", dimension: "minecraft:overworld", at: .zero))
             #expect(copy.savedPlaces.all == [place] && first.savedPlaces.all.isEmpty && alias.savedPlaces.all.isEmpty)
+        }
+    }
+
+    @Test func indexedSelectionsSurviveAMoveWhileNewReadersCheckTheirFiles() async throws {
+        let gate = AsyncReadGate<Bool>()
+        try await withFixture(readRegion: { dimension, region, options in
+            if dimension.url.path.contains(".moved/") { _ = await gate.read(dimension.id) }
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        }) { f in
+            var failure: (any Error)?
+            do {
+                var chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+                var values = try #require(chunk.nbt.compound)
+                values["block_entities"] = .list([.compound([
+                    "id": .string("minecraft:mob_spawner"), "x": .int(8), "y": .int(2), "z": .int(8),
+                    "SpawnData": .compound(["entity": .compound(["id": .string("minecraft:zombie")])]),
+                ])])
+                chunk.nbt = .compound(values)
+                let relativeFile = "region/r.0.0.mca"
+                try Data(TestWorld.regionFile([chunk])).write(to: f.document(at: f.original).appendingPathComponent(relativeFile))
+                let first = try await f.open(f.document(at: f.original))
+                let second = try await f.open(f.document(at: f.original))
+                await first.search.waitForIndex()
+                let place = try #require(first.presentation.selectedIndex.places.first { $0.group == .spawner })
+                first.selection.choose(.place(place.id))
+                second.search.text = "place:spawner"
+                await second.search.waitForSearch()
+                let hit = try #require(second.search.results.first)
+                let selectedHit = SidebarItem.hit(query: second.search.text, id: hit.id)
+                second.selection.choose(selectedHit)
+
+                try FileManager.default.moveItem(at: f.original, to: f.moved)
+                _ = try await f.open(f.document(at: f.moved), reusing: first, reread: true)
+                await gate.waitForRequest("minecraft:overworld")
+                await second.search.waitForSearch()
+                #expect(first.selection.sidebarSelection == .place(place.id) && first.selection.inspector == .selection)
+                #expect(second.selection.sidebarSelection == selectedHit && second.selection.inspector == .selection)
+
+                await gate.releaseAllAndFuture(with: true)
+                await first.search.waitForIndex(); await second.search.waitForSearch()
+                #expect(first.selection.sidebarSelection == .place(place.id) && first.selection.inspector == .selection)
+                #expect(second.selection.sidebarSelection == selectedHit && second.selection.inspector == .selection)
+
+                // Retention lasts only until a successful read establishes that the item is gone.
+                try Data(TestWorld.regionFile([])).write(to: f.document(at: f.moved).appendingPathComponent(relativeFile))
+                _ = try await f.open(f.document(at: f.moved), reusing: first, reread: true)
+                await first.search.waitForIndex(); await second.search.waitForSearch()
+                #expect(first.selection.sidebarSelection == nil && first.selection.inspector == nil)
+                #expect(second.selection.sidebarSelection == nil && second.selection.inspector == nil)
+            } catch { failure = error }
+            await gate.releaseAllAndFuture(with: true)
+            if let failure { throw failure }
         }
     }
 
