@@ -10,9 +10,9 @@ import Testing
     @Test func overlappingPinsKeepLayerPriorityNearestDistanceAndLaterTies() throws {
         let saved = SavedPlace(name: "Home", dimension: "minecraft:overworld", x: 0, z: 0)
         let first = MapMarker(id: "first", playerID: UUID(), kind: .player, position: saved.mapPosition,
-                              y: 48, label: "First", isOutdated: false)
+                              y: 48, name: .named("First"), isOutdated: false)
         var second = first
-        second.id = "second"; second.playerID = UUID(); second.label = "Second"; second.y = 62
+        second.id = "second"; second.playerID = UUID(); second.name = .named("Second"); second.y = 62
         let search = SearchHit(id: "sign", dimension: saved.dimension,
                                position: saved.mapPosition, y: 70, content: .sign(kind: "minecraft:sign", lines: ["Sign"]))
         var content = MapContent(gameNames: .unavailable)
@@ -46,7 +46,7 @@ import Testing
         content.players = [-61.0, -50, -25, -19, 20].enumerated().map { index, x in
             MapMarker(id: "edge-\(index)", playerID: UUID(), kind: .player,
                       position: viewport.blockPoint(at: CGPoint(x: x, y: 100), in: size),
-                      y: 64, label: "Player \(index)", isOutdated: false)
+                      y: 64, name: .named("Player \(index)"), isOutdated: false)
         }
         let scene = content.scene(viewport: viewport, size: size)
         #expect(scene.items.map(\.id) == ["player-edge-1", "player-edge-2", "player-edge-3", "player-edge-4"])
@@ -60,7 +60,7 @@ import Testing
         let position = kind == .player ? CGPoint(x: -8.7, y: -16.2) : CGPoint(x: -9, y: -17)
         let anchor = kind == .player ? position : CGPoint(x: -8.5, y: -16.5)
         let marker = MapMarker(id: "location", playerID: UUID(), kind: kind,
-                               position: position, y: 48, label: "Friend", isOutdated: true)
+                               position: position, y: 48, name: .named("Friend"), isOutdated: true)
         var content = MapContent(gameNames: .unavailable); content.players = [marker]; content.selectedItem = .player(marker.playerID)
         let viewport = MapViewport(center: anchor, scale: 32)
         let item = try #require(content.scene(viewport: viewport, size: size).items.first)

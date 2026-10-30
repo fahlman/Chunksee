@@ -12,16 +12,8 @@ extension GameNames {
         case .creature(let marker), .trades(let marker, _): creature(marker.creature)
         case .biome(_, let group, _): biome(group.id)
         case .block(let deposit): notableBlock(deposit.block)
-        case .inventory(_, let name, _):
-            switch name {
-            case .you: String(localized: "Your inventory", locale: locale)
-            case .named(let name): String(localized: "\(name)’s inventory", locale: locale)
-            }
-        case .enderChest(_, let name, _):
-            switch name {
-            case .you: String(localized: "Your ender chest", locale: locale)
-            case .named(let name): String(localized: "\(name)’s ender chest", locale: locale)
-            }
+        case .inventory(_, let name, _): playerInventory(name, locale: locale)
+        case .enderChest(_, let name, _): playerEnderChest(name, locale: locale)
         }
     }
 

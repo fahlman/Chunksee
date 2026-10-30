@@ -170,8 +170,8 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
         // A result needs the area's identity and size, not its potentially large drawing paths.
         case biome(markerID: String, group: BiomeGroup, chunkCount: Int)
         case block(BlockDeposit)
-        case inventory(playerID: UUID, name: PlayerPresentation.Name, items: [ItemMatch])
-        case enderChest(playerID: UUID, name: PlayerPresentation.Name, items: [ItemMatch])
+        case inventory(playerID: UUID, name: GameNames.PlayerName, items: [ItemMatch])
+        case enderChest(playerID: UUID, name: GameNames.PlayerName, items: [ItemMatch])
     }
 
     var source: Source {
@@ -233,7 +233,7 @@ nonisolated enum WorldSearch {
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }
             results[query] = search(query, in: request.index, players: request.players, gameNames: request.gameNames) {
-                request.playerNames[$0.uuid] ?? PlayerPresentation.label(of: $0, singleplayerUUID: nil)
+                request.playerNames[$0.uuid] ?? GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: nil, knownName: nil)
             }
         }
         return results
@@ -359,7 +359,7 @@ nonisolated enum WorldSearch {
 
     /// Places matching the query text, most items first. `name(of:)` names players.
     static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo], gameNames: GameNames,
-                       name: (PlayerInfo) -> PlayerPresentation.Name) -> [SearchHit] {
+                       name: (PlayerInfo) -> GameNames.PlayerName) -> [SearchHit] {
         let query = SearchQuery(text)
         if let filter = query.filter {
             return search(filter, query: query, in: index, gameNames: gameNames)

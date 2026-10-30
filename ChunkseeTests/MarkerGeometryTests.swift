@@ -72,7 +72,7 @@ import Testing
         cases.append((content, saved.mapPosition, .row(.savedPlace(saved.id))))
         for kind in [MapMarker.Kind.player, .death, .respawn] {
             let marker = MapMarker(id: "grown-\(kind)", playerID: UUID(), kind: kind,
-                position: CGPoint(x: -8.7, y: -16.2), y: 48, label: "Friend", isOutdated: false)
+                position: CGPoint(x: -8.7, y: -16.2), y: 48, name: .named("Friend"), isOutdated: false)
             content = MapContent(gameNames: .unavailable); content.players = [marker]
             cases.append((content, marker.anchor, .row(.player(marker.playerID))))
         }
@@ -131,7 +131,7 @@ import Testing
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let id = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
         let player = MapMarker(id: "fixture-player", playerID: id, kind: .player,
-                               position: CGPoint(x: -20, y: -30), y: 64, label: "Friend", isOutdated: false)
+                               position: CGPoint(x: -20, y: -30), y: 64, name: .named("Friend"), isOutdated: false)
         var content = MapContent(gameNames: .unavailable)
         content.players = [player]
         var viewport = MapViewport(center: player.position, scale: 2)
@@ -158,7 +158,7 @@ import Testing
         content.players = [-25.0, size.width + 15].enumerated().map { index, x in
             MapMarker(id: "edge-\(index)", playerID: UUID(), kind: .player,
                       position: viewport.blockPoint(at: CGPoint(x: x, y: size.height / 2), in: size),
-                      y: 64, label: "Edge \(index)", isOutdated: false)
+                      y: 64, name: .named("Edge \(index)"), isOutdated: false)
         }
         let locations = content.accessibleLocations(viewport: viewport, size: size)
         #expect(locations.map(\.id) == ["player-edge-1"])
@@ -187,7 +187,7 @@ import Testing
     @Test(arguments: [MapMarker.Kind.death, .respawn])
     func playerLocationBadgesShareTheCommonBodySize(_ kind: MapMarker.Kind) {
         let marker = MapMarker(id: "location", playerID: UUID(), kind: kind, position: .zero,
-                               y: 64, label: "Location", isOutdated: false)
+                               y: 64, name: .named("Location"), isOutdated: false)
         var content = MapContent(gameNames: .unavailable); content.players = [marker]
         let viewport = MapViewport(center: marker.anchor, scale: 2)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -200,7 +200,7 @@ import Testing
         let position = kind == .player ? CGPoint(x: -8.7, y: -16.2) : CGPoint(x: -9, y: -17)
         let expected = kind == .player ? position : CGPoint(x: -8.5, y: -16.5)
         let marker = MapMarker(id: "negative-location", playerID: UUID(), kind: kind,
-                               position: position, y: 64, label: "Friend", isOutdated: false)
+                               position: position, y: 64, name: .named("Friend"), isOutdated: false)
         var content = MapContent(gameNames: .unavailable); content.players = [marker]
         let viewport = MapViewport(center: expected, scale: 32)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -220,7 +220,7 @@ import Testing
         let saved = SavedPlace(name: "Home", dimension: "minecraft:overworld", x: 1, z: 2)
         let players = [MapMarker.Kind.player, .death, .respawn].enumerated().map { i, kind in
             MapMarker(id: "frame-\(i)", playerID: UUID(), kind: kind, position: CGPoint(x: i - 1, y: -2),
-                      y: 64, label: "Friend", isOutdated: false)
+                      y: 64, name: .named("Friend"), isOutdated: false)
         }
         var content = MapContent(gameNames: .unavailable)
         content.structures = [structure]; content.places = [portal, spawner]
@@ -289,14 +289,14 @@ import Testing
         content.creatures = [pet]
         content.hits = [search]
         content.players = [MapMarker(id: "player", playerID: UUID(), kind: .player,
-            position: CGPoint(x: 30, y: -10), y: 64, label: "Friend", isOutdated: false),
+            position: CGPoint(x: 30, y: -10), y: 64, name: .named("Friend"), isOutdated: false),
             MapMarker(id: "death", playerID: UUID(), kind: .death,
-                position: CGPoint(x: 30, y: 20), y: 64, label: "Death", isOutdated: true),
+                position: CGPoint(x: 30, y: 20), y: 64, name: .named("Friend"), isOutdated: true),
             MapMarker(id: "respawn", playerID: UUID(), kind: .respawn,
-                position: CGPoint(x: -40, y: -30), y: 64, label: "Bed", isOutdated: false)]
+                position: CGPoint(x: -40, y: -30), y: 64, name: .named("Friend"), isOutdated: false)]
         content.places.append(PlaceMarker(PointOfInterest(type: "minecraft:home", x: 70, y: 64, z: -45, freeTickets: 0)))
         content.players.append(MapMarker(id: "outdated", playerID: UUID(), kind: .player,
-            position: CGPoint(x: -70, y: -40), y: 64, label: "Old Friend", isOutdated: true))
+            position: CGPoint(x: -70, y: -40), y: 64, name: .named("Old Friend"), isOutdated: true))
         content.savedPlaces = [SavedPlace(name: "Fixture", dimension: dimension.id, x: 50, z: 35)]
         for scale in [0.0625, 0.125, 0.25, 0.49, 0.5, 1, 1.99, 2, 4, 32] {
             map.viewport.scale = scale

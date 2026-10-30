@@ -124,13 +124,15 @@ final class DimensionPresentation {
     }
 
     func name(of player: PlayerInfo) -> String {
-        PlayerPresentation.name(of: player, singleplayerUUID: source?.world.level.singleplayerUUID,
-                                knownName: source?.names.name(for: player.uuid))
+        let names = source?.resources.gameNames ?? .unavailable
+        return names.player(GameNames.PlayerName(playerID: player.uuid, singleplayerUUID: source?.world.level.singleplayerUUID,
+                                                knownName: source?.names.name(for: player.uuid)))
     }
 
     func name(ofPlayerWith uuid: UUID) -> String {
         if let player = source?.players.first(where: { $0.uuid == uuid }) { return name(of: player) }
-        return PlayerPresentation.absentPlayerName(uuid, knownName: source?.names.name(for: uuid))
+        let names = source?.resources.gameNames ?? .unavailable
+        return names.absentPlayer(uuid, knownName: source?.names.name(for: uuid))
     }
 
     /// Each dimension lists its own records; missing/unavailable dimensions use the first dimension.

@@ -4,7 +4,7 @@ import Observation
 
 /// A result keeps its small publication key, not another complete world index.
 nonisolated struct SearchSources: Equatable, Sendable {
-    let names: [UUID: PlayerPresentation.Name]
+    let names: [UUID: GameNames.PlayerName]
     let playerSnapshot: PlayerSnapshot
     let indexRevision: Int
     let gameNamesID: GameNames.Identity?
@@ -42,7 +42,7 @@ final class WorldQueryStore {
         var isReady: Bool { index.players === currentPlayers }
 
         init(index: WorldIndexSnapshot, currentPlayers: PlayerSnapshot, gameNames: GameNames,
-             names: [UUID: PlayerPresentation.Name], singleplayerUUID: UUID?) {
+             names: [UUID: GameNames.PlayerName], singleplayerUUID: UUID?) {
             self.index = index
             self.currentPlayers = currentPlayers
             self.gameNames = gameNames
@@ -113,7 +113,7 @@ final class WorldQueryStore {
     private static func context(index: WorldIndexStore, names: PlayerNames, singleplayerUUID: UUID?, gameNames: GameNames) -> Context {
         let snapshot = index.snapshot
         let labels = Dictionary(uniqueKeysWithValues: snapshot.players.players.map {
-            ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
+            ($0.uuid, GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
         return Context(index: snapshot, currentPlayers: index.playerRoster.snapshot, gameNames: gameNames,
                        names: labels, singleplayerUUID: singleplayerUUID)

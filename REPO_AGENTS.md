@@ -567,7 +567,8 @@ older scan envelopes.
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
 | `HelpView.swift` | On-demand native Help window with opening/navigation instructions and the User Guide link |
-| `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
+| `PlayerMarkers.swift` | Saved player locations, coordinate validation, outdated state and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`); retained names are typed GameNames inputs |
+| `GamePlayerNames.swift` | Shared player name, UUID fallback, personal/named marker and inventory phrases, location headings and absent-owner labels; literal account names remain distinct from the personal pronoun |
 | `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
@@ -2229,8 +2230,15 @@ not retain book pages or nested inventories. Temporary comparison keys preserve 
 same-ID/same-label grouping and quantity/name sort. Matching trade inputs stay typed, while biome
 results keep identity and chunk count without retaining drawing paths. WorldQueryStore's existing
 identity guard still rejects old-language results; no publication or query-lifetime rule changes.
-The remaining player-marker and other naming consumers still need audit before foundation step 5e
-and #438 are complete. These source changes retain the map-caption timing requirement.
+GameNames also owns player names and their location, inventory and absent-owner phrases.
+GameNames.PlayerName preserves the personal pronoun, literal account name or unnamed UUID instead
+of keeping a formatted fallback. Player markers and search results retain those inputs; map captions
+and accessibility resolve them through the current naming snapshot. DimensionPresentation supplies
+the live singleplayer identity and known name without formatting it. PlayerPresentation retains
+location validation, ordering, outdated state and dimension membership. Player lookup consent,
+query publication, saved counts, coordinates and picking remain unchanged. Block readout/filter,
+equipment-slot and game-rule consumers still need audit before foundation step 5e and #438 are
+complete. These source changes retain the map-caption timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

@@ -960,7 +960,7 @@ import Testing
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.creature(creature.id)))
         let playerID = UUID()
         content.players = [.init(id: "player", playerID: playerID, kind: .player, position: CGPoint(x: -10, y: -20),
-                                 label: "Friend", isOutdated: false)]
+                                 name: .named("Friend"), isOutdated: false)]
         viewport = MapViewport(center: CGPoint(x: -10, y: -20), scale: 32)
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.player(playerID)))
         let locations = content.accessibleLocations(viewport: viewport, size: size)

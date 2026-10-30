@@ -223,13 +223,13 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
-        let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
+        let unknown = GameNames.unavailable.player(.unnamed(uuid))
         let players = PlayerRoster([player])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
-            singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.playerNames[uuid]!.text) })
+            singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.gameNames.player($0.playerNames[uuid]!)) })
         func document() -> SearchModel { SearchModel(queryStore: queries) }
         let first = document(), second = document()
         await gate.waitForRequest(unknown)

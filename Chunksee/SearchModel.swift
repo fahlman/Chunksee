@@ -7,7 +7,7 @@ nonisolated struct SearchRequest: Sendable {
     var queries: [String]
     var index: SearchIndex
     var players: [PlayerInfo]
-    var playerNames: [UUID: PlayerPresentation.Name]
+    var playerNames: [UUID: GameNames.PlayerName]
     var gameNames: GameNames
 }
 
