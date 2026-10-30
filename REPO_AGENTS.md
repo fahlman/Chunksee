@@ -526,9 +526,9 @@ older scan envelopes.
 | File | Owns |
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
-| `AppModel.swift` | App-wide player names/saved searches, pending initial metadata reads shared by world URL, and the resources of each world with open dimensions |
+| `AppModel.swift` | App-wide player names/saved searches, pending metadata reads and open-world resources shared by persistent world-folder identity |
 | `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
-| `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime, view restoration and persistence |
+| `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime and per-window state, preserving those models across world-source replacement |
 | `DimensionPresentation.swift` | Live dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift`, `MapGameResources.swift`, `MapShadow.swift` | Observes world-owned game resources; full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
 | `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
