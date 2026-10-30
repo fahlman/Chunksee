@@ -21,12 +21,7 @@ nonisolated enum VillagerText {
         }
         // An unverified custom profession keeps its existing rank; only known false omits it.
         if villager.supportsTrading(using: definitions) == false { return name }
-        guard let level = levelName(villager.level, gameNames: gameNames) else { return name }
+        guard let level = gameNames.merchantLevel(villager.level) else { return name }
         return String(localized: "\(name), \(level)")
-    }
-
-    static func levelName(_ level: Int?, gameNames: GameNames) -> String? {
-        guard let level else { return nil }
-        return gameNames.name(key: "merchant.level.\(level)", fallback: String(localized: "Level \(level)"))
     }
 }

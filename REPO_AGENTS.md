@@ -1159,7 +1159,7 @@ index and open/select in the destination dimension document. No owner is inferre
 Each activation requests SwiftUI ancestor expansion and scrolling, including a repeated link
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
-not a live countdown. PlayerEffectText gets effect names from the world’s GameNames snapshot;
+not a live countdown. Effect views get their names from the world’s GameNames snapshot;
 there is no effect-name exception list. Effects and enchantments share level numeral presentation.
 Visible effect rows and their accessibility representation use the same resolved name.
 Saved effect durations use native localized clocks
@@ -2148,6 +2148,16 @@ their membership remains Kit’s runtime tag catalog. The game supplies no struc
 names, so their fallback preserves ID word order. Loot-table labels derive from saved paths, with
 no special renames. Old-format guidance uses the saved version name, when available, without a
 version number in the UI string. No game language files are redistributed.
+
+GameNames owns the effect label/level, merchant rank, statistic/category and difficulty naming
+rules through `effect`, `merchantLevel`, `statistic`, `statisticCategory` and `difficulty`.
+PlayerEffectText keeps only duration formatting; StatisticRow keeps IDs, values and units.
+The statistics table derives its named rows from the current GameNames value. World Info uses
+the service for difficulty, and villager details use it for ranks, including their fallbacks.
+Advancement consumers call `GameNames.advancement` directly; the old PlayerRecords naming
+forwarders are removed. These APIs preserve the existing text, source identity and read policy.
+The remaining item, enchantment, creature/profession, biome, dimension/structure and marker/search
+naming consumers remain part of foundation step 5e and #438.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

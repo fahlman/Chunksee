@@ -243,17 +243,17 @@ import Testing
 
 @Suite(.isolatedStores) struct PlayerRecordsTests {
     @Test func namesRankingsAndDistances() {
-        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
-        #expect(PlayerRecords.travelName("minecraft:boat_one_cm", gameNames: .unavailable) == "Boat One Cm")
-        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond", title: nil, gameNames: .unavailable) == "Story Mine Diamond")
+        #expect(GameNames.unavailable.name("minecraft:aviate_one_cm", in: "stat") == "Aviate One Cm")
+        #expect(GameNames.unavailable.name("minecraft:boat_one_cm", in: "stat") == "Boat One Cm")
+        #expect(GameNames.unavailable.advancement("minecraft:story/mine_diamond", title: nil) == "Story Mine Diamond")
         let records = PlayerRecords(statistics: PlayerStatistics(values: [
             "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
         ]))
-        #expect(records.distances.map { $0.name(in: .unavailable) } == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
+        #expect(records.distances.map { GameNames.unavailable.statistic($0) } == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
         #expect(records.distances.first?.value == 2_087_548_000)
-        #expect(records.top("minecraft:mined", count: 2).map { $0.name(in: .unavailable) } == ["Dirt", "Stone"])
-        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name(in: .unavailable) == "Walk One Cm" })
+        #expect(records.top("minecraft:mined", count: 2).map { GameNames.unavailable.statistic($0) } == ["Dirt", "Stone"])
+        #expect(records.rows.count == 6 && records.rows.contains { GameNames.unavailable.statisticCategory($0.categoryID) == "General" && GameNames.unavailable.statistic($0) == "Walk One Cm" })
     }
 
     @Test func summaryAndTableShareReadableStatistics() throws {
@@ -263,10 +263,10 @@ import Testing
                                  "minecraft:damage_taken": 155, "mod:walk_one_cm": 999],
         ]))
         let english = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
-        #expect(records.summaryStatistics.map { $0.name(in: .unavailable) } == ["Play Time", "Mob Kills", "Deaths", "Walk One Cm"])
+        #expect(records.summaryStatistics.map { GameNames.unavailable.statistic($0) } == ["Play Time", "Mob Kills", "Deaths", "Walk One Cm"])
         for summary in records.summaryStatistics {
             let table = try #require(records.rows.first { $0.id == summary.id })
-            #expect(summary.name(in: .unavailable) == table.name(in: .unavailable)
+            #expect(GameNames.unavailable.statistic(summary) == GameNames.unavailable.statistic(table)
                     && summary.value == table.value && summary.unit == table.unit)
             #expect(english.format(summary) == english.format(table))
         }
@@ -292,9 +292,9 @@ import Testing
         let rows = records.rows
         #expect(Set(rows.map(\.id)).count == 4)
         let stones = records.top("minecraft:mined")
-        #expect(stones.map { $0.name(in: .unavailable) } == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
+        #expect(stones.map { GameNames.unavailable.statistic($0) } == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
         #expect(stones[0].id != stones[1].id)
-        #expect(records.summaryStatistics.first?.name(in: .unavailable) == "Play Time")
+        #expect(records.summaryStatistics.first.map { GameNames.unavailable.statistic($0) } == "Play Time")
         #expect(records.summaryStatistics.first?.unit == .ticks)
         let legacyTime = try #require(rows.first { $0.statisticID == "minecraft:play_one_minute" })
         let summaryTime = try #require(records.summaryStatistics.first)
