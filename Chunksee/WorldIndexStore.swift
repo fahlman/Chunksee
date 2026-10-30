@@ -27,7 +27,7 @@ final class WorldIndexStore {
 
     /// Catalog additions belong to this same source. Each pass captures its reader array on
     /// the main actor; replacement creates a new source, retiring all previous publications.
-    @MainActor @Observable private final class ReaderSource: Equatable {
+    @MainActor @Observable fileprivate final class ReaderSource: Equatable {
         var readers: [RegionReader]
         init(_ readers: [RegionReader]) { self.readers = readers }
         nonisolated static func == (lhs: ReaderSource, rhs: ReaderSource) -> Bool { lhs === rhs }
