@@ -180,7 +180,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         await gate.finish("saved", with: ["saved": [hit("Saved")]])
@@ -205,8 +205,7 @@ import Testing
         search.text = ""
         #expect(search.results.isEmpty && search.results(for: "").isEmpty)
         #expect(search.results(for: "saved").map(\.title) == ["Saved"])
-        search.cancel()
-        await search.waitForTasks()
+        await search.closeTestWorld()
     }
 
     @Test func editingDoesNotCancelOrRepeatAPendingSavedSearch() async {
@@ -214,7 +213,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         search.text = "first"
@@ -229,7 +228,7 @@ import Testing
         #expect(search.results.map(\.title) == ["Second"])
         #expect(search.results(for: "saved").map(\.title) == ["Saved"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
-        search.cancel()
+        await search.closeTestWorld()
     }
 
     @Test func sourceChangesKeepSnapshotsUntilTheirReplacementsArrive() async {
@@ -238,7 +237,7 @@ import Testing
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let players = PlayerRoster([])
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved,
                                  execute: { await gate.read("\($0.queries[0])-\($0.players.count)") }, gameNames: { .unavailable })
         search.text = "query"
@@ -257,14 +256,13 @@ import Testing
         await search.waitForSearch()
         #expect(search.results.map(\.title) == ["Updated query"])
         #expect(search.results(for: "saved").map(\.title) == ["Updated saved"])
-        search.cancel()
-        await search.waitForTasks()
+        await search.closeTestWorld()
     }
 
     @Test func anOldQueryCannotPublishOverTheNewQuery() async {
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         search.text = "old"
@@ -277,7 +275,7 @@ import Testing
         await search.waitForTasks()
         #expect(search.results.map(\.title) == ["Current"])
         #expect(search.results(for: "old").isEmpty)
-        search.cancel()
+        await search.closeTestWorld()
     }
 
     @Test func sharedNameChangesReplaceTheQuerySnapshot() async {
@@ -287,7 +285,7 @@ import Testing
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { nil }, firstDimension: nil,
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { nil }, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.playerNames[uuid]!.text) }, gameNames: { .unavailable })
         search.text = "diamond"
@@ -299,6 +297,6 @@ import Testing
         await gate.finish(unknown, with: ["diamond": [hit("Unknown")]])
         await search.waitForTasks()
         #expect(search.results.map(\.title) == ["Known"])
-        search.cancel()
+        await search.closeTestWorld()
     }
 }

@@ -23,7 +23,7 @@ struct SearchWorkTests {
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let roster = PlayerRoster([PlayerInfo(uuid: uuid, nbt: .compound([:]))])
-        let model = SearchModel(readers: [], work: work, playerRoster: roster,
+        let model = makeSearch(readers: [], work: work, playerRoster: roster,
                                 names: PlayerNames(defaults: defaults), singleplayerUUID: { identity.uuid },
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.playerNames[uuid] == .you ? "you" : "other") },
@@ -43,14 +43,14 @@ struct SearchWorkTests {
         await gate.finish("you", with: ["saved": [hit("Current You")]])
         await model.waitForSearch()
         #expect(model.results(for: "saved").map(\.title) == ["Current You"])
-        model.cancel(); await model.waitForTasks()
+        await model.closeTestWorld()
         work.close(); await work.waitUntilFinished()
     }
 
     @Test(.timeLimit(.minutes(1))) func ownerClosureDrainsReplacedQueriesAndRejectsLateResults() async {
         let work = BackgroundWork(), defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]),
+        let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]),
                                 names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                 execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
@@ -85,28 +85,29 @@ struct SearchWorkTests {
         let players = PlayerRoster([])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        func document(_ key: String) -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names,
-                        singleplayerUUID: { nil }, firstDimension: nil, savedSearches: saved,
-                        execute: { _ in await gate.read(key) }, indexStore: index, gameNames: { .unavailable })
-        }
-        let first = document("first"), second = document("second")
+        let numbers = ReadNumbers()
+        let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
+            singleplayerUUID: { nil }, gameNames: { .unavailable },
+            execute: { _ in await gate.read(String(await numbers.next())) })
+        let first = SearchModel(queryStore: queries), second = SearchModel(queryStore: queries)
         first.text = "query"
+        await gate.waitForRequest("0")
         second.text = "query"
-        await gate.waitForRequest("first")
-        await gate.waitForRequest("second")
+        await gate.waitForRequest("1")
         first.cancel()
-        await gate.waitForCancellation("first")
+        await gate.waitForCancellation("0")
         var drained = false
         let closing = Task.immediate { await first.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("first", with: ["query": [hit("Discarded")]])
+        await gate.finish("0", with: ["query": [hit("Discarded")]])
         await closing.value // The sibling query remains held.
         #expect(drained && first.results.isEmpty && second.isSearching)
-        await gate.finish("second", with: ["query": [hit("Kept")]])
+        await gate.finish("1", with: ["query": [hit("Kept")]])
         await second.waitForSearch()
         #expect(second.results.map(\.title) == ["Kept"])
         second.cancel()
+        queries.close()
+        await queries.waitForTasks()
         index.cancel()
         await index.waitForTasks()
         work.close()

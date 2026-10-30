@@ -66,11 +66,11 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     @ObservationIgnored private var replacementID = UUID()
 
     init(progressRead: @escaping @Sendable (Source, Request, Value?, Progress) async throws -> RefreshRead<Value>,
-         work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+         scope: BackgroundWork.Scope, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
          initialValue: Value? = nil,
          firstRequest: Request, merge: @escaping @Sendable (Request, Request) -> Request,
          retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil }) {
-        self.work = work.makeScope()
+        self.work = scope
         self.priority = priority
         self.whenInactive = whenInactive
         publication = (source, initialValue)
@@ -78,6 +78,16 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
         self.merge = merge
         self.retainingValue = retainingValue
         self.read = progressRead
+    }
+
+    convenience init(progressRead: @escaping @Sendable (Source, Request, Value?, Progress) async throws -> RefreshRead<Value>,
+                     work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
+                     initialValue: Value? = nil,
+                     firstRequest: Request, merge: @escaping @Sendable (Request, Request) -> Request,
+                     retainingValue: @escaping @Sendable (Value, Source, Source) -> Value? = { _, _, _ in nil }) {
+        self.init(progressRead: progressRead, scope: work.makeScope(), priority: priority,
+                  whenInactive: whenInactive, source: source, initialValue: initialValue,
+                  firstRequest: firstRequest, merge: merge, retainingValue: retainingValue)
     }
 
     convenience init(partialRead: @escaping @Sendable (Source, Request, Value?) async throws -> RefreshRead<Value>,

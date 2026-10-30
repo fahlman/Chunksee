@@ -6,19 +6,19 @@ import Foundation
 final class BackgroundWork {
     private(set) var isClosed = false
     private struct Entry {
-        let scope: UUID?
+        let scopes: Set<UUID>
         let task: Task<Void, Never>
     }
     private var tasks: [UUID: Entry] = [:]
 
-    func makeScope() -> Scope { Scope(owner: self) }
+    func makeScope() -> Scope { Scope(owner: self, parent: nil) }
 
     @discardableResult
     func start(priority: TaskPriority?, operation: @escaping @MainActor () async -> Void) -> Task<Void, Never>? {
         start(in: nil, priority: priority, operation: operation)
     }
 
-    private func start(in scope: UUID?, priority: TaskPriority?,
+    private func start(in scope: Scope?, priority: TaskPriority?,
                        operation: @escaping @MainActor () async -> Void) -> Task<Void, Never>? {
         guard !isClosed else { return nil }
         let id = UUID()
@@ -26,7 +26,7 @@ final class BackgroundWork {
             defer { self?.tasks[id] = nil }
             await operation()
         }
-        tasks[id] = Entry(scope: scope, task: task)
+        tasks[id] = Entry(scopes: scope?.lineage ?? [], task: task)
         return task
     }
 
@@ -58,7 +58,7 @@ final class BackgroundWork {
     }
 
     private func cancel(in scope: UUID) {
-        for entry in tasks.values where entry.scope == scope { entry.task.cancel() }
+        for entry in tasks.values where entry.scopes.contains(scope) { entry.task.cancel() }
     }
 
     private func waitUntilFinished(in scope: UUID) async {
@@ -66,7 +66,7 @@ final class BackgroundWork {
     }
 
     private func waitUntilFinished(inIDs scopes: Set<UUID>) async {
-        while let task = tasks.values.first(where: { $0.scope.map(scopes.contains) == true })?.task { await task.value }
+        while let task = tasks.values.first(where: { !$0.scopes.isDisjoint(with: scopes) })?.task { await task.value }
     }
 
     /// One consumer's task group. Canceled/replaced reads remain in the owner's registry
@@ -74,16 +74,26 @@ final class BackgroundWork {
     final class Scope {
         fileprivate let owner: BackgroundWork
         fileprivate let id = UUID()
+        fileprivate let lineage: Set<UUID>
+        private let parent: Scope?
         private var closed = false
-        var isClosed: Bool { closed || owner.isClosed }
-        var unfinishedCount: Int { owner.tasks.values.reduce(0) { $0 + ($1.scope == id ? 1 : 0) } }
+        var isClosed: Bool { closed || parent?.isClosed == true || owner.isClosed }
+        var unfinishedCount: Int { owner.tasks.values.reduce(0) { $0 + ($1.scopes.contains(id) ? 1 : 0) } }
 
-        fileprivate init(owner: BackgroundWork) { self.owner = owner }
+        fileprivate init(owner: BackgroundWork, parent: Scope?) {
+            self.owner = owner
+            self.parent = parent
+            lineage = (parent?.lineage ?? []).union([id])
+        }
+
+        /// Query loaders cancel individually; their world-owned store still drains retired
+        /// queries through this same registry, without retaining a second task table.
+        func makeScope() -> Scope { Scope(owner: owner, parent: self) }
 
         @discardableResult
         func start(priority: TaskPriority?, operation: @escaping @MainActor () async -> Void) -> Task<Void, Never>? {
             guard !isClosed else { return nil }
-            return owner.start(in: id, priority: priority, operation: operation)
+            return owner.start(in: self, priority: priority, operation: operation)
         }
 
         func cancel() { owner.cancel(in: id) }

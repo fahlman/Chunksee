@@ -47,6 +47,10 @@ final class WorldResources {
     let savedPlaces: SavedPlaces
     var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
+    @ObservationIgnored private(set) lazy var queryStore = WorldQueryStore(
+        index: index, work: backgroundWork, names: names, savedSearches: savedSearches,
+        singleplayerUUID: { [weak self] in self?.world.level.singleplayerUUID },
+        gameNames: { [weak self] in self?.gameNames ?? .unavailable })
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
@@ -330,6 +334,7 @@ final class WorldResources {
         refreshBiomeColors(reload: true)
         refreshLighting()
         maintainCurrentCache()
+        _ = queryStore
     }
 
     private func watchCurrentSource() {
@@ -660,6 +665,7 @@ final class WorldResources {
         pendingActions = [:]
         watcher?.stop()
         backgroundWork.close()
+        queryStore.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         assetLoader.close()
