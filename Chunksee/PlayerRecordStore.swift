@@ -57,7 +57,10 @@ final class PlayerRecordStore {
                     // A legacy-name replacement can also change which statistics file is read.
                     guard new.game != nil else { return nil }
                     var retained = previous
-                    if old.name != new.name { retained.statistics = nil }
+                    if let name = previous.statisticsName, name != new.name {
+                        retained.statistics = nil
+                        retained.statisticsName = nil
+                    }
                     if old.game != new.game { retained.advancementDefinitions = [:] }
                     return retained
                 })

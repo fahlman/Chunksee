@@ -15,11 +15,11 @@ struct PlayerRecordsWorkTests {
         let work = BackgroundWork()
         let input = Input()
         let store: PlayerRecordStore
-        init() throws {
+        init(names: PlayerNames? = nil) throws {
             root = try TestWorld.make(chunks: [])
             let input = input
             store = PlayerRecordStore(world: try World(contentsOf: root), work: work,
-                names: PlayerNames(defaults: TestDefaults.make()), gameSource: { input.value })
+                names: names ?? PlayerNames(defaults: TestDefaults.make()), gameSource: { input.value })
         }
         func close() { store.close(); work.close() }
         func remove() { try? FileManager.default.removeItem(at: root) }
@@ -107,6 +107,42 @@ struct PlayerRecordsWorkTests {
         await gate.finish("1", with: records(deaths: 2)); await gate.finish("0", with: records(deaths: 1))
         await fixture.store.waitUntilFinished()
         #expect(handle.records == records(deaths: 3))
+        fixture.close(); await fixture.work.waitUntilFinished()
+    }
+
+    @Test func learningNamesKeepsUUIDStatisticsAndRetiresOnlyIncompatibleLegacyStatistics() async throws {
+        let namesGate = AsyncReadGate<[UUID: String]>(), recordGate = AsyncReadGate<PlayerRecords>()
+        let names = PlayerNames(defaults: TestDefaults.make(), readCaches: { _ in await namesGate.read("names") })
+        let fixture = try Fixture(names: names), primaryID = UUID(), legacyID = UUID()
+        defer { fixture.close(); fixture.remove() }
+        names.minecraft.choose(fixture.root)
+        let firstNames = Task { await names.reloadLocal() }
+        await namesGate.waitForRequest("names")
+        await namesGate.finish("names", with: [primaryID: "Old Name", legacyID: "Old Name"])
+        await firstNames.value
+        fixture.store.read = { _, uuid, _, _, _ in
+            var value = records(deaths: 4)
+            if uuid == legacyID { value.statisticsName = "Old Name" }
+            return .complete(value)
+        }
+        let primary = try #require(fixture.store.acquire(primaryID)), legacy = try #require(fixture.store.acquire(legacyID))
+        await fixture.store.waitUntilFinished()
+        #expect(primary.records?.statistics == legacy.records?.statistics)
+        fixture.store.read = { _, uuid, _, _, _ in .complete(await recordGate.read(uuid.uuidString)) }
+        let updatedNames = Task { await names.reloadLocal() }
+        await namesGate.waitForRequest("names", count: 2)
+        await namesGate.finish("names", with: [primaryID: "New Name", legacyID: "New Name"])
+        await updatedNames.value
+        await recordGate.waitForRequest(primaryID.uuidString); await recordGate.waitForRequest(legacyID.uuidString)
+        #expect(primary.records?.statistics == records(deaths: 4).statistics)
+        #expect(legacy.records?.statistics == nil)
+        await recordGate.finish(primaryID.uuidString, with: records(deaths: 5))
+        var renamed = records(deaths: 6)
+        renamed.statisticsName = "New Name"
+        await recordGate.finish(legacyID.uuidString, with: renamed)
+        await fixture.store.waitUntilFinished()
+        #expect(primary.records == records(deaths: 5) && legacy.records == renamed)
+        names.minecraft.forget()
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 
