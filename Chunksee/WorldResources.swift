@@ -132,7 +132,7 @@ final class WorldResources {
     }
     @ObservationIgnored private(set) lazy var playerRecords = PlayerRecordStore(world: world, work: backgroundWork, names: names) { [weak self] in
         guard let self, !self.isClosed else { return nil }
-        return .init(generation: self.names.minecraft.generation, selection: self.gameSelection)
+        return self.gameSource
     }
     @ObservationIgnored private lazy var nightLightingLoader = RefreshLoader(
         work: backgroundWork, priority: nil, whenInactive: .cancel,
@@ -243,7 +243,8 @@ final class WorldResources {
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
         let definitionLoader = WorldDefinitionLoader(world: snapshot.world, work: backgroundWork,
-            generation: prepared.source.generation, library: prepared.library?.data, dimensions: snapshot.dimensions,
+            gameSource: .init(generation: prepared.source.generation, selection: .loaded(prepared.library?.data)),
+            dimensions: snapshot.dimensions,
             definitions: snapshot.details.definitions, players: snapshot.players)
         self.definitionLoader = definitionLoader
         assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
@@ -408,17 +409,19 @@ final class WorldResources {
         visibleNewerWorldNoticeID = nil
     }
 
-    private var gameSelection: WorldDefinitionLoader.GameSelection {
+    private var gameSource: WorldGameDataSource {
+        let selection: WorldGameDataSource.Selection
         if assetLoader.source.generation == names.minecraft.generation, let loaded = assetLoader.value {
-            .loaded(loaded.library?.data)
+            selection = .loaded(loaded.library?.data)
         } else {
-            .loading
+            selection = .loading
         }
+        return WorldGameDataSource(generation: names.minecraft.generation, selection: selection)
     }
 
     private func refreshDefinitions() {
         guard !isClosed else { return }
-        definitionLoader.refreshDefinitions(generation: names.minecraft.generation, selection: gameSelection)
+        definitionLoader.refreshDefinitions(gameSource: gameSource)
     }
 
     private func adoptDefinitions(_ current: WorldDefinitionLoader.Facts?) {

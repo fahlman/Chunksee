@@ -21,7 +21,8 @@ import Testing
             ])
             world = try World(contentsOf: root)
             initial = try WorldDefinitions.read(world, assets: nil)
-            loader = WorldDefinitionLoader(world: world, work: work, generation: generation, library: library,
+            loader = WorldDefinitionLoader(world: world, work: work,
+                gameSource: .init(generation: generation, selection: .loaded(library)),
                 dimensions: world.dimensions(), definitions: initial, players: [])
         }
 
@@ -50,8 +51,8 @@ import Testing
         loader.refreshPlayers()
         await players.waitForRequest("0")
         loader.refreshPlayers()
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         loader.refreshPlayers()
         #expect(loader.value?.definitions == fixture.initial)
         await players.finish("0", with: [player(10)])
@@ -91,7 +92,7 @@ import Testing
         loader.readPlayers = { _, _ in await players.read("players") }
         let original = loader.snapshot
         let initialSource = loader.value?.source, generation = UUID()
-        loader.refreshDefinitions(generation: generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loaded(nil)))
         await definitions.waitForRequest("definitions")
         await definitions.finish("definitions", with: .success(update))
         await players.waitForRequest("players"); await players.finish("players", with: nil)
@@ -127,13 +128,13 @@ import Testing
         loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
         loader.readPlayers = { _, _ in [] }
         let initialPlayers = loader.snapshot, initialSource = loader.value?.source
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await gate.waitForRequest("0")
-        loader.refreshDefinitions(generation: UUID(), selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: UUID(), selection: .loaded(nil)))
         #expect(loader.value?.source == initialSource && loader.snapshot === initialPlayers)
         #expect(loader.value?.definitions == fixture.initial)
         await gate.waitForCancellation("0"); await gate.waitForRequest("1")
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         let beforeAcceptance = loader.snapshot
         await gate.waitForCancellation("1"); await gate.waitForRequest("2")
         await gate.finish("2", with: fixture.initial)
@@ -145,7 +146,7 @@ import Testing
         await gate.finish("1", with: late); await gate.finish("0", with: late)
         await loader.work.waitUntilFinished()
         #expect(loader.snapshot === accepted && loader.value?.definitions == fixture.initial)
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await gate.waitForRequest("3")
         fixture.close()
         let closed = loader.snapshot
@@ -168,15 +169,15 @@ import Testing
         loader.readDefinitions = { _, library in await definitions.read(library?.sourceKey ?? "none") }
         loader.readPlayers = { _, _ in await players.read("players") }
         let original = loader.snapshot
-        let initialSource = WorldDefinitionLoader.GameSource(generation: fixture.generation, libraryID: first.identity)
+        let initialSource = WorldGameDataSource(generation: fixture.generation, selection: .loaded(first)).identity
         let generation = replacingGeneration ? UUID() : fixture.generation
-        let nextSource = WorldDefinitionLoader.GameSource(generation: generation, libraryID: second.identity)
+        let nextSource = WorldGameDataSource(generation: generation, selection: .loaded(second)).identity
         #expect(loader.value?.source == initialSource)
         var publishedDefinitions: [WorldDefinitions?] = []
         loader.published = { current in publishedDefinitions.append(current?.definitions) }
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(first))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(first)))
         await definitions.waitForRequest("first")
-        loader.refreshDefinitions(generation: generation, selection: .loaded(second))
+        loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loaded(second)))
         #expect(loader.value?.source == initialSource && loader.snapshot === original)
         await definitions.waitForCancellation("first"); await definitions.waitForRequest("second")
         var updated = fixture.initial
@@ -210,10 +211,10 @@ import Testing
         loader.readDefinitions = { _, _ in await definitions.read("definitions") }
         loader.readPlayers = { _, _ in [] }
         let original = loader.snapshot, initial = loader.value
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await definitions.waitForRequest("definitions")
         let generation = replacingGeneration ? UUID() : fixture.generation
-        loader.refreshDefinitions(generation: generation, selection: .loading)
+        loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loading))
         await definitions.waitForCancellation("definitions")
         loader.refreshPlayers()
         var retired = fixture.initial
@@ -224,13 +225,13 @@ import Testing
         #expect(loader.snapshot === original && loader.value?.definitions == initial?.definitions)
         #expect(loader.value?.source == initial?.source)
 
-        loader.refreshDefinitions(generation: generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loaded(nil)))
         await definitions.waitForRequest("definitions", count: 2)
         await definitions.finish("definitions", with: WorldDefinitions())
         await loader.work.waitUntilFinished()
         #expect(await definitions.requested == ["definitions", "definitions"])
         #expect(loader.value?.definitions == WorldDefinitions())
-        #expect(loader.value?.source == WorldDefinitionLoader.GameSource(generation: generation, libraryID: nil))
+        #expect(loader.value?.source == WorldGameDataSource(generation: generation, selection: .loaded(nil)).identity)
         #expect(loader.snapshot !== original)
         fixture.close(); await fixture.work.waitUntilFinished()
     }
@@ -256,13 +257,13 @@ import Testing
         var changed = fixture.initial
         changed.dimensionSettings["minecraft:overworld"] = different
         let updated = changed
-        loader.refreshDefinitions(generation: fixture.generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await gate.waitForRequest("0"); await gate.finish("0", with: updated)
         await loader.work.waitUntilFinished()
         let previousPlayers = loader.snapshot
         let source = loader.value?.source
         let generation = replacingGame ? UUID() : fixture.generation
-        loader.refreshDefinitions(generation: generation, selection: .loaded(nil))
+        loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loaded(nil)))
         await gate.waitForRequest("1")
         loader.include([dimension], settings: ["minecraft:overworld": opening, "example:added": opening])
         #expect(loader.value?.definitions.dimensionSettings["minecraft:overworld"] == different)
