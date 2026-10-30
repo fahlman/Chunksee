@@ -29,7 +29,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make(), id = UUID()
         // An existing dimension with no border choice keeps the previously always-shown border.
-        WorldSettings(id: id, defaults: defaults).saveLayers([.showsGrid: true], for: "minecraft:overworld")
+        defaults.set(["layers": ["minecraft:overworld": ["showsGrid": true]]], forKey: "worldSettings." + id.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)
             let prepared = try await WorldPreparation.read(WorldSnapshot.read(url), minecraft: names.minecraft)
@@ -68,7 +68,7 @@ import Testing
         #expect(restored.visibility.showsGrid)
         restored.visibility.showsWorldBorder = true
         #expect(MapContent(session: restored).border?.size == 64)
-        let otherWorld = LayerVisibility(settings: WorldSettings(id: UUID(), defaults: defaults), dimension: "minecraft:overworld")
+        let otherWorld = WorldSettings(id: UUID(), defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays
         #expect(otherWorld.showsWorldBorder)
         #expect(defaults.object(forKey: "showsWorldBorder") == nil)
         reopened.close()

@@ -71,13 +71,8 @@ nonisolated enum HeatMap {
 /// One dimension document's heat map, read when first shown and again after the game saves.
 @Observable
 final class HeatMapLayer {
-    var isShown = false {
-        didSet {
-            guard !loader.isClosed, isShown != oldValue else { return }
-            rememberedVisibility?.rememberTimeSpent(isShown)
-            load()
-        }
-    }
+    private let readIsShown: @MainActor () -> Bool
+    var isShown: Bool { readIsShown() }
     private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
     private let readReader: @MainActor () -> RegionReader?
     private var hasReader: Bool { loader.source.reader != nil }
@@ -85,36 +80,34 @@ final class HeatMapLayer {
         let reader: RegionReader?
         static func == (lhs: Self, rhs: Self) -> Bool { lhs.reader === rhs.reader }
     }
-    @ObservationIgnored private var rememberedVisibility: LayerVisibility?
-    init(reader: @escaping @MainActor () -> RegionReader?, work: BackgroundWork) {
+    init(reader: @escaping @MainActor () -> RegionReader?, isShown: @escaping @MainActor () -> Bool, work: BackgroundWork) {
         readReader = reader
+        readIsShown = isShown
         loader = RefreshLoader(work: work, priority: .userInitiated, whenInactive: .finish,
                                source: Source(reader: reader())) { source, previous in
             guard let reader = source.reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }
-        observeReader()
+        observeInputs()
+        load()
     }
 
-    private func observeReader() {
+    private func observeInputs() {
         guard !loader.isClosed else { return }
+        let previousReader = readReader(), previouslyShown = isShown
         withObservationTracking(options: [.didSet]) {
             _ = readReader()
-        } onChange: { [weak self] _ in
+            _ = isShown
+        } onChange: { [weak self] event in
+            event.cancel()
             MainActor.assumeIsolated {
                 guard let self, !self.loader.isClosed else { return }
-                self.observeReader()
+                self.observeInputs()
                 let reader = self.readReader()
+                guard reader !== previousReader || self.isShown != previouslyShown else { return }
                 self.loader.request(source: Source(reader: reader), isEnabled: self.isShown && reader != nil, reread: false)
             }
         }
-    }
-
-    /// Restores this tab's flag without making a second live copy in LayerVisibility.
-    func restoreVisibility(from visibility: LayerVisibility) {
-        guard !loader.isClosed else { return }
-        rememberedVisibility = visibility
-        isShown = visibility.rememberedTimeSpent
     }
 
     /// This document's images, when the layer is on and they've been read.

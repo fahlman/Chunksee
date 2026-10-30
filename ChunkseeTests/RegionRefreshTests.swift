@@ -279,7 +279,7 @@ import Testing
         map.viewport.center = CGPoint(x: 512, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
         await map.waitUntilIdle()
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         await session.heatMap.waitForReads()
         let regions = [RegionPosition(x: 0, z: 0), RegionPosition(x: 1, z: 0)]
         let tiles = try regions.map { try #require(map.tiles[$0]) }
@@ -338,7 +338,7 @@ import Testing
         map.viewport.center = CGPoint(x: 512, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
         await map.waitUntilIdle()
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         await session.heatMap.waitForReads()
         let region = RegionPosition(x: 0, z: 0)
         let tile = try #require(map.tiles[region]), heat = try #require(session.heatMap.visibleImages?[region])

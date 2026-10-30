@@ -31,7 +31,7 @@ import Testing
         #expect(resources.activeDimensionID == nether && first.savedPlaces === second.savedPlaces)
         #expect(first.savedPlaces.all == [place] && first.visibility.creatures == [.pet])
         #expect(second.visibility.creatures.isEmpty && first.visibility.showsGrid && !second.visibility.showsGrid)
-        #expect(first.visibility.rememberedSlimeChunks && second.heatMap.isShown)
+        #expect(first.visibility.showsSlimeChunks && second.heatMap.isShown)
         for prefix in ["mapView.", "mapLayers.", "savedPlaces."] { #expect(defaults.object(forKey: prefix + url.path) == nil) }
         first.map?.viewport.center = CGPoint(x: 123, y: -456)
         first.saveView()
@@ -43,7 +43,7 @@ import Testing
         let reopened = WorldSettings(id: resources.settings.worldID, defaults: defaults)
         #expect(reopened.lastDimension == nether && reopened.savedPlaces == [place])
         #expect(reopened.viewport(for: overworld)?.center == CGPoint(x: 123, y: -456))
-        #expect(LayerVisibility(settings: reopened, dimension: nether).showsGrid)
+        #expect(reopened.mapPresentation(for: nether).overlays.showsGrid)
         resources.close()
         await resources.waitUntilClosed()
     }
@@ -54,9 +54,10 @@ import Testing
         defaults.set(raw, forKey: "savedPlaces." + path)
         let settings = WorldSettings(id: id, defaults: defaults, legacyPaths: [path])
         #expect(settings.savedPlaces.isEmpty)
-        settings.save(MapViewport(), for: "minecraft:overworld", selected: nil)
-        LayerVisibility(settings: settings, dimension: "minecraft:overworld").showsGrid = true
+        var choices = settings.mapPresentation(for: "minecraft:overworld")
+        choices.overlays.showsGrid = true
+        settings.save(MapViewport(), presentation: choices, for: "minecraft:overworld", selected: nil)
         let stored = defaults.dictionary(forKey: "worldSettings." + id.uuidString)
-        #expect(stored?["places"] as? Data == raw && stored?["version"] as? Int == 1)
+        #expect(stored?["places"] as? Data == raw && stored?["version"] as? Int == 2)
     }
 }

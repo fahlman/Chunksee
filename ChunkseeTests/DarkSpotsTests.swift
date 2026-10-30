@@ -204,9 +204,9 @@ import Testing
         await gate.finish("close", with: rules)
         await resources.waitUntilClosed()
         #expect(first.map?.nightLighting == nil && second.map?.nightLighting == nil)
-        let saved = LayerVisibility(settings: resources.settings, dimension: "minecraft:overworld")
-        let another = LayerVisibility(settings: resources.settings, dimension: "minecraft:the_nether")
-        #expect(saved.rememberedDarkSpots && !another.rememberedDarkSpots)
+        let saved = resources.settings.mapPresentation(for: "minecraft:overworld").overlays
+        let another = resources.settings.mapPresentation(for: "minecraft:the_nether").overlays
+        #expect(saved.showsDarkSpots && !another.showsDarkSpots)
     }
 
     @Test(.timeLimit(.minutes(1))) func resumingDarkSpotsWhileAReadRetiresKeepsWorldDrainage() async throws {

@@ -151,7 +151,9 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: -100, y: -200), scale: 0.125)
         source.map?.viewport = sourceView
         let targetDepth = MapDepth(y: 48, isSurface: false)
-        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: targetDepth)
+        var targetPresentation = resources.settings.mapPresentation(for: dimension)
+        targetPresentation.depth = targetDepth
+        resources.settings.save(targetView, presentation: targetPresentation, for: dimension, selected: source.selectedDimensionID)
         let existing = alreadyOpen ? WorldSession(resources: resources, dimensionID: dimension) : nil
         var opened = recordOpens(of: source)
         let expected: CGPoint

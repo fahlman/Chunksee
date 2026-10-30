@@ -1,0 +1,176 @@
+import ChunkseeKit
+import CoreGraphics
+import Foundation
+import Testing
+@testable import ChunkseeTestHost
+
+@Suite(.isolatedStores) struct MapPresentationTests {
+    @Test func migrationCollectsEveryChoiceAndRetiresOnlyThatDimensionsOldFields() throws {
+        let defaults = TestDefaults.make(), id = UUID(), player = UUID()
+        let key = "worldSettings." + id.uuidString, dimension = "minecraft:overworld", other = "minecraft:the_nether"
+        let annotations = Data("opaque annotations".utf8)
+        defaults.set([
+            "dimension": other, "places": annotations, "shownVersionNotices": ["kept notice"],
+            "views": [dimension: [-12.5, 33, 2], other: [7.0, 8, 4]],
+            "depths": [dimension: ["y": -23, "surface": 0]], "styles": [dimension: "height"],
+            "blockFilters": [dimension: ["enabled": false, "hidden": ["stone", "bad:id:bad"], "highlighted": ["sand", "stone"]]],
+            "lightingModes": [dimension: "daylight"], "castsShadows": [dimension: false], "biomeBlending": [dimension: true],
+            "layers": [dimension: [
+                "structureVisibility": ["village": false, "mineshaft": true], "shownPlaceGroups": ["spawner"],
+                "shownCreatureGroups": ["pet"], "shownMobTypes": ["minecraft:sheep"], "shownBiomeGroups": ["test:wetland"],
+                "hiddenPlayers": [player.uuidString, "invalid UUID"], "showsGrid": true, "showsSavedPlaces": false,
+                "showsWorldBorder": false, "showsTimeSpent": true, "showsSlimeChunks": true, "showsDarkSpots": true
+            ], other: ["showsGrid": false]]
+        ], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults)
+        let choices = settings.mapPresentation(for: dimension)
+        #expect(choices.style == .height && choices.depth == MapDepth(y: -23, isSurface: false))
+        #expect(choices.lightingMode == .daylight && !choices.castsShadows && choices.blendsBiomeColors)
+        #expect(choices.blockFilter == MapBlockFilter(isEnabled: false, hiddenIDs: ["minecraft:stone"], highlightedIDs: ["minecraft:sand"]))
+        #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
+        #expect(choices.overlays.places == [.spawner] && choices.overlays.creatures == [.pet])
+        #expect(choices.overlays.mobTypes == ["minecraft:sheep"] && choices.overlays.biomes == [BiomeGroup(id: "test:wetland")])
+        #expect(choices.overlays.hiddenPlayers == [player] && choices.overlays.showsGrid)
+        #expect(!choices.overlays.showsSavedPlaces && !choices.overlays.showsWorldBorder)
+        #expect(choices.overlays.showsTimeSpent && choices.overlays.showsSlimeChunks && choices.overlays.showsDarkSpots)
+        #expect(settings.viewport(for: dimension) == MapViewport(center: CGPoint(x: -12.5, y: 33), scale: 2))
+        let migrated = try #require(defaults.dictionary(forKey: key))
+        for section in ["views", "depths", "styles", "blockFilters", "lightingModes", "castsShadows", "biomeBlending", "layers"] {
+            #expect((migrated[section] as? [String: Any])?[dimension] == nil)
+        }
+        #expect((migrated["views"] as? [String: [Double]])?[other] == [7, 8, 4])
+        #expect((migrated["mapPresentations"] as? [String: Data])?.count == 1)
+        #expect(migrated["places"] as? Data == annotations && settings.lastDimension == other)
+        #expect(settings.hasShownVersionNotice("kept notice"))
+
+        // Obsolete fields written after migration cannot replace the canonical record.
+        var oldWriter = migrated
+        oldWriter["styles"] = [dimension: "normal"]
+        defaults.set(oldWriter, forKey: key)
+        #expect(settings.mapPresentation(for: dimension) == choices)
+        settings.save(MapViewport(center: .zero, scale: 4), presentation: choices, for: dimension, selected: other)
+        #expect(settings.mapPresentation(for: dimension) == choices && settings.viewport(for: dimension)?.scale == 4)
+        #expect(defaults.dictionary(forKey: key)?["places"] as? Data == annotations)
+    }
+
+    @Test func unreadableChoicesKeepReadableSiblingsAndOtherDimensionRecords() throws {
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
+        let data = try JSONSerialization.data(withJSONObject: [
+            "viewport": [0, 0, -1], "presentation": [
+                "style": "future-style", "depth": ["y": 40, "isSurface": false], "castsShadows": false,
+                "lightingMode": "unfamiliar", "blendsBiomeColors": true,
+                "blockFilter": ["hiddenIDs": ["stone", "bad:id:bad"], "highlightedIDs": ["stone", "sand"]],
+                "overlays": ["showsGrid": true, "showsTimeSpent": "invalid", "shownFutureLayer": true]
+            ]
+        ])
+        let key = "worldSettings." + id.uuidString
+        defaults.set(["mapPresentations": [dimension: data, "test:unreadable": "keep opaque sibling"]], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults), choices = settings.mapPresentation(for: dimension)
+        #expect(choices.style == MapPresentation().style && choices.lightingMode == MapPresentation().lightingMode)
+        #expect(choices.depth == MapDepth(y: 40, isSurface: false) && !choices.castsShadows && choices.blendsBiomeColors)
+        #expect(choices.blockFilter == MapBlockFilter(hiddenIDs: ["minecraft:stone"], highlightedIDs: ["minecraft:sand"]))
+        #expect(choices.overlays.showsGrid && !choices.overlays.showsTimeSpent && choices.overlays.showsSavedPlaces)
+        #expect(settings.viewport(for: dimension) == nil)
+        settings.save(choices, for: dimension)
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Any])?["test:unreadable"] as? String == "keep opaque sibling")
+    }
+
+    @Test func aSessionSavesAllChoicesWithoutAViewAndRestoresOnlyPersistentOverlays() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld", other = "minecraft:the_nether"
+        func open() async throws -> WorldResources {
+            let names = PlayerNames(defaults: defaults)
+            let prepared = try await WorldPreparation.read(WorldSnapshot.read(root), minecraft: names.minecraft)
+            return WorldResources(prepared: prepared, names: names, savedSearches: SavedSearches(defaults: defaults),
+                settings: WorldSettings(id: id, defaults: defaults), cacheRoot: nil, watchWorld: { _, _ in nil })
+        }
+        let resources = try await open()
+        defer { resources.close() }
+        let session = WorldSession(resources: resources, dimensionID: dimension)
+        let sibling = WorldSession(resources: resources, dimensionID: other)
+        sibling.becameActive()
+        let map = try #require(session.map)
+        map.setDepth(MapDepth(y: -31, isSurface: false))
+        map.setStyle(.height)
+        map.setBiomeBlending(true)
+        map.setLightingMode(.daylight)
+        map.setCastsShadows(false)
+        map.setBlockFilter(MapBlockFilter(hiddenIDs: ["minecraft:stone"]))
+        session.visibility.showsGrid = true
+        session.visibility.showsTimeSpent = true
+        session.visibility.showsSlimeChunks = true
+        session.setDarkSpots(true)
+        session.visibility.showsSavedPlaces = false
+        session.visibility.showsWorldBorder = false
+        session.visibility.mobTypes = ["minecraft:sheep"]
+        session.visibility.mobAppearances["minecraft:sheep"] = MobAppearance(nil)
+        var expected = map.presentation
+        expected.overlays.mobAppearances = [:]
+        let saved = WorldSettings(id: id, defaults: defaults)
+        #expect(saved.mapPresentation(for: dimension) == expected)
+        #expect(saved.lastDimension == other && sibling.map?.presentation == MapPresentation())
+        #expect(session.heatMap.isShown && session.slimeChunks.isShown)
+        await session.heatMap.waitForReads()
+        await session.slimeChunks.waitForImages()
+        #expect(!session.heatMap.isLoading && !session.slimeChunks.isLoading)
+        let viewport = MapViewport(center: CGPoint(x: 8, y: -12), scale: 4)
+        map.viewport = viewport
+        resources.close()
+        await resources.waitUntilClosed()
+
+        let reopened = try await open()
+        defer { reopened.close() }
+        let restored = WorldSession(resources: reopened, dimensionID: dimension)
+        #expect(restored.map?.presentation == expected && restored.map?.viewport == viewport)
+        #expect(restored.visibility.mobAppearances.isEmpty && restored.heatMap.isShown && restored.slimeChunks.isShown)
+        #expect(reopened.settings.lastDimension == other)
+        reopened.close()
+        await reopened.waitUntilClosed()
+        restored.visibility.showsGrid = false
+        restored.map?.setStyle(.normal)
+        #expect(saved.mapPresentation(for: dimension) == expected)
+    }
+
+    @Test func unavailableDimensionTransfersItsChoicesIntoTheMapWhenItsSourceAppears() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), id = "test:later"
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        defer { resources.close() }
+        let session = WorldSession(resources: resources, dimensionID: id)
+        #expect(session.map == nil)
+        session.visibility.showsGrid = true
+        session.visibility.showsTimeSpent = true
+        session.visibility.mobTypes = ["test:creature"]
+        session.visibility.mobAppearances["test:creature"] = MobAppearance(nil)
+        #expect(resources.settings.mapPresentation(for: id).overlays.showsGrid)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/test/later/region"),
+                                                withIntermediateDirectories: true)
+        try await resources.replaceSource(from: WorldSnapshot.read(root))
+        let map = try #require(session.map)
+        #expect(map.presentation.overlays == session.visibility)
+        #expect(map.presentation.overlays.showsGrid && session.heatMap.isShown)
+        #expect(map.presentation.overlays.mobAppearances["test:creature"] == MobAppearance(nil))
+        map.setStyle(.waterDepth)
+        session.visibility.showsTimeSpent = false
+        #expect(resources.settings.mapPresentation(for: id).style == .waterDepth)
+        #expect(!resources.settings.mapPresentation(for: id).overlays.showsTimeSpent)
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
+    @Test func noDimensionDoesNotInventASavedRecordOrChangeTheFrontDimension() throws {
+        let defaults = TestDefaults.make(), id = UUID(), key = "worldSettings." + id.uuidString
+        defaults.set(["dimension": "test:front"], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults)
+        var choices = settings.mapPresentation(for: nil)
+        choices.overlays.showsGrid = true
+        settings.save(choices, for: nil)
+        #expect(settings.lastDimension == "test:front")
+        #expect(defaults.dictionary(forKey: key)?["mapPresentations"] == nil)
+    }
+}

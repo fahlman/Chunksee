@@ -17,10 +17,28 @@ final class WorldSession {
     var savedSearches: SavedSearches { resources.savedSearches }
     var savedPlaces: SavedPlaces { resources.savedPlaces }
     var players: [PlayerInfo] { search.playerSnapshot.players }
-    let visibility: LayerVisibility
+    var visibility: LayerVisibility {
+        get { mapPresentation.overlays }
+        set {
+            guard !isClosed else { return }
+            if let map { map.setOverlays(newValue) }
+            else {
+                var choices = mapPresentation
+                choices.overlays = newValue
+                mapState = .unavailable(choices)
+            }
+        }
+    }
     let search: SearchModel
-    let heatMap: HeatMapLayer
-    let slimeChunks: SlimeChunkLayer
+    @ObservationIgnored private(set) lazy var heatMap = HeatMapLayer(
+        reader: { [weak self] in
+            guard let self, let id = self.selectedDimensionID else { return nil }
+            return self.resources.readers[id]
+        }, isShown: { [weak self] in self?.visibility.showsTimeSpent ?? false }, work: resources.backgroundWork)
+    @ObservationIgnored private(set) lazy var slimeChunks = SlimeChunkLayer(
+        dimensionID: selectedDimensionID, seed: { [weak self] in self?.resources.details.seed },
+        isShown: { [weak self] in self?.visibility.showsSlimeChunks ?? false },
+        regions: map?.availableRegions ?? [], work: resources.backgroundWork)
     /// Created after initialization so feature models can refer weakly to this document.
     @ObservationIgnored private(set) lazy var routing = DimensionRouting(source: self)
     @ObservationIgnored private(set) lazy var selection = SelectionModel(source: self)
@@ -29,7 +47,23 @@ final class WorldSession {
     @ObservationIgnored private(set) lazy var imageExport = MapExportModel(source: self)
 
     let selectedDimensionID: String?
-    private(set) var map: MapModel?
+    // A dimension may not exist yet. Transfer its choices into MapModel when it becomes readable;
+    // retaining a second fallback copy beside a loaded map would give those choices two owners.
+    private enum MapState {
+        case unavailable(MapPresentation)
+        case loaded(MapModel)
+    }
+    private var mapState: MapState
+    var map: MapModel? {
+        guard case .loaded(let map) = mapState else { return nil }
+        return map
+    }
+    private var mapPresentation: MapPresentation {
+        switch mapState {
+        case .unavailable(let choices): choices
+        case .loaded(let map): map.presentation
+        }
+    }
     @ObservationIgnored private let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     let navigation: MapNavigation
     private(set) var isClosed = false
@@ -41,19 +75,15 @@ final class WorldSession {
         self.resources = resources
         self.renderTile = renderTile
         let selected = dimensionID ?? resources.defaultDimensionID
-        visibility = LayerVisibility(settings: resources.settings, dimension: selected)
+        let choices = resources.settings.mapPresentation(for: selected)
         search = SearchModel(queryStore: resources.queryStore)
-        heatMap = HeatMapLayer(reader: { [weak resources] in selected.flatMap { resources?.readers[$0] } },
-                               work: resources.backgroundWork)
         selectedDimensionID = selected
-        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, renderTile: renderTile)
-        map = initialMap
-        initialMap?.setDarkSpots(visibility.rememberedDarkSpots)
+        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderTile)
+        mapState = initialMap.map(MapState.loaded) ?? .unavailable(choices)
         navigation = MapNavigation(map: initialMap)
-        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: { [weak resources] in resources?.details.seed },
-                                     regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
-        heatMap.restoreVisibility(from: visibility)
-        slimeChunks.restoreVisibility(from: visibility)
+        observeMapPresentation()
+        _ = heatMap
+        _ = slimeChunks
         resources.attach(self)
     }
 
@@ -70,9 +100,9 @@ final class WorldSession {
             map.replaceSource(dimension, cacheDirectory: dimension.flatMap {
                 TileCache.directory(forWorldAt: resources.url, dimensionID: $0.id, root: resources.cacheRoot)
             })
-        } else if dimension != nil {
-            map = Self.initialMap(resources: resources, dimensionID: selectedDimensionID, renderTile: renderTile)
-            map?.setDarkSpots(visibility.rememberedDarkSpots)
+        } else if let map = Self.initialMap(resources: resources, dimensionID: selectedDimensionID,
+                                           choices: mapPresentation, renderTile: renderTile) {
+            mapState = .loaded(map)
             navigation.replaceMap(map)
         }
         slimeChunks.regionsChanged(map?.availableRegions ?? [])
@@ -107,7 +137,7 @@ final class WorldSession {
         if resources.isClosed { await resources.waitUntilClosed() }
     }
 
-    private static func initialMap(resources: WorldResources, dimensionID: String?,
+    private static func initialMap(resources: WorldResources, dimensionID: String?, choices: MapPresentation,
                                    renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?) -> MapModel? {
         guard let dimension = resources.dimensions.first(where: { $0.id == dimensionID }) else { return nil }
         // Start where the map was left, or else at the world spawn when it's in this dimension,
@@ -120,23 +150,36 @@ final class WorldSession {
                            savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
                            nightLighting: { [weak resources] in resources?.nightLighting(in: dimension.id) },
                            work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
+                           presentation: choices,
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            renderTile: renderTile)
         if let viewport = resources.settings.viewport(for: dimension.id) { map.viewport = viewport }
-        map.setDepth(resources.settings.depth(for: dimension.id))
-        map.setStyle(resources.settings.style(for: dimension.id))
-        map.setBiomeBlending(resources.settings.blendsBiomeColors(for: dimension.id))
-        map.setLightingMode(resources.settings.lightingMode(for: dimension.id))
-        map.setCastsShadows(resources.settings.castsShadows(for: dimension.id))
-        map.setBlockFilter(resources.settings.blockFilter(for: dimension.id))
         return map
     }
 
     func setDarkSpots(_ shown: Bool) {
         guard !isClosed, let map, map.showsDarkSpots != shown else { return }
-        visibility.rememberDarkSpots(shown)
         map.setDarkSpots(shown)
-        resources.darkSpotsVisibilityChanged()
+    }
+
+    /// Save the whole choice value independently of the view lifetime. The main-actor observer
+    /// also tells the shared index when Dark Spots needs its additional facts.
+    private func observeMapPresentation() {
+        guard !isClosed else { return }
+        let previous = mapPresentation
+        withObservationTracking(options: [.didSet]) { _ = mapPresentation } onChange: { [weak self] event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                self.observeMapPresentation()
+                let current = self.mapPresentation
+                guard current != previous else { return }
+                self.resources.settings.save(current, for: self.selectedDimensionID)
+                if current.overlays.showsDarkSpots != previous.overlays.showsDarkSpots {
+                    self.resources.darkSpotsVisibilityChanged()
+                }
+            }
+        }
     }
 
     /// The native front dimension can change without this session switching dimensions.
@@ -149,9 +192,7 @@ final class WorldSession {
     /// Remembers this document's viewport while preserving the world's front dimension.
     func saveView() {
         guard let map, let id = selectedDimensionID else { return }
-        resources.settings.save(map.viewport, for: id, selected: resources.activeDimensionID, depth: map.depth, style: map.chosenStyle,
-                                blockFilter: map.blockFilter, blendsBiomeColors: map.blendsBiomeColors,
-                                lightingMode: map.lightingMode, castsShadows: map.castsShadows)
+        resources.settings.save(map.viewport, presentation: map.presentation, for: id, selected: resources.activeDimensionID)
     }
 }
 

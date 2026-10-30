@@ -57,8 +57,8 @@ import Testing
             #expect(views.viewport(for: dimension) == nil)
         }
         let good = MapViewport(center: CGPoint(x: -12.5, y: 40), scale: 2)
-        views.save(good, for: dimension, selected: dimension)
-        views.save(MapViewport(center: CGPoint(x: CGFloat.nan, y: 0)), for: dimension, selected: dimension)
+        views.save(good, presentation: MapPresentation(), for: dimension, selected: dimension)
+        views.save(MapViewport(center: CGPoint(x: CGFloat.nan, y: 0)), presentation: MapPresentation(), for: dimension, selected: dimension)
         #expect(views.viewport(for: dimension) == good)
     }
 }

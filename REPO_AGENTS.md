@@ -534,7 +534,8 @@ older scan envelopes.
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime and per-window state, preserving those models across world-source replacement |
 | `DimensionPresentation.swift` | Live context for dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
 | `MapModel.swift`, `MapGameResources.swift`, `MapShadow.swift` | Observes world-owned game resources; full/preview tile caches, per-region scheduler and bounded shadows over cached surface heights; work that leaves the view is cancelled |
-| `MapLayers.swift`, `HeatMap.swift` | Each world dimension tab's remembered layer/player/grid controls and Time Spent visibility; HeatMapLayer owns the live Time Spent flag, with persistence through LayerVisibility |
+| `MapPresentation.swift`, `MapLayers.swift` | One Codable value of map choices, including typed overlay visibility; MapModel owns the live value, and native layer controls edit it through WorldSession |
+| `HeatMap.swift`, `SlimeChunks.swift` | Observe the presentation's visibility and the world-owned reader/seed; existing loaders own Time Spent images and incremental Slime Chunks masks |
 | `MapViewport.swift` | Conversions between view points and world blocks, with one world-to-view transform for points, region tiles and area paths, plus pan and zoom; saved chunk/region coordinates use ChunkseeKit's position types. Hover, coordinate-copy and biome lookups use Kit's containing-chunk and local-column conversions |
 | `Presentation.swift`, `GoToCoordinatesView.swift` | Coordinate values and their shared Foundation format style using ChunkseeKit’s checked block conversion, common CoordinateText digit styling, block-center geometry, and native coordinate entry; exact entity positions stay unshifted |
 | `MarkerGeometry.swift`, `MarkerStyle.swift`, `MarkerLabels.swift` | Zoom-aware marker geometry shared by drawing/picking; body, glyph, border, dimming and label presentation shared by map/export and applicable sidebar symbols; deterministic label collision layout |
@@ -722,7 +723,7 @@ restoration and WorldSettings use that owner. Its `chosenStyle` survives missing
 `style` derives the picture that can currently be shown. Persistence and document rereads keep the
 choice, while menus, legends, rendering and export use the shown style. Height returns when its
 scale becomes available. Choosing Normal while it is the temporary fallback replaces the saved
-Height choice. The existing preference format is unchanged. A shown-style change cancels obsolete renders and clears
+Height choice. The earlier separate style preference migrates into the presentation record. A shown-style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
 TileCache version 15 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
@@ -1240,8 +1241,8 @@ without a mappable position keep selectable rows for their details. Any player m
 dimension shows its player, including a death or respawn point of somebody listed in another
 dimension or with no current position; it selects a row only when this dimension lists them.
 
-WorldSettings owns one versioned preference record per world for views, cutaway depths, front
-dimension, layer controls and saved places. WorldFolders associates a persistent UUID with each
+WorldSettings owns one versioned preference record per world, containing one Codable map record
+per dimension, the front dimension, version notices and saved places. WorldFolders associates a persistent UUID with each
 read-only bookmark in its existing registry; the opening reader resolves it off-main and passes
 the identity to WorldSettings. The resolved bookmark URL retains security scope; canonical paths
 are only comparisons, never replacements for that access URL. Native folder moves keep that UUID;
@@ -1249,8 +1250,8 @@ separately opened copies get their own, and unresolved bookmarks retain their id
 Opening settings imports the former path-keyed worldSettings/mapView/mapLayers/savedPlaces once,
 using the current path and the bookmark's original path even after a rename while closed. Legacy
 move collisions keep source view choices and destination annotation names, as before. Thereafter
-no settings relocation is needed. WorldResources shares this owner; SavedPlaces and each dimension's
-LayerVisibility retain their live state. Annotation JSON is encoded only for annotation edits or
+no settings relocation is needed. WorldResources shares this owner; SavedPlaces owns live annotations,
+and MapModel owns each dimension's live MapPresentation. Annotation JSON is encoded only for annotation edits or
 legacy move merging, never for viewport/layer saves. AppModel registers both shared resources and
 pending reads by that folder ID. A move or reread admits one new WorldReadSource, replacing file
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads
@@ -1262,6 +1263,26 @@ selection, navigation, search and SwiftUI view identity instead of copying a sub
 Direct world/session opening conveniences exist only in TestWorld; production
 always obtains identity through its document reader. App-wide preferences stay separate.
 
+Each dimension's MapPresentation keeps chosen style, depth, block filter, lighting, shadows,
+biome blending and overlays in one value, with defaults declared beside those values. WorldSession
+observes it and saves the complete value independently of visible views; the six view persistence
+callbacks are removed. The saved map record holds that value beside the optional viewport, whose
+existing delayed save and close/termination flush remain. A choice save preserves the viewport and
+front dimension. A dimension without a map retains the same value in the session's unavailable
+state, transferring it to MapModel when its source appears; it never keeps a parallel fallback copy
+beside a loaded map. Existing loaded maps retain their choices across source removal and return.
+
+WorldSettings migrates a dimension's separate view/depth/style/filter/lighting/blending/shadow/layer
+fields on first use, then removes only those obsolete entries. Other dimensions migrate independently.
+Old app-wide layer preferences seed a new dimension once. Missing or unreadable choices retain the
+current defaults without discarding readable siblings, structure visibility preserves explicit hidden
+choices and defaults for new groups, and block filters still normalize IDs through their owner.
+Appearance filters remain transient and are excluded from encoding. Saved-place bytes, front-dimension
+state, version notices and the existing path/bookmark migration policy remain separate and unchanged.
+The API now reads `mapPresentation(for:)` and saves a complete presentation (with an explicit viewport
+when navigation saves); the old field getters, optional field-by-field save and layer dictionaries
+are retained only as private migration decoding, not writable control interfaces.
+
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
 fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, saved places, grid and Time Spent.
 Saved Places defaults to shown for new and older settings. Hiding its pins keeps the sidebar
@@ -1270,9 +1291,10 @@ visibility unchanged. MapAnnotations owns editor commits and their shared reveal
 the flag once for drawing, picking, accessibility and export.
 Existing app-wide preferences seed a new scope once; later tab changes never write the old keys
 or another dimension's entry. Native world moves migrate every dimension's saved controls.
-HeatMapLayer remains the live owner of Time Spent visibility and restores/persists its flag
-through that dimension scope; there is no second editable flag in LayerVisibility.
-It holds that document's reader as the declared source of a RefreshLoader. The loader owns its current value,
+MapPresentation includes a typed LayerVisibility value for every overlay choice. HeatMapLayer and
+SlimeChunkLayer observe their visibility from that value alongside their reader or seed; neither
+keeps an editable flag or persistence reference. HeatMapLayer holds that document's reader as the
+declared source of a RefreshLoader. The loader owns its current value,
 pending and retry demand; no mutable dimension selector or per-dimension store is kept inside
 the layer. Hidden invalidation waits until shown, while an already running read may finish.
 RefreshLoader coalesces saves during a pass, retains the previous value after a failed read and
@@ -1534,8 +1556,8 @@ Surface/cutaway bucket. The stable filter hash is computed only when choices cha
 filtering reuses the ordinary tile. The shared on-screen/export legend identifies active filtering;
 highlight mode replaces the style colour key because highlighted pixels no longer use that scale.
 
-Dark Spots is an opt-in per-dimension layer. MapModel owns the live flag; WorldSession persists it
-through LayerVisibility. WorldResources owns one optional night-lighting RefreshLoader, keyed by
+Dark Spots is an opt-in per-dimension layer in MapModel's presentation. WorldSession observes the
+whole choice value, persists it and updates the shared world's demand for night-lighting facts. WorldResources owns one optional night-lighting RefreshLoader, keyed by
 Minecraft-folder generation and game-data library identity, using ChunkseeKit's published
 World.nightMonsterLighting. Maps observe their dimension's rule directly from that publication;
 there is no editable map copy or manual push. Closed maps expose no rule while siblings may keep

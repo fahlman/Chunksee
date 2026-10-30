@@ -181,8 +181,10 @@ import Testing
         try await resources.replaceSource(from: WorldSnapshot.read(url))
         #expect(first.map?.blendsBiomeColors == false && restored.map?.blendsBiomeColors == true)
         let saved = WorldSettings(id: resources.settings.worldID, defaults: defaults)
-        saved.save(MapViewport(), for: "minecraft:overworld", selected: nil)
-        #expect(saved.blendsBiomeColors(for: "minecraft:overworld")) // Other saves preserve the choice.
+        let choices = saved.mapPresentation(for: "minecraft:overworld")
+        #expect(!choices.blendsBiomeColors) // The change saved immediately, without a visible view.
+        saved.save(MapViewport(), presentation: choices, for: "minecraft:overworld", selected: nil)
+        #expect(!saved.mapPresentation(for: "minecraft:overworld").blendsBiomeColors)
         resources.close()
         await resources.waitUntilClosed()
     }

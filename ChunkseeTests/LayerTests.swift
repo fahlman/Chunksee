@@ -482,6 +482,8 @@ enum StructureTestWorld {
 }
 
 @Suite(.isolatedStores) struct HeatMapTests {
+    @Observable private final class Visibility { var isShown = false }
+
     @Test func logarithmicScaleAndColors() throws {
         #expect(HeatMap.level(ofTicks: 1_199) == nil)
         #expect(HeatMap.level(ofTicks: HeatMap.minimumTicks) == 0)
@@ -510,13 +512,13 @@ enum StructureTestWorld {
         defer { session.close() }
         #expect(session.heatMap.visibleImages == nil && !session.heatMap.isLoading)
         #expect(!MapContent(session: session).showsHeatMap)
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         #expect(session.heatMap.isLoading)
         #expect(MapContent(session: session).showsHeatMap)
         await session.heatMap.waitForReads()
         #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionPosition(x: 0, z: 0)])
         #expect(MapContent(session: session).showsHeatMap)
-        session.heatMap.isShown = false
+        session.visibility.showsTimeSpent = false
         #expect(session.heatMap.visibleImages == nil)
         #expect(!MapContent(session: session).showsHeatMap)
     }
@@ -546,20 +548,20 @@ enum StructureTestWorld {
             let bytes = try #require(CFDataGetBytePtr(data))
             return Array(UnsafeBufferPointer(start: bytes, count: 4))
         }
-        overworld.heatMap.isShown = true
+        overworld.visibility.showsTimeSpent = true
         await overworld.heatMap.waitForReads()
         #expect(nether.heatMap.visibleImages == nil && !nether.heatMap.isLoading)
         let red = try pixel(overworld)
         #expect(red[0] > red[2] && red[3] > 0)
-        nether.heatMap.isShown = true
+        nether.visibility.showsTimeSpent = true
         await nether.heatMap.waitForReads()
         let blue = try pixel(nether)
         #expect(blue[2] > blue[0] && blue[3] > 0)
-        overworld.heatMap.isShown = false
+        overworld.visibility.showsTimeSpent = false
         overworld.heatMap.load(reread: true)
         #expect(overworld.heatMap.visibleImages == nil)
         #expect(try pixel(nether) == blue)
-        overworld.heatMap.isShown = true
+        overworld.visibility.showsTimeSpent = true
         await overworld.heatMap.waitForReads()
         #expect(try pixel(overworld) == red)
         #expect(try pixel(nether) == blue)
@@ -574,8 +576,9 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: { reader }, work: BackgroundWork())
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
+        visibility.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
         layer.load(reread: true)
@@ -589,10 +592,10 @@ enum StructureTestWorld {
         #expect(layer.visibleImages?.isEmpty == true)
         #expect(await gate.requested == ["region", "region"])
 
-        layer.isShown = false
+        visibility.isShown = false
         layer.load(reread: true)
         #expect(await gate.requested.count == 2)
-        layer.isShown = true
+        visibility.isShown = true
         await gate.waitForRequest("region", count: 3)
         await gate.finish("region", with: inhabited)
         await layer.waitForReads()
@@ -609,8 +612,9 @@ enum StructureTestWorld {
         let older = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
         let newer = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
         let source = HeatReaderSource(older)
-        let layer = HeatMapLayer(reader: { source.reader }, work: work)
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { source.reader }, isShown: { visibility.isShown }, work: work)
+        visibility.isShown = true
         await gate.waitForRequest("older")
         source.reader = newer
         await gate.waitForRequest("newer")
@@ -640,8 +644,9 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: { reader }, work: BackgroundWork())
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
+        visibility.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
         layer.cancel()

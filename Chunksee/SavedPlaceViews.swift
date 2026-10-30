@@ -7,7 +7,7 @@ struct SavedPlacesGroup: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        @Bindable var visibility = session.visibility
+        @Bindable var session = session
         DisclosureGroup(isExpanded: $isExpanded) {
             SidebarActionRow(help: "Save the location at the center of the map") {
                 Button("Save Place…", systemImage: "mappin.and.ellipse") { session.annotations.savePlace() }
@@ -27,7 +27,7 @@ struct SavedPlacesGroup: View {
                 }
             }
         } label: {
-            MapVisibilityRow(isShown: $visibility.showsSavedPlaces) {
+            MapVisibilityRow(isShown: $session.visibility.showsSavedPlaces) {
                 Label(CountedText.label(String(localized: "Saved Places", locale: locale),
                                         count: session.annotations.listedPlaces.count, locale: locale),
                       systemImage: MarkerStyle.savedPlaceSymbol)

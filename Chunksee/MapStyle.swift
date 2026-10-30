@@ -4,7 +4,7 @@ import Foundation
 import SwiftUI
 
 /// A dimension's terrain presentation. The scan and its selected column stay the same.
-nonisolated enum MapStyle: String, CaseIterable, Sendable, Encodable {
+nonisolated enum MapStyle: String, CaseIterable, Sendable, Codable {
     case normal, height, waterDepth
 
     var title: LocalizedStringResource {

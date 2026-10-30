@@ -1,7 +1,7 @@
 import ChunkseeKit
 import SwiftUI
 
-nonisolated enum MapLightingMode: String, CaseIterable, Sendable {
+nonisolated enum MapLightingMode: String, CaseIterable, Sendable, Codable {
     case savedTime, daylight
 
     var title: LocalizedStringResource {

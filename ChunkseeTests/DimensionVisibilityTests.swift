@@ -12,9 +12,9 @@ import Testing
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = TestDefaults.make(), worldID = UUID()
-        let settings = WorldSettings(id: worldID, defaults: defaults)
         // Existing dimension settings have no saved-place flag, so their pins stay shown.
-        settings.saveLayers([.showsGrid: true], for: "minecraft:overworld")
+        defaults.set(["layers": ["minecraft:overworld": ["showsGrid": true]]],
+                     forKey: "worldSettings." + worldID.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)
             let prepared = try await WorldPreparation.read(WorldSnapshot.read(url), minecraft: names.minecraft)
@@ -84,15 +84,15 @@ import Testing
         overworld.visibility.biomes = [BiomeGroup(id: "minecraft:plains")]
         overworld.visibility.hiddenPlayers = [hidden]
         overworld.visibility.showsGrid = true
-        overworld.heatMap.isShown = true
+        overworld.visibility.showsTimeSpent = true
         nether.visibility.structures = []
         nether.visibility.places = []
         nether.visibility.creatures = []
         nether.visibility.biomes = [BiomeGroup(id: "minecraft:nether_wastes")]
         nether.visibility.hiddenPlayers = []
         nether.visibility.showsGrid = false
-        nether.heatMap.isShown = true
-        nether.heatMap.isShown = false
+        nether.visibility.showsTimeSpent = true
+        nether.visibility.showsTimeSpent = false
         #expect(MapContent(session: overworld).showsGrid && !MapContent(session: nether).showsGrid)
         #expect(overworld.heatMap.isShown && !nether.heatMap.isShown)
         #expect(overworld.visibility.hiddenPlayers == [hidden] && nether.visibility.hiddenPlayers.isEmpty)
@@ -126,17 +126,19 @@ import Testing
         defaults.set(["mineshaft"], forKey: "shownStructureGroups")
         defaults.set([String](), forKey: "shownCreatureGroups")
         defaults.set(true, forKey: "showsGrid")
-        let overworld = LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:overworld")
-        #expect(overworld.structures == [.mineshaft, .abandonedCamp] && overworld.creatures.isEmpty && overworld.showsGrid)
-        overworld.structures = []
-        overworld.showsGrid = false
-        let nether = LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:the_nether")
+        let settings = WorldSettings(id: id, defaults: defaults)
+        var overworld = settings.mapPresentation(for: "minecraft:overworld")
+        #expect(overworld.overlays.structures == [.mineshaft, .abandonedCamp] && overworld.overlays.creatures.isEmpty && overworld.overlays.showsGrid)
+        overworld.overlays.structures = []
+        overworld.overlays.showsGrid = false
+        settings.save(overworld, for: "minecraft:overworld")
+        let nether = WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays
         #expect(nether.structures == [.mineshaft, .abandonedCamp] && nether.creatures.isEmpty && nether.showsGrid)
         #expect(defaults.bool(forKey: "showsGrid") && defaults.stringArray(forKey: "shownStructureGroups") == ["mineshaft"])
         defaults.set(["villager"], forKey: "shownCreatureGroups")
         defaults.set(false, forKey: "showsGrid")
-        #expect(LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:overworld").creatures.isEmpty)
-        #expect(LayerVisibility(settings: WorldSettings(id: id, defaults: defaults), dimension: "minecraft:the_nether").showsGrid)
+        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.creatures.isEmpty)
+        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays.showsGrid)
     }
 
     @Test func worldsAreIndependentAndReopeningPreservesEveryDimension() {
@@ -145,20 +147,24 @@ import Testing
 
         let first = UUID(), second = UUID()
         let settings = WorldSettings(id: first, defaults: defaults)
-        let overworld = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
-        let nether = LayerVisibility(settings: settings, dimension: "minecraft:the_nether")
-        overworld.showsGrid = true
-        overworld.creatures = [.pet]
-        nether.creatures = []
-        nether.rememberTimeSpent(true)
-        let other = LayerVisibility(settings: WorldSettings(id: second, defaults: defaults), dimension: "minecraft:overworld")
-        #expect(!other.showsGrid && !other.rememberedTimeSpent)
-        LayerVisibility(settings: WorldSettings(id: first, defaults: defaults), dimension: "minecraft:the_end").showsGrid = true
-        let restored = LayerVisibility(settings: WorldSettings(id: first, defaults: defaults), dimension: "minecraft:overworld")
-        let restoredNether = LayerVisibility(settings: WorldSettings(id: first, defaults: defaults), dimension: "minecraft:the_nether")
+        var overworld = settings.mapPresentation(for: "minecraft:overworld")
+        var nether = settings.mapPresentation(for: "minecraft:the_nether")
+        overworld.overlays.showsGrid = true
+        overworld.overlays.creatures = [.pet]
+        nether.overlays.creatures = []
+        nether.overlays.showsTimeSpent = true
+        settings.save(overworld, for: "minecraft:overworld")
+        settings.save(nether, for: "minecraft:the_nether")
+        let other = WorldSettings(id: second, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays
+        #expect(!other.showsGrid && !other.showsTimeSpent)
+        var end = settings.mapPresentation(for: "minecraft:the_end")
+        end.overlays.showsGrid = true
+        settings.save(end, for: "minecraft:the_end")
+        let restored = WorldSettings(id: first, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays
+        let restoredNether = WorldSettings(id: first, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays
         #expect(restored.showsGrid && restored.creatures == [.pet])
-        #expect(restoredNether.creatures.isEmpty && restoredNether.rememberedTimeSpent)
-        #expect(LayerVisibility(settings: WorldSettings(id: first, defaults: defaults), dimension: "minecraft:the_end").showsGrid)
-        #expect(!other.showsGrid && !other.rememberedTimeSpent)
+        #expect(restoredNether.creatures.isEmpty && restoredNether.showsTimeSpent)
+        #expect(WorldSettings(id: first, defaults: defaults).mapPresentation(for: "minecraft:the_end").overlays.showsGrid)
+        #expect(!other.showsGrid && !other.showsTimeSpent)
     }
 }
