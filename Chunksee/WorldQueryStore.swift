@@ -71,7 +71,7 @@ final class WorldQueryStore {
         let hits: [SearchHit]
         init(source: Source, results: Results) {
             sources = source.context.key
-            hits = results[query] ?? []
+            hits = results[source.query] ?? []
         }
     }
 
