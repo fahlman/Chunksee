@@ -209,7 +209,7 @@ import Testing
         }
     }
 
-    @Test func invalidDimensionsFailAndExplicitRereadsKeepFreshOwnedSnapshots() async throws {
+    @Test func invalidDimensionsFailAndExplicitRereadsUpdateTheSharedSnapshot() async throws {
         try await withFixture { f in
             let invalid = f.start(f.url.appendingPathComponent("dimensions"))
             await #expect(throws: WorldOpenError.notADimension) { try await invalid.value }
@@ -219,10 +219,12 @@ import Testing
             guard case .dimension(let initial) = try await reader.readFolder(f.documents[0]) else { Issue.record("Missing dimension"); return }
             let session = try await f.attach(initial)
             #expect(await f.probe.count == 2)
+            let originalAccess = session.resources.access
             try f.writePlayer(health: 9)
             guard case .dimension(let fresh) = try await reader.readFolder(f.documents[0]),
-                  case .snapshot(let snapshot) = fresh.source else { Issue.record("Reread reused initial resources"); return }
-            #expect(snapshot.players.first?.health == 9 && snapshot.access !== session.resources.access)
+                  case .opening(let opening) = fresh.source else { Issue.record("Reread did not use the shared owner"); return }
+            #expect(opening.resources === session.resources && session.players.first?.health == 9)
+            #expect(originalAccess !== session.resources.access && await f.probe.count == 3)
             fresh.discardUnused()
             #expect(!session.resources.isClosed)
             let coordinated = try await DimensionSnapshot.read(f.documents[1], folders: f.model.worldFolders, coordinator: NSFileCoordinator())
