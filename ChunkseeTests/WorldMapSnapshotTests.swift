@@ -100,7 +100,8 @@ import Testing
         let session = WorldSession(resources: resources)
         defer { session.close() }
         session.selection.choose(.inGameMap(1))
-        let place = try #require(session.savedPlaces.add(name: "Location", dimension: session.selectedDimensionID, at: .zero))
+        let dimension = try #require(session.selectedDimensionID)
+        let place = try #require(session.savedPlaces.add(name: "Location", dimension: dimension, at: .zero))
         session.selection.choose(.savedPlace(place.id))
         #expect(MapContent(session: session).inGameMap?.map.id == 1)
         let view = session.map?.viewport
