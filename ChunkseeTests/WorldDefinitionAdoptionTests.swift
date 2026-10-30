@@ -223,7 +223,7 @@ import Testing
         defer { resources.close() }
         let blank = try await WorldResources.readDefinitions(resources.world, library: nil)
         let known = try await WorldResources.readDefinitions(resources.world, library: first.data)
-        let gate = AsyncReadGate<WorldResources.DefinitionSnapshot>()
+        let gate = AsyncReadGate<WorldDefinitions>()
         resources.readDefinitions = { _, library in
             guard let library else { return blank }
             return await gate.read(library.identity == first.identity ? "older" : library.identity == second.identity ? "newer" : "closing")

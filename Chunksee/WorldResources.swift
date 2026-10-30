@@ -29,17 +29,17 @@ final class WorldOpening {
 final class WorldResources {
     let access: WorldReadAccess
     let backgroundWork: BackgroundWork
-    let world: World
-    var savedVersion: SavedMinecraftVersion { definitionLoader.value.savedVersion }
+    var world: World { infoSnapshot.world }
+    var savedVersion: SavedMinecraftVersion { SavedMinecraftVersion(world.level) }
     private var visibleNewerWorldNoticeID: String?
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
-    private let openingDetails: WorldDetails
+    private let openingInfo: WorldInfoSnapshot
+    private let mapSources: [InGameMapImage.Source]
+    var infoSnapshot: WorldInfoSnapshot { infoLoader.value ?? openingInfo }
     var details: WorldDetails {
-        var details = openingDetails
-        details.definitions = definitionLoader.value.facts?.definitions ?? WorldDefinitions()
-        details.borders = definitionLoader.value.facts?.borders ?? [:]
-        return details
+        WorldDetails(definitions: definitionLoader.value?.definitions ?? WorldDefinitions(),
+                     info: infoSnapshot, mapSources: mapSources)
     }
     let names: PlayerNames
     let savedSearches: SavedSearches
@@ -49,6 +49,31 @@ final class WorldResources {
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
+    @ObservationIgnored private lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
+        partialRead: { [weak self] source, _, previous in
+            guard let read = await self?.readInfo else { throw CancellationError() }
+            return try await read(source, previous)
+        }, work: backgroundWork, priority: .utility, whenInactive: .finish, source: infoSource,
+        initialValue: openingInfo, firstRequest: .refresh, merge: { _, newer in newer },
+        retainingValue: { value, previous, current in
+            guard previous.url == current.url else { return nil }
+            let old = Dictionary(uniqueKeysWithValues: previous.dimensions.map { ($0.id, $0.url) })
+            let unchanged = Set(current.dimensions.filter { old[$0.id] == $0.url }.map(\.id))
+            var retained = value
+            retained.borders = retained.borders.filter { unchanged.contains($0.key) }
+            return retained
+        }
+    )
+    @ObservationIgnored var readInfo: @Sendable (WorldInfoSource, WorldInfoSnapshot?) async throws -> RefreshRead<WorldInfoSnapshot> = {
+        try await $0.read(retaining: $1)
+    }
+    private var infoSource: WorldInfoSource {
+        .init(url: url, dimensions: dimensions.sorted { $0.id < $1.id })
+    }
+    private func refreshInfo() {
+        guard !isClosed else { return }
+        infoLoader.request(source: infoSource, isEnabled: true, refresh: .refresh)
+    }
     var playerRoster: any PlayerSnapshotSource { definitionLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
@@ -64,7 +89,7 @@ final class WorldResources {
     @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
     @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
-    @ObservationIgnored private var pendingRecords = false
+    @ObservationIgnored private var pendingWorldData = false
     @ObservationIgnored private var pendingPlayers = false
     @ObservationIgnored private var pendingLighting = false
     @ObservationIgnored private var pendingBiomeMetadata = false
@@ -219,8 +244,7 @@ final class WorldResources {
         refreshWork = backgroundWork.makeScope()
         let definitionLoader = WorldDefinitionLoader(world: snapshot.world, work: backgroundWork,
             generation: prepared.source.generation, library: prepared.library?.data, dimensions: snapshot.dimensions,
-            definitions: snapshot.details.definitions, borders: snapshot.details.borders,
-            players: snapshot.players, savedVersion: SavedMinecraftVersion(snapshot.world.level))
+            definitions: snapshot.details.definitions, players: snapshot.players)
         self.definitionLoader = definitionLoader
         assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
             source: prepared.source, initialValue: GameAssetSelection(library: prepared.library)
@@ -231,12 +255,9 @@ final class WorldResources {
             return GameAssetSelection(library: library)
         }
         access = snapshot.access
-        world = snapshot.world
         dimensionDocuments = snapshot.dimensionDocuments
-        var openingDetails = snapshot.details
-        openingDetails.definitions = WorldDefinitions()
-        openingDetails.borders = [:]
-        self.openingDetails = openingDetails
+        openingInfo = snapshot.details.info
+        mapSources = snapshot.details.mapSources
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
@@ -304,6 +325,7 @@ final class WorldResources {
         guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
         index.include(added.map { makeReader($0, details.definitions) }, firstDimension: activeDimensionID)
+        refreshInfo()
         refreshNightLighting(reread: true)
         refreshLighting()
     }
@@ -386,12 +408,6 @@ final class WorldResources {
         visibleNewerWorldNoticeID = nil
     }
 
-    nonisolated struct DefinitionSnapshot: Sendable {
-        let definitions: WorldDefinitions
-        let borders: [String: WorldBorder]
-        let savedVersion: SavedMinecraftVersion
-    }
-
     private var gameSelection: WorldDefinitionLoader.GameSelection {
         if assetLoader.source.generation == names.minecraft.generation, let loaded = assetLoader.value {
             .loaded(loaded.library?.data)
@@ -405,9 +421,9 @@ final class WorldResources {
         definitionLoader.refreshDefinitions(generation: names.minecraft.generation, selection: gameSelection)
     }
 
-    private func adoptDefinitions(_ current: WorldDefinitionLoader.Value) {
+    private func adoptDefinitions(_ current: WorldDefinitionLoader.Facts?) {
         guard !isClosed else { return }
-        let definitions = current.facts?.definitions ?? WorldDefinitions()
+        let definitions = current?.definitions ?? WorldDefinitions()
         let retired = index.readers
         guard retired.contains(where: {
             $0.inputs != RegionReader.Inputs(dimensionID: $0.dimension.id, definitions: definitions)
@@ -421,16 +437,14 @@ final class WorldResources {
         index.replace(readers: readers, firstDimension: activeDimensionID)
     }
 
-    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> DefinitionSnapshot {
+    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> WorldDefinitions {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         let definitions: WorldDefinitions
         if let library { definitions = try await library.definitions(in: current) }
         else { definitions = try WorldDefinitions.read(current, assets: nil) }
-        var borders: [String: WorldBorder] = [:]
-        for dimension in current.dimensions() { borders[dimension.id] = try? current.worldBorder(of: dimension) }
         try Task.checkCancellation()
-        return DefinitionSnapshot(definitions: definitions, borders: borders, savedVersion: SavedMinecraftVersion(current.level))
+        return definitions
     }
 
     private func refreshBiomeColors(reload: Bool) {
@@ -568,6 +582,7 @@ final class WorldResources {
         biomeLoader.close()
         nightLightingLoader.close()
         lightingLoader.close()
+        infoLoader.close()
         definitionLoader.close()
         playerRecords.close()
         let readers = Array(readers.values), index = index
@@ -613,7 +628,7 @@ final class WorldResources {
     func worldChanged(_ files: [URL]) {
         guard !isClosed, !refreshWork.isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
-            var mayChangeRecords = true
+            var mayChangeSavedData = true
             let path = file.path
             if path == url.standardizedFileURL.path {
                 // A broad notification can cover several dimension folders under this world.
@@ -648,7 +663,7 @@ final class WorldResources {
                 let parent = file.deletingLastPathComponent().path
                 if ChunkseeKit.Dimension.Folder.allCases.contains(where: { parent == dimension.directory($0).standardizedFileURL.path }),
                    let parsed = RegionFile.parseCoordinates(file.lastPathComponent) {
-                    mayChangeRecords = false
+                    mayChangeSavedData = false
                     let change = RegionChange.regions([RegionPosition(x: parsed.x, z: parsed.z)])
                     if pendingIndex[dimension.id] != nil { pendingIndex[dimension.id]?.merge(change) }
                     else { pendingIndex[dimension.id] = change }
@@ -660,17 +675,17 @@ final class WorldResources {
                             ChunkseeKit.Dimension.Folder.allCases.contains(where: { path == dimension.directory($0).standardizedFileURL.path }) {
                     // Only broad region/dimension events need reconciliation. Saved data such as
                     // raids.dat and chunk_tickets.dat does not feed the index, terrain or heat map.
-                    mayChangeRecords = path == dimension.url.standardizedFileURL.path
+                    mayChangeSavedData = path == dimension.url.standardizedFileURL.path
                     pendingIndex[dimension.id] = .all
                     pendingTerrain[dimension.id] = .all
                 }
             }
-            // Kit owns record file discovery, including older layouts and missing files.
-            // Conservatively refresh requested records for non-region changes without copying
-            // that discovery table into the watcher. Ordinary region writes do not reread them.
-            pendingRecords = pendingRecords || mayChangeRecords
+            // Kit owns saved-data discovery, including older layouts and missing files.
+            // Non-region changes invalidate world facts and requested player records without
+            // copying those discovery tables here. Ordinary region writes do not reread them.
+            pendingWorldData = pendingWorldData || mayChangeSavedData
         }
-        guard pendingRecords || !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks || pendingLighting else { return }
+        guard pendingWorldData || !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks || pendingLighting else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -689,7 +704,7 @@ final class WorldResources {
 
     /// Waits for active and coalesced refresh passes, without waiting for unrelated world work.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, assetLoader.work, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, infoLoader.work, assetLoader.work, languageLoader.work])
         await playerRecords.waitUntilFinished()
         await index.waitForProjection()
     }
@@ -697,9 +712,9 @@ final class WorldResources {
     private func refresh() async {
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
         let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
-        let lightingChanged = pendingLighting, recordsChanged = pendingRecords
+        let lightingChanged = pendingLighting, worldDataChanged = pendingWorldData
         pendingLighting = false
-        pendingRecords = false
+        pendingWorldData = false
         pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
         pendingBiomeMetadata = false; pendingBiomePacks = false
         for session in sessions.values.compactMap(\.value) {
@@ -715,7 +730,7 @@ final class WorldResources {
             refreshNightLighting(reread: true)
         }
         if lightingChanged { refreshLighting() }
-        if recordsChanged { playerRecords.refresh() }
+        if worldDataChanged { refreshInfo(); playerRecords.refresh() }
         if biomesChanged {
             refreshDefinitions()
         } else if playersChanged {

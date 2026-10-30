@@ -50,7 +50,8 @@ nonisolated enum SlimeChunks {
             if isShown { load() } else { task?.cancel() }
         }
     }
-    let seed: Int64?
+    private let readSeed: @MainActor () -> Int64?
+    var seed: Int64? { readSeed() }
     var isAvailable: Bool { seed != nil }
     var isLoading: Bool { isAvailable && isShown && !regions.isSubset(of: completed) }
     var visibleImages: [RegionPosition: CGImage] { isShown && isAvailable ? images : [:] }
@@ -65,12 +66,32 @@ nonisolated enum SlimeChunks {
     private let work: BackgroundWork
     private let readImages: @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage]
 
-    init(dimensionID: String?, seed: Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
+    init(dimensionID: String?, seed: @escaping @MainActor () -> Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
          readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
-        self.seed = dimensionID == "minecraft:overworld" ? seed : nil
+        readSeed = { dimensionID == "minecraft:overworld" ? seed() : nil }
         self.regions = regions
         self.work = work
         self.readImages = readImages
+        observeSeed()
+    }
+
+    /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
+    /// so neither a drawn mask nor a late read can describe the previous seed.
+    private func observeSeed() {
+        guard !isClosed else { return }
+        let previous = seed
+        withObservationTracking(options: [.didSet]) { _ = seed } onChange: { [weak self] event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                self.observeSeed()
+                guard self.seed != previous else { return }
+                self.task?.cancel()
+                self.images = [:]
+                self.completed = []
+                self.load()
+            }
+        }
     }
 
     func restoreVisibility(from visibility: LayerVisibility) {
@@ -95,7 +116,7 @@ nonisolated enum SlimeChunks {
             defer { self?.task = nil; self?.load() }
             guard !Task.isCancelled, !work.isClosed else { return }
             let images = await readImages(missing, seed)
-            guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed else { return }
+            guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed, self.seed == seed else { return }
             self.images.merge(images.filter { self.regions.contains($0.key) }) { _, new in new }
             self.completed.formUnion(missing.intersection(self.regions))
         }
