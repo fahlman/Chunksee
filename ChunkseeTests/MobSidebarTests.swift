@@ -35,7 +35,7 @@ import Testing
         #expect(GameNames.unavailable.mobName(sheep.id, in: catalog) != GameNames.unavailable.mobName("test:sheep", in: catalog))
         let fishKind = try #require(catalog.kind("minecraft:tropical_fish"))
         #expect(fishKind.variants.count == 2 && fishKind.variants.allSatisfy { $0.count == 1 })
-        #expect(fishKind.variants.map { GameNames.unavailable.creatureAppearance($0.appearance.saved) }.allSatisfy { $0.contains("Base Color: White") })
+        #expect(fishKind.variants.map { GameNames.unavailable.creatureAppearance($0.appearance.saved, for: fishKind.id) }.allSatisfy { $0.contains("Base Color: White") })
         let ordered = try await catalog.nearest("minecraft:sheep", to: .zero)
         #expect(Set(ordered.prefix(2).map(\.id)) == [red.id, unknown.id] && ordered.last == white)
         #expect(try await MobTypes([unknown, red, white]).nearest("minecraft:sheep", to: .zero).map(\.id) == ordered.map(\.id))

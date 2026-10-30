@@ -11,7 +11,7 @@ struct PetDetailRows: View {
             LabeledContent("Sitting Order", value: sitting ? String(localized: "Sit") : String(localized: "Not ordered to sit"))
         }
         if let appearance = creature.appearance {
-            LabeledContent("Appearance", value: gameNames.creatureAppearance(appearance, locale: locale))
+            LabeledContent("Appearance", value: gameNames.creatureAppearance(appearance, for: creature.id, locale: locale))
         }
         if let color = creature.collarColor {
             LabeledContent("Collar Color", value: gameNames.dyeColor(color))

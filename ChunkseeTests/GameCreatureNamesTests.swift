@@ -14,6 +14,8 @@ import Testing
                 "entity.minecraft.sheep": "Sheep", "entity.test.sheep": "Sheep",
                 "entity.minecraft.wolf": "Wolf", "entity.minecraft.cat": "Cat",
                 "entity.minecraft.villager": "Villager", "entity.minecraft.villager.farmer": "Farmer",
+                "entity.minecraft.villager.none": "Villager", "entity.minecraft.zombie_villager": "Zombie Villager",
+                "entity.minecraft.tropical_fish.type.kob": "Kob",
                 "entity.test.keepers.hive": "Apiary Creature",
                 "entity.test.villager.keepers/hive": "Apiary Keeper",
                 "entity.test.villager.keepers.hive": "Wrong Profession Key",
@@ -25,9 +27,15 @@ import Testing
                 "entity.minecraft.sheep": "Mouton", "entity.test.sheep": "Brebis du pack",
                 "entity.minecraft.wolf": "Loup", "entity.minecraft.cat": "Chat",
                 "entity.minecraft.villager": "Villageois", "entity.minecraft.villager.farmer": "Fermier",
+                "entity.minecraft.villager.none": "Villageois", "entity.minecraft.zombie_villager": "Zombie-villageois",
+                "entity.minecraft.tropical_fish.type.kob": "Téraglin",
                 "entity.test.villager.keepers/hive": "Apiculteur",
                 "color.minecraft.red": "Rouge", "color.minecraft.white": "Blanc",
                 "color.minecraft.black": "Noir",
+            ]),
+            "assets/minecraft/lang/is_is.json": ItemPictureFixture.json([
+                "language.code": "is_is",
+                "entity.minecraft.villager": "Þorpari", "entity.minecraft.villager.none": "Þorpsbúi",
             ]),
         ])
     }
@@ -64,19 +72,60 @@ import Testing
         #expect(names.creature(try marker("unknown:future_creature", x: 1).creature) == "Future Creature")
     }
 
+    @Test func zombieVillagersKeepTheirEntityNameAndSearchableProfession() async throws {
+        let names = try await names("fr_FR")
+        let zombie = try VillagerTextTests().creature(kind: "minecraft:zombie_villager")
+        #expect(names.creature(zombie) == "Zombie-villageois")
+        #expect(names.profession(of: zombie, definitions: nil) == "Fermier, Novice")
+        #expect(names.creatureSearchText(zombie).contains("Fermier"))
+        #expect(names.creatureSearchText(zombie).contains("minecraft:farmer"))
+        let marker = try #require(CreatureMarker(zombie, dimension: "minecraft:overworld"))
+        let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
+        for query in ["creature:fermier", "creature:zombie", "creature:minecraft:farmer"] {
+            let hits = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
+            #expect(hits.map(\.title) == ["Zombie-villageois"])
+            #expect(hits.first?.position == marker.position)
+        }
+        var content = MapContent(gameNames: names)
+        content.creatures = [marker]
+        content.shownMobTypes = [zombie.id]
+        let locations = content.accessibleLocations(viewport: MapViewport(center: marker.position, scale: 1),
+                                                     size: CGSize(width: 100, height: 100))
+        #expect(locations.map(\.name) == ["Zombie-villageois"])
+        var named = zombie
+        named.customName = "Keep this literally"
+        #expect(names.creature(named) == named.customName)
+        #expect(names.profession(of: named, definitions: nil) == "Fermier, Novice")
+    }
+
+    @Test func joblessVillagersUseTheirDistinctGameNameWhileProfessionStaysNone() async throws {
+        let names = try await names("is_IS")
+        for id in ["minecraft:none", "none", ":none"] {
+            let saved = try VillagerTextTests().creature(profession: id, offers: false)
+            #expect(names.creature(saved) == "Þorpsbúi")
+            #expect(names.entity(saved.id) == "Þorpari")
+            #expect(names.profession(of: saved, definitions: nil, locale: Locale(identifier: "en_US")) == "None")
+            #expect(GameNames.unavailable.creature(saved) == "Villager")
+        }
+    }
+
     @Test func dyeNamesDoNotRenameGenericAppearanceIDsOrDiscardTraits() async throws {
         let names = try await names("fr_FR"), locale = Locale(identifier: "en_US")
         #expect(names.dyeColor("red") == "Rouge" && names.dyeColor("minecraft:white") == "Blanc")
         #expect(names.dyeColor("test:white") == "White")
         let cat = CreatureAppearance(variant: "minecraft:black")
-        #expect(names.creatureAppearance(cat, locale: locale) == "Black")
+        #expect(names.creatureAppearance(cat, for: "minecraft:cat", locale: locale) == "Black")
         let fish = CreatureAppearance(variant: "minecraft:kob", markings: "test:striped",
             traits: ["base_color": "white", "pattern_color": "red", "main_gene": "black"])
-        let label = names.creatureAppearance(fish, locale: locale)
-        #expect(label.contains("Kob") && label.contains("Striped"))
+        let label = names.creatureAppearance(fish, for: "minecraft:tropical_fish", locale: locale)
+        #expect(label.contains("Téraglin") && label.contains("Striped"))
         #expect(label.contains("Base Color: Blanc") && label.contains("Pattern Color: Rouge"))
         #expect(label.contains("Main Gene: Black") && !label.contains("Noir"))
-        #expect(names.creatureAppearance(MobAppearance(nil).saved, locale: locale) == "Not recorded")
+        #expect(names.creatureAppearance(MobAppearance(nil).saved, for: "minecraft:tropical_fish", locale: locale) == "Not recorded")
+        #expect(names.creatureAppearance(.init(variant: "test:kob"), for: "minecraft:tropical_fish", locale: locale) == "Kob")
+        #expect(names.creatureAppearance(.init(variant: "minecraft:kob"), for: "test:fish", locale: locale) == "Kob")
+        #expect(names.creatureAppearance(.init(variant: "minecraft:future_pattern"), for: "minecraft:tropical_fish", locale: locale) == "Future Pattern")
+        #expect(GameNames.unavailable.creatureAppearance(.init(variant: "minecraft:kob"), for: "minecraft:tropical_fish", locale: locale) == "Kob")
         let sheep = try marker("minecraft:sheep", x: 1, appearance: .init(variant: "minecraft:white"))
         #expect(names.spokenCreature(sheep.creature, locale: locale) == "White Mouton")
     }
