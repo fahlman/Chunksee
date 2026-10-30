@@ -1549,18 +1549,26 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
 
 ## Toolchain and platforms
 
-Rechecked on 2026-10-18 against [Apple's releases](https://developer.apple.com/news/releases/),
-[its SDK table](https://developer.apple.com/xcode/system-requirements), and the
+Rechecked on 2026-10-30 against [Apple's App Store listing](https://apps.apple.com/us/app/xcode/id497799835?mt=12),
+[its SDK table](https://developer.apple.com/xcode/system-requirements),
+[Apple's releases](https://developer.apple.com/news/releases/), and the
 [Swift releases](https://www.swift.org/install/macos/), then compared with the installed tools
-and the project's settings. Xcode 27.2 and Swift snapshots are previews, not the stable toolchain.
+and the project's settings. Xcode 27.2 is the final App Store release; the releases feed still
+shows its earlier RC. Compiler and SDK versions below are from the selected final installation.
 
-- **Compiler:** Xcode 27.1 (`27A9275`) and Apple Swift 6.4 (`swiftlang-6.4.0.34.1`).
+- **Compiler:** Xcode 27.2 (`27B52`) and Apple Swift 6.4.2 (`swiftlang-6.4.2.1.9`).
 - **Swift language mode:** 6 (`SWIFT_VERSION = 6.0`). The app and test targets also use:
   - `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
   - approachable concurrency
   - complete strict concurrency checking
-- **SDK:** macOS 27.0 SDK.
+- **SDK:** macOS 27.2 SDK.
 - **Minimum macOS:** 27 (`MACOSX_DEPLOYMENT_TARGET = 27.0`). The app is Mac only, arm64.
+
+Xcode's Metal Toolchain component must also be installed to compile `MapLighting.metal`.
+If Xcode reports that component missing, restore it with
+`xcodebuild -downloadComponent MetalToolchain`; `xcrun metal --version` verifies that it can run.
+`xcodebuild -checkFirstLaunchStatus` must succeed before the required build/test checks.
+This setup does not change the project's Swift language mode or minimum macOS.
 
 The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
