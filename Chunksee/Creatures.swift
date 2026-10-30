@@ -108,6 +108,7 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
     let session: WorldSession
     let creature: Creature
     @Environment(\.gameNames) private var gameNames
+    @Environment(\.locale) private var locale
     @ViewBuilder var header: Header
     @ViewBuilder var location: Location
 
@@ -136,72 +137,12 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
         if let trades = creature.villager?.trades, !trades.isEmpty {
             Section("Trades") {
                 ForEach(Array(trades.enumerated()), id: \.offset) { _, trade in
-                    ItemLabel(item: trade.sell, title: Text(TradeText.offer(trade)))
+                    ItemLabel(item: trade.sell, title: Text(gameNames.tradeOffer(trade, locale: locale)))
                         .strikethrough(trade.isSoldOut)
                         .foregroundStyle(trade.isSoldOut ? .secondary : .primary)
                         .help(trade.isSoldOut ? "Sold out until the villager restocks" : "")
                 }
             }
         }
-    }
-}
-
-/// How villagers and their trades read, in the creature details and in trade search.
-nonisolated enum TradeText {
-    static func offer(_ trade: Trade) -> String {
-        let offer = String(localized: "\(describe(trade.sell)) for \(cost(of: trade))")
-        return trade.isSoldOut ? String(localized: "\(offer) (sold out)") : offer
-    }
-
-    /// "24 Emerald", "1 Enchanted Book (Mending)", "1 Diamond Sword (Sharpness V)".
-    static func describe(_ item: ItemStack) -> String {
-        let base = ItemAppearance.name(of: item, includingOne: true)
-        let enchantments = item.enchantments.sorted { $0.key < $1.key }.map { enchantmentName($0.key, level: $0.value) }
-        return enchantments.isEmpty ? base : String(localized: "\(base) (\(enchantments.joined(separator: ", ")))")
-    }
-
-    /// What the villager asks for: "24 Emerald + 1 Book".
-    static func cost(of trade: Trade) -> String {
-        let first = describe(trade.buy)
-        guard let second = trade.buyB else { return first }
-        return String(localized: "\(first) + \(describe(second))")
-    }
-
-    /// The text trade search matches: every item's name and id, and the enchantments' names.
-    static func searchText(of trade: Trade) -> String {
-        let items = [trade.buy, trade.sell] + (trade.buyB.map { [$0] } ?? [])
-        return items.flatMap { [ItemAppearance.label(of: $0), $0.id] + $0.enchantments.keys.map { ReadableName.from($0) } }
-            .joined(separator: " ")
-    }
-
-    static func enchantmentName(_ id: String, level: Int) -> String {
-        EnchantmentStyle(level: level).format(id)
-    }
-
-    nonisolated struct EnchantmentStyle: FormatStyle, Sendable {
-        private let level: Int
-        private var locale = Locale.autoupdatingCurrent
-
-        init(level: Int) { self.level = level }
-
-        func locale(_ locale: Locale) -> Self {
-            var copy = self
-            copy.locale = locale
-            return copy
-        }
-
-        func format(_ id: String) -> String {
-            let name = ReadableName.from(id)
-            if level == 1, Self.singleLevelEnchantments.contains(id) { return name }
-            return String(localized: "\(name) \(LevelText.numeral(level))", locale: locale)
-        }
-
-        // Vanilla 26.3 data/minecraft/enchantment/*.json. The game hides the suffix only when
-        // both the saved and maximum levels are 1; unknown/modded enchantments keep their level.
-        private static let singleLevelEnchantments: Set<String> = [
-            "minecraft:aqua_affinity", "minecraft:binding_curse", "minecraft:channeling",
-            "minecraft:flame", "minecraft:infinity", "minecraft:mending", "minecraft:multishot",
-            "minecraft:silk_touch", "minecraft:vanishing_curse",
-        ]
     }
 }

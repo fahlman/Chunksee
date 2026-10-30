@@ -7,7 +7,7 @@ import ChunkseeIndex
 nonisolated struct DimensionContent: Sendable {
     var containers: [ItemContainer] = []
     /// Totals of the items in `containers`, most first.
-    var storage: [StoredItem] = []
+    var storage: [StoredItemTotal] = []
     var signs: [Sign] = []
     var structures: [StructureMarker] = []
     var placePoints = PointMarkers<PlaceMarker>()
@@ -68,7 +68,7 @@ nonisolated struct DimensionContent: Sendable {
             creatures += region.creatures
         }
         part.containers = shared.containers
-        part.storage = StoredItem.presenting(shared.storage)
+        part.storage = shared.storage
         part.signs = shared.signs
         part.biomes = shared.biomes
         part.caveBiomes = shared.caveBiomes
@@ -198,7 +198,7 @@ nonisolated enum WorldSearch {
         case .structure: hits = layerHits(index.structures, query: query, y: \.y) { .structure($0.group) }
         case .place: hits = layerHits(index.places, query: query, y: { $0.y }) { .place($0.group) }
         case .creature, .pet, .villager: hits = creatureHits(index.creatures, filter: filter, query: query)
-        case .trade: hits = tradeHits(index.creatures, query: query)
+        case .trade: hits = tradeHits(index.creatures, query: query, gameNames: gameNames)
         case .block: hits = blockHits(index, query: query, gameNames: gameNames)
         case .biome:
             // An area is named by its size, so its biome leads the row.
@@ -234,12 +234,12 @@ nonisolated enum WorldSearch {
 
     /// Villagers and traders with a trade matching every word (in an item's name or id, or an
     /// enchantment's name), one hit per villager listing those trades, most matching trades first.
-    private static func tradeHits(_ entries: [SearchIndex.Placed<CreatureMarker>], query: SearchQuery) -> [SearchHit] {
+    private static func tradeHits(_ entries: [SearchIndex.Placed<CreatureMarker>], query: SearchQuery, gameNames: GameNames) -> [SearchHit] {
         entries.compactMap { entry in
             guard LayerFilter.trade.includes(entry.value.group), let villager = entry.value.creature.villager else { return nil }
-            let matching = villager.trades.filter { query.matches(TradeText.searchText(of: $0)) }
+            let matching = villager.trades.filter { query.matches(gameNames.tradeSearchText(of: $0)) }
             guard !matching.isEmpty else { return nil }
-            let detail = matching.map(TradeText.offer).joined(separator: "; ")
+            let detail = matching.map { gameNames.tradeOffer($0) }.joined(separator: "; ")
             return SearchHit(id: "\(entry.dimension)@\(entry.value.id)#trades", source: .layer(.creature(entry.value.group), markerID: entry.value.id),
                              dimension: entry.dimension, position: entry.value.position, y: Coordinates.block(entry.value.creature.y),
                              title: entry.value.name, detail: detail, count: matching.count)
@@ -277,8 +277,8 @@ nonisolated enum WorldSearch {
     }
 
     /// Whether an item matches every word in its readable name, id, custom name or book text.
-    static func matches(_ item: ItemStack, query: SearchQuery) -> Bool {
-        var text = [ItemAppearance.label(of: item), item.id]
+    static func matches(_ item: ItemStack, query: SearchQuery, gameNames: GameNames) -> Bool {
+        var text = [gameNames.itemLabel(of: item), item.id]
         if let book = item.book { text.append(book.searchText) }
         return query.matches(text.joined(separator: "\n"))
     }
@@ -287,15 +287,16 @@ nonisolated enum WorldSearch {
         var id: String
         var text: String
 
-        init(_ item: ItemStack) {
+        init(_ item: ItemStack, gameNames: GameNames) {
             id = item.id
-            text = ItemAppearance.label(of: item)
+            text = gameNames.itemLabel(of: item)
         }
     }
 
     /// Matching items summarized as "64 Diamond, 3 Diamond Sword", with nested contents included.
-    static func summary(of items: [ItemStack], query: SearchQuery) -> (text: String, count: Int, items: [SearchHit.ItemMatch])? {
-        let totals = ItemTotals(in: items, matching: { matches($0, query: query) }, groupingBy: ItemLabel.init)
+    static func summary(of items: [ItemStack], query: SearchQuery, gameNames: GameNames) -> (text: String, count: Int, items: [SearchHit.ItemMatch])? {
+        let totals = ItemTotals(in: items, matching: { matches($0, query: query, gameNames: gameNames) },
+                               groupingBy: { ItemLabel($0, gameNames: gameNames) })
         guard !totals.isEmpty else { return nil }
         let matches = totals.quantities.sorted {
             if $0.value != $1.value { return $0.value > $1.value }
@@ -318,12 +319,12 @@ nonisolated enum WorldSearch {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
             let location = PlayerPresentation.position(of: player)
-            if let found = summary(of: player.searchableInventory, query: query) {
+            if let found = summary(of: player.searchableInventory, query: query, gameNames: gameNames) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", source: .inventory(player.uuid), dimension: location?.dimension,
                                       position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
                                       title: who.inventory, detail: found.text, count: found.count, items: found.items))
             }
-            if let found = summary(of: player.enderChest, query: query) {
+            if let found = summary(of: player.enderChest, query: query, gameNames: gameNames) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", source: .enderChest(player.uuid), dimension: nil, position: nil, y: nil,
                                       title: who.enderChest, detail: found.text, count: found.count, items: found.items))
             }
@@ -331,8 +332,8 @@ nonisolated enum WorldSearch {
         for entry in index.containers {
             guard !Task.isCancelled else { return [] }
             let container = entry.value
-            guard let found = summary(of: container.items, query: query) else { continue }
-            let title = ItemAppearance.label(kind: container.kind, customName: container.customName)
+            guard let found = summary(of: container.items, query: query, gameNames: gameNames) else { continue }
+            let title = gameNames.itemLabel(kind: container.kind, customName: container.customName)
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   source: .container(kind: container.kind), dimension: entry.dimension,
                                   position: MapCoordinates.center(of: CGPoint(x: container.x, y: container.z)), y: container.y,

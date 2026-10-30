@@ -17,9 +17,9 @@ import Testing
     @Test func readableNamesAndMatching() throws {
         #expect(ReadableName.from("minecraft:diamond_sword") == "Diamond Sword")
         let sword = try #require(ItemStack(item("minecraft:diamond_sword", 1, components: ["minecraft:custom_name": .string("Excalibur")])))
-        #expect(WorldSearch.matches(sword, query: SearchQuery("diamond sword")))
-        #expect(WorldSearch.matches(sword, query: SearchQuery("excal")))
-        #expect(!WorldSearch.matches(sword, query: SearchQuery("diamond pickaxe")))
+        #expect(WorldSearch.matches(sword, query: SearchQuery("diamond sword"), gameNames: .unavailable))
+        #expect(WorldSearch.matches(sword, query: SearchQuery("excal"), gameNames: .unavailable))
+        #expect(!WorldSearch.matches(sword, query: SearchQuery("diamond pickaxe"), gameNames: .unavailable))
     }
 
     @Test func searchFindsContainersNestedItemsAndPlayers() {
@@ -47,10 +47,10 @@ import Testing
                      ItemStack(id: "minecraft:bundle", contents: [
                         ItemStack(id: "first:diamond", count: 4, customName: "Shared"),
                      ])]
-        let result = try #require(WorldSearch.summary(of: items, query: SearchQuery("shared")))
+        let result = try #require(WorldSearch.summary(of: items, query: SearchQuery("shared"), gameNames: .unavailable))
         #expect(result.text == "6 Diamond “Shared”, 3 Diamond “Shared”")
         #expect(result.count == 9)
-        #expect(WorldSearch.summary(of: items, query: SearchQuery("unmatched")) == nil)
+        #expect(WorldSearch.summary(of: items, query: SearchQuery("unmatched"), gameNames: .unavailable) == nil)
     }
 
     @Test func anInventoryWithoutARecognizedDimensionRemainsSearchableWithoutAMapPin() async throws {
@@ -112,7 +112,7 @@ import Testing
             .compound(["id": .string("minecraft:chest"), "x": .int(10), "y": .int(64), "z": .int(-5), "Items": .list([item("minecraft:diamond", 3), shulker])]),
             .compound(["id": .string("minecraft:barrel"), "x": .int(0), "y": .int(64), "z": .int(0), "Items": .list([item("minecraft:diamond", 10), item("minecraft:dirt", 64)])]),
         ])])
-        let totals = StoredItem.presenting(StoredItemTotal.totals(in: ItemContainer.containers(inChunk: chunk)))
+        let totals = GameNames.unavailable.storedItems(StoredItemTotal.totals(in: ItemContainer.containers(inChunk: chunk)))
         #expect(totals.map(\.name) == ["Diamond", "Dirt", "Shulker Box"])
         #expect(totals.first == StoredItem(id: "minecraft:diamond", name: "Diamond", count: 77, containers: 2))
         #expect(totals.last?.count == 1 && totals.last?.containers == 1)
@@ -202,7 +202,7 @@ import Testing
         #expect(session.search.isIndexing)
         await session.search.waitForIndex()
         #expect(!session.search.isIndexing)
-        #expect(session.presentation.selectedIndex.storage.map(\.name) == ["Golden Apple"])
+        #expect(session.resources.gameNames.storedItems(session.presentation.selectedIndex.storage).map(\.name) == ["Golden Apple"])
         session.search.text = "golden apple"
         await session.search.waitForSearch()
         #expect(session.search.results.map(\.detail) == ["2 Golden Apple"])
@@ -394,7 +394,7 @@ import Testing
         #expect(search("trade:emerald").first?.count == 2)
         #expect(search("trade:bookshelf").first?.detail == "1 Bookshelf for 9 Emerald (sold out)")
         #expect(search("trade:diamond").isEmpty)
-        #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
+        #expect(GameNames.unavailable.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
     }
 }
 

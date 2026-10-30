@@ -5,8 +5,35 @@ import SwiftUI
 /// Immutable game-name service. Kit supplies the requested language and English fallback;
 /// naming rules and their readable-ID fallbacks belong here, independent of views and reads.
 nonisolated struct GameNames: Sendable {
-    let identity: UUID?
+    nonisolated struct Identity: Equatable, Sendable {
+        let language: UUID?
+        let enchantments: UUID?
+    }
+
+    /// Immutable definitions travel with their publication identity, including without a language.
+    nonisolated final class Enchantments: Sendable {
+        static let empty = Enchantments([:])
+        let definitions: [String: EnchantmentDefinition]
+        let identity: UUID?
+
+        init(_ definitions: [String: EnchantmentDefinition]) {
+            self.definitions = definitions
+            identity = definitions.isEmpty ? nil : UUID()
+        }
+
+        func replacing(with definitions: [String: EnchantmentDefinition]) -> Enchantments {
+            self.definitions == definitions ? self : Enchantments(definitions)
+        }
+    }
+
+    private let languageID: UUID?
     private let language: GameLanguage?
+    private var enchantments = Enchantments.empty
+
+    var identity: Identity? {
+        languageID == nil && enchantments.identity == nil ? nil
+            : Identity(language: languageID, enchantments: enchantments.identity)
+    }
 
     /// The deliberate state before a language is readable or after its source is retired.
     /// Callers must supply this state explicitly rather than silently defaulting to it.
@@ -14,7 +41,13 @@ nonisolated struct GameNames: Sendable {
 
     init(_ language: GameLanguage?) {
         self.language = language
-        identity = language == nil ? nil : UUID()
+        languageID = language == nil ? nil : UUID()
+    }
+
+    func withEnchantments(_ enchantments: Enchantments) -> Self {
+        var copy = self
+        copy.enchantments = enchantments
+        return copy
     }
 
     func name(key: String, fallback: String) -> String { language?[key] ?? fallback }
@@ -123,6 +156,83 @@ nonisolated struct GameNames: Sendable {
             default: ReadableName.from(id)
             }
         }
+    }
+}
+
+extension GameNames {
+    /// Keep the saved custom name literal while retaining the translated kind beside it.
+    func itemLabel(kind: String, customName: String?, locale: Locale = .current) -> String {
+        let kind = item(kind)
+        return customName.map { String(localized: "\(kind) “\($0)”", locale: locale) } ?? kind
+    }
+
+    func itemLabel(of item: ItemStack, locale: Locale = .current) -> String {
+        let base = itemLabel(kind: item.id, customName: item.customName, locale: locale)
+        guard item.customName == nil, let book = item.book, let title = book.title else { return base }
+        let titled = itemLabel(kind: item.id, customName: title, locale: locale)
+        return book.author.map { String(localized: "\(titled) by \($0)", locale: locale) } ?? titled
+    }
+
+    func itemName(of item: ItemStack, includingOne: Bool = false, locale: Locale = .current) -> String {
+        ItemAppearance.counted(itemLabel(of: item, locale: locale), count: item.count,
+                               includingOne: includingOne, locale: locale)
+    }
+
+    func itemDescription(of item: ItemStack, locale: Locale = .current) -> String {
+        let text = itemName(of: item, locale: locale)
+        return ItemAppearance.isEnchanted(item) ? String(localized: "\(text), enchanted", locale: locale) : text
+    }
+
+    func itemDetails(of item: ItemStack, locale: Locale = .current) -> String {
+        var lines = [itemDescription(of: item, locale: locale)]
+        lines += item.enchantments.sorted { $0.key < $1.key }.map {
+            enchantmentName($0.key, level: $0.value, locale: locale)
+        }
+        if let wear = item.durability { lines.append(ItemAppearance.durability(wear, locale: locale)) }
+        return lines.joined(separator: "\n")
+    }
+
+    private func enchantmentDescription(_ id: String) -> String {
+        if let description = enchantments.definitions[id]?.description,
+           let text = GameText.string(description, translation: { language?[$0] }) { return text }
+        return ReadableName.from(id)
+    }
+
+    func enchantmentName(_ id: String, level: Int, locale: Locale = .current) -> String {
+        let base = enchantmentDescription(id)
+        // Minecraft's full name uses the actual description and hides I only when both levels
+        // are one. A missing definition cannot establish that the enchantment has one level.
+        if level == 1, enchantments.definitions[id]?.maximumLevel == 1 { return base }
+        let level = name(key: "enchantment.level.\(level)", fallback: LevelText.numeral(level))
+        return String(localized: "\(base) \(level)", locale: locale)
+    }
+
+    func tradeDescription(_ item: ItemStack, locale: Locale = .current) -> String {
+        let base = itemName(of: item, includingOne: true, locale: locale)
+        let enchantments = item.enchantments.sorted { $0.key < $1.key }.map {
+            enchantmentName($0.key, level: $0.value, locale: locale)
+        }
+        return enchantments.isEmpty ? base
+            : String(localized: "\(base) (\(enchantments.joined(separator: ", ")))", locale: locale)
+    }
+
+    func tradeCost(of trade: Trade, locale: Locale = .current) -> String {
+        let first = tradeDescription(trade.buy, locale: locale)
+        guard let second = trade.buyB else { return first }
+        return String(localized: "\(first) + \(tradeDescription(second, locale: locale))", locale: locale)
+    }
+
+    func tradeOffer(_ trade: Trade, locale: Locale = .current) -> String {
+        let offer = String(localized: "\(tradeDescription(trade.sell, locale: locale)) for \(tradeCost(of: trade, locale: locale))",
+                           locale: locale)
+        return trade.isSoldOut ? String(localized: "\(offer) (sold out)", locale: locale) : offer
+    }
+
+    func tradeSearchText(of trade: Trade) -> String {
+        let items = [trade.buy, trade.sell] + (trade.buyB.map { [$0] } ?? [])
+        return items.flatMap {
+            [itemLabel(of: $0), $0.id] + $0.enchantments.keys.sorted().flatMap { [$0, enchantmentDescription($0)] }
+        }.joined(separator: " ")
     }
 }
 

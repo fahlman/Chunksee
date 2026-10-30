@@ -29,19 +29,18 @@ import Testing
         #expect(hit.detail == "5 Diamond “Keepsake”, 1 Emerald “Keepsake”")
         #expect(hit.count == 6)
         let diamond = try #require(ItemStack(item("minecraft:diamond", name: "Keepsake")))
-        #expect(ItemAppearance.name(of: diamond) == "Diamond “Keepsake”")
-        #expect(TradeText.describe(diamond) == "1 Diamond “Keepsake”")
+        #expect(GameNames.unavailable.itemName(of: diamond) == "Diamond “Keepsake”")
+        #expect(GameNames.unavailable.tradeDescription(diamond) == "1 Diamond “Keepsake”")
     }
 
     @Test func summariesKeepDistinctNamespacedKindsAndUseLocalizedCounts() throws {
         let apples = [ItemStack(id: "first:apple", count: 2), ItemStack(id: "second:apple", count: 3)]
-        #expect(WorldSearch.summary(of: apples, query: SearchQuery("apple"))?.text == "3 Apple, 2 Apple")
-        #expect(WorldSearch.summary(of: apples, query: SearchQuery("first:apple"))?.count == 2)
+        #expect(WorldSearch.summary(of: apples, query: SearchQuery("apple"), gameNames: .unavailable)?.text == "3 Apple, 2 Apple")
+        #expect(WorldSearch.summary(of: apples, query: SearchQuery("first:apple"), gameNames: .unavailable)?.count == 2)
         let plain = ItemStack(id: "minecraft:diamond", count: 1234)
-        let style = ItemAppearance.LabelStyle()
-        #expect(style.locale(Locale(identifier: "en_US")).format(plain) == "1,234 Diamond")
-        #expect(style.locale(Locale(identifier: "fr_FR")).format(plain) == "1\u{202f}234 Diamond")
-        #expect(style.locale(Locale(identifier: "ar_EG")).format(plain) == "١٬٢٣٤ Diamond")
+        #expect(GameNames.unavailable.itemName(of: plain, locale: Locale(identifier: "en_US")) == "1,234 Diamond")
+        #expect(GameNames.unavailable.itemName(of: plain, locale: Locale(identifier: "fr_FR")) == "1\u{202f}234 Diamond")
+        #expect(GameNames.unavailable.itemName(of: plain, locale: Locale(identifier: "ar_EG")) == "١٬٢٣٤ Diamond")
     }
 
     @Test func tradeSearchFindsCustomNamesOnEveryCostAndRetainsEnchantments() throws {
@@ -66,7 +65,8 @@ import Testing
     }
 
     @Test(arguments: [false, true])
-    func offersKeepBothCostsAndMakeSoldOutTradesExplicit(soldOut: Bool) throws {
+    func offersKeepBothCostsAndMakeSoldOutTradesExplicit(soldOut: Bool) async throws {
+        let names = try await EnchantmentNameFixture.names()
         let trade = try #require(Trade(.compound([
             "buy": item("minecraft:emerald", count: 24, name: "Token"),
             "buyB": item("minecraft:book", name: "Voucher"),
@@ -76,7 +76,7 @@ import Testing
             "uses": .int(soldOut ? 12 : 0), "maxUses": .int(12),
         ])))
         let offer = "1 Enchanted Book (Mending) for 24 Emerald “Token” + 1 Book “Voucher”"
-        #expect(TradeText.offer(trade) == offer + (soldOut ? " (sold out)" : ""))
+        #expect(names.tradeOffer(trade) == offer + (soldOut ? " (sold out)" : ""))
     }
 
     @Test func writtenBookKeepsKindTitleAuthorAndBodySearch() throws {
@@ -84,13 +84,13 @@ import Testing
             "title": .string("Travels"), "author": .string("Writer"), "pages": .list([.string("A desert village")]),
         ])])
         let book = try #require(ItemStack(savedBook))
-        #expect(ItemAppearance.name(of: book) == "Written Book “Travels” by Writer")
-        #expect(WorldSearch.summary(of: [book], query: SearchQuery("desert village"))?.text == "1 Written Book “Travels” by Writer")
+        #expect(GameNames.unavailable.itemName(of: book) == "Written Book “Travels” by Writer")
+        #expect(WorldSearch.summary(of: [book], query: SearchQuery("desert village"), gameNames: .unavailable)?.text == "1 Written Book “Travels” by Writer")
         let trade = try #require(Trade(.compound(["buy": item("minecraft:emerald"), "sell": savedBook])))
-        #expect(TradeText.searchText(of: trade).contains("Travels"))
+        #expect(GameNames.unavailable.tradeSearchText(of: trade).contains("Travels"))
         var renamed = book
         renamed.customName = "Keepsake"
-        #expect(ItemAppearance.label(of: renamed) == "Written Book “Keepsake”")
-        #expect(WorldSearch.matches(renamed, query: SearchQuery("travels")))
+        #expect(GameNames.unavailable.itemLabel(of: renamed) == "Written Book “Keepsake”")
+        #expect(WorldSearch.matches(renamed, query: SearchQuery("travels"), gameNames: .unavailable))
     }
 }

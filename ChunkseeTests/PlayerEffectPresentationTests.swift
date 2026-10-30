@@ -28,8 +28,8 @@ import Testing
             "ActiveEffects": .list([.compound(["Id": .byte(27), "Amplifier": .byte(1), "Duration": .int(1680)])]),
         ]))
         #expect(names.effect(try #require(legacy.activeEffects.first), locale: english) == "Bad Luck II")
-        #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
-        #expect(TradeText.enchantmentName("minecraft:mending", level: 1) == "Mending")
+        #expect(GameNames.unavailable.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
+        #expect(GameNames.unavailable.enchantmentName("minecraft:mending", level: 1) == "Mending I")
     }
 
     @Test func savedClocksRoundAcrossSecondMinuteAndHourBoundaries() throws {

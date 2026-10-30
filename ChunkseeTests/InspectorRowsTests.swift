@@ -49,11 +49,11 @@ import Testing
         let rows = EquipmentPresentation.rows(try #require(wolf.equipment))
         let coat = try #require(rows.first?.item)
         #expect(rows.map(\.slot) == ["body"])
-        #expect(ItemAppearance.name(of: coat) == "Wolf Armor “Fluffy Coat”")
+        #expect(GameNames.unavailable.itemName(of: coat) == "Wolf Armor “Fluffy Coat”")
         #expect(ItemAppearance.symbol(for: coat.id) == "tshirt.fill")
         #expect(coat.durability == ItemDurability(remaining: 97, maximum: 100))
-        #expect(ItemAppearance.details(of: coat).contains(ItemAppearance.durability(try #require(coat.durability))))
-        #expect(ItemAppearance.details(of: coat).contains("Unbreaking III"))
+        #expect(GameNames.unavailable.itemDetails(of: coat).contains(ItemAppearance.durability(try #require(coat.durability))))
+        #expect(GameNames.unavailable.itemDetails(of: coat).contains("Unbreaking III"))
 
         let player = PlayerInfo(uuid: UUID(), nbt: .compound([
             "DataVersion": .int(5023), "SelectedItemSlot": .int(2),
@@ -67,7 +67,7 @@ import Testing
         ]))
         let equipped = EquipmentPresentation.rows(player.equippedItems)
         #expect(equipped.map(\.slot) == ["head", "mainhand", "offhand", "storage", "custom:extra", "unknown"])
-        #expect(equipped.map { ItemAppearance.name(of: $0.item) } == ["Golden Helmet “Aurum”", "Iron Pickaxe “Miner”", "64 Torch", "Chest", "Diamond", "Apple"])
+        #expect(equipped.map { GameNames.unavailable.itemName(of: $0.item) } == ["Golden Helmet “Aurum”", "Iron Pickaxe “Miner”", "64 Torch", "Chest", "Diamond", "Apple"])
         #expect(EquipmentPresentation.rows(["body": ItemStack(id: "minecraft:wolf_armor", count: 0)]).isEmpty)
         #expect(ItemAppearance.durability(.init(remaining: 1500, maximum: 1561), locale: english) == "Durability: 1,500 of 1,561")
     }
