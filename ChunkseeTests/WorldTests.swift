@@ -386,7 +386,7 @@ import Testing
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: [], gameNames: .unavailable) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
-        #expect(VillagerText.inspectorProfession(librarian, gameNames: .unavailable) == "Librarian, Level 5")
+        #expect(GameNames.unavailable.profession(of: librarian, definitions: nil) == "Librarian, Level 5")
         // With no definition, the saved level stays visible even for a familiar vanilla ID.
         #expect(mending.first?.detail == "1 Enchanted Book (Mending I) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))

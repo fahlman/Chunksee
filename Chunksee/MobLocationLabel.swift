@@ -42,25 +42,16 @@ private struct MobTextureLabel: View {
 private struct MobLabel: View {
     let marker: CreatureMarker
     var color: MapColor?
+    @Environment(\.gameNames) private var gameNames
+    @Environment(\.locale) private var locale
 
     var body: some View {
-        LocationLabel(title: Text(marker.name)) {
+        LocationLabel(title: Text(gameNames.creature(marker.creature))) {
             Image(systemName: marker.group.symbol)
                 .foregroundStyle(color.map(Color.init) ?? .primary)
                 .shadow(color: color == nil ? .clear : .primary.opacity(0.45), radius: 0.5)
                 .accessibilityHidden(true)
         }
-        .accessibilityLabel(spokenLabel)
-    }
-
-    private var spokenLabel: Text {
-        // The saved variant identifies the tint without guessing a name from its pixels.
-        // Keep that identity audible even when its artwork is unavailable.
-        if let appearance = marker.creature.appearance, let variant = appearance.variant,
-           appearance.colorSource(for: marker.creature.id) != nil {
-            Text("\(PetDetailText.name(variant)) \(marker.name)")
-        } else {
-            Text(marker.name)
-        }
+        .accessibilityLabel(gameNames.spokenCreature(marker.creature, locale: locale))
     }
 }

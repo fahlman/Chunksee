@@ -520,7 +520,7 @@ import Testing
         let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
         let map = try #require(session.map)
-        let view = MapView(session: session, map: map, onSelect: { session.selection.mapClicked($0, y: $1) })
+        let view = MapView(session: session, map: map, content: MapContent(session: session), onSelect: { session.selection.mapClicked($0, y: $1) })
         session.selection.choose(.player(playerID))
         let viewport = map.viewport, depth = map.depth
         session.annotations.ruler.isEnabled = true
@@ -551,7 +551,7 @@ import Testing
         let place = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: .zero))
         let overlay = try #require(session.presentation.inGameMaps.first { $0.id == 3 })
         var disclosure = SidebarDisclosure()
-        let view = MapView(session: session, map: map, onSelect: { disclosure.selectOnMap($0, y: $1, in: session) })
+        let view = MapView(session: session, map: map, content: MapContent(session: session), onSelect: { disclosure.selectOnMap($0, y: $1, in: session) })
         for row in [SidebarItem.player(playerID), .creature(creature.id), .savedPlace(place.id), .worldInfo, .storage, .inGameMap(3)] {
             session.selection.choose(row)
             let viewport = map.viewport, depth = map.depth
@@ -944,7 +944,7 @@ import Testing
         let creature = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 0.5, y: 64, z: 0.5,
                                                          customName: "Pet", owner: UUID()), dimension: "minecraft:overworld"))
         let bell = PlaceMarker(PointOfInterest(type: "minecraft:meeting", x: 0, y: 64, z: 0, freeTickets: 1))
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.places = [portal, bell]
         content.creatures = [creature]
         var viewport = MapViewport(center: portal.position, scale: 1)

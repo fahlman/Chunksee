@@ -570,10 +570,10 @@ older scan envelopes.
 | `PlayerMarkers.swift` | Player names and personal/named phrases, outdated-location wording and coordinate validation shared by markers and inventory search, and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`) |
 | `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
-| `MapContent.swift` | A map-content value projected directly from live feature models; its shared marker candidates, hit tests and accessibility locations |
+| `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
-| `Creatures.swift`, `PetDetails.swift`, `VillagerText.swift` | Native creature inspector, shared saved villager profession/level labels and pet appearance/collar labels, using shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
+| `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
 
@@ -1128,7 +1128,7 @@ from accessibility. Unbreakable and non-durable items have no reading, so neithe
 The creature inspector shows saved current/maximum health in hearts and applicable sitting order,
 appearance, collar and equipment from ChunkseeKit, independently of ownership. Missing data stays absent. The selected
 creature is resolved from the current shared index, so an open inspector follows saved changes.
-VillagerText uses Kit's computed `Villager.isUnemployed` for profession-name availability. The app
+GameNames uses Kit's computed `Villager.isUnemployed` for profession-name availability. The app
 owns readable labels, but does not interpret saved `minecraft:none` or malformed professions;
 nitwits and valid custom professions remain distinct.
 The inspector's “None” profession value is limited to a villager whose saved profession is
@@ -1879,7 +1879,10 @@ stays unchanged. Inventory grids retain empty slots because those represent stor
 
 MobTypes owns one immutable presentation snapshot of located creatures: the shared point index,
 type membership, complete saved-appearance counts, special-group projection and identity lookups.
-DimensionContent replaces it with each creature publication. The Mobs sidebar lists names only;
+Its kinds carry IDs, not names, and use ID order. GameNames derives translated names, name ordering
+and collision suffixes from the current language at presentation; those changes do not rebuild
+membership or alter selection IDs. DimensionContent replaces the catalog with each creature
+publication. The Mobs sidebar lists names only;
 type disclosures prepare nearest-first individual rows off-main when expanded. Named Creatures,
 Pets and Villagers remain overlapping views of those same entities. A marker appears when its
 special group is shown, or its type is shown and its appearance matches that type's filter.
@@ -1898,8 +1901,10 @@ keeps native colors. VoiceOver names the saved variant for every tinted mob, inc
 artwork is unavailable, using the same naming as the inspector. It never guesses a color name
 from sampled pixels.
 
-Creature.displayName owns custom-name, villager-profession and kind fallback naming for located
-markers, shoulder pets and ordinary/filtered creature search rows. Generic layer filters and
+GameNames owns literal custom-name, villager-profession and entity fallback naming for located
+markers, shoulder pets and ordinary/filtered creature search rows. It also owns appearance labels,
+collar and normalized fish dye-color names, spoken variant descriptions and search captions.
+Generic layer filters and
 plain named-creature search share one hit constructor; filtered searches retain their one
 matching helper. Search details supply the kind, or the group when the name already is the kind.
 CreatureDetailSections owns their shared applicable health, owner,
@@ -2180,8 +2185,22 @@ Minecraft's Enchantment.getFullname is the source for description and suffix beh
 disassembly is retained in ChunkseeKit-runs/enchantment-descriptions-evidence/codec-source-1/Enchantment.javap.
 Kit's complete scan-option identity includes the description, so changing it can invalidate a
 parameterized scan cache; this adoption does not change region/chunk traversal or renderer code.
-The remaining creature/profession, biome, structure and marker/search
-naming consumers remain part of foundation step 5e and #438.
+Creature consumers now use that same naming snapshot: sidebar rows, kind headings, inspector,
+shoulder and linked pets, searches, map captions and map accessibility. MobTypes retains saved
+identities, counts and appearance membership; GameNames computes translated kind ordering and
+collision labels. The retired Creature.displayName, VillagerText and PetDetailText policies are
+removed. Entity keys follow EntityType's description-ID convention. Profession keys follow
+VillagerProfession.register: `entity.<namespace>.villager.<literal path>`, preserving slashes in
+the profession path. That source proof and the installed language keys are retained in
+Chunksee-runs/creature-name-owner-evidence/game-source-1. Generic appearance IDs remain readable;
+only collar and the explicitly normalized base_color/pattern_color fields use dye-name keys.
+MapContent requires an explicit GameNames value, captured from WorldResources by its session
+initializer. MapScene resolves creature labels lazily with that snapshot; picking still does not
+format names. MapLayerMarker name/search methods require the snapshot, while the other marker
+kinds retain their current label behavior pending their own adoption. Map caption changes retain
+the required paired copied-world timing gate.
+Biome, structure and group naming and typed search-hit labels remain part of foundation step 5e
+and #438; this creature adoption does not complete that finish line.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

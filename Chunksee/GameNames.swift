@@ -68,6 +68,104 @@ nonisolated struct GameNames: Sendable {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
     }
 
+    func entity(_ id: String) -> String { name(id, in: "entity") }
+
+    func creature(_ creature: Creature) -> String {
+        if let customName = creature.customName { return customName }
+        if let villager = creature.villager, let profession = profession(villager) { return profession }
+        return entity(creature.id)
+    }
+
+    func profession(_ villager: Villager) -> String? {
+        guard villager.isUnemployed == false, let profession = villager.profession else { return nil }
+        guard let id = Identifier(profession) else { return ReadableName.from(profession) }
+        // VillagerProfession.register uses the namespace and literal path, without replacing slashes.
+        return name(key: "entity.\(id.namespace).villager.\(id.path)", fallback: ReadableName.from(profession))
+    }
+
+    func profession(of creature: Creature, definitions: TradingDefinitions?, locale: Locale = .current) -> String? {
+        guard let villager = creature.villager else { return nil }
+        let name: String
+        if let profession = profession(villager) {
+            name = profession
+        } else if creature.id == "minecraft:villager", villager.isUnemployed == true {
+            name = String(localized: "None", locale: locale)
+        } else {
+            return nil
+        }
+        // Only a known nontrading profession omits the rank; unfamiliar professions retain it.
+        if villager.supportsTrading(using: definitions) == false { return name }
+        guard let level = merchantLevel(villager.level) else { return name }
+        return String(localized: "\(name), \(level)", locale: locale)
+    }
+
+    func appearanceValue(_ id: String) -> String { ReadableName.from(id) }
+
+    func dyeColor(_ id: String) -> String { name(id, in: "color") }
+
+    func creatureAppearance(_ appearance: CreatureAppearance, locale: Locale = .current) -> String {
+        var parts: [String] = []
+        if let variant = appearance.variant { parts.append(appearanceValue(variant)) }
+        if let markings = appearance.markings { parts.append(appearanceValue(markings)) }
+        for (key, value) in (appearance.traits ?? [:]).sorted(by: { $0.key < $1.key }) {
+            // These normalized fields are dye identities. Other appearance values are not color names.
+            let text = key == "base_color" || key == "pattern_color" ? dyeColor(value) : appearanceValue(value)
+            parts.append(String(localized: "\(ReadableName.from(key)): \(text)", locale: locale))
+        }
+        return parts.isEmpty ? String(localized: "Not recorded", locale: locale)
+            : parts.formatted(.list(type: .and).locale(locale))
+    }
+
+    func spokenCreature(_ creature: Creature, locale: Locale = .current) -> String {
+        let name = self.creature(creature)
+        // A saved variant describes a symbol tint without guessing a name from sampled pixels.
+        if let appearance = creature.appearance, let variant = appearance.variant,
+           appearance.colorSource(for: creature.id) != nil {
+            return String(localized: "\(appearanceValue(variant)) \(name)", locale: locale)
+        }
+        return name
+    }
+
+    func creatureCaption(_ marker: CreatureMarker) -> String {
+        let kind = entity(marker.creature.id)
+        return creature(marker.creature) == kind ? marker.group.name : kind
+    }
+
+    func creatureSearchText(_ marker: CreatureMarker) -> String {
+        let creature = marker.creature
+        var parts = [self.creature(creature), marker.group.name, entity(creature.id), creature.id]
+        if let villager = creature.villager {
+            if let profession = profession(villager) { parts.append(profession) }
+            if let id = villager.profession { parts.append(id) }
+        }
+        return parts.joined(separator: " ")
+    }
+
+    nonisolated struct MobKind: Identifiable, Sendable {
+        let kind: MobTypes.Kind
+        let name: String
+        var id: String { kind.id }
+    }
+
+    func mobKinds(in catalog: MobTypes, locale: Locale = .current) -> [MobKind] {
+        let named = catalog.kinds.map { MobKind(kind: $0, name: entity($0.id)) }
+        let counts = Dictionary(grouping: named, by: \.name).mapValues(\.count)
+        return named.sorted { ($0.name, $0.id) < ($1.name, $1.id) }.map { row in
+            let name = mobName(row.name, id: row.id, isAmbiguous: counts[row.name] != 1, locale: locale)
+            return MobKind(kind: row.kind, name: name)
+        }
+    }
+
+    func mobName(_ id: String, in catalog: MobTypes, locale: Locale = .current) -> String {
+        let name = entity(id)
+        let isAmbiguous = catalog.kinds.contains { $0.id != id && entity($0.id) == name }
+        return mobName(name, id: id, isAmbiguous: isAmbiguous, locale: locale)
+    }
+
+    private func mobName(_ name: String, id: String, isAmbiguous: Bool, locale: Locale) -> String {
+        isAmbiguous ? String(localized: "\(name) (\(id))", locale: locale) : name
+    }
+
     func advancement(_ id: String, title: TextComponent.Content?) -> String {
         if let title, let text = GameText.string(title, translation: { language?[$0] }) { return text }
         return ReadableName.from(id)

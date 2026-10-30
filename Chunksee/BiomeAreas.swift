@@ -26,8 +26,9 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     var chunks: Path
     var outline: Path
     var name: String { String(localized: "\(chunkCount) chunks") }
+    func name(in gameNames: GameNames) -> String { name }
     var yCoordinate: Double? { nil }
-    var searchText: String { group.name + " " + group.id }
+    func searchText(in gameNames: GameNames) -> String { group.name + " " + group.id }
 }
 
 /// Native paths and labels for shared biome areas, with the app's existing cave-membership policy.

@@ -49,8 +49,8 @@ import Testing
         try savePets([pet("Other World", owner: owner, x: 4)], in: secondURL)
         let first = try await open(firstURL), second = try await open(secondURL)
         defer { first.close(); second.close() }
-        #expect(Set(first.presentation.linkedPets(to: owner).map(\.name)) == ["Summer", "Nether Wolf"])
-        #expect(first.presentation.linkedPets(to: otherOwner).map(\.name) == ["Summer"])
+        #expect(Set(first.presentation.linkedPets(to: owner).map { $0.name(in: first.resources.gameNames) }) == ["Summer", "Nether Wolf"])
+        #expect(first.presentation.linkedPets(to: otherOwner).map { $0.name(in: first.resources.gameNames) } == ["Summer"])
         #expect(first.presentation.linkedPets(to: UUID()).isEmpty)
         #expect(second.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })
         #expect(!first.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })

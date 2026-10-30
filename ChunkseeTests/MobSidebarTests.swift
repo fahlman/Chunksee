@@ -32,10 +32,10 @@ import Testing
         let sheep = try #require(catalog.kind("minecraft:sheep"))
         #expect(sheep.count == 3 && sheep.variants.count == 3)
         #expect(sheep.variants.contains { !$0.appearance.isRecorded && $0.count == 1 })
-        #expect(sheep.name != catalog.kind("test:sheep")?.name)
+        #expect(GameNames.unavailable.mobName(sheep.id, in: catalog) != GameNames.unavailable.mobName("test:sheep", in: catalog))
         let fishKind = try #require(catalog.kind("minecraft:tropical_fish"))
         #expect(fishKind.variants.count == 2 && fishKind.variants.allSatisfy { $0.count == 1 })
-        #expect(fishKind.variants.map { $0.appearance.name(for: fishKind.id) }.allSatisfy { $0.contains("Base Color: White") })
+        #expect(fishKind.variants.map { GameNames.unavailable.creatureAppearance($0.appearance.saved) }.allSatisfy { $0.contains("Base Color: White") })
         let ordered = try await catalog.nearest("minecraft:sheep", to: .zero)
         #expect(Set(ordered.prefix(2).map(\.id)) == [red.id, unknown.id] && ordered.last == white)
         #expect(try await MobTypes([unknown, red, white]).nearest("minecraft:sheep", to: .zero).map(\.id) == ordered.map(\.id))
@@ -51,7 +51,7 @@ import Testing
         let white = try marker(species, x: 5, name: pet ? nil : "Snow", owner: pet ? UUID() : nil,
                                appearance: .init(variant: pet ? "minecraft:pale" : "minecraft:white"))
         let red = try marker(species, x: 1, appearance: .init(variant: pet ? "minecraft:rusty" : "minecraft:red"))
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.creatures = [white, red]
         content.shownCreatureGroups = [white.group]
         content.shownMobTypes = [species]

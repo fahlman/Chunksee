@@ -437,7 +437,7 @@ import Testing
         #expect((tile.normals != nil) == savedTime)
         let color = try ItemPictureFixture.pixels(tile.image).color(0, 0)
         #expect(color[0] > color[1]) // The dark-column tint survives preparation of lighting inputs.
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.showsDarkSpots = true
         content.lighting = map.lighting
         for scheme in [ColorScheme.light, .dark] {
@@ -446,7 +446,7 @@ import Testing
             let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(exported) == pngPixels(view))
-            let bare = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: plan.size,
+            let bare = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(view) != pngPixels(bare))
         }
@@ -463,7 +463,7 @@ import Testing
         let nightLighting = TestNightLighting()
         let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
-        func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent()) }
+        func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent(gameNames: .unavailable)) }
         nightLighting.value = overlay.rule
         map.viewport.center = CGPoint(x: 0.5, y: 0.5)
         #expect(map.unfinishedTopBlockReads == 0 && map.topBlocks.isEmpty)

@@ -55,6 +55,7 @@ private struct PlaceDetailView: View {
     let session: WorldSession
     let marker: PlaceMarker
     @Environment(\.gameArtworkLibrary) private var pictures
+    @Environment(\.gameNames) private var gameNames
     @State private var loaded: (request: Request, item: ItemStack?)?
 
     private struct Request: Equatable {
@@ -76,7 +77,7 @@ private struct PlaceDetailView: View {
                         picture: item.map(InspectorHeading.Picture.item)) {
             switch marker.group {
             case .spawner:
-                LabeledContent("Spawns", value: marker.mob.map { ReadableName.from($0) } ?? String(localized: "Nothing"))
+                LabeledContent("Spawns", value: marker.mob.map(gameNames.entity) ?? String(localized: "Nothing"))
             case .bed, .workstation:
                 LabeledContent("Claimed by a Villager", value: marker.isClaimed ? String(localized: "Yes") : String(localized: "No"))
             case .unopenedLoot:

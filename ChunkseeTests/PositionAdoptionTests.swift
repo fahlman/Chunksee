@@ -59,7 +59,7 @@ import Testing
             #expect(map.topBlock(at: example.point)?.y == example.y)
             #expect(map.topBlocks.keys.contains(example.chunk))
             let facts = try await RegionReader.scan(dimension, region: example.chunk.region, options: RegionReader.options())
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.biomes = ChunkseeIndex.RegionIndex(facts, caveBiomeIDs: BiomePresentation.caveBiomeIDs, notableBlocks: .init(tags: [:])).biomes
             #expect(content.biome(at: example.point) == "minecraft:plains")
             map.close()

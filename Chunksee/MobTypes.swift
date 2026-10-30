@@ -28,10 +28,6 @@ nonisolated struct MobAppearance: Hashable, Sendable {
             traits: traits.isEmpty ? nil : Dictionary(uniqueKeysWithValues: traits.map { ($0.name, $0.value) }))
     }
 
-    func name(for species: String) -> String {
-        isRecorded ? PetDetailText.appearance(saved) : String(localized: "Not recorded")
-    }
-
     fileprivate var ordering: [String] { [variant ?? "", markings ?? ""] + traits.flatMap { [$0.name, $0.value] } }
 }
 
@@ -46,7 +42,6 @@ nonisolated struct MobTypes: Sendable {
 
     struct Kind: Identifiable, Sendable {
         let id: String
-        let name: String
         let variants: [Variant]
         fileprivate let members: [Int]
         var count: Int { members.count }
@@ -72,17 +67,14 @@ nonisolated struct MobTypes: Sendable {
         }
         markerOffsets = offsets
         specialOffsets = special
-        let names = members.keys.map { (id: $0, name: ReadableName.from($0)) }
-        let collisions = Dictionary(grouping: names, by: \.name)
-        kinds = names.sorted { ($0.name, $0.id) < ($1.name, $1.id) }.map { kind in
-            let indices = members[kind.id]!
+        kinds = members.keys.sorted().map { id in
+            let indices = members[id]!
             var counts: [MobAppearance: Int] = [:]
             for offset in indices { counts[MobAppearance(markers[offset].creature.appearance), default: 0] += 1 }
             let variants = counts.map { Variant(appearance: $0.key, count: $0.value) }.sorted {
                 $0.appearance.ordering.lexicographicallyPrecedes($1.appearance.ordering)
             }
-            let name = collisions[kind.name]?.count == 1 ? kind.name : String(localized: "\(kind.name) (\(kind.id))")
-            return Kind(id: kind.id, name: name, variants: variants, members: indices)
+            return Kind(id: id, variants: variants, members: indices)
         }
         kindOffsets = Dictionary(uniqueKeysWithValues: kinds.enumerated().map { ($0.element.id, $0.offset) })
     }

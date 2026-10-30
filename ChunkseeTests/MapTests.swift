@@ -52,7 +52,7 @@ import Testing
 @Suite(.isolatedStores) struct MapAccessibilityTests {
     @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() throws {
         let playerID = UUID()
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.players = [
             .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, label: "Friend", isOutdated: false),
             .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, label: "Where Friend last died", isOutdated: false),
@@ -342,7 +342,7 @@ import Testing
         let size = CGSize(width: 200, height: 100)
         map.requestTiles(visibleIn: size, displayScale: 2)
         await map.waitUntilIdle()
-        let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
+        let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         #expect(decoded.width == 400 && decoded.height == 200)
@@ -368,7 +368,7 @@ import Testing
         await map.waitUntilIdle()
         for appearance in [ColorScheme.light, .dark] {
             for shown in [false, true] {
-                var content = MapContent()
+                var content = MapContent(gameNames: .unavailable)
                 content.showsHeatMap = shown
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
                     size: size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))

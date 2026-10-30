@@ -56,8 +56,6 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
 
     var position: CGPoint { CGPoint(x: creature.x, y: creature.z) }
 
-    var name: String { creature.displayName }
-
     init?(_ creature: Creature, dimension: String) {
         guard let entry = CreatureEntry(creature) else { return nil }
         self.init(entry, dimension: dimension)
@@ -69,24 +67,16 @@ nonisolated struct CreatureMarker: Identifiable, Equatable, Sendable {
     }
 }
 
-extension Creature {
-    /// "Summer", or the kind for unnamed ones: "Wolf", "Farmer" for a villager with a profession.
-    nonisolated var displayName: String {
-        if let customName { return customName }
-        if let villager, let profession = VillagerText.professionName(villager) { return profession }
-        return ReadableName.from(id)
-    }
-}
-
 /// Details of the selected creature in the inspector.
 struct CreatureDetailView: View {
     let session: WorldSession
     let marker: CreatureMarker
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         Form {
             CreatureDetailSections(session: session, creature: marker.creature) {
-                InspectorHeading(title: Text(marker.name), symbol: marker.group.symbol,
+                InspectorHeading(title: Text(gameNames.creature(marker.creature)), symbol: marker.group.symbol,
                                  picture: .mob(marker.creature.id))
             } location: {
                 LocationRow(session: session,
@@ -114,13 +104,13 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
 
     var body: some View {
         Section {
-            LabeledContent("Kind", value: ReadableName.from(creature.id))
+            LabeledContent("Kind", value: gameNames.entity(creature.id))
             location
             if let owner = creature.owner {
                 LabeledContent("Tamed By", value: session.presentation.name(ofPlayerWith: owner))
             }
             PetDetailRows(creature: creature)
-            if let profession = VillagerText.inspectorProfession(creature, definitions: session.details.definitions.trading, gameNames: gameNames) {
+            if let profession = gameNames.profession(of: creature, definitions: session.details.definitions.trading, locale: locale) {
                 LabeledContent("Profession", value: profession)
             }
         } header: {

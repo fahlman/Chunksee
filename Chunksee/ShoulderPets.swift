@@ -10,8 +10,6 @@ nonisolated struct ShoulderPet: Identifiable, Sendable {
     let creature: Creature
     let location: PlayerInfo.Location?
 
-    var name: String { creature.displayName }
-
     init(creature: Creature, carrier: PlayerInfo, index: Int) {
         self.creature = creature
         self.carrier = carrier.uuid
@@ -58,6 +56,7 @@ extension SearchIndex {
 struct ShoulderPetsSection: View {
     let session: WorldSession
     let playerID: UUID
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         let pets = session.search.playerSnapshot.shoulderPets.filter { $0.carrier == playerID }
@@ -65,7 +64,7 @@ struct ShoulderPetsSection: View {
             Section("On Shoulders") {
                 ForEach(pets) { pet in
                     CreatureDetailSections(session: session, creature: pet.creature) {
-                        InspectorHeading(title: Text(pet.name), symbol: CreatureGroup.pet.symbol,
+                        InspectorHeading(title: Text(gameNames.creature(pet.creature)), symbol: CreatureGroup.pet.symbol,
                                          picture: .mob(pet.creature.id))
                     } location: {
                         if pet.location == nil {
