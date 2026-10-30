@@ -4,13 +4,8 @@ import Observation
 
 /// The world owns one read and completed value per requested player. Windows own only handles.
 final class PlayerRecordStore {
-    nonisolated struct GameSource: Equatable, Sendable {
-        let generation: UUID
-        let selection: WorldDefinitionLoader.GameSelection
-    }
-
     nonisolated fileprivate struct Source: Equatable, Sendable {
-        let game: GameSource?
+        let game: WorldGameDataSource?
         let name: String?
         var isReady: Bool { game?.selection.isLoaded == true }
     }
@@ -27,12 +22,12 @@ final class PlayerRecordStore {
     private let world: World
     private let work: BackgroundWork
     private let names: PlayerNames
-    private let gameSource: @MainActor () -> GameSource?
+    private let gameSource: @MainActor () -> WorldGameDataSource?
     private var entries: [UUID: Entry] = [:]
     private var isClosed = false
 
     init(world: World, work: BackgroundWork, names: PlayerNames,
-         gameSource: @escaping @MainActor () -> GameSource?) {
+         gameSource: @escaping @MainActor () -> WorldGameDataSource?) {
         self.world = world
         self.work = work
         self.names = names

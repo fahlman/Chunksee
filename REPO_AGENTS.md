@@ -1163,6 +1163,11 @@ Kit supplies scaled units, while the app uses native elapsed time,
 metric distance and the shared heart wording. Unknown units retain their raw numbers. The inspector
 keeps its primary counts and 100-meter travel cutoff; the complete table retains every saved row.
 
+WorldGameDataSource owns equality for a selected game-data source: folder generation and
+loading/loaded library selection. WorldResources derives that value for the definition loader
+and record store; neither redeclares its fields or comparison. Completed definition/player facts
+retain its derived compact Identity, without retaining a retired library just for provenance.
+
 PlayerRecordStore owns the world's requested player records through one RefreshLoader per UUID.
 SelectionModel acquires a handle when its resolved inspector selects a player, independently of
 view tasks. Two windows can share a read or select different players; closing one handle never
