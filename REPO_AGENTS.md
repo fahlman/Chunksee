@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.79.0`, resolved to `0.79.0` (`2a8da29ae51f51db54ac11cb6efa5c296152eb45`).
+  minor" from `0.80.0`, resolved to `0.80.0` (`2806332baaae15851a216d51cacd0d05282e4e12`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -457,8 +457,20 @@ snapshot. The snapshot supplies World Info, version notices, world/spawn present
 single-player labels, so these consumers do not keep separate opening values. Dimension-source
 changes retain only compatible borders; closure and replacement reject retired reads. Non-region
 notifications coalesce through the world's existing scheduling path without copying Kit's file
-discovery tables. Saved in-game maps still use their prepared opening sources until their separate
-snapshot step adopts Kit's failure-aware map-read result.
+discovery tables.
+
+Saved in-game maps have a separate WorldMapSnapshot through the shared RefreshLoader. Opening and refresh
+use Kit's readMapItems result: resolved values advance, unresolved IDs keep their previous map
+when available, and incomplete listings cannot remove absent maps. Without a prior value, a
+readable fallback remains useful. A complete listing removes absent resolved IDs. Prepared picture
+keys publish with map values, and unchanged content reuses its source. Sidebar, inspector and kept
+overlays already resolve the live map ID; their independent selection, opacity and navigation
+choices do not move into the world. Non-region saved-data notifications refresh maps, while
+region writes, dimension catalog changes and game-resource changes do not. The map reader uses
+only the world's root and the metadata in each map file, so unreadable level metadata does not
+prevent readable maps from advancing. Close and source replacement reject retired results.
+Kit 0.80.0 supplies this read result; its terrain revision 2 and region-facts revision 30 also
+retire the previous reader caches through the existing typed identities, with no app-owned bump.
 
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
