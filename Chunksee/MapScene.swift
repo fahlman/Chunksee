@@ -34,8 +34,8 @@ struct MapScene {
 
         func name(in gameNames: GameNames) -> String {
             switch self {
-            case .structure(let marker): marker.name
-            case .place(let marker): marker.name
+            case .structure(let marker): gameNames.structure(marker.structureID)
+            case .place(let marker): gameNames.place(marker)
             case .creature(let marker): gameNames.creature(marker.creature)
             case .pin(_, let name, _): name
             }
@@ -123,8 +123,8 @@ struct MapScene {
         let frame: CGRect
         let color: MapColor
 
-        var accessibleLocation: AccessibleMapLocation {
-            AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
+        func accessibleLocation(in gameNames: GameNames) -> AccessibleMapLocation {
+            AccessibleMapLocation(id: "biome-" + area.id, name: gameNames.biome(area.group.id),
                 position: area.position, y: nil, target: .row(.biome(area.id)), frame: frame)
         }
 
@@ -253,7 +253,7 @@ struct MapScene {
         // Preserve traversal order: structures, Places, creatures, biome areas, then pin layers.
         var locations = structures.filter { accessibilityBounds.contains($0.item.point) }.map { $0.item.accessibleLocation(in: gameNames) }
         locations += items[..<firstPinIndex].map { $0.accessibleLocation(in: gameNames) }
-        locations += biomeAreas.filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
+        locations += biomeAreas.filter { accessibilityBounds.contains($0.point) }.map { $0.accessibleLocation(in: gameNames) }
         locations += items[firstPinIndex...].filter { accessibilityBounds.contains($0.point) }.map { $0.accessibleLocation(in: gameNames) }
         return locations
     }

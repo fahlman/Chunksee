@@ -78,6 +78,10 @@ nonisolated struct GameNames: Sendable {
 
     func profession(_ villager: Villager) -> String? {
         guard villager.isUnemployed == false, let profession = villager.profession else { return nil }
+        return self.profession(profession)
+    }
+
+    func profession(_ profession: String) -> String {
         guard let id = Identifier(profession) else { return ReadableName.from(profession) }
         // VillagerProfession.register uses the namespace and literal path, without replacing slashes.
         return name(key: "entity.\(id.namespace).villager.\(id.path)", fallback: ReadableName.from(profession))
@@ -128,11 +132,11 @@ nonisolated struct GameNames: Sendable {
 
     func creatureCaption(_ marker: CreatureMarker) -> String {
         let kind = entity(marker.creature.id)
-        return creature(marker.creature) == kind ? marker.group.name : kind
+        return creature(marker.creature) == kind ? group(marker.group) : kind
     }
 
     func creatureSearchText(_ marker: CreatureMarker) -> String {
-        creatureSearchText(marker.creature) + " " + marker.group.name
+        creatureSearchText(marker.creature) + " " + group(marker.group)
     }
 
     func creatureSearchText(_ creature: Creature) -> String {

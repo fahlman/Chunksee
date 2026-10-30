@@ -258,10 +258,11 @@ nonisolated enum WorldSearch {
                                                                      including: (Marker) -> Bool = { _ in true },
                                                                      count: (Marker) -> Int = { _ in 1 },
                                                                      y: (Marker) -> Int? = { _ in nil },
-                                                                     caption: (Marker) -> String = { $0.group.name },
+                                                                     caption: ((Marker) -> String)? = nil,
                                                                      layer: (Marker) -> SearchHit.Layer) -> [SearchHit] {
         entries.filter { !Task.isCancelled && including($0.value) && query.matches($0.value.searchText(in: gameNames)) }.map { entry in
-            layerHit(entry, gameNames: gameNames, count: count(entry.value), y: y(entry.value), caption: caption(entry.value), layer: layer(entry.value))
+            layerHit(entry, gameNames: gameNames, count: count(entry.value), y: y(entry.value),
+                     caption: caption?(entry.value) ?? entry.value.group.name(in: gameNames), layer: layer(entry.value))
         }
     }
 

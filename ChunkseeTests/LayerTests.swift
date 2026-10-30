@@ -33,7 +33,7 @@ import Observation
         #expect(StructureGroup.stronghold.isShownByDefault)
         let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
-            StructureMarker(start($0, chunk: (0, 0))).name
+            StructureMarker(start($0, chunk: (0, 0))).name(in: .unavailable)
         }
         #expect(names == ["Village Plains", "Ocean Ruin Cold", "Ruined Portal Ocean", "Shipwreck Beached", "Ancient City"])
     }
@@ -136,9 +136,9 @@ enum StructureTestWorld {
         #expect(PlaceGroup.group(for: "minecraft:meeting") == .bell)
         #expect(PlaceGroup.group(for: "minecraft:beehive") == .beeNest)
         #expect(PlaceGroup.portal.isShownByDefault && !PlaceGroup.bed.isShownByDefault)
-        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name == "Librarian’s Workstation")
+        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name(in: .unavailable) == "Librarian’s Workstation")
         let claimedBed = PlaceMarker(poi("minecraft:home", 0, 64, 0, tickets: 0))
-        #expect(claimedBed.isClaimed && claimedBed.name == "Villager’s Bed")
+        #expect(claimedBed.isClaimed && claimedBed.name(in: .unavailable) == "Villager’s Bed")
         #expect(!PlaceMarker(poi("minecraft:meeting", 0, 64, 0, tickets: 0)).isClaimed)  // only beds and workstations
     }
 
@@ -359,7 +359,7 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         let spawners = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
-        #expect(spawners.map(\.name).sorted() == ["Empty Spawner", "Zombie Spawner"])
+        #expect(spawners.map { $0.name(in: session.resources.gameNames) }.sorted() == ["Empty Spawner", "Zombie Spawner"])
         #expect(spawners.first { $0.mob == "minecraft:zombie" }?.position == CGPoint(x: 3.5, y: 5.5))
         #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
         session.search.text = "place:zombie spawner"
@@ -376,9 +376,9 @@ enum StructureTestWorld {
         for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
         let areas = BiomePresentation.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
         #expect(areas.map(\.chunkCount) == [6, 4, 1])
-        #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name == "Plains")
+        #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name(in: .unavailable) == "Plains")
         #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
-        #expect(areas[0].name == "6 chunks")
+        #expect(areas[0].name(in: .unavailable) == "6 chunks")
         // The outline runs around the 3×2 chunks, not between them.
         #expect(areas[0].bounds == CGRect(x: 0, y: 0, width: 48, height: 32))
         #expect(areas[0].outline.boundingRect == CGRect(x: 0, y: 0, width: 48, height: 32))
@@ -411,7 +411,7 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         #expect(session.presentation.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
-        #expect(session.presentation.selectedIndex.biomeAreas.first?.group.name == "Plains")
+        #expect(session.presentation.selectedIndex.biomeAreas.first?.group.name(in: session.resources.gameNames) == "Plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.

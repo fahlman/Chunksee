@@ -52,7 +52,7 @@ import Testing
             chest(7, filled: true), chest(8),
         ])
         let markers = data.containers.compactMap { PlaceMarker(unopened: $0) }
-        #expect(markers.map(\.name) == ["Simple Dungeon Loot", "Buried Treasure Loot", "Ancient City Loot",
+        #expect(markers.map { $0.name(in: .unavailable) } == ["Simple Dungeon Loot", "Buried Treasure Loot", "Ancient City Loot",
                                          "Loot: example:chests/simple_dungeon"])
         #expect(markers.allSatisfy { $0.group == .unopenedLoot && $0.y == 30 })
         let index = SearchIndex.overworld(DimensionContent(placePoints: PointMarkers(markers)))

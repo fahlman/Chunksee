@@ -418,8 +418,8 @@ and other consumers. The immutable style carries the locale and dimension IDs wi
 the document or introducing another catalog owner; captured styles retain their catalog context.
 Colliding readable labels include their full IDs; unique labels stay
 concise. This also disambiguates different paths within a namespace and unavailable locations.
-`ReadableName` owns identifier-to-word formatting for structures and custom dimension labels as
-well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;
+`ReadableName` supplies identifier-to-word formatting to GameNames for structures and custom dimension
+labels as well as items. Identifier syntax and default namespaces come from ChunkseeKit's `Identifier`;
 the app only formats its path or retains an unfamiliar value as readable fallback text. Vanilla
 structure/place groups and block-color lookup require the Minecraft namespace, leaving custom
 IDs distinct. The RegionFacts cache and tile-renderer version 8 discard classifications and pixels
@@ -2201,11 +2201,22 @@ Chunksee-runs/creature-name-owner-evidence/game-source-1. Generic appearance IDs
 only collar and the explicitly normalized base_color/pattern_color fields use dye-name keys.
 MapContent requires an explicit GameNames value, captured from WorldResources by its session
 initializer. MapScene resolves creature labels lazily with that snapshot; picking still does not
-format names. MapLayerMarker name/search methods require the snapshot, while the other marker
-kinds retain their current label behavior pending their own adoption. Map caption changes retain
+format names. MapLayerMarker name/search methods require the snapshot. Map caption changes retain
 the required paired copied-world timing gate.
-Biome, structure and group naming and typed search-hit labels remain part of foundation step 5e
-and #438; this creature adoption does not complete that finish line.
+GameNames also owns biome, structure, place and map-group labels through GamePlaceNames.
+MapLayerGroup requires an explicit naming snapshot; sidebar ordering, inspector headings, filtered
+search, map captions/accessibility and the biome hover readout use that same service. Biome names
+use the game's biome keys. Structures and loot tables retain the saved ID word order, without
+inventing translation keys. Place labels use known block, profession and spawned-entity keys;
+the generic bed label remains app wording because a point of interest does not supply its block
+color. GameNames keeps the existing app group names and unavailable-language fallbacks. Unopened
+loot container labels use the saved block/entity distinction. Notable-block representative names
+and searchable labels live in the service too; membership still comes from Kit's runtime tags.
+StructureMarker.name, PlaceMarker.name and the separate LootTableName owner are removed.
+None of these naming changes alter group membership, the held cave-biome inference, raw facts,
+visibility, selected identity, location ordering or map geometry.
+Typed search-hit labels remain part of foundation step 5e and #438; this adoption does not complete
+that finish line.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

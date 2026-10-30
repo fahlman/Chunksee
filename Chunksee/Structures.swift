@@ -8,30 +8,6 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
     case village, stronghold, ancientCity, trialChambers, monument, mansion, temple, ruins, ruinedPortal
     case shipwreck, buriedTreasure, outpost, mineshaft, fortress, bastion, netherFossil, endCity, abandonedCamp, other
 
-    var name: String {
-        switch self {
-        case .village: String(localized: "Villages")
-        case .stronghold: String(localized: "Strongholds")
-        case .ancientCity: String(localized: "Ancient Cities")
-        case .trialChambers: String(localized: "Trial Chambers")
-        case .monument: String(localized: "Ocean Monuments")
-        case .mansion: String(localized: "Woodland Mansions")
-        case .temple: String(localized: "Temples and Huts")
-        case .ruins: String(localized: "Ruins")
-        case .ruinedPortal: String(localized: "Ruined Portals")
-        case .shipwreck: String(localized: "Shipwrecks")
-        case .buriedTreasure: String(localized: "Buried Treasure")
-        case .outpost: String(localized: "Pillager Outposts")
-        case .mineshaft: String(localized: "Mineshafts")
-        case .fortress: String(localized: "Nether Fortresses")
-        case .bastion: String(localized: "Bastion Remnants")
-        case .netherFossil: String(localized: "Nether Fossils")
-        case .endCity: String(localized: "End Cities")
-        case .abandonedCamp: String(localized: "Abandoned Camps")
-        case .other: String(localized: "Other Structures")
-        }
-    }
-
     var symbol: String {
         switch self {
         case .village: "house.fill"
@@ -176,9 +152,6 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
     var portalRoom: CGPoint?
 
     var position: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
-
-    /// The game has no structure-name language keys; keep the saved ID's word order.
-    var name: String { ReadableName.from(structureID) }
 
     init(_ start: StructureStart, groups: StructureGroup.Catalog = .init(tags: [:])) {
         id = "\(start.id)@\(start.chunkX),\(start.chunkZ)"

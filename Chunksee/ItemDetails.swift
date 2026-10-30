@@ -5,6 +5,7 @@ import SwiftUI
 struct WorldInspector: View {
     let session: WorldSession
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         switch session.selection.inspectorItem {
@@ -21,7 +22,7 @@ struct WorldInspector: View {
                 PlaceDetailView(session: session, marker: marker)
             }
         case .structure(let marker)?:
-            LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
+            LocationDetails(session: session, title: Text(gameNames.structure(marker.structureID)), symbol: marker.group.symbol,
                             destination: destination(marker.position, y: marker.yCoordinate)) {
                 LabeledContent("Width", value: CountedText.blocks.locale(locale).format(Double(marker.bounds.width)))
                 LabeledContent("Depth", value: CountedText.blocks.locale(locale).format(Double(marker.bounds.height)))
@@ -30,9 +31,9 @@ struct WorldInspector: View {
                 }
             }
         case .biome(let area)?:
-            LocationDetails(session: session, title: Text(area.group.name), symbol: area.group.symbol,
+            LocationDetails(session: session, title: Text(gameNames.biome(area.group.id)), symbol: area.group.symbol,
                             destination: destination(area.position)) {
-                LabeledContent("Area", value: area.name)
+                LabeledContent("Area", value: gameNames.biomeArea(area))
             }
         case .savedPlace(let place)?:
             LocationDetails(session: session, title: Text(place.name), symbol: MarkerStyle.savedPlaceSymbol,
@@ -71,7 +72,7 @@ private struct PlaceDetailView: View {
                               dimension: session.selectedDimensionID, position: marker.blockPosition,
                               library: pictures?.identity)
         let item = loaded?.request == request ? loaded?.item : nil
-        LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
+        LocationDetails(session: session, title: Text(gameNames.place(marker)), symbol: marker.group.symbol,
                         destination: MapDestination(coordinates: Coordinates(marker.position, y: marker.yCoordinate),
                                                     dimension: session.selectedDimensionID),
                         picture: item.map(InspectorHeading.Picture.item)) {
@@ -81,7 +82,7 @@ private struct PlaceDetailView: View {
             case .bed, .workstation:
                 LabeledContent("Claimed by a Villager", value: marker.isClaimed ? String(localized: "Yes") : String(localized: "No"))
             case .unopenedLoot:
-                LabeledContent("Container", value: ReadableName.from(marker.type))
+                LabeledContent("Container", value: gameNames.lootContainer(marker))
                 Text("The contents have not been generated yet.").foregroundStyle(.secondary)
             default: EmptyView()
             }
