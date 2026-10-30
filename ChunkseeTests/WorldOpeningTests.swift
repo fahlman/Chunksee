@@ -224,7 +224,8 @@ import Testing
             guard case .dimension(let fresh) = try await reader.readFolder(f.documents[0]),
                   case .opening(let opening) = fresh.source else { Issue.record("Reread did not use the shared owner"); return }
             #expect(opening.resources === session.resources && session.players.first?.health == 9)
-            #expect(originalAccess !== session.resources.access && await f.probe.count == 3)
+            #expect(originalAccess !== session.resources.access)
+            #expect(await f.probe.count == 3)
             fresh.discardUnused()
             #expect(!session.resources.isClosed)
             let coordinated = try await DimensionSnapshot.read(f.documents[1], folders: f.model.worldFolders, coordinator: NSFileCoordinator())
