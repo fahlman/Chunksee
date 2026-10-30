@@ -1,4 +1,5 @@
 import ChunkseeKit
+import ChunkseeIndex
 import Foundation
 import SwiftUI
 
@@ -157,9 +158,6 @@ nonisolated struct GameNames: Sendable {
             }
         }
     }
-}
-
-extension GameNames {
     /// Keep the saved custom name literal while retaining the translated kind beside it.
     func itemLabel(kind: String, customName: String?, locale: Locale = .current) -> String {
         let kind = item(kind)
@@ -233,6 +231,13 @@ extension GameNames {
         return items.flatMap {
             [itemLabel(of: $0), $0.id] + $0.enchantments.keys.sorted().flatMap { [$0, enchantmentDescription($0)] }
         }.joined(separator: " ")
+    }
+
+    func storedItems(_ totals: [StoredItemTotal]) -> [StoredItem] {
+        totals.map {
+            StoredItem(id: $0.id, name: itemLabel(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
+        }
+        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
     }
 }
 

@@ -19,15 +19,6 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
     var containers: Int
 }
 
-extension GameNames {
-    func storedItems(_ totals: [StoredItemTotal]) -> [StoredItem] {
-        totals.map {
-            StoredItem(id: $0.id, name: itemLabel(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
-        }
-        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
-    }
-}
-
 /// The inspector's storage summary for the selected dimension. Choosing an item searches for it,
 /// so its containers show in the sidebar and on the map.
 struct StorageView: View {
