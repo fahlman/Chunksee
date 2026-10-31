@@ -546,7 +546,7 @@ older scan envelopes.
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
 | `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
-| `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s temporary portal plan, saved-place draft/actions and ruler, with live access to the world’s shared SavedPlaces store |
+| `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s annotation actions and ruler, portal calculations and native draft controls; WorldSession.sheet owns the drafts, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
 | `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
@@ -608,7 +608,9 @@ Saved Place, Portal Plan and All Statistics. WorldView has one native sheet pres
 toolbars and inspectors send presentation requests to the session. Focused world commands and
 search derive their availability from the absence of that value, including All Statistics, so a
 new sheet cannot be omitted from a separate suppression list. Other windows keep their own
-command availability. Dismissal clears the value; document close clears it and refuses new
+command availability. Native Inspector and Sidebar commands keep Apple's implementation; their
+SwiftUI bindings accept changes only through the same command-availability rule.
+Dismissal clears the value; document close clears it and refuses new
 presentation. The coordinate sheet keeps its existing native controls and calls MapNavigation.
 Go to Coordinates uses one native field for X Z or the copied Minecraft X Y Z format. MapCoordinates
 checks whole-number input, whitespace and typographic minus signs; X/Z retain their Int32 bounds,

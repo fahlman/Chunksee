@@ -11,6 +11,7 @@ struct WorldView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var sidebarDisclosure = SidebarDisclosure()
+    @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
     @FocusState private var isSearchFocused: Bool
@@ -20,7 +21,7 @@ struct WorldView: View {
     var body: some View {
         @Bindable var search = session.search
         let nameRequest = session.names.request(for: session.players)
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: sidebarVisibility) {
             ScrollViewReader { proxy in
                 List(selection: sidebarSelection) {
                     if search.isActive {
@@ -272,10 +273,18 @@ struct WorldView: View {
         }
     }
 
-    private var inspectorShown: Binding<Bool> {
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding { columnVisibility } set: {
+            guard session.commandTarget != nil else { return }
+            columnVisibility = $0
+        }
+    }
+
+    var inspectorShown: Binding<Bool> {
         Binding { session.selection.inspector != nil } set: {
-            if !$0 { session.selection.inspector = nil }
-            else if session.selection.inspector == nil { session.selection.inspector = .world }
+            guard let target = session.commandTarget else { return }
+            if !$0 { target.selection.inspector = nil }
+            else if target.selection.inspector == nil { target.selection.inspector = .world }
         }
     }
 
