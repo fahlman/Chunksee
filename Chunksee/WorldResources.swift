@@ -54,6 +54,7 @@ final class WorldResources {
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
+    @ObservationIgnored private var gameResourceObservation: ModelObservation?
     @ObservationIgnored private lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
@@ -435,21 +436,13 @@ final class WorldResources {
     /// All dimension views share one source request. Permission changes also reach hidden tabs,
     /// whose SwiftUI tasks may not run until they become visible again.
     private func observeGameResources() {
-        guard !isClosed else { return }
-        let generation = names.minecraft.generation, artwork = names.minecraft.usesGameArtwork
-        withObservationTracking(options: [.didSet]) {
-            _ = names.minecraft.generation
-            _ = names.minecraft.usesGameArtwork
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeGameResources()
-                if self.names.minecraft.generation != generation {
-                    self.refreshGameAssets()
-                } else if self.names.minecraft.usesGameArtwork != artwork {
-                    self.refreshGameArtwork()
-                }
+        gameResourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (generation: $0.names.minecraft.generation, artwork: $0.names.minecraft.usesGameArtwork)
+        }) { resources, previous in
+            if resources.names.minecraft.generation != previous.generation {
+                resources.refreshGameAssets()
+            } else if resources.names.minecraft.usesGameArtwork != previous.artwork {
+                resources.refreshGameArtwork()
             }
         }
     }
@@ -683,6 +676,7 @@ final class WorldResources {
 
     func close() {
         guard !isClosed else { return }
+        gameResourceObservation?.cancel()
         isClosed = true
         openings = []
         pendingActions = [:]

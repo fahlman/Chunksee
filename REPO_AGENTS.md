@@ -564,6 +564,7 @@ older scan envelopes.
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
+| `ModelObservation.swift` | Main-actor synchronous model observation, with weak ownership, registration identity and one rearming policy |
 | `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
@@ -1795,8 +1796,8 @@ A changed folder generation retires the previous registry through MinecraftResou
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
 access until cleanup completes. Permission, registry and generation publish as one observed source
 value after the bookmark is updated. WorldResources observes that source and the artwork choice
-through Observation, including when every tab is hidden. No custom notification list or observer
-token remains. An unchanged artwork choice requests no new read; a closed world ignores later
+through Observation, including when every tab is hidden. No custom Minecraft notification list
+remains. An unchanged artwork choice requests no new read; a closed world ignores later
 changes, and its observation does not retain it.
 WorldResources owns one game-library RefreshLoader, seeded with WorldPreparation's actual source
 and completed selection. A successful selection can contain no library, independently of a failed
@@ -1814,9 +1815,14 @@ publishing turn and at the caller's priority. Failed reads and closing publish n
 Current-source/read guards run after delivery and again after the continuation, because either can
 replace the source or close the loader. This avoids nested delivery and a deferred-task gap before
 dependent requests. The continuation only schedules producer work; map consumers observe the
-published values. The map's game-resource observer cancels its fired tracking before rearming and
-invalidating drawing work. Its current observation identity rejects callbacks captured before
-the previous tracking was cancelled.
+published values. ModelObservation owns the same synchronous tracking lifetime for map, world,
+index, query, player-record, selection and overlay consumers. It cancels a fired registration and
+rejects already-captured retired callbacks before rearming. The next registration is installed
+before the reaction, preserving changes made by nested publications. Reads only capture inputs;
+reactions retain each model's existing invalidation and request policy. Models cancel their
+observation when closing, and observation never retains its owner. It adds no background task or
+editable snapshot. The native continuous-observation runner is asynchronous, so these consumers
+keep didSet tracking to invalidate old sources before the setter returns.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. The view task follows activation, world identity and language preference; source
