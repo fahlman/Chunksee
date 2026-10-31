@@ -75,14 +75,14 @@ nonisolated struct LayerVisibility: Equatable, Sendable, Codable {
     init(from decoder: any Decoder) throws {
         self.init()
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        if let choices = try? values.decode([String: Bool].self, forKey: .structures) {
-            structures = Set(StructureGroup.allCases.filter { choices[$0.rawValue] ?? $0.isShownByDefault })
+        if let choices = try? values.decode(SavedGroupVisibility<StructureGroup>.self, forKey: .structures) {
+            structures = choices.shown
         }
-        if let names = try? values.decode([String].self, forKey: .places) {
-            places = Set(names.compactMap(PlaceGroup.init(rawValue:)))
+        if let choices = try? values.decode(SavedGroupVisibility<PlaceGroup>.self, forKey: .places) {
+            places = choices.shown
         }
-        if let names = try? values.decode([String].self, forKey: .creatures) {
-            creatures = Set(names.compactMap(CreatureGroup.init(rawValue:)))
+        if let choices = try? values.decode(SavedGroupVisibility<CreatureGroup>.self, forKey: .creatures) {
+            creatures = choices.shown
         }
         if let names = try? values.decode([String].self, forKey: .mobTypes) { mobTypes = Set(names) }
         if let names = try? values.decode([String].self, forKey: .biomes) { biomes = Set(names.map(BiomeGroup.init(id:))) }
@@ -99,12 +99,9 @@ nonisolated struct LayerVisibility: Equatable, Sendable, Codable {
 
     func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
-        // Remember both shown and hidden groups so a newly added group can still use its default.
-        try values.encode(Dictionary(uniqueKeysWithValues: StructureGroup.allCases.map {
-            ($0.rawValue, structures.contains($0))
-        }), forKey: .structures)
-        try values.encode(places.map(\.rawValue).sorted(), forKey: .places)
-        try values.encode(creatures.map(\.rawValue).sorted(), forKey: .creatures)
+        try values.encode(SavedGroupVisibility(shown: structures), forKey: .structures)
+        try values.encode(SavedGroupVisibility(shown: places), forKey: .places)
+        try values.encode(SavedGroupVisibility(shown: creatures), forKey: .creatures)
         try values.encode(mobTypes.sorted(), forKey: .mobTypes)
         try values.encode(biomes.map(\.id).sorted(), forKey: .biomes)
         try values.encode(hiddenPlayers.map(\.uuidString).sorted(), forKey: .hiddenPlayers)
