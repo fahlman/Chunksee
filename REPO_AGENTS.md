@@ -1390,7 +1390,8 @@ they add no readers. Missing heights stay absent; map centers, biome areas and s
 acquire an invented Y. Maps retain their thumbnail, with the shared map symbol as a fallback.
 Selection, visibility, menus and navigation remain outside this stateless label.
 
-Selected location labels in the sidebar repeat SelectionModel.choose on an ordinary click.
+Selected sidebar labels, including World Info and Storage, repeat SelectionModel.choose on an
+ordinary click, reopening hidden details for the selected row.
 The existing native List primary action supplies Return and double-click behavior.
 A single sidebar modifier-key observer leaves modified clicks to native
 selection, and player visibility buttons remain outside the label gesture. Map marker clicks
@@ -1416,7 +1417,8 @@ Every selected item has an inspector, superseding #167's non-detail-close rule u
 decision. Selecting an unavailable map or saved place shows its details without navigating or
 overlaying it on the wrong dimension. Sidebar, pointer, VoiceOver and linked-pet input share that
 selection transition. Empty/stale map input clears transient row/pin selection
-while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
+while retaining the overlay and World Info, Storage or the overlay's own row. Clearing a selection
+keeps the inspector's visibility; a retained overlay cannot reopen hidden details. Map clicks and
 VoiceOver marker actions select the corresponding native sidebar row. Sidebar selection and
 repeated-row actions call `choose`; the List binding and its simultaneous focus gesture request
 sidebar focus, including when an already-selected row leaves the binding unchanged. The List's
