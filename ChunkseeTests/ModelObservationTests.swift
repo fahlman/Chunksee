@@ -93,7 +93,7 @@ struct ModelObservationTests {
     @Test func aRetainedObservationDoesNotKeepItsOwnerAlive() {
         let input = Input()
         var consumer: Consumer? = Consumer(input)
-        weak var weakConsumer = consumer
+        weak let weakConsumer = consumer
         let observation = consumer?.observation
         consumer = nil
         #expect(weakConsumer == nil)
