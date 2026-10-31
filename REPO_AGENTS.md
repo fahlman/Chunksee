@@ -531,6 +531,7 @@ older scan envelopes.
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
 | `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
+| `ModelObservation.swift` | Main-actor synchronous model observation, with weak ownership, registration identity and one rearming policy |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
@@ -729,6 +730,12 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
+ModelObservation owns registration identity, cancellation and rearming for the six subscriptions
+in MapModel, HeatMapLayer, PlayerRecordStore and SelectionModel. It tracks new dependencies before
+reacting and rejects callbacks captured before their registration was retired, so nested source
+changes cannot multiply subscriptions. Models hold observations, observations hold owners weakly,
+and explicit close cancels reactions. Existing invalidation and record-demand decisions stay in
+their models; no native resource-notification migration or later query store is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors
