@@ -928,7 +928,9 @@ final class MapModel {
         let previous = gameResources.identity
         withObservationTracking(options: [.didSet]) {
             _ = gameResources
-        } onChange: { [weak self] _ in
+        } onChange: { [weak self] event in
+            // Retire this tracking before a nested publication can re-enter it.
+            event.cancel()
             MainActor.assumeIsolated {
                 guard let self, !self.isClosed else { return }
                 self.observeGameResources()

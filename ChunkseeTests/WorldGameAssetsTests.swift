@@ -317,7 +317,7 @@ import Synchronization
         var world: WorldResources? = try await resources(root, game: game)
         let minecraft = try #require(world?.names.minecraft)
         await world?.waitForRefresh()
-        weak var released = world
+        weak let released = world
         world?.close(); await world?.waitUntilClosed()
         world = nil
         #expect(released == nil)
