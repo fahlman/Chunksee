@@ -72,11 +72,11 @@ import Testing
         var visibility = settings.mapPresentation(for: "minecraft:overworld").overlays
         visibility.mobTypes = [species]
         visibility.mobAppearances[species] = MobAppearance(red.creature.appearance)
-        visibility.reveal(white)
+        visibility.reveal(CreatureSelection(white, selectedRow: .creature(white.id)))
         #expect(visibility.mobAppearances[species] == MobAppearance(red.creature.appearance))
         visibility.mobAppearances[species] = MobAppearance(white.creature.appearance)
         #expect(visibility.appearance(for: try #require(MobTypes([red]).kind(species))) == nil)
-        visibility.reveal(red, inMobList: true)
+        visibility.reveal(CreatureSelection(red, selectedRow: .mobCreature(red.id)))
         #expect(visibility.mobAppearances[species] == nil)
         var choices = settings.mapPresentation(for: "minecraft:overworld")
         choices.overlays = visibility
@@ -131,6 +131,40 @@ import Testing
         disclosure.collapsedSections.insert(.mobs)
         disclosure.selectOnMap(.row(.mobCreature(red.id)), y: red.creature.y, in: session)
         #expect(!disclosure.collapsedSections.contains(.mobs) && disclosure.mobTypes == [kind.id])
+        let routes: [(row: SidebarItem, list: CreatureSelection.List)] = [
+            (.creature(red.id), .creatures(.named)), (.mobCreature(red.id), .mobs("minecraft:sheep")),
+        ]
+        for route in routes {
+            session.visibility.creatures = []
+            session.visibility.mobTypes = []
+            session.visibility.mobAppearances[kind.id] = MobAppearance(white.creature.appearance)
+            session.selection.choose(route.row)
+            guard case .creature(let resolved)? = session.selection.resolve(route.row) else {
+                Issue.record("Missing creature route"); return
+            }
+            #expect(resolved.marker == red && resolved.list == route.list && resolved.row == route.row)
+            let inMobs = route.row == .mobCreature(red.id)
+            #expect(session.visibility.creatures == (inMobs ? [] : [.named]))
+            #expect(session.visibility.mobTypes == (inMobs ? [kind.id] : []))
+            #expect(session.visibility.mobAppearances[kind.id] == (inMobs ? nil : MobAppearance(white.creature.appearance)))
+            for shown in [false, true] {
+                session.selection.isInspectorShown = shown
+                let content = MapContent(session: session), size = CGSize(width: 400, height: 300)
+                let viewport = MapViewport(center: red.position, scale: 8)
+                let hit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))
+                let drawn = try #require(content.scene(viewport: viewport, size: size).items.first { $0.target == .row(route.row) })
+                let accessible = try #require(content.accessibleLocations(viewport: viewport, size: size).first { $0.target == hit.target })
+                #expect(hit.target == .row(route.row) && accessible.target == drawn.target && drawn.labelPriority == .selected)
+                let priorViewport = session.map?.viewport, priorVisibility = session.visibility
+                var ancestors = SidebarDisclosure()
+                ancestors.collapsedSections = [.creatures, .mobs]
+                #expect(ancestors.selectOnMap(hit.target, y: hit.y, in: session))
+                #expect(session.selection.sidebarSelection == route.row && session.map?.viewport == priorViewport && session.visibility == priorVisibility)
+                #expect(ancestors.creatures == (inMobs ? [] : [.named]))
+                #expect(ancestors.mobTypes == (inMobs ? [kind.id] : []))
+                #expect(ancestors.collapsedSections == (inMobs ? [.creatures] : [.mobs]))
+            }
+        }
         session.selection.choose(.creature(red.id))
         #expect(MapContent(session: session).creatures.count == 2)
         session.visibility.mobTypes = []

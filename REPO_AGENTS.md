@@ -581,7 +581,7 @@ older scan envelopes.
 | `ContentView.swift`, `MapView.swift` | SwiftUI views |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
-| `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types, each dimension view's expanded groups and revealing a map marker's ancestors |
+| `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types and resolved creature list routes, each dimension view's expanded groups and revealing a map marker's ancestors |
 
 `DocumentGroup` owns opening, recent documents, windows, tabs and restoration. A world folder
 chosen in the Open panel or Open Recent is read as a world: the reader remembers it, and its window
@@ -1400,7 +1400,10 @@ still keep the viewport. Current saved positions and dimension routing remain Se
 
 SelectionModel owns one selected item identity. The selected row, map/pin highlight and inspector
 content are derived from current indexed data; portals and creatures do not retain stale detail
-snapshots. A selected search result retains its search-row identity while its typed source identifies
+snapshots. CreatureSelection resolves the current marker and its Creatures-group or Mobs-type route
+together. It preserves an explicitly chosen Mobs row; other picks use the current marker's group.
+Disclosure, visibility, selection and map picking consume that typed route, including while the
+inspector is hidden. A selected search result retains its search-row identity while its typed source identifies
 the marker or player whose current details are shown. A player inventory or ender-chest result
 remains selectable without a mappable location. SearchHit.title is always the item/place name;
 detail carries ancillary matching contents, kind or counts. SelectedSearchSection retains that
