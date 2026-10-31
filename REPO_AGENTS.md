@@ -1813,7 +1813,9 @@ The loader invokes that continuation after synchronous Observation delivery retu
 publishing turn and at the caller's priority. Failed reads and closing publish no dependent work.
 Current-source/read guards run after delivery and again after the continuation, because either can
 replace the source or close the loader. This avoids nested delivery and a deferred-task gap before
-dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
+dependent requests. The continuation only schedules producer work; map consumers observe the
+published values. The map's game-resource observer cancels its fired tracking before rearming and
+invalidating drawing work.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. The view task follows activation, world identity and language preference; source
