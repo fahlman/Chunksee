@@ -20,7 +20,7 @@ import Testing
         let baseline = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: region))
         var renderer = RegionTileRenderer(dimension: dimension, darkSpots: overlay)
         let pixels = try #require(try await renderer.pixels(for: region))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0))
         for z in 0..<16 { for x in 0..<16 {
             let bright = abs(x - 7) + abs(z - 7) < 8
             #expect(blocks[z * 16 + x]?.y == 7)
@@ -32,7 +32,7 @@ import Testing
         renderer.chunkConcurrency = 14
         #expect(try await renderer.pixels(for: region) == pixels)
         renderer.cutawayY = 6
-        let lower = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, cutawayY: 6, darkSpots: overlay))
+        let lower = try #require(try await renderer.topBlocks(in: file, localX: 0, localZ: 0))
         #expect(lower.allSatisfy { $0?.y == 6 && $0?.nightLight == .dark })
         #expect(try await renderer.pixels(for: region) != pixels)
     }
@@ -43,12 +43,12 @@ import Testing
             defer { try? FileManager.default.removeItem(at: root) }
             let (dimension, overlay) = try inputs(root)
             let file = try #require(try dimension.region(x: 0, z: 0))
-            let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+            let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
             #expect(blocks.allSatisfy { $0?.nightLight == .unknown })
             let image = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).image(for: region))
             let pixels = try ItemPictureFixture.pixels(image)
             #expect(pixels.color(0, 0) != pixels.color(2, 0))
-            let ordinary = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+            let ordinary = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
             #expect(ordinary.allSatisfy { $0?.nightLight == nil && $0?.y == 7 })
         }
     }
@@ -58,7 +58,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(blocks.allSatisfy { $0?.nightLight == .dark })
         let ordinary = try #require(try await RegionTileRenderer(dimension: dimension).pixels(for: region))
         let tinted = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).pixels(for: region))
@@ -70,9 +70,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         for x in 0..<16 { #expect(blocks[x]?.nightLight == (x <= 7 ? .dark : .bright)) }
-        let unknown = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: DarkSpots(rule: nil)))
+        let unknown = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: DarkSpots(rule: nil)).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(unknown.allSatisfy { $0?.nightLight == .unknown })
     }
 
@@ -139,7 +139,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let nightLighting = TestNightLighting()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
@@ -490,7 +490,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let nightLighting = TestNightLighting()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
@@ -529,7 +529,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>(), numbers = ReadNumbers()
         let nightLighting = TestNightLighting()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
@@ -561,7 +561,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, darkSpots: overlay))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let nightLighting = TestNightLighting()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in (file, blocks) })

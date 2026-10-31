@@ -432,7 +432,10 @@ the app resolves each reached palette entry once for color and accumulates conti
 depth during that same walk. Uniform sections arrive as spans, and columns stop independently.
 Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
 above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
-app; map pixels and hover names use the same scan.
+app; map pixels and hover names use the same scan. Readout tests call the same asynchronous
+RegionTileRenderer instance method as MapModel, including its game-artwork coverage and source
+availability checks. The unused static file-readout entry point was removed in #498; the private
+formatting helper and shared column scan remain.
 Normal-view shallow water blends the immediately underlying visible block's colour into the
 existing water shade, fading the floor out by sixteen blocks. With available game artwork,
 GameArtworkLibrary reads the first water-texture frame's average opacity once per library. That

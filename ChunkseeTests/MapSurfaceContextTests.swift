@@ -135,7 +135,7 @@ import Testing
         #expect(cache.load(roofKey) == nil && cache.load(openKey) != nil)
     }
 
-    @Test func knownTallBuildHeightReachesTheSharedHeightmapReader() throws {
+    @Test func knownTallBuildHeightReachesTheSharedHeightmapReader() async throws {
         let type = NBT.compound(["min_y": .int(-1040), "height": .int(3072),
             "logical_height": .int(3072), "has_ceiling": .byte(0)])
         // 12-bit heightmaps share a packed length with 11-bit ones. The saved first-free Y is 8,
@@ -151,8 +151,8 @@ import Testing
         let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id], water: nil)
         #expect(context.buildHeight == 3072)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let known = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context))
-        let unknown = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let known = try #require(try await RegionTileRenderer(dimension: dimension, surfaceContext: context).topBlocks(in: file, localX: 0, localZ: 0))
+        let unknown = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(known.allSatisfy { $0?.y == 7 })
         #expect(unknown.allSatisfy { $0?.y == 15 })
     }

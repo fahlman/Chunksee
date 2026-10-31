@@ -66,13 +66,13 @@ import Testing
         let all = MapBlockFilter(hiddenIDs: [leaves, "minecraft:water"])
         for height: Int? in [nil, 15, 10] {
             let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0, cutawayY: height, blockFilter: all))
-            let named = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, cutawayY: height, blockFilter: all))
+            let named = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: height, blockFilter: all).topBlocks(in: file, localX: 0, localZ: 0))
             #expect(columns[0]?.y == 2 && named[0]?.y == 2 && named[0]?.id == "minecraft:grass_block")
             #expect(columns[8]?.y == 3 && named[8]?.y == 3 && named[8]?.id == "minecraft:stone" && named[8]?.waterDepth == 0)
         }
-        let original = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let original = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(original[0]?.id == leaves && original[0]?.y == 15)
-        let restored = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, blockFilter: all.enabled(false)))
+        let restored = try #require(try await RegionTileRenderer(dimension: dimension, blockFilter: all.enabled(false)).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(restored == original)
         let pixels = try #require(try await RegionTileRenderer(dimension: dimension, blockFilter: all).pixels(for: .init(x: 0, z: 0)))
         let grass = try #require(BlockColors.color(for: "minecraft:grass_block"))
@@ -127,7 +127,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let before = try await RegionTileRenderer(dimension: dimension).tile(for: .init(x: 0, z: 0))
         let after = try await RegionTileRenderer(dimension: dimension, blockFilter: hiddenLeaves).tile(for: .init(x: 0, z: 0))
-        let oldBlocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let oldBlocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         let tiles = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), blocks = AsyncReadGate<MapModel.TopBlockRead?>()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await tiles.read(renderer.blockFilter.cacheKey == nil ? "before" : "after")
@@ -165,7 +165,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let named = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, blockFilter: hiddenLeaves))
+        let named = try #require(try await RegionTileRenderer(dimension: dimension, blockFilter: hiddenLeaves).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
             readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })

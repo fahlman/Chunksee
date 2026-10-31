@@ -19,7 +19,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         for (height, expectedDepth) in [(53, 22), (63, 32), (40, 9), (15, 16)] {
             let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0, cutawayY: height))
-            let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, cutawayY: height))
+            let blocks = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: height).topBlocks(in: file, localX: 0, localZ: 0))
             #expect(columns.allSatisfy { $0?.y == height && $0?.waterDepth == expectedDepth })
             #expect(blocks.allSatisfy { $0 == .init(id: "minecraft:water", y: height, waterDepth: expectedDepth) })
             let pixels = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: height)
@@ -71,7 +71,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
 
         let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(columns.allSatisfy { $0?.y == 1 && $0?.color == BlockColors.color(for: "minecraft:poppy") })
         #expect(blocks.allSatisfy { $0 == .init(id: "minecraft:poppy", y: 1, waterDepth: 0) })
 
@@ -81,7 +81,7 @@ import Testing
         #expect(Array(pixels[offset ..< offset + 4]) == [flower.red, flower.green, flower.blue, 255])
     }
 
-    @Test func anUnreadableSurfaceDoesNotExposeLowerBlocks() throws {
+    @Test func anUnreadableSurfaceDoesNotExposeLowerBlocks() async throws {
         // A damaged reference at the top cannot establish air; the stone beneath is not a known surface.
         let spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone"]) { x, y, _ in
             if x == 0, y == 15 { return 7 }
@@ -93,12 +93,12 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
 
         let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(columns[0] == nil && blocks[0] == nil)
         #expect(blocks[1] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
     }
 
-    @Test func worldSurfaceRetainsEmptyColumnsWaterAndDisplayTransparency() throws {
+    @Test func worldSurfaceRetainsEmptyColumnsWaterAndDisplayTransparency() async throws {
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:light", "minecraft:water"]) { x, y, _ in
             if x == 0 { return 0 }
             if y == 0 { return 1 }
@@ -118,7 +118,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0))
 
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(blocks[0] == nil)
         #expect(blocks[1] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
         #expect(blocks[2] == .init(id: "minecraft:water", y: 4, waterDepth: 4))

@@ -83,10 +83,11 @@ import SwiftUI
 
     @Test func columnsAndHoverStartAtOrBelowTheChosenHeight() async throws {
         try await withFixture { f in
-            let file = try #require(try f.dimension().region(x: 0, z: 0))
+            let dimension = try f.dimension()
+            let file = try #require(try dimension.region(x: 0, z: 0))
             for (height, expected) in [(15, 15), (14, 10), (7, 2), (2, 2), (1, 1), (0, 0)] {
                 let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0, cutawayY: height))
-                let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, cutawayY: height))
+                let blocks = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: height).topBlocks(in: file, localX: 0, localZ: 0))
                 #expect(columns.count == 256 && columns.allSatisfy { $0?.y == expected })
                 #expect(blocks.allSatisfy { $0?.y == expected })
             }
@@ -94,8 +95,8 @@ import SwiftUI
             #expect(below.allSatisfy { $0 == nil })
             // Surface keeps its roof rule; cutaway must show the actual block at the requested Y.
             let context = MapSurfaceContext(settings: WorldDetails.read(try World(contentsOf: f.url)).dimensionSettings["minecraft:overworld"], water: nil)
-            let surface = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context))
-            let roofSlice = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: context, cutawayY: 15))
+            let surface = try #require(try await RegionTileRenderer(dimension: dimension, surfaceContext: context).topBlocks(in: file, localX: 0, localZ: 0))
+            let roofSlice = try #require(try await RegionTileRenderer(dimension: dimension, surfaceContext: context, cutawayY: 15).topBlocks(in: file, localX: 0, localZ: 0))
             #expect(surface[0]?.y == 10 && roofSlice[0]?.y == 15)
         }
     }
