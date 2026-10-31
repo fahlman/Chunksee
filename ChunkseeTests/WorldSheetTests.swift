@@ -2,6 +2,7 @@ import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
 import Observation
+import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
@@ -64,6 +65,59 @@ import Testing
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONSerialization.data(withJSONObject: ["stats": ["minecraft:custom": ["minecraft:deaths": deaths]]]).write(to: file)
         return file
+    }
+
+    @Test func inspectorBindingCannotChangeSelectionBehindAnySheet() async throws {
+        let root = try TestWorld.make(chunks: []), player = UUID()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Fixtures.writeGzippedNBT(.compound([
+            "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(0), .double(64), .double(0)])
+        ]), to: root.appendingPathComponent("players/data/\(player.uuidString.lowercased()).dat"))
+        let resources = try await resources(root)
+        let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
+        defer { first.close(); second.close() }
+        await first.search.waitForIndex(); await second.search.waitForIndex()
+        let inspector = WorldView(session: first).inspectorShown
+        let otherInspector = WorldView(session: second).inspectorShown
+        let presentations: [(WorldSession) -> Void] = [
+            { $0.presentSheet(.coordinates) },
+            { $0.presentSheet(.imageExport) },
+            { $0.presentSheet(.blockFilter) },
+            { $0.annotations.savePlace(at: CGPoint(x: -9, y: 14)) },
+            { $0.annotations.planPortal(at: CGPoint(x: -9, y: 14), y: 64) },
+            { $0.showStatistics(for: player) }
+        ]
+        for present in presentations {
+            first.selection.choose(nil)
+            present(first)
+            let active = try #require(first.sheet?.id)
+            inspector.wrappedValue = true
+            #expect(!inspector.wrappedValue && first.selection.sidebarSelection == nil)
+            #expect(first.sheet?.id == active)
+            first.sheet = nil
+            inspector.wrappedValue = true
+            #expect(inspector.wrappedValue && first.selection.sidebarSelection == .worldInfo)
+
+            first.selection.choose(.player(player))
+            try #require(first.selection.inspector == .player(player))
+            present(first)
+            inspector.wrappedValue = false
+            #expect(inspector.wrappedValue && first.selection.inspector == .player(player))
+            #expect(first.selection.sidebarSelection == .player(player))
+            otherInspector.wrappedValue = true
+            #expect(otherInspector.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+            otherInspector.wrappedValue = false
+            #expect(!otherInspector.wrappedValue && first.selection.inspector == .player(player))
+            first.sheet = nil
+            inspector.wrappedValue = false
+            #expect(!inspector.wrappedValue)
+        }
+        first.selection.choose(nil)
+        first.close(); second.close()
+        await first.waitUntilClosed(); await second.waitUntilClosed()
+        inspector.wrappedValue = true
+        #expect(!inspector.wrappedValue && first.selection.sidebarSelection == nil)
     }
 
     private func deaths(_ handle: PlayerRecordStore.Handle?) -> Int? {

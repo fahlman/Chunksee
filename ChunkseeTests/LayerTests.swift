@@ -283,7 +283,8 @@ enum StructureTestWorld {
         let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
         session.selection.isInspectorShown = false
         let hidden = MapContent(session: session)
-        let hiddenLocation = try #require(hidden.accessibleLocations(viewport: try #require(session.map).viewport,
+        let viewport = try #require(session.map).viewport
+        let hiddenLocation = try #require(hidden.accessibleLocations(viewport: viewport,
             size: CGSize(width: 400, height: 300)).first { $0.target == .row(.creature(refreshed.id)) })
         #expect(hiddenLocation.position == location.position && hiddenLocation.frame == location.frame)
         #expect(hidden.highlighted == map.highlighted)

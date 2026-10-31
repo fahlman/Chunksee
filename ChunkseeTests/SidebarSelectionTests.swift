@@ -989,7 +989,7 @@ import Testing
             }
             let unlisted = try #require(session.search.results.filter { session.presentation.lists($0.dimension) }.dropFirst(200).first)
             session.selection.mapClicked(.searchHit(unlisted.id), y: nil)
-            #expect(session.selection.sidebarSelection == nil && !session.selection.highlighted.contains(.searchHit(hit.id)))
+            #expect(session.selection.sidebarSelection == nil && session.selection.highlighted.isEmpty)
             session.search.saveSearch()
             session.search.text = ""
             await session.search.waitForSearch()
