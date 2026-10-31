@@ -46,16 +46,13 @@ struct MapContent {
     }
     /// Search results, drawn as pins.
     var hits: [SearchHit] = []
-    var selectedHitID: SearchHit.ID?
     /// Players' positions, last deaths and respawn points.
     var players: [MapMarker] = []
-    /// The player whose details the inspector shows; their position is drawn highlighted.
-    var selectedPlayerID: UUID?
     var savedPlaces: [SavedPlace] = []
     var ruler = MapRuler()
-    /// The selected portal or creature, drawn highlighted.
-    var selection: MapSelection?
-    /// The resolved sidebar identity, used to prioritize its label without another selection owner.
+    /// Derived by SelectionModel for all drawing paths; inspector visibility is not an input.
+    var highlighted: Set<MapTarget> = []
+    /// The selected sidebar identity preserves a creature's ordinary-versus-mob row route.
     var selectedItem: SidebarItem?
 
     /// The surface biome of the chunk under a block, once the dimension has been read.
@@ -87,7 +84,7 @@ struct MapContent {
         guard shownCreatureGroups?.isEmpty != true || !shownMobTypes.isEmpty else { return [] }
         return creaturePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
                                          viewport: viewport, size: size)
-            .filter { showsCreature($0) && (viewport.scale >= 0.25 || selection == .creature($0)) }
+            .filter { showsCreature($0) && (viewport.scale >= 0.25 || highlighted.contains(.row(.creature($0.id)))) }
     }
 
     private func showsCreature(_ marker: CreatureMarker) -> Bool {
@@ -134,7 +131,7 @@ extension MapContent {
         showsHeatMap = session.heatMap.isShown
         slimeChunks = session.slimeChunks.visibleImages
         slimeSeed = session.slimeChunks.visibleSeed
-        if case .inGameMap(let item)? = session.selection.mapSelection, let image = session.selection.image(for: item) {
+        if let item = session.selection.inGameMapOverlay, let image = session.selection.image(for: item) {
             inGameMap = (item, image, session.selection.inGameMapOpacity)
         }
         biomeAreas = index.biomeAreas.filter { session.visibility.biomes.contains($0.group) }
@@ -153,11 +150,9 @@ extension MapContent {
             session.visibility.appearance(for: kind).map { (kind.id, $0) }
         })
         hits = session.search.pinnedHits(where: session.presentation.lists).filter { $0.dimension == id && $0.position != nil }
-        selectedHitID = session.selection.selectedHitID
         players = session.presentation.drawnPlayerMarkers
-        selection = session.selection.mapSelection
+        highlighted = session.selection.highlighted
         selectedItem = session.selection.sidebarSelection
-        selectedPlayerID = if case .player(let uuid)? = session.selection.inspector { uuid } else { nil }
         savedPlaces = session.visibility.showsSavedPlaces ? session.savedPlaces.all.filter { $0.dimension == id } : []
         ruler = session.annotations.ruler
     }

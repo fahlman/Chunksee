@@ -89,7 +89,7 @@ import Testing
         #expect(source.selectedDimensionID == "minecraft:overworld" && source.map?.viewport == initial)
         #expect(source.selection.inspector == .player(owner))
         #expect(source.selection.sidebarRevealRequest == nil && target.selection.sidebarRevealRequest != nil)
-        #expect(target.selection.mapSelection == .creature(pet) && target.selection.sidebarSelection == .creature(pet.id))
+        #expect(target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))] && target.selection.sidebarSelection == .creature(pet.id))
         #expect(target.map?.viewport.center == pet.position && target.map?.viewport.scale == 4)
         #expect(source.map?.depth.cutawayY == 99)
         #expect(target.map?.depth.cutawayY == BlockPosition.coordinate(containing: pet.creature.y))
@@ -121,10 +121,10 @@ import Testing
         let target = WorldSession(resources: source.resources, dimensionID: pet.dimension)
         defer { target.close() }
         let firstReveal = try #require(target.selection.sidebarRevealRequest)
-        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.mapSelection == .creature(pet))
+        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         target.selection.showLinkedPet(pet, ownedBy: owner)
         #expect(target.selection.sidebarRevealRequest != firstReveal)
-        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.mapSelection == .creature(pet))
+        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         source.close(); target.close()
         await source.waitUntilClosed(); await target.waitUntilClosed()
     }
@@ -142,10 +142,10 @@ import Testing
         await session.search.waitForIndex()
         #expect(!session.presentation.linkedPets(to: owner).contains { $0.dimension == "minecraft:overworld" })
         session.selection.showLinkedPet(old, ownedBy: owner)
-        #expect(session.selection.mapSelection == nil && session.map?.viewport == initial && session.selection.sidebarRevealRequest == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.map?.viewport == initial && session.selection.sidebarRevealRequest == nil)
         session.close()
         session.selection.showLinkedPet(old, ownedBy: otherOwner)
-        #expect(session.selection.mapSelection == nil && session.selection.sidebarRevealRequest == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.sidebarRevealRequest == nil)
         await session.waitUntilClosed()
     }
 
@@ -174,7 +174,7 @@ import Testing
         let second = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == secondID })
         #expect(first.id != second.id && first.position == second.position)
         session.selection.showLinkedPet(second, ownedBy: owner)
-        #expect(session.selection.mapSelection == .creature(second))
+        #expect(session.selection.highlighted == [.row(.creature(second.id)), .row(.mobCreature(second.id))])
         session.selection.showLinkedPet(first, ownedBy: owner)
         let file = try savePets([pet("Renamed", owner: owner, x: 12, entityID: firstID), pet("Luna", owner: owner, x: 4, entityID: secondID)], in: url)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
@@ -182,9 +182,11 @@ import Testing
         await session.search.waitForIndex()
         let moved = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == firstID })
         #expect(moved.id == first.id && moved.position != first.position && moved.name(in: session.resources.gameNames) == "Renamed")
-        #expect(session.selection.mapSelection == .creature(moved))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing moved pet details"); return }
+        #expect(detail == moved)
+        #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
         session.selection.showLinkedPet(first, ownedBy: owner)
-        #expect(session.map?.viewport.center == moved.position && session.selection.mapSelection == .creature(moved))
+        #expect(session.map?.viewport.center == moved.position && session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
         session.close()
         await session.waitUntilClosed()
     }

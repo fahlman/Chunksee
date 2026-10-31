@@ -134,7 +134,7 @@ import Testing
         #expect(try matchingPixels(before, after))
         // A selected sidebar row keeps its highlight and wins the label collision,
         // including when its inspector is closed.
-        content.selectedItem = .player(markers[1].playerID)
+        content.highlighted = [.row(.player(markers[1].playerID))]
         let selected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         #expect(try !matchingPixels(selected, before))
         // Keep both bodies and their selection states identical. Giving both candidates the

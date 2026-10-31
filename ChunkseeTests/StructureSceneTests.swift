@@ -23,7 +23,7 @@ import Testing
 
     @Test func structureDrawingPickingAndAccessibilityShareCoordinatesAndBadgeGeometry() throws {
         let marker = try structure()
-        var content = MapContent(gameNames: .unavailable); content.structures = [marker]; content.selectedItem = .structure(marker.id)
+        var content = MapContent(gameNames: .unavailable); content.structures = [marker]; content.highlighted = [.row(.structure(marker.id))]
         let viewport = MapViewport(center: marker.position, scale: 2)
         let structure = try #require(content.scene(viewport: viewport, size: size).structures.first)
         let item = structure.item

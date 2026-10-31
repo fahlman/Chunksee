@@ -29,6 +29,12 @@ import Testing
         await gate.waitForRequest(playerID.uuidString)
         #expect(first.selection.playerRecords?.uuid == playerID && second.selection.playerRecords?.uuid == playerID)
         #expect(await gate.requested == [playerID.uuidString])
+        first.selection.isInspectorShown = false
+        #expect(first.selection.playerRecords == nil && second.selection.playerRecords?.uuid == playerID)
+        #expect(first.selection.highlighted == [.row(.player(playerID))])
+        first.selection.isInspectorShown = true
+        #expect(first.selection.inspector == .player(playerID) && first.selection.playerRecords?.uuid == playerID)
+        #expect(await gate.requested == [playerID.uuidString]) // The other window kept the shared read alive.
         first.close(); await first.waitUntilClosed() // Must not join the other window's held read.
         #expect(first.selection.playerRecords == nil && !resources.isClosed)
         let records = PlayerRecords(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 4]]))
@@ -58,25 +64,110 @@ import Testing
         defer { continuation.finish() }
         var iterator = updates.makeAsyncIterator()
         let initial = withObservationTracking {
-            (session?.selection.inspector, session.map(MapContent.init(session:))?.selectedPlayerID)
+            (session?.selection.inspector, session.map(MapContent.init(session:))?.highlighted)
         } onChange: {
             continuation.yield(true)
         }
-        #expect(initial.0 == nil && initial.1 == nil)
+        #expect(initial.0 == nil && initial.1?.isEmpty == true)
         selection.choose(.player(playerID))
         let changed = await iterator.next(isolation: #isolation)
         #expect(changed == true)
-        #expect(selection.inspector == .player(playerID) && session.map(MapContent.init(session:))?.selectedPlayerID == playerID)
+        #expect(selection.inspector == .player(playerID) && session.map(MapContent.init(session:))?.highlighted == [.row(.player(playerID))])
         let viewport = session?.map?.viewport
         session?.close()
         await session?.waitUntilClosed()
         selection.choose(.worldInfo)
+        selection.isInspectorShown = false
         #expect(selection.inspector == .player(playerID) && session?.map?.viewport == viewport)
         weak let released = session
         session = nil
         #expect(released == nil)
         selection.choose(.worldInfo)
-        #expect(selection.inspector == nil && selection.sidebarSelection == nil && selection.mapSelection == nil)
+        #expect(selection.inspector == nil && selection.sidebarSelection == nil && selection.highlighted.isEmpty && selection.inGameMapOverlay == nil)
+    }
+
+    @Test func inspectorVisibilityPreservesEverySidebarChoiceAndItsDrawnHighlights() async throws {
+        let root = try selectionWorld(creatures: searchCreatures())
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(root, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        let sibling = WorldSession(resources: session.resources, dimensionID: session.selectedDimensionID)
+        defer { session.close(); sibling.close() }
+        await session.search.waitForIndex()
+        session.search.text = "place:spawner"
+        await session.search.waitForSearch()
+        let index = session.presentation.selectedIndex, map = try #require(session.map)
+        let pet = try #require(index.creatures.first { $0.group == .pet })
+        let structure = try #require(index.structures.first), biome = try #require(index.biomeAreas.first)
+        let spawner = try #require(index.places.first { $0.group == .spawner })
+        let portal = try #require(index.places.first { $0.portal != nil })
+        let overlay = try #require(session.presentation.inGameMaps.first)
+        let saved = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: CGPoint(x: -35, y: 20)))
+        let hit = try #require(session.search.results.first)
+        let petTargets: Set<MapTarget> = [.row(.creature(pet.id)), .row(.mobCreature(pet.id))]
+        // Biomes are areas, not point badges. Both creature row aliases refer to one badge.
+        let cases: [(row: SidebarItem, targets: Set<MapTarget>, drawn: Set<MapTarget>)] = [
+            (.worldInfo, [], []), (.storage, [], []),
+            (.structure(structure.id), [.row(.structure(structure.id))], [.row(.structure(structure.id))]),
+            (.place(spawner.id), [.row(.place(spawner.id))], [.row(.place(spawner.id))]),
+            (.place(portal.id), [.row(.place(portal.id))], [.row(.place(portal.id))]),
+            (.creature(pet.id), petTargets, [.row(.creature(pet.id))]),
+            (.mobCreature(pet.id), petTargets, [.row(.mobCreature(pet.id))]),
+            (.mobType(pet.creature.id), [], []),
+            (.biome(biome.id), [.row(.biome(biome.id))], []),
+            (.savedPlace(saved.id), [.row(.savedPlace(saved.id))], [.row(.savedPlace(saved.id))]),
+            (.player(playerID), [.row(.player(playerID))], [.row(.player(playerID))]),
+            (.player(missingDimensionPlayerID), [.row(.player(missingDimensionPlayerID))], []),
+            (.inGameMap(overlay.id), [], []),
+            (.hit(query: session.search.text, id: hit.id), [.searchHit(hit.id), .row(.place(spawner.id))],
+                [.searchHit(hit.id), .row(.place(spawner.id))]),
+        ]
+        sibling.selection.choose(.storage)
+        let size = CGSize(width: 800, height: 600)
+        let viewport = MapViewport(center: CGPoint(x: 40, y: -40), scale: 2)
+        func drawnTargets(_ content: MapContent) -> Set<MapTarget> {
+            let scene = content.scene(viewport: viewport, size: size)
+            return Set((scene.structures.map(\.item) + scene.items).filter { $0.labelPriority == .selected }.map(\.target))
+        }
+        for sample in cases {
+            session.selection.choose(.worldInfo) // Start without a retained overlay from the previous case.
+            session.selection.choose(sample.row)
+            map.viewport = viewport
+            map.setDepth(MapDepth(y: 101, isSurface: false))
+            let inspector = try #require(session.selection.inspector)
+            let before = MapContent(session: session)
+            #expect(session.selection.sidebarSelection == sample.row && session.selection.isInspectorShown)
+            #expect(before.highlighted == sample.targets && drawnTargets(before) == sample.drawn)
+            for shown in [false, true, false, true] {
+                session.selection.isInspectorShown = shown
+                let current = MapContent(session: session)
+                #expect(session.selection.isInspectorShown == shown && session.selection.sidebarSelection == sample.row)
+                #expect(session.selection.inspector == (shown ? inspector : nil))
+                #expect(current.highlighted == sample.targets && drawnTargets(current) == sample.drawn)
+                #expect(current.inGameMap?.map == before.inGameMap?.map && current.inGameMap?.opacity == before.inGameMap?.opacity)
+                #expect(map.viewport == viewport && map.depth == MapDepth(y: 101, isSurface: false))
+                #expect(sibling.selection.inspector == .storage && sibling.selection.sidebarSelection == .storage)
+                #expect(sibling.selection.highlighted.isEmpty && sibling.selection.inGameMapOverlay == nil)
+            }
+        }
+        session.close(); sibling.close()
+        await session.waitUntilClosed(); await sibling.waitUntilClosed()
+    }
+
+    @Test func showingAnInspectorWithoutASelectionUsesWorldInfoWithoutNavigating() async throws {
+        let root = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(root, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        let viewport = session.map?.viewport, depth = session.map?.depth
+        session.selection.isInspectorShown = false
+        #expect(session.selection.sidebarSelection == nil && !session.selection.isInspectorShown)
+        session.selection.isInspectorShown = true
+        #expect(session.selection.inspector == .world && session.selection.sidebarSelection == .worldInfo)
+        #expect(session.selection.sidebarRevealRequest != nil && session.selection.highlighted.isEmpty)
+        #expect(session.map?.viewport == viewport && session.map?.depth == depth)
+        session.close(); await session.waitUntilClosed()
     }
 
     @Test(arguments: [(48.75, 48), (-8.7, -9)])
@@ -147,6 +238,7 @@ import Testing
         session.selection.choose(.creature(pet.id))
         #expect(session.map?.depth == MapDepth(y: 48, isSurface: true))
         session.map?.setDepth(MapDepth(y: 101, isSurface: false))
+        session.selection.isInspectorShown = false
         let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
         let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([Fixtures.mob([
             "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Map Fox"),
@@ -158,7 +250,11 @@ import Testing
         await session.search.waitForIndex()
         let current = try #require(session.presentation.selectedIndex.creatures.first)
         #expect(current.id == pet.id && current.creature.y == 32)
-        #expect(session.selection.mapSelection == .creature(current) && session.map?.depth.cutawayY == 101)
+        #expect(!session.selection.isInspectorShown && session.selection.sidebarSelection == .creature(pet.id))
+        session.selection.isInspectorShown = true
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing live creature details"); return }
+        #expect(detail == current)
+        #expect(session.selection.highlighted == [.row(.creature(current.id)), .row(.mobCreature(current.id))] && session.map?.depth.cutawayY == 101)
         session.selection.choose(.creature(pet.id))
         #expect(session.map?.depth.cutawayY == 32)
         session.close()
@@ -225,10 +321,12 @@ import Testing
         #expect(!disclosure.collapsedSections.contains(.places) && disclosure.places.contains(.spawner))
         session.selection.choose(.worldInfo)
         session.selection.mapClicked(.row(.place(portal.id)), y: nil)
-        #expect(session.selection.inspector == .selection && session.selection.mapSelection == portal.portal.map(MapSelection.portal))
+        #expect(session.selection.inspector == .selection && session.selection.highlighted == [.row(.place(portal.id))])
+        guard case .place(let selectedPortal)? = session.selection.inspectorItem else { Issue.record("Missing portal details"); return }
+        #expect(selectedPortal.portal == portal.portal)
         #expect(session.selection.sidebarSelection == .place(portal.id) && session.map?.viewport == viewport)
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.sidebarSelection == nil && session.selection.mapSelection == nil && session.selection.inspector == nil)
+        #expect(session.selection.sidebarSelection == nil && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.inspector == nil)
         session.selection.mapClicked(.row(.place("removed-marker")), y: nil)
         #expect(session.selection.sidebarSelection == nil)
         session.close()
@@ -251,7 +349,7 @@ import Testing
         disclosure.selectOnMap(.searchHit(hit.id), y: nil, in: session)
         #expect(disclosure.collapsedSections == [.savedSearches, .world])
         #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
-        #expect(session.selection.selectedHitID == hit.id && session.map?.viewport == viewport)
+        #expect(session.selection.highlighted.contains(.searchHit(hit.id)) && session.map?.viewport == viewport)
         session.search.saveSearch()
         disclosure.collapsedSections.insert(.searchResults)
         disclosure.selectOnMap(.searchHit(hit.id), y: nil, in: session)
@@ -265,7 +363,7 @@ import Testing
         #expect(session.selection.sidebarSelection == row)
         #expect(disclosure.savedSearches == Set(session.savedSearches.all.map(\.id)))
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.selectedHitID == nil && session.selection.sidebarSelection == nil)
+        #expect(!session.selection.highlighted.contains(.searchHit(hit.id)) && session.selection.sidebarSelection == nil)
         session.close()
         await session.waitUntilClosed()
     }
@@ -282,25 +380,40 @@ import Testing
         let villager = try #require(index.creatures.first { $0.group == .villager })
         let portal = try #require(index.places.first { $0.portal != nil }?.portal)
         let map = try #require(session.presentation.inGameMaps.first)
-        let cases: [(String, MapSelection)] = [
-            ("pet:", .creature(pet)), ("Search Pet", .creature(pet)), ("creature:wolf", .creature(pet)),
-            ("villager:", .creature(villager)), ("trade:carrot", .creature(villager)), ("place:portal", .portal(portal)),
+        let petTargets: Set<MapTarget> = [.row(.creature(pet.id)), .row(.mobCreature(pet.id))]
+        let villagerTargets: Set<MapTarget> = [.row(.creature(villager.id)), .row(.mobCreature(villager.id))]
+        let cases: [(String, Set<MapTarget>)] = [
+            ("pet:", petTargets), ("Search Pet", petTargets), ("creature:wolf", petTargets),
+            ("villager:", villagerTargets), ("trade:carrot", villagerTargets), ("place:portal", [.row(.place(PlaceMarker(portal).id))]),
         ]
         let size = CGSize(width: 800, height: 600)
         var disclosure = SidebarDisclosure()
-        for (query, expected) in cases {
+        for (query, entityTargets) in cases {
             session.search.text = query
             await session.search.waitForSearch()
             let hit = try #require(session.search.results.first), position = try #require(hit.position)
+            let expected = entityTargets.union([.searchHit(hit.id)])
             let row = SidebarItem.hit(query: query, id: hit.id)
             session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
             session.selection.show(map)
             session.selection.choose(row)
-            #expect(session.selection.sidebarSelection == row && session.selection.selectedHitID == hit.id)
-            #expect(session.selection.inspector == .selection && session.selection.mapSelection == expected)
+            #expect(session.selection.sidebarSelection == row && session.selection.highlighted.contains(.searchHit(hit.id)))
+            #expect(session.selection.inspector == .selection && session.selection.highlighted == expected)
             #expect(MapContent(session: session).inGameMap == nil)
             #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
             #expect(session.map?.depth.y == hit.y)
+            let drawnTargets = Set(expected.filter { target in
+                if case .row(.mobCreature(_)) = target { return false }
+                return true
+            })
+            let selectedViewport = try #require(session.map?.viewport)
+            for shown in [true, false, true] {
+                session.selection.isInspectorShown = shown
+                let scene = MapContent(session: session).scene(viewport: selectedViewport, size: size)
+                #expect(Set(scene.items.filter { $0.labelPriority == .selected }.map(\.target)) == drawnTargets)
+                #expect(session.selection.sidebarSelection == row && session.map?.viewport == selectedViewport)
+                #expect(session.selection.selectedSearchHit == (shown ? hit : nil))
+            }
 
             // Exercise the drawn pin and accessibility target, with other layers hidden.
             session.selection.inspector = nil
@@ -314,7 +427,7 @@ import Testing
             #expect(pointer.target == .searchHit(hit.id))
             for (target, height) in [(Optional(pointer.target), pointer.y), (accessible.target, accessible.y)] {
                 disclosure.selectOnMap(target, y: height, in: session)
-                #expect(session.selection.sidebarSelection == row && session.selection.mapSelection == expected)
+                #expect(session.selection.sidebarSelection == row && session.selection.highlighted == expected)
                 #expect(session.map?.viewport == viewport)
                 session.selection.inspector = nil
             }
@@ -351,14 +464,14 @@ import Testing
         session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
         session.map?.setDepth(MapDepth(y: 99, isSurface: false))
         session.selection.choose(row)
-        #expect(session.selection.sidebarSelection == row && session.selection.selectedHitID == hit.id)
+        #expect(session.selection.sidebarSelection == row && session.selection.highlighted.contains(.searchHit(hit.id)))
         #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
         #expect(session.map?.depth.cutawayY == 12)
         #expect(session.savedSearches.all.first { $0.id == saved.id }?.isShown == true)
         #expect(session.savedSearches.all.first { $0.id == other.id }?.isShown == false)
         #expect(SavedSearches(defaults: defaults).all == session.savedSearches.all)
         let content = MapContent(session: session)
-        #expect(content.hits.map(\.id) == [hit.id] && content.selectedHitID == hit.id)
+        #expect(content.hits.map(\.id) == [hit.id] && content.highlighted.contains(.searchHit(hit.id)))
         let viewport = try #require(session.map?.viewport), size = CGSize(width: 800, height: 600)
         #expect(content.accessibleLocations(viewport: viewport, size: size).contains { $0.target == .searchHit(hit.id) })
 
@@ -406,14 +519,16 @@ import Testing
         await session.search.waitForIndex()
         await session.search.waitForSearch()
         let current = try #require(session.presentation.selectedIndex.creatures.first { $0.group == .pet })
-        #expect(current.creature.health == 6 && session.selection.mapSelection == .creature(current))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing live search details"); return }
+        #expect(detail == current && current.creature.health == 6)
+        #expect(session.selection.highlighted == [.searchHit(hit.id), .row(.creature(current.id)), .row(.mobCreature(current.id))])
         #expect(session.selection.sidebarSelection == row && session.map?.viewport == viewport && session.map?.depth.cutawayY == 101)
         try save([])
         resources.worldChanged([file])
         await resources.waitForRefresh()
         await session.search.waitForIndex()
         await session.search.waitForSearch()
-        #expect(session.selection.sidebarSelection == nil && session.selection.inspector == nil && session.selection.mapSelection == nil)
+        #expect(session.selection.sidebarSelection == nil && session.selection.inspector == nil && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         session.close(); await session.waitUntilClosed()
     }
 
@@ -453,7 +568,8 @@ import Testing
             let row = SidebarItem.hit(query: "diamond", id: hit.id)
             session.selection.choose(row)
             #expect(session.selection.sidebarSelection == row && session.selection.inspector == .player(id))
-            #expect(MapContent(session: session).selectedPlayerID == id && MapContent(session: session).inGameMap == nil)
+            #expect(MapContent(session: session).highlighted == [.searchHit(hit.id), .row(.player(id))])
+            #expect(MapContent(session: session).inGameMap == nil)
             if let position = hit.position {
                 #expect(session.map?.viewport == MapViewport(center: position, scale: 0.5))
             } else {
@@ -492,10 +608,18 @@ import Testing
         var disclosure = SidebarDisclosure()
         for (target, row) in targets {
             disclosure.selectOnMap(target, y: nil, in: session)
-            #expect(MapContent(session: session).inGameMap?.map.id == map.id && session.selection.mapSelection == .inGameMap(map))
+            #expect(MapContent(session: session).inGameMap?.map.id == map.id && session.selection.inGameMapOverlay == map)
             #expect(session.selection.inspector == .selection && session.map?.viewport == viewport)
             #expect(session.selection.sidebarSelection == row)
-            #expect(session.selection.selectedHitID == (row == .hit(query: "place:spawner", id: hit.id) ? hit.id : nil))
+            #expect(session.selection.highlighted.contains(.searchHit(hit.id)) == (row == .hit(query: "place:spawner", id: hit.id)))
+            let highlighted = session.selection.highlighted
+            session.selection.isInspectorShown = false
+            #expect(session.selection.inspector == nil && session.selection.sidebarSelection == row)
+            #expect(MapContent(session: session).inGameMap?.map == map && session.selection.highlighted == highlighted)
+            session.selection.isInspectorShown = true
+            #expect(session.selection.inspector == .selection && session.selection.sidebarSelection == row)
+            #expect(MapContent(session: session).inGameMap?.map == map && session.selection.highlighted == highlighted)
+            #expect(session.map?.viewport == viewport)
         }
         for target in [MapTarget.row(.place(portal.id)), .row(.creature(creature.id))] {
             session.selection.show(map)
@@ -533,7 +657,7 @@ import Testing
         #expect(!session.annotations.ruler.isEnabled)
         #expect(session.selection.sidebarSelection == .player(playerID))
         view.escape()
-        #expect(session.selection.sidebarSelection == nil && session.selection.mapSelection == nil)
+        #expect(session.selection.sidebarSelection == nil && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         #expect(session.selection.inspector == nil && map.viewport == viewport && map.depth == depth)
         session.close(); await session.waitUntilClosed()
     }
@@ -558,16 +682,18 @@ import Testing
             disclosure.selectOnMap(nil, y: nil, in: session)
             let expectedRow = session.selection.sidebarSelection
             let expectedInspector = session.selection.inspector
-            let expectedMapSelection = session.selection.mapSelection
+            let expectedHighlights = session.selection.highlighted
+            let expectedOverlay = session.selection.inGameMapOverlay
             session.selection.choose(row)
             view.escape()
             #expect(session.selection.sidebarSelection == expectedRow && session.selection.inspector == expectedInspector)
-            #expect(session.selection.mapSelection == expectedMapSelection && map.viewport == viewport && map.depth == depth)
+            #expect(session.selection.highlighted == expectedHighlights && session.selection.inGameMapOverlay == expectedOverlay)
+            #expect(map.viewport == viewport && map.depth == depth)
         }
         session.selection.show(overlay)
         session.selection.mapClicked(.row(.savedPlace(place.id)), y: nil)
         view.escape()
-        #expect(session.selection.sidebarSelection == nil && session.selection.mapSelection == .inGameMap(overlay))
+        #expect(session.selection.sidebarSelection == nil && session.selection.inGameMapOverlay == overlay)
         #expect(MapContent(session: session).inGameMap?.map.id == overlay.id && session.selection.inspector == .selection)
         session.close(); await session.waitUntilClosed()
     }
@@ -666,11 +792,11 @@ import Testing
         let position = try #require(session.presentation.listedPlayers.first { $0.uuid == playerID }?.position)
         // Choosing the row centers the map on them and shows their details, highlighted on the map.
         session.selection.choose(.player(playerID))
-        #expect(session.selection.inspector == .player(playerID) && MapContent(session: session).selectedPlayerID == playerID)
+        #expect(session.selection.inspector == .player(playerID) && MapContent(session: session).highlighted == [.row(.player(playerID))])
         #expect(session.map?.viewport.center == CGPoint(x: position.x, y: position.z))
         // Another item replaces the player with its own details and clears the player highlight.
         session.selection.mapClicked(.row(.structure(structure.id)), y: nil)
-        #expect(session.selection.inspector == .selection && MapContent(session: session).selectedPlayerID == nil)
+        #expect(session.selection.inspector == .selection && MapContent(session: session).highlighted == [.row(.structure(structure.id))])
         guard case .structure(let selected)? = session.selection.inspectorItem else { Issue.record("Missing structure inspector"); return }
         #expect(selected.id == structure.id)
         // Their marker shows them again without moving the map; an empty click closes them.
@@ -703,37 +829,42 @@ import Testing
         let biome = try #require(index.biomeAreas.first), hit = try #require(session.search.results.first)
         let saved = try #require(session.savedPlaces.add(name: "Base", dimension: "minecraft:overworld", at: .zero))
         let detailRows: [SidebarItem] = [.creature(creature.id), .place(portal.id), .player(playerID)]
-        let plainRows: [SidebarItem] = [.structure(structure.id), .place(spawner.id), .biome(biome.id),
-                                        .savedPlace(saved.id), .hit(query: session.search.text, id: hit.id)]
+        let plainRows: [(SidebarItem, Set<MapTarget>)] = [
+            (.structure(structure.id), [.row(.structure(structure.id))]),
+            (.place(spawner.id), [.row(.place(spawner.id))]), (.biome(biome.id), [.row(.biome(biome.id))]),
+            (.savedPlace(saved.id), [.row(.savedPlace(saved.id))]),
+            (.hit(query: session.search.text, id: hit.id), [.searchHit(hit.id), .row(.place(spawner.id))]),
+        ]
         for detail in detailRows {
-            for plain in plainRows {
+            for (plain, expected) in plainRows {
                 session.selection.mapClicked(.searchHit(hit.id), y: nil)
                 session.selection.choose(detail)
-                #expect(session.selection.sidebarSelection == detail && session.selection.inspector != nil && session.selection.selectedHitID == nil)
+                #expect(session.selection.sidebarSelection == detail && session.selection.inspector != nil && !session.selection.highlighted.contains(.searchHit(hit.id)))
                 session.selection.choose(plain)
-                #expect(session.selection.sidebarSelection == plain && session.selection.inspector == .selection && session.selection.mapSelection == nil)
-                #expect(MapContent(session: session).selectedPlayerID == nil && MapContent(session: session).selection == nil)
-                #expect(session.selection.selectedHitID == (plain == .hit(query: session.search.text, id: hit.id) ? hit.id : nil))
+                #expect(session.selection.sidebarSelection == plain && session.selection.inspector == .selection && session.selection.inGameMapOverlay == nil)
+                #expect(MapContent(session: session).highlighted == expected)
+                #expect(session.selection.highlighted.contains(.searchHit(hit.id)) == (plain == .hit(query: session.search.text, id: hit.id)))
             }
         }
         // The overlay remains under other locations, whose own inspector replaces the map details.
         let map = try #require(session.presentation.inGameMaps.first)
-        for row in plainRows {
+        for (row, expected) in plainRows {
             session.selection.show(map)
             session.selection.choose(row)
-            #expect(session.selection.sidebarSelection == row && session.selection.mapSelection == .inGameMap(map))
+            #expect(session.selection.sidebarSelection == row && session.selection.inGameMapOverlay == map)
             #expect(session.selection.inspector == .selection && MapContent(session: session).inGameMap?.map.id == map.id)
+            #expect(MapContent(session: session).highlighted == expected)
         }
         session.selection.show(map)
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.sidebarSelection == .inGameMap(map.id) && session.selection.mapSelection == .inGameMap(map))
+        #expect(session.selection.sidebarSelection == .inGameMap(map.id) && session.selection.inGameMapOverlay == map)
         session.selection.mapClicked(.searchHit(hit.id), y: nil)
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.sidebarSelection == nil && session.selection.selectedHitID == nil && session.selection.mapSelection == .inGameMap(map))
+        #expect(session.selection.sidebarSelection == nil && !session.selection.highlighted.contains(.searchHit(hit.id)) && session.selection.inGameMapOverlay == map)
         session.selection.choose(.player(playerID))
         session.selection.inspector = nil
         #expect(session.selection.sidebarSelection == .player(playerID) && session.selection.inspector == nil)
-        #expect(MapContent(session: session).selectedPlayerID == nil && session.selection.mapSelection == nil)
+        #expect(MapContent(session: session).highlighted == [.row(.player(playerID))] && session.selection.inGameMapOverlay == nil)
         let missing = try #require(session.savedPlaces.add(name: "Missing", dimension: "missing:dimension", at: .zero))
         let viewport = session.map?.viewport
         #expect(!session.annotations.canVisit(missing) && session.annotations.listedPlaces.contains { $0.id == missing.id })
@@ -788,6 +919,8 @@ import Testing
         #expect(selected.mob == "minecraft:zombie" && selected.y == 12)
         session.annotations.beginMeasurement(at: spawner.position, in: "minecraft:overworld")
         #expect(session.annotations.ruler.isEnabled && session.selection.inspector == nil)
+        #expect(session.selection.sidebarSelection == .place(spawner.id))
+        #expect(MapContent(session: session).highlighted == [.row(.place(spawner.id))])
         session.close(); await session.waitUntilClosed()
     }
 
@@ -852,11 +985,11 @@ import Testing
             for hit in MapContent(session: session).hits {
                 session.selection.mapClicked(.searchHit(hit.id), y: nil)
                 #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
-                #expect(session.selection.selectedHitID == hit.id && session.map?.viewport == viewport)
+                #expect(session.selection.highlighted.contains(.searchHit(hit.id)) && session.map?.viewport == viewport)
             }
             let unlisted = try #require(session.search.results.filter { session.presentation.lists($0.dimension) }.dropFirst(200).first)
             session.selection.mapClicked(.searchHit(unlisted.id), y: nil)
-            #expect(session.selection.sidebarSelection == nil && session.selection.selectedHitID == nil)
+            #expect(session.selection.sidebarSelection == nil && !session.selection.highlighted.contains(.searchHit(hit.id)))
             session.search.saveSearch()
             session.search.text = ""
             await session.search.waitForSearch()
@@ -898,13 +1031,14 @@ import Testing
         await session.search.waitForIndex()
         let updated = try #require(session.presentation.selectedIndex.places.first { $0.id == portal.id }?.portal)
         #expect(updated != portal.portal)
-        #expect(session.selection.mapSelection == .portal(updated))
+        guard case .place(let detail)? = session.selection.inspectorItem else { Issue.record("Missing updated portal details"); return }
+        #expect(detail.portal == updated && session.selection.highlighted == [.row(.place(portal.id))])
         #expect(session.selection.sidebarSelection == .place(portal.id) && session.selection.inspector == .selection)
         try savePortal(at: [])
         session.resources.worldChanged([file])
         await session.resources.waitForRefresh()
         await session.search.waitForIndex()
-        #expect(session.selection.mapSelection == nil && session.selection.sidebarSelection == nil && session.selection.inspector == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.sidebarSelection == nil && session.selection.inspector == nil)
         try savePortal(at: [64, 65])
         session.resources.worldChanged([file])
         await session.resources.waitForRefresh()
@@ -912,7 +1046,7 @@ import Testing
         #expect(session.presentation.selectedIndex.places.contains { $0.id == portal.id })
         #expect(session.selection.sidebarSelection == nil && session.selection.inspector == nil)
         session.selection.choose(.place(portal.id))
-        #expect(session.selection.sidebarSelection == .place(portal.id) && session.selection.mapSelection == .portal(updated))
+        #expect(session.selection.sidebarSelection == .place(portal.id) && session.selection.highlighted == [.row(.place(portal.id))])
         let creature = try #require(session.presentation.selectedIndex.creatures.first)
         session.selection.choose(.creature(creature.id))
         session.selection.inspector = nil
@@ -925,7 +1059,7 @@ import Testing
         session.resources.worldChanged([entities])
         await session.resources.waitForRefresh()
         await session.search.waitForIndex()
-        #expect(session.selection.mapSelection == nil && session.selection.sidebarSelection == nil && session.selection.inspector == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.sidebarSelection == nil && session.selection.inspector == nil)
         try savedEntities.write(to: entities)
         session.resources.worldChanged([entities])
         await session.resources.waitForRefresh()
@@ -956,7 +1090,7 @@ import Testing
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.place(bell.id)))
         viewport.scale = 0.0625
         #expect(content.target(at: center, viewport: viewport, size: size) == nil)
-        content.selection = .creature(creature)
+        content.highlighted = [.row(.creature(creature.id))]
         #expect(content.target(at: center, viewport: viewport, size: size) == .row(.creature(creature.id)))
         let playerID = UUID()
         content.players = [.init(id: "player", playerID: playerID, kind: .player, position: CGPoint(x: -10, y: -20),

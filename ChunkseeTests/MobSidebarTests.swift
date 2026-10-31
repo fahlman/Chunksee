@@ -125,7 +125,7 @@ import Testing
         #expect(MapContent(session: session).creatures.count == 2)
         session.selection.choose(.mobCreature(red.id))
         #expect(session.visibility.mobAppearances[kind.id] == nil)
-        #expect(session.selection.mapSelection == .creature(red) && session.map?.viewport.center == red.position)
+        #expect(session.selection.highlighted == [.row(.creature(red.id)), .row(.mobCreature(red.id))] && session.map?.viewport.center == red.position)
         #expect(MapContent(session: session).creatures.count == 2)
         var disclosure = SidebarDisclosure()
         disclosure.collapsedSections.insert(.mobs)

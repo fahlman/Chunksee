@@ -158,10 +158,8 @@ extension MapContent {
         hits = []
         players = []
         savedPlaces = []
-        selection = nil
+        highlighted = []
         selectedItem = nil
-        selectedHitID = nil
-        selectedPlayerID = nil
         ruler = MapRuler()
     }
 }

@@ -27,7 +27,8 @@ import Testing
         return resources
     }
 
-    @Test func savedChangesReachSiblingSelectionsAndPicturesWithoutChangingTheirChoices() async throws {
+    @Test(arguments: [false, true])
+    func savedChangesReachSiblingSelectionsAndPicturesWithoutChangingTheirChoices(hideBeforeRemoval: Bool) async throws {
         let root = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }
         let one = try write(1, at: root), two = try write(2, at: root, center: 20)
@@ -63,6 +64,10 @@ import Testing
         resources.worldChanged([one]); await resources.waitForRefresh()
         #expect(MapContent(session: first).inGameMap?.image === changed.image)
 
+        if hideBeforeRemoval {
+            first.selection.isInspectorShown = false
+            #expect(MapContent(session: first).inGameMap?.image === changed.image)
+        }
         try FileManager.default.removeItem(at: one)
         resources.worldChanged([one]); await resources.waitForRefresh()
         #expect(resources.details.maps.map(\.id) == [2])
@@ -71,7 +76,7 @@ import Testing
         #expect(MapContent(session: first).inGameMap == nil)
         #expect(MapContent(session: second).inGameMap?.image === secondImage)
         // SwiftUI dismisses the now-empty inspector through ContentView's binding.
-        first.selection.inspector = nil
+        first.selection.isInspectorShown = false
         try write(1, at: root, center: 150, color: 12)
         resources.worldChanged([one]); await resources.waitForRefresh()
         #expect(resources.details.maps.map(\.id) == [1, 2])
@@ -92,7 +97,8 @@ import Testing
         second.close(); await second.waitUntilClosed()
     }
 
-    @Test func removingAKeptMapPreservesTheOtherSelectedLocationWithoutRestoringTheOverlay() async throws {
+    @Test(arguments: [false, true])
+    func removingAKeptMapPreservesTheOtherSelectedLocationWithoutRestoringTheOverlay(inspectorShown: Bool) async throws {
         let root = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }
         let file = try write(1, at: root)
@@ -103,20 +109,48 @@ import Testing
         let dimension = try #require(session.selectedDimensionID)
         let place = try #require(session.savedPlaces.add(name: "Location", dimension: dimension, at: .zero))
         session.selection.choose(.savedPlace(place.id))
+        session.selection.isInspectorShown = inspectorShown
         #expect(MapContent(session: session).inGameMap?.map.id == 1)
         let view = session.map?.viewport
 
         try FileManager.default.removeItem(at: file)
         resources.worldChanged([file]); await resources.waitForRefresh()
-        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.inspector == .selection)
+        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.isInspectorShown == inspectorShown)
+        #expect(session.selection.highlighted == [.row(.savedPlace(place.id))])
         #expect(MapContent(session: session).inGameMap == nil)
         try write(1, at: root, center: 200)
         resources.worldChanged([file]); await resources.waitForRefresh()
-        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.inspector == .selection)
+        #expect(session.selection.sidebarSelection == .savedPlace(place.id) && session.selection.isInspectorShown == inspectorShown)
         #expect(MapContent(session: session).inGameMap == nil && session.map?.viewport == view)
+        session.selection.isInspectorShown = true
+        guard case .savedPlace(let selected)? = session.selection.inspectorItem else { Issue.record("Missing kept location details"); return }
+        #expect(selected == place && MapContent(session: session).inGameMap == nil)
         session.selection.choose(.inGameMap(1))
         #expect(session.selection.sidebarSelection == .inGameMap(1) && session.selection.inspector == .selection)
         #expect(MapContent(session: session).inGameMap?.map.centerX == 200)
+        session.close(); await session.waitUntilClosed()
+    }
+
+    @Test(arguments: [false, true])
+    func removingTheSelectedLocationClearsItsRetainedMapEvenWhenDetailsAreHidden(inspectorShown: Bool) async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(1, at: root)
+        let resources = try await open(root)
+        let session = WorldSession(resources: resources)
+        defer { session.close() }
+        session.selection.choose(.inGameMap(1))
+        let place = try #require(session.savedPlaces.add(name: "Location", dimension: "minecraft:overworld", at: .zero))
+        session.selection.choose(.savedPlace(place.id))
+        session.selection.isInspectorShown = inspectorShown
+        #expect(MapContent(session: session).inGameMap?.map.id == 1)
+        #expect(session.selection.highlighted == [.row(.savedPlace(place.id))])
+        session.savedPlaces.remove(place.id)
+        #expect(session.selection.sidebarSelection == nil && !session.selection.isInspectorShown)
+        #expect(session.selection.highlighted.isEmpty && MapContent(session: session).inGameMap == nil)
+        #expect(resources.details.maps.map(\.id) == [1])
+        session.selection.isInspectorShown = true
+        #expect(session.selection.inspector == .world && MapContent(session: session).inGameMap == nil)
         session.close(); await session.waitUntilClosed()
     }
 

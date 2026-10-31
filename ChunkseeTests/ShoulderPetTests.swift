@@ -67,7 +67,7 @@ import Testing
         #expect(second.resources.playerSnapshot.shoulderPets.filter { $0.carrier == carrier }.map(\.creature.uuid) == [bird, otherBird])
 
         second.selection.choose(.creature(gray.id))
-        #expect(second.selection.mapSelection == .creature(gray))
+        #expect(second.selection.highlighted == [.row(.creature(gray.id)), .row(.mobCreature(gray.id))])
         #expect(second.map?.depth.y == 70 && second.map?.viewport.center == gray.position)
         let content = MapContent(session: second)
         let viewport = MapViewport(center: gray.position, scale: 16), size = CGSize(width: 800, height: 600)
@@ -137,7 +137,7 @@ import Testing
         #expect(session.presentation.linkedPets(to: carrier).isEmpty)
         #expect(session.search.results.first?.dimension == overworld && session.search.results.first?.y == 48)
         session.selection.showLinkedPet(moved, ownedBy: owner)
-        #expect(session.selection.mapSelection == .creature(moved))
+        #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
 
         var landed = try #require(parrot(bird).compound)
         landed["Pos"] = .list([.double(13.5), .double(49), .double(-4.5)])
@@ -149,7 +149,9 @@ import Testing
         await session.search.waitForIndex()
         let current = try #require(session.presentation.linkedPets(to: owner).first)
         #expect(current.id == moved.id && current.carrier == nil && current.position.x == 13.5)
-        #expect(session.selection.mapSelection == .creature(current))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing landed pet details"); return }
+        #expect(detail == current)
+        #expect(session.selection.highlighted == [.row(.creature(current.id)), .row(.mobCreature(current.id))])
         #expect(session.resources.playerSnapshot.shoulderPets.isEmpty)
         session.close()
         await session.waitUntilClosed()

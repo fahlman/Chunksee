@@ -41,7 +41,7 @@ import Testing
         for sample in cases {
             let viewport = MapViewport(center: pet.position, scale: sample.scale)
             for selected in [false, true] {
-                content.selection = selected ? .creature(pet) : nil
+                content.highlighted = selected ? [.row(.creature(pet.id))] : []
                 let item = try #require(content.scene(viewport: viewport, size: size).items.first)
                 let diameter = sample.diameter
                 #expect(item.frame.size == CGSize(width: diameter, height: diameter))
@@ -111,16 +111,16 @@ import Testing
         let near = CGPoint(x: center.x, y: center.y + 14.5)
         let ordinary = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(content.target(at: near, viewport: viewport, size: size) == .row(.creature(pet.id)))
-        content.selection = .creature(pet)
+        content.highlighted = [.row(.creature(pet.id))]
         let selected = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(ordinary.frame == selected.frame && ordinary.labelPriority != .selected && selected.labelPriority == .selected)
         #expect(content.target(at: near, viewport: viewport, size: size) == .row(.creature(pet.id)))
         #expect(content.target(at: CGPoint(x: center.x, y: center.y + 15.01), viewport: viewport, size: size) == nil)
-        content.creatures = []; content.selection = nil; content.hits = [hit]
+        content.creatures = []; content.highlighted = []; content.hits = [hit]
         viewport.center = .zero
         let pin = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(content.target(at: near, viewport: viewport, size: size) == .searchHit(hit.id))
-        content.selectedHitID = hit.id
+        content.highlighted = [.searchHit(hit.id)]
         let selectedPin = try #require(content.scene(viewport: viewport, size: size).items.first)
         #expect(pin.frame == selectedPin.frame && pin.labelPriority != .selected && selectedPin.labelPriority == .selected)
         #expect(content.target(at: near, viewport: viewport, size: size) == .searchHit(hit.id))
@@ -170,7 +170,7 @@ import Testing
         let selected = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 511.999, y: 64, z: 8,
             owner: UUID()), dimension: "minecraft:overworld"))
         var content = MapContent(gameNames: .unavailable)
-        content.creatures = [selected]; content.selection = .creature(selected)
+        content.creatures = [selected]; content.highlighted = [.row(.creature(selected.id))]
         let viewport = MapViewport(center: selected.position, scale: 32)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let edge = CGPoint(x: center.x + 21.99, y: center.y)
@@ -227,8 +227,7 @@ import Testing
         content.creatures = [pet]; content.hits = [search]; content.players = players; content.savedPlaces = [saved]
         let viewport = MapViewport(center: CGPoint(x: -1, y: 1), scale: scale)
         for selected in [false, true] {
-            content.selection = selected ? .creature(pet) : nil
-            content.selectedHitID = selected ? search.id : nil
+            content.highlighted = selected ? [.row(.creature(pet.id)), .searchHit(search.id)] : []
             let expected: [(String, CGPoint, CGFloat)] = [
                 ("structure-" + structure.id, structure.position, 9),
                 ("place-" + portal.id, portal.position, 9),
@@ -269,7 +268,7 @@ import Testing
         var content = MapContent(gameNames: .unavailable); content.creatures = [pet]; content.places = [portal, spawner]
         let viewport = MapViewport(center: .zero, scale: 0.0625)
         #expect(content.accessibleLocations(viewport: viewport, size: size).map(\.id) == ["place-" + portal.id])
-        content.selection = .creature(pet)
+        content.highlighted = [.row(.creature(pet.id))]
         #expect(content.accessibleLocations(viewport: viewport, size: size).contains { $0.id == "creature-" + pet.id })
         content.shownCreatureGroups = []; content.shownPlaceGroups = []
         #expect(content.accessibleLocations(viewport: viewport, size: size).isEmpty)
@@ -302,9 +301,10 @@ import Testing
             map.viewport.scale = scale
             for variant in [0, 1, 2] {
                 let selected = variant != 0
-                content.selection = selected ? .creature(pet) : nil
-                content.selectedHitID = selected ? search.id : nil
-                content.selectedPlayerID = selected ? (variant == 1 ? content.players.first?.playerID : content.players.last?.playerID) : nil
+                content.highlighted = selected ? [.row(.creature(pet.id)), .searchHit(search.id)] : []
+                if selected, let player = variant == 1 ? content.players.first : content.players.last {
+                    content.highlighted.insert(.row(.player(player.playerID)))
+                }
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
                 #expect(image.data.count > 1_000)
                 let digest = SHA256.hash(data: image.data).map { String(format: "%02x", $0) }.joined()

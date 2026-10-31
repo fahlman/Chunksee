@@ -273,10 +273,7 @@ struct WorldView: View {
     }
 
     private var inspectorShown: Binding<Bool> {
-        Binding { session.selection.inspector != nil } set: {
-            if !$0 { session.selection.inspector = nil }
-            else if session.selection.inspector == nil { session.selection.inspector = .world }
-        }
+        Binding { session.selection.isInspectorShown } set: { session.selection.isInspectorShown = $0 }
     }
 
 }

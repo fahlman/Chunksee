@@ -30,24 +30,9 @@ nonisolated enum SidebarItem: Hashable, Sendable {
 }
 
 /// A drawn location identifies its sidebar row, or a search hit whose query the session resolves.
-enum MapTarget: Equatable {
+nonisolated enum MapTarget: Hashable, Sendable {
     case row(SidebarItem)
     case searchHit(SearchHit.ID)
-}
-
-/// Highlighted creature/portal or retained map overlay; the inspector resolves its item separately.
-enum MapSelection: Equatable {
-    case portal(NetherPortal)
-    case creature(CreatureMarker)
-    case inGameMap(MapItem)
-
-    var dimension: String? {
-        switch self {
-        case .portal(let portal): portal.dimension
-        case .creature(let creature): creature.dimension
-        case .inGameMap(let map): map.dimension
-        }
-    }
 }
 
 /// Current data for a sidebar identity. Selection resolves it again after a live update.
