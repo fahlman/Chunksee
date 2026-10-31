@@ -9,6 +9,7 @@ struct ModelObservationTests {
     @Observable final class Input {
         var primary = 0
         var alternate = 0
+        var secondary = 0
         var usesAlternate = false
         var probe = 0
         var selected: Int { usesAlternate ? alternate : primary }
@@ -117,6 +118,36 @@ struct ModelObservationTests {
         input.probe += 1
         #expect(count.value == before + 1)
         withExtendedLifetime((derived, consumer)) {}
+    }
+
+    @Test func nestedReactionsRetireCapturedCallbacksInEitherDeliveryOrder() {
+        let input = Input(), leftCount = Count(), rightCount = Count()
+        let left = ModelObservation(leftCount, isActive: { _ in true }, read: { _ in
+            _ = input.primary
+            _ = input.alternate
+            _ = input.probe
+        }) { count, _ in
+            count.value += 1
+            if input.secondary != input.primary { input.secondary = input.primary }
+        }
+        let right = ModelObservation(rightCount, isActive: { _ in true }, read: { _ in
+            _ = input.primary
+            _ = input.secondary
+            _ = input.probe
+        }) { count, _ in
+            count.value += 1
+            if input.alternate != input.primary { input.alternate = input.primary }
+        }
+        // The outer setter captures both callbacks. Whichever runs first publishes the other's
+        // dependency, retiring its captured registration before the outer delivery reaches it.
+        for value in 1...3 {
+            input.primary = value
+            let before = (leftCount.value, rightCount.value)
+            input.probe += 1
+            #expect(leftCount.value == before.0 + 1)
+            #expect(rightCount.value == before.1 + 1)
+        }
+        withExtendedLifetime((left, right)) {}
     }
 
     @Test func querySourceWorkStaysBoundedAfterNestedReplacement() async {
