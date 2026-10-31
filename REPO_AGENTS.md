@@ -1570,7 +1570,11 @@ shows its earlier RC. Compiler and SDK versions below are from the selected fina
 Xcode's Metal Toolchain component must also be installed to compile `MapLighting.metal`.
 If Xcode reports that component missing, restore it with
 `xcodebuild -downloadComponent MetalToolchain`; `xcrun metal --version` verifies that it can run.
-`xcodebuild -checkFirstLaunchStatus` must succeed before the required build/test checks.
+Record the exit status and output of `xcodebuild -checkFirstLaunchStatus` with the check
+evidence. A nonzero setup status does not, on its own, block the required Release build and
+tests. Both actual checks must pass with the selected toolchain and pinned dependencies;
+preserve and diagnose any failure. Setup status is an environment diagnostic, not evidence
+that the app builds or its tests pass.
 This setup does not change the project's Swift language mode or minimum macOS.
 
 The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
