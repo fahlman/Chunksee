@@ -608,8 +608,10 @@ Saved Place, Portal Plan and All Statistics. WorldView has one native sheet pres
 toolbars and inspectors send presentation requests to the session. Focused world commands and
 search derive their availability from the absence of that value, including All Statistics, so a
 new sheet cannot be omitted from a separate suppression list. Other windows keep their own
-command availability. Native Inspector and Sidebar commands keep Apple's implementation; their
-SwiftUI bindings accept changes only through the same command-availability rule.
+command availability. Native Inspector commands keep Apple's implementation; the inspector's
+SwiftUI binding accepts changes only through the same command-availability rule. Sidebar visibility
+stays under native split-view control, including while a sheet is open. It changes layout without
+changing selection or world state.
 Dismissal clears the value; document close clears it and refuses new
 presentation. The coordinate sheet keeps its existing native controls and calls MapNavigation.
 Go to Coordinates uses one native field for X Z or the copied Minecraft X Y Z format. MapCoordinates
