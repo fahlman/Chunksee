@@ -93,11 +93,11 @@ extension EnvironmentValues {
 
 /// A document retains its shared library. Changing the chosen folder makes
 /// old pictures ineligible immediately; returning to the app also notices a replaced jar.
+/// The world observes folder changes, so this task only revalidates on activation or language change.
 struct WorldGameAssets: ViewModifier {
     let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
     private struct Request: Equatable {
-        let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
         let preferredLanguage: String
@@ -110,7 +110,7 @@ struct WorldGameAssets: ViewModifier {
         content
             .environment(\.gameArtworkLibrary, world.gameArtworkLibrary(for: source))
             .environment(\.gameNames, world.gameNames)
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
+            .task(id: Request(phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
                 world.refreshGameLanguage(preferredLanguage: preferredLanguage)
                 world.refreshGameAssets()

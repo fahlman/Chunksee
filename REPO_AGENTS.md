@@ -558,7 +558,7 @@ older scan envelopes.
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `WorldQueryStore.swift` | Independent per-dimension search controls, saved-query commands and the shared sidebar/map result projection; WorldQueryStore owns the world's typed and saved query publications |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
-| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
+| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; coherent observed source replacement, newest installed release selection, file identity and weak sharing across live documents |
 | `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
 | `GameArtworkLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
@@ -1787,7 +1787,11 @@ while choosing a source. One file shares its separate data and artwork actors ac
 
 A changed folder generation retires the previous registry through MinecraftResources' background
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
-access until cleanup completes. MinecraftResources also notifies each open world directly.
+access until cleanup completes. Permission, registry and generation publish as one observed source
+value after the bookmark is updated. WorldResources observes that source and the artwork choice
+through Observation, including when every tab is hidden. No custom notification list or observer
+token remains. An unchanged artwork choice requests no new read; a closed world ignores later
+changes, and its observation does not retain it.
 WorldResources owns one game-library RefreshLoader, seeded with WorldPreparation's actual source
 and completed selection. A successful selection can contain no library, independently of a failed
 or unfinished read. Same-source activations coalesce while preserving completed progress; a folder
@@ -1806,7 +1810,9 @@ replace the source or close the loader. This avoids nested delivery and a deferr
 dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
-file identity. Definition, player and index generations reject canceled/closed-world results.
+file identity. The view task follows activation, world identity and language preference; source
+replacement belongs to the world observer and cannot also restart that task. Definition, player
+and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
