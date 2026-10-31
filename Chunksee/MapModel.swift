@@ -69,6 +69,7 @@ final class MapModel {
     private var renderer: RegionTileRenderer?
     private let chunkConcurrency: Int
     @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
+    @ObservationIgnored private var gameResourceObservationID: UUID?
     @ObservationIgnored private let readDefinitions: @MainActor () -> MapDefinitions
     private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
     private var gameData: GameDataLibrary? { gameResources.data }
@@ -925,6 +926,8 @@ final class MapModel {
     /// identities rather than libraries so the observation does not retain a retired archive.
     private func observeGameResources() {
         guard !isClosed else { return }
+        let id = UUID()
+        gameResourceObservationID = id
         let previous = gameResources.identity
         withObservationTracking(options: [.didSet]) {
             _ = gameResources
@@ -932,7 +935,8 @@ final class MapModel {
             // Retire this tracking before a nested publication can re-enter it.
             event.cancel()
             MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
+                // Cancellation cannot remove a callback already captured by another setter.
+                guard let self, !self.isClosed, self.gameResourceObservationID == id else { return }
                 self.observeGameResources()
                 let current = self.gameResources.identity
                 guard previous != current else { return }
