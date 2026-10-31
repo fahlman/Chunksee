@@ -148,11 +148,13 @@ import Testing
             #expect(tile.cacheWrite == nil)
             #expect(tile.full.image.dataProvider?.data as Data? == saved[style])
         }
-        let changedScale = try heightScale(sea: 80), file = dimension.regionURL(at: region)
+        let changedScale = try heightScale(sea: 80)
         for y in [Int?.none, 30] {
             for style in MapStyle.allCases {
-                let before = try #require(TileCache.key(for: region, regionFile: file, cutawayY: y, style: style, heightScale: scale))
-                let after = try #require(TileCache.key(for: region, regionFile: file, cutawayY: y, style: style, heightScale: changedScale))
+                var renderer = RegionTileRenderer(dimension: dimension, cutawayY: y, style: style, heightScale: scale)
+                let before = try #require(renderer.cacheKey(for: region))
+                renderer.heightScale = changedScale
+                let after = try #require(renderer.cacheKey(for: region))
                 #expect((before == after) == (style != .height))
             }
         }

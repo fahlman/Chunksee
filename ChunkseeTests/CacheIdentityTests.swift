@@ -6,18 +6,15 @@ import Testing
 @testable import ChunkseeTestHost
 
 extension TileCache {
-    /// Disk-format fixtures use the style's declared inputs, without inventing game libraries
-    /// for their synthetic source identities. Production renderers also supply neighbor files.
+    /// Disk-format fixtures use explicit Normal inputs. Style and game-source behavior
+    /// must be checked through RegionTileRenderer.cacheKey, which owns those decisions.
     nonisolated static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown,
-                    cutawayY: Int? = nil, style: MapStyle = .normal, heightScale: MapHeightScale? = nil,
-                    blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: RegionTileRenderer.ColorSource? = nil,
-                    gameSource: GameResourceSource = .unavailable, darkSpots: DarkSpots? = nil) -> Key? {
+                    cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(),
+                    darkSpots: DarkSpots? = nil) -> Key? {
         key(for: region, regionFile: regionFile,
-            inputs: Inputs(context: context, cutawayY: cutawayY, style: style,
-                           assets: style.inputs.materialColors ? GameAssets.interpretationVersion : nil,
-                           heightScale: style.inputs.requiresHeightScale ? heightScale : nil,
-                           blockFilter: blockFilter, colorSource: style.inputs.materialColors ? colorSource : nil,
-                           gameSource: style.inputs.materialColors ? gameSource : .unavailable,
+            inputs: Inputs(context: context, cutawayY: cutawayY, style: .normal,
+                           assets: GameAssets.interpretationVersion, heightScale: nil,
+                           blockFilter: blockFilter, colorSource: nil, gameSource: .unavailable,
                            samplesNeighborBiomes: false, darkSpots: darkSpots), biomeFiles: nil)
     }
 }
