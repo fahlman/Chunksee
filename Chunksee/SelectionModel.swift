@@ -163,8 +163,11 @@ final class SelectionModel {
         case .inGameMap(let map)?: overlayID = map.id
         case .savedPlace?, .structure?, .biome?, .hit?, nil: break
         }
-        inspectorIsShown = true
-        if resolved != nil { followHeight(height) }
+        // Clearing a selection must not reopen hidden details for a retained map.
+        if resolved != nil {
+            inspectorIsShown = true
+            followHeight(height)
+        }
     }
 
     /// Only sidebar input navigates and reveals a hidden layer; map input keeps focus/viewport.

@@ -637,6 +637,48 @@ import Testing
         session.close(); await session.waitUntilClosed()
     }
 
+    @Test(arguments: [false, true])
+    func clearingMapSelectionKeepsTheRetainedMapAndInspectorVisibility(shown: Bool) async throws {
+        let url = try selectionWorld()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let defaults = TestDefaults.make()
+        let session = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
+        defer { session.close() }
+        await session.search.waitForIndex()
+        let map = try #require(session.map)
+        let overlay = try #require(session.presentation.inGameMaps.first { $0.id == 3 })
+        let place = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: .zero))
+        let emptyTargets: [MapTarget?] = [nil, .row(.place("removed")), .searchHit("removed")]
+        var disclosure = SidebarDisclosure()
+        for target in emptyTargets {
+            session.selection.show(overlay)
+            session.selection.mapClicked(.row(.savedPlace(place.id)), y: nil)
+            session.selection.isInspectorShown = shown
+            let viewport = map.viewport, depth = map.depth
+
+            disclosure.selectOnMap(target, y: 123, in: session)
+
+            #expect(session.selection.sidebarSelection == nil && session.selection.highlighted.isEmpty)
+            #expect(session.selection.inGameMapOverlay == overlay && MapContent(session: session).inGameMap?.map == overlay)
+            #expect(session.selection.isInspectorShown == shown)
+            #expect(map.viewport == viewport && map.depth == depth)
+            if shown {
+                guard case .inGameMap(let displayed)? = session.selection.inspectorItem else {
+                    Issue.record("Clearing a location keeps visible details on the retained map"); return
+                }
+                #expect(displayed == overlay)
+            } else {
+                #expect(session.selection.inspector == nil && session.selection.inspectorItem == nil)
+            }
+
+            // An explicit marker choice still opens its details from either visibility state.
+            disclosure.selectOnMap(.row(.savedPlace(place.id)), y: nil, in: session)
+            #expect(session.selection.isInspectorShown && session.selection.sidebarSelection == .savedPlace(place.id))
+            #expect(session.selection.highlighted == [.row(.savedPlace(place.id))])
+        }
+        session.close(); await session.waitUntilClosed()
+    }
+
     @Test func mapEscapeClearsSelectionOnlyAfterTheRulerFinishesCancelling() async throws {
         let url = try selectionWorld()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -715,6 +757,12 @@ import Testing
             let inspector = session.selection.inspector
             session.selection.mapClicked(nil, y: nil)
             #expect(session.selection.sidebarSelection == row && session.selection.inspector == inspector)
+            let viewport = session.map?.viewport, depth = session.map?.depth
+            session.selection.isInspectorShown = false
+            #expect(session.selection.sidebarSelection == row && session.selection.inspector == nil)
+            session.selection.repeatSelection(row)
+            #expect(session.selection.sidebarSelection == row && session.selection.inspector == inspector)
+            #expect(session.map?.viewport == viewport && session.map?.depth == depth)
         }
         session.close(); await session.waitUntilClosed()
     }
