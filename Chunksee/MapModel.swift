@@ -72,6 +72,9 @@ final class MapModel {
     private var renderer: RegionTileRenderer?
     private let chunkConcurrency: Int
     @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
+    @ObservationIgnored private var gameResourceObservation: ModelObservation?
+    @ObservationIgnored private var definitionObservation: ModelObservation?
+    @ObservationIgnored private var lightingObservation: ModelObservation?
     @ObservationIgnored private let readDefinitions: @MainActor () -> MapDefinitions
     private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
     private var gameData: GameDataLibrary? { gameResources.data }
@@ -444,6 +447,9 @@ final class MapModel {
     }
 
     func close() {
+        definitionObservation?.cancel()
+        lightingObservation?.cancel()
+        gameResourceObservation?.cancel()
         renderWork.close()
         readoutWork.close()
         activeTopBlockReads = [:]
@@ -785,15 +791,10 @@ final class MapModel {
     }
 
     private func observeDefinitions() {
-        guard !isClosed else { return }
-        withObservationTracking(options: [.didSet]) {
-            _ = readDefinitions()
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeDefinitions()
-                self.adoptDefinitions()
-            }
+        definitionObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.readDefinitions()
+        }) { model, _ in
+            model.adoptDefinitions()
         }
     }
 
@@ -849,25 +850,18 @@ final class MapModel {
     /// Its loader and test publications are main-actor isolated. didSet runs on that setter's
     /// actor, so synchronous invalidation needs neither an unowned task nor a second fact copy.
     private func observeLighting() {
-        guard !isClosed else { return }
-        let previous = savedLighting, previousNight = nightLighting
-        withObservationTracking(options: [.didSet]) {
-            _ = savedLighting
-            _ = nightLighting
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeLighting()
-                if previousNight != self.nightLighting, self.showsDarkSpots {
-                    self.surfaceChanged(coordinatesChanged: false)
-                    return
-                }
-                guard previous != self.savedLighting else { return }
-                let prepared = self.lighting(using: previous) != nil
-                let previousLight = self.shadowLight(using: previous)
-                if prepared != (self.lighting != nil) { self.reloadTiles() }
-                else if previousLight != self.shadowLight { self.invalidateShadows(); self.updateLoadingState() }
+        lightingObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (lighting: $0.savedLighting, night: $0.nightLighting)
+        }) { model, previous in
+            if previous.night != model.nightLighting, model.showsDarkSpots {
+                model.surfaceChanged(coordinatesChanged: false)
+                return
             }
+            guard previous.lighting != model.savedLighting else { return }
+            let prepared = model.lighting(using: previous.lighting) != nil
+            let previousLight = model.shadowLight(using: previous.lighting)
+            if prepared != (model.lighting != nil) { model.reloadTiles() }
+            else if previousLight != model.shadowLight { model.invalidateShadows(); model.updateLoadingState() }
         }
     }
 
@@ -926,21 +920,15 @@ final class MapModel {
     /// World and test publications are main-actor isolated, as with lighting above. Capture
     /// identities rather than libraries so the observation does not retain a retired archive.
     private func observeGameResources() {
-        guard !isClosed else { return }
-        let previous = gameResources.identity
-        withObservationTracking(options: [.didSet]) {
-            _ = gameResources
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeGameResources()
-                let current = self.gameResources.identity
-                guard previous != current else { return }
-                let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
-                if readoutsChanged { self.resetTopBlockReads() }
-                if self.style != .height { self.reloadTiles() }
-                if readoutsChanged { self.updateTopBlockReads() }
-            }
+        gameResourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            $0.gameResources.identity
+        }) { model, previous in
+            let current = model.gameResources.identity
+            guard previous != current else { return }
+            let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
+            if readoutsChanged { model.resetTopBlockReads() }
+            if model.style != .height { model.reloadTiles() }
+            if readoutsChanged { model.updateTopBlockReads() }
         }
     }
 
