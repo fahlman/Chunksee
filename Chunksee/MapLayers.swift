@@ -4,6 +4,7 @@ import SwiftUI
 
 /// A kind of map marker that the sidebar lists, and can show or hide.
 nonisolated protocol MapLayerGroup: Hashable {
+    var id: String { get }
     func name(in gameNames: GameNames) -> String
     var symbol: String { get }
 }
@@ -26,12 +27,15 @@ extension MapLayerMarker {
 }
 
 extension StructureGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
     nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
 }
 extension PlaceGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
     nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
 }
 extension CreatureGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
     nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
 }
 extension StructureMarker: MapLayerMarker {
@@ -71,7 +75,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
-        let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name(in: gameNames) < $1.name(in: gameNames) }
+        let groups = gameNames.layerGroups(Set(byGroup.keys).union(allGroups))
         ForEach(groups, id: \.self) { group in
             if byGroup[group] == nil {
                 row(group, count: 0)

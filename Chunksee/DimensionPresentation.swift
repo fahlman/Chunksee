@@ -151,8 +151,11 @@ final class DimensionPresentation {
         guard let source else { return [] }
         let gameNames = source.resources.gameNames
         return source.search.index.creatures.map(\.value).filter { $0.creature.owner == playerID && $0.carrier != playerID }
-            .sorted { ($0.dimension, gameNames.creature($0.creature), $0.id)
-                < ($1.dimension, gameNames.creature($1.creature), $1.id) }
+            .sorted {
+                if $0.dimension != $1.dimension { return $0.dimension < $1.dimension }
+                return GameNames.namePrecedes(gameNames.creature($0.creature), id: $0.id,
+                                             gameNames.creature($1.creature), id: $1.id)
+            }
     }
 
     var hasUnnamedPlayers: Bool {
