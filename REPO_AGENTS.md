@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.81.0`, resolved to `0.81.0` (`8151a2ad7bcfc2f02282368e1f475758ecabe389`).
+  minor" from `0.82.0`, resolved to `0.82.0` (`b745edb5bec8d8e02f708f4087f31e7f54fb87e4`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -1836,8 +1836,9 @@ index, query, player-record, selection and overlay consumers. It cancels a fired
 rejects already-captured retired callbacks before rearming. The next registration is installed
 before the reaction, preserving changes made by nested publications. Reads only capture inputs;
 reactions retain each model's existing invalidation and request policy. Models cancel their
-observation when closing, and observation never retains its owner. It adds no background task or
-editable snapshot. The native continuous-observation runner is asynchronous, so these consumers
+observation when closing, and observation never retains its owner. The slime layer also stops
+observing when its world closes. It adds no background task or editable snapshot. The native
+continuous-observation runner is asynchronous, so these consumers
 keep didSet tracking to invalidate old sources before the setter returns.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
@@ -2335,7 +2336,18 @@ MapView.readout requires an explicit naming snapshot, and its former describe po
 The shared equipment section gets its slot headings from GameNames.equipmentSlot, preserving the
 existing app wording and readable fallback for unfamiliar saved slots. EquipmentPresentation owns
 only the nonempty rows and their order; player and creature equipment membership is unchanged.
-Game-rule consumers and the final naming audit remain before foundation step 5e and #438 are
+World Info gets game-rule names and sorted rows from GameNames, retaining every raw saved ID and
+value. Modern IDs use the game's registry description-key format. Older literal keys can use the
+direct replacement exposed by Kit 0.82.0 from the selected game's language metadata; the app does
+not guess replacements or follow chains. Per-key selected-language/English fallback and readable
+saved words remain available without artwork or game files. WorldDetails retains the typed
+wandering-trader rule interpretation and no longer formats rule names.
+The registry description-key format has one owner inside GameNames. Displayed rule, block,
+map-group and mob names use its shared localized natural comparison with saved IDs as the
+equal-name tie-break; storage and search item summaries use that comparison after their existing
+quantity priority. Linked pets use it within each dimension, retaining dimension-first grouping.
+LayerGroups asks the service for ordered groups and does not choose its own name order.
+The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use

@@ -253,8 +253,9 @@ import Testing
             try Data(Compression.deflate(root.serialized(), gzip: true)).write(to: file)
             let details = WorldDetails.read(try World(contentsOf: url))
             #expect(details.wanderingTradersAreOff == off)
-            #expect(Set(details.gameRuleRows.map(\.id)) == Set(rules.keys))
-            #expect(details.gameRuleRows.map(\.name) == details.gameRuleRows.map(\.name).sorted())
+            let rows = GameNames.unavailable.gameRules(details.gameRules)
+            #expect(Set(rows.map(\.id)) == Set(rules.keys))
+            #expect(rows.map(\.name) == rows.map(\.name).sorted())
         }
         // Before separate saved data, the same app presentation reads the legacy string rule.
         try FileManager.default.removeItem(at: file)
@@ -266,8 +267,8 @@ import Testing
     }
 
     @Test func ruleNamesAndClock() {
-        #expect(WorldDetails.readableRule("minecraft:keep_inventory") == "Keep Inventory")
-        #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
+        #expect(GameNames.unavailable.gameRule("minecraft:keep_inventory") == "Keep Inventory")
+        #expect(GameNames.unavailable.gameRule("doDaylightCycle") == "Do Daylight Cycle")
         #expect(WorldDetails.clockTime(ofDayTicks: 0) == (6, 0))
         #expect(WorldDetails.clockTime(ofDayTicks: 18_000) == (0, 0))
         #expect(WorldDetails.clockTime(ofDayTicks: 24_000 * 3 + 4_245) == (10, 14))
@@ -288,7 +289,7 @@ import Testing
         let defaults = TestDefaults.make()
         let session = try await WorldSession.open(world, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
         defer { session.close() }
-        #expect(session.details.gameRuleRows.map(\.name) == ["Keep Inventory"])
+        #expect(session.resources.gameNames.gameRules(session.details.gameRules).map(\.name) == ["Keep Inventory"])
         #expect(session.details.wanderingTrader?.spawnDelay == 20_400 && session.details.wanderingTrader?.spawnChance == 75)
         #expect(MapContent(session: session).border?.size == 2000)
         session.selection.inspector = .world
