@@ -28,6 +28,7 @@ final class WorldQueryStore {
     private let gameNames: @MainActor () -> GameNames
     private let singleplayerUUID: @MainActor () -> UUID?
     private let execute: Read
+    @ObservationIgnored private var sourceObservation: ModelObservation?
     private let work: BackgroundWork.Scope
     private var shared: [String: Shared] = [:]
     @ObservationIgnored private var windows: [UUID: Window] = [:]
@@ -226,22 +227,16 @@ final class WorldQueryStore {
     /// One world observation updates sources even with no visible window. A window only
     /// supplies its current query; it neither builds inputs nor republishes completed hits.
     private func observeSources() {
-        guard !isClosed else { return }
-        withObservationTracking(options: [.didSet]) {
-            _ = index.snapshot
-            _ = index.playerRoster.snapshot
-            _ = names.local
-            _ = names.online
-            _ = savedSearches.all
-            _ = singleplayerUUID()
-            _ = gameNames().identity
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeSources()
-                self.refresh()
-            }
+        sourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.index.snapshot
+            _ = $0.index.playerRoster.snapshot
+            _ = $0.names.local
+            _ = $0.names.online
+            _ = $0.savedSearches.all
+            _ = $0.singleplayerUUID()
+            _ = $0.gameNames().identity
+        }) { store, _ in
+            store.refresh()
         }
     }
 
@@ -321,6 +316,7 @@ final class WorldQueryStore {
     }
 
     func close() {
+        sourceObservation?.cancel()
         work.close()
         for window in windows.values { window.loader.close() }
         for entry in shared.values {

@@ -351,8 +351,7 @@ nonisolated enum WorldSearch {
         guard !totals.isEmpty else { return nil }
         let matches = totals.quantities.sorted {
             if $0.value != $1.value { return $0.value > $1.value }
-            if $0.key.text != $1.key.text { return $0.key.text < $1.key.text }
-            return $0.key.id < $1.key.id
+            return GameNames.namePrecedes($0.key.text, id: $0.key.id, $1.key.text, id: $1.key.id)
         }.map { SearchHit.ItemMatch(name: $0.key.name, count: $0.value) }
         return ItemSummary(items: matches)
     }
