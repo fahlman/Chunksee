@@ -74,21 +74,21 @@ import Testing
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
         await world.waitForRefresh()
         let records = try #require(await world.playerRecords(for: player, name: nil))
-        let names = world.gameNames, generation = world.definitionReadGeneration
+        let names = world.gameNames, generation = world.definitionInput
         #expect(records.advancements.count == 7 && records.completedAdvancements.count == 5)
         #expect(records.statistics?.value("minecraft:deaths") == 4)
-        #expect(names.advancement(diamond, title: records.title(for: diamond, generation: generation)) == "Vrais diamonds")
-        #expect(records.title(for: "story/mine_diamond", generation: generation) == records.title(for: diamond, generation: generation))
-        #expect(names.advancement("test:literal", title: records.title(for: "test:literal", generation: generation)) == "Literal title!")
+        #expect(names.advancement(diamond, title: records.title(for: diamond, input: generation)) == "Vrais diamonds")
+        #expect(records.title(for: "story/mine_diamond", input: generation) == records.title(for: diamond, input: generation))
+        #expect(names.advancement("test:literal", title: records.title(for: "test:literal", input: generation)) == "Literal title!")
         for id in ["test:dynamic", "test:missing_title", "test:unknown"] {
-            #expect(records.title(for: id, generation: generation) == nil)
+            #expect(records.title(for: id, input: generation) == nil)
             #expect(records.completedAdvancements.contains { $0.id == id })
         }
         #expect(names.advancement(diamond, title: nil) == "Story Mine Diamond") // No invented key lookup.
         var unowned = records
-        unowned.definitionGeneration = nil
-        #expect(unowned.title(for: diamond, generation: generation) == nil)
-        #expect(records.title(for: diamond, generation: generation + 1) == nil)
+        unowned.definitionInput = nil
+        #expect(unowned.title(for: diamond, input: generation) == nil)
+        #expect(records.title(for: diamond, input: WorldDefinitionInput()) == nil)
         let unavailable = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: nil)
         #expect(unavailable.advancements == records.advancements && unavailable.statistics == records.statistics)
         #expect(unavailable.advancementDefinitions.isEmpty)
@@ -161,14 +161,14 @@ import Testing
         world.refreshGameLanguage(preferredLanguage: "en_US")
         await world.waitForRefresh()
         let original = try #require(await world.playerRecords(for: player, name: nil))
-        let generation = world.definitionReadGeneration, namesIdentity = world.gameNames.identity
+        let generation = world.definitionInput, namesIdentity = world.gameNames.identity
         for usesArtwork in [false, true, false] {
             world.names.minecraft.usesGameArtwork = usesArtwork
             await world.waitForRefresh()
             let records = try #require(await world.playerRecords(for: player, name: nil))
-            #expect(world.definitionReadGeneration == generation && world.gameNames.identity == namesIdentity)
+            #expect(world.definitionInput == generation && world.gameNames.identity == namesIdentity)
             #expect(records.advancements == original.advancements && records.statistics == original.statistics)
-            #expect(PlayerRecords.advancementName(diamond, title: records.title(for: diamond, generation: generation),
+            #expect(PlayerRecords.advancementName(diamond, title: records.title(for: diamond, input: generation),
                                                  gameNames: world.gameNames) == "Actual diamonds")
         }
         world.close()
@@ -189,10 +189,10 @@ import Testing
         }
         let original = Task { await world.playerRecords(for: player, name: nil) }
         await gate.waitForRequest("0")
-        let initialGeneration = world.definitionReadGeneration
+        let initialGeneration = world.definitionInput
         world.names.minecraft.choose(second.root)
         await world.waitForRefresh()
-        #expect(world.definitionReadGeneration != initialGeneration)
+        #expect(world.definitionInput != initialGeneration)
         await gate.finish("0", with: ())
         #expect(await original.value == nil)
 
@@ -215,11 +215,11 @@ import Testing
         await gate.waitForRequest("3")
         await gate.finish("3", with: ())
         let current = try #require(await packed.value)
-        #expect(current.title(for: diamond, generation: world.definitionReadGeneration) == .literal("Pack title"))
+        #expect(current.title(for: diamond, input: world.definitionInput) == .literal("Pack title"))
         _ = try pack(at: root, enabled: true, title: "Changed pack title")
         world.worldChanged([root.appendingPathComponent("datapacks/titles/data/minecraft/advancement/story/mine_diamond.json")])
         await world.waitForRefresh()
-        #expect(current.title(for: diamond, generation: world.definitionReadGeneration) == nil)
+        #expect(current.title(for: diamond, input: world.definitionInput) == nil)
         #expect(current.completedAdvancements.count == 5 && current.statistics?.value("minecraft:deaths") == 4)
 
         let closing = Task { await world.playerRecords(for: player, name: nil) }

@@ -447,22 +447,48 @@ and the tag's membership identity is computed once in the immutable surface cont
 Water inputs are explicit, so omitting an argument cannot drop the composed tag.
 Tile renderer version 35 discards the older fluid classification and water pixels.
 The depth cap and Height/Water Depth scales remain.
-WorldDetails owns one WorldDefinitions snapshot, loaded off-main through Kit with the selected
-jar and the world's enabled packs. Opening first uses available world-pack facts; the shared game
-request adds installed resources. Each resource category remains independently available. A failed
+WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
+jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
+by WorldPreparation. Each resource category remains independently available. A failed
 player refresh retains the previous coherent definitions/player snapshot until the next save. Initial player reads, later player reads and region scans use
 its same enchantment dictionary. It also supplies dimension settings, possible biome associations,
 trading definitions and the shared NotableBlock.Catalog. Current health and other saved facts stay
 available when maximum health cannot be established.
 
+Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
+definition demand dominates player-only demand. A failed dependent player read can still publish
+the independently read saved version, while keeping coherent facts and retrying the stronger
+request on the next external demand. Replacing game inputs cancels obsolete reads while retaining
+the completed definition/player facts until their coherent replacement is ready. Those retained
+facts carry the producing game generation and library identity; they are never relabeled as
+the new source. This producer's compatible projection retains the completed scale and reader
+inputs instead of publishing an unread unknown. MapModel owns the retained style choice.
+Retired in-flight results still cannot publish.
+The definition input distinguishes a game selection still loading from a completed selection
+with no library. Loading invalidates titles and cancels old reads immediately, but queues the
+replacement read until discovery completes; failed discovery retains the coherent facts. A
+completed absence starts a real no-game read and removes facts the remaining world packs cannot
+supply. This preserves Height when reselecting game files without retaining an unavailable scale
+after a confirmed removal.
+Prepared dimension additions extend only new settings synchronously; later
+definition reads remain authoritative. WorldDetails projects definitions and borders from this
+publication; its other opening facts remain for step 5b. Player/index/search consumers share the
+producer's immutable player snapshot rather than another editable roster. Maps observe explicit
+definition inputs, and Time Spent observes its reader; neither receives manual refresh pushes.
+
+MapDefinitions supplies one dimension-settings and water-tag derivation to both scans and drawing.
 MapSurfaceContext derives normal-view choices from resolved type/generation facts: known build
 height reaches the shared heightmap reader; a known ceiling with nonempty generation bounds uses
 the surface-rule range's upper plane for roof hiding and middle plane for biome sampling. Unknown
 context keeps the actual surface, without a dimension-name ceiling fallback. Explicit cutaways
 keep their chosen Y. Source/pack replacement updates each map's height scale and renderer context,
-cancels obsolete renders/coordinate reads, and replaces the world's immutable region readers.
-Their scan options include the enchantments and tag-derived block IDs; each shared index uses the
-same catalog. Old index passes cannot publish into the replacement generation. Heat maps rebind to
+cancels obsolete renders/coordinate reads, and replaces region readers only when their consumed
+inputs change. RegionReader.Inputs owns the scan options and notable-block/structure-group
+catalogs used by each reader. WorldResources compares that value and uses one factory for opening,
+new dimensions and replacement. Leaf membership, trades, possible-biome lists and other unconsumed
+definition facts cannot discard readers or the index. Their scan options include enchantments and
+tag-derived block IDs; each shared index uses the same catalog. Old index passes cannot publish
+into the replacement generation. Heat maps rebind to
 the new reader, and retired readers/loaders drain under the world's BackgroundWork owner.
 Tile renderer version 27 invalidates the previous interpretation. Source/color and surface keys
 continue to distinguish their own inputs; the published Kit's RegionFacts version 20 invalidates
@@ -1198,7 +1224,8 @@ coherent value and defers the interrupted refresh until demand returns; hiding a
 publication does not invalidate it. Source replacement clears incompatible values and cancels old
 work; its one active-read identity rejects late completions even when a source is selected again.
 Source and value publish together. A producer may project a compatible value during replacement;
-the default clears it, and the biome producer uses this only to retain numeric data across artwork changes.
+the default clears it. The biome producer retains numeric data across artwork changes; the definition
+producer retains its complete facts with their producing game source until replacement succeeds.
 The loader's BackgroundWork scope retains retired reads until they drain and rejects results after
 its own or its world's close. Heat-map reader replacement uses this same contract, without retiring
 and draining a second loader. Canceling a waiter does not cancel the shared read. WorldResources
@@ -2079,11 +2106,11 @@ using enabled world packs over the selected game jar through GameDataLibrary, in
 of the artwork setting. It never guesses a translation key from
 an advancement ID. Saved progress, dates and counts remain independent of unavailable titles;
 the readable ID is their fallback. Definitions reread fresh world metadata off the main actor.
-The existing WorldResources definition generation restarts an open player's read on game/pack
-changes and rejects obsolete results. A refresh retains that player's progress while old titles
+The loader's typed definition request identity restarts an open player's read on game/pack
+changes and rejects obsolete records. A refresh retains that player's progress while old titles
 become unavailable immediately; selecting a different player clears the previous records.
 Record reads require an explicit data library and the inspector model requires the world's
-guarded reader. Title presentation requires an explicit title and current definition generation;
+guarded reader. Title presentation requires an explicit title and current definition input;
 unpublished or retired definitions cannot bypass that check.
 
 GameText lays out Kit's interpreted literal, sequence and translated title components using the

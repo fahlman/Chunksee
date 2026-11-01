@@ -8,7 +8,7 @@ nonisolated struct PlayerRecords: Sendable {
     var statistics: PlayerStatistics?
     var advancements: [AdvancementProgress] = []
     var advancementDefinitions: [String: AdvancementDefinition] = [:]
-    var definitionGeneration: Int?
+    var definitionInput: WorldDefinitionInput?
 
     /// Reads both files off the main actor. Statistics from before 1.7.6 are stored under the
     /// player's name, so `name` is tried when there's no file for the UUID.
@@ -74,8 +74,8 @@ nonisolated struct PlayerRecords: Sendable {
         gameNames.advancement(id, title: title)
     }
 
-    func title(for id: String, generation: Int) -> TextComponent.Content? {
-        guard definitionGeneration == generation, let identifier = Identifier(id) else { return nil }
+    func title(for id: String, input: WorldDefinitionInput) -> TextComponent.Content? {
+        guard definitionInput == input, let identifier = Identifier(id) else { return nil }
         return advancementDefinitions[identifier.description]?.title
     }
 
@@ -206,7 +206,7 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 /// Statistics and advancements sections of the player inspector.
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
-    let definitionGeneration: Int
+    let definitionInput: WorldDefinitionInput
     @Environment(\.gameNames) private var gameNames
     @Binding var showsAllStatistics: Bool
 
@@ -227,7 +227,7 @@ struct PlayerRecordsSections: View {
                 Section {
                     ForEach(records.displayedAdvancements, id: \.id) { advancement in
                         LabeledContent(PlayerRecords.advancementName(advancement.id,
-                            title: records.title(for: advancement.id, generation: definitionGeneration), gameNames: gameNames)) {
+                            title: records.title(for: advancement.id, input: definitionInput), gameNames: gameNames)) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }

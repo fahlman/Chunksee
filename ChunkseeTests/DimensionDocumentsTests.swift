@@ -477,7 +477,7 @@ import Testing
         #expect(await gate.requested == ["region"])     // the queued pass never ran
     }
 
-    @Test func anOlderPlayerReadCannotOverwriteANewerOne() async throws {
+    @Test func playerSavesKeepCurrentProgressThenPublishTheFollowingRead() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let session = WorldSession(resources: resources)
@@ -495,9 +495,10 @@ import Testing
         resources.worldChanged([file])
         await gate.waitForRequest("read0")              // the first refresh is reading the older file
         resources.worldChanged([file])
-        await gate.waitForRequest("read1")              // a second refresh reads the newer one
-        await gate.finish("read1", with: [player(atX: 200)])
         await gate.finish("read0", with: [player(atX: 100)])
+        await gate.waitForRequest("read1")              // same-source saves follow the running pass
+        #expect(resources.players.first?.position?.x == 100)
+        await gate.finish("read1", with: [player(atX: 200)])
         await resources.waitForRefresh()
         #expect(resources.players.first?.position?.x == 200)
         #expect(resources.playerSnapshot !== originalPlayers)

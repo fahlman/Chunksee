@@ -662,7 +662,7 @@ import Testing
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
             renderTile: { renderer, region in
                 // Only hold the visible tile under test. Shadow-height neighbors can finish
                 // normally without taking a gate intended for this tile's replacement.
@@ -934,7 +934,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
                            cacheDirectory: url.appendingPathComponent("tiles"))
         map.setCastsShadows(false)
         gameResources.value = MapGameResources(data: library.data, artwork: library, biomeColors: try await library.data.biomeColors(in: world, artwork: library))
@@ -971,7 +971,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         gameResources.value = MapGameResources(data: library.data, artwork: library, biomeColors: try await library.data.biomeColors(in: world, artwork: library))
         map.setBiomeBlending(true)
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 16, height: 16), blocksPerPixel: 1)

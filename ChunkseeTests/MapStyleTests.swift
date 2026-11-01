@@ -2,9 +2,15 @@ import AppKit
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Observation
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
+
+@Observable @MainActor private final class MapStyleDefinitions {
+    var value: MapDefinitions
+    init(_ value: MapDefinitions) { self.value = value }
+}
 
 @Suite(.isolatedStores) struct MapStyleTests {
     @Test func heightScaleChangesPreparedPicturesWithoutRetiringUnlitNormalTiles() async throws {
@@ -135,7 +141,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), heightScale: scale,
+        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             renderTile: { renderer, _ in await render.read(renderer.style.rawValue) },
             readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
@@ -189,7 +195,7 @@ import Testing
         #expect(second.map?.style == .waterDepth)
         // An unreadable saved build range cannot enable a guessed height scale.
         let dimension = try #require(resources.world.dimension("overworld"))
-        let unknown = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         unknown.setStyle(.height)
         #expect(unknown.style == .normal)
         unknown.setStyle(.waterDepth)
@@ -289,11 +295,12 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
-            work: BackgroundWork(), dimension: dimension, center: .zero, heightScale: MapHeightScale(settings: settings))
+        let definitions = MapStyleDefinitions(.init(settings: settings, water: nil))
+        let map = MapModel(definitions: { definitions.value }, gameResources: { .unavailable },
+            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
-        map.setDimensionSettings(nil, water: nil)
+        definitions.value = .unknown
         #expect(map.chosenStyle == .height && map.style == .normal)
 
         let menu = NSHostingMenu(rootView: MapStyleOptions(map: map))
@@ -303,7 +310,7 @@ import Testing
         #expect(height.state == .off && !height.isEnabled)
         menu.performActionForItem(at: choice == .normal ? 0 : 2)
         #expect(map.chosenStyle == choice && map.style == choice)
-        map.setDimensionSettings(settings, water: nil)
+        definitions.value = .init(settings: settings, water: nil)
         #expect(map.chosenStyle == choice && map.style == choice)
         #expect(map.currentRenderer.style == choice)
     }

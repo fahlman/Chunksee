@@ -150,9 +150,11 @@ import Testing
         let file = url.appendingPathComponent("data/world_clocks.dat")
         resources.worldChanged([file]); await gate.waitForRequest("0")
         // Player entry is after refreshLighting in the actual file-change pass, proving each
-        // request reached the loader while its first read was held, without scheduler sleeps.
+        // request reached the lighting loader while its first read was held. Release each
+        // player read so the definition loader can start the next sequential pass.
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players")
+        await playerGate.finish("players", with: nil)
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players", count: 2)
         await playerGate.finishAll(with: nil)
@@ -249,8 +251,8 @@ import Testing
             .write(to: dimension.regionURL(at: neighbor))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let savedLighting = TestSavedLighting()
-        let work = BackgroundWork(), map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
-            maxTiles: 3, maxPreviews: 3, heightScale: scale)
+        let work = BackgroundWork(), map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+            maxTiles: 3, maxPreviews: 3)
         savedLighting.value = try lighting()
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(map.tiles[region]?.storageUnits == 2 && map.previews[region]?.storageUnits == 2)

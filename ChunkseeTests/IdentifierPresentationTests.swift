@@ -86,7 +86,7 @@ import Testing
         let data = try PropertyListEncoder().encode([stale])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
-        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, structureGroups: groups)).structures
+        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, inputs: .init(structureGroups: groups))).structures
         #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Village Plains")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }

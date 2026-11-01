@@ -47,7 +47,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         for example in examples {
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: example.point)
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: example.point)
             // Copy Coordinates can read a column before the pointer has hovered over its chunk.
             var read: RegionTileRenderer.TopBlock?
             map.readTopBlock(at: example.point) { read = $0 }

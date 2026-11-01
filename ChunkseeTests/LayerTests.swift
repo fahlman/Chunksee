@@ -5,7 +5,13 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
+import Observation
 @testable import ChunkseeTestHost
+
+@Observable private final class HeatReaderSource {
+    var reader: RegionReader?
+    init(_ reader: RegionReader?) { self.reader = reader }
+}
 
 @Suite(.isolatedStores) struct StructureTests {
     /// A structure start built the way chunks store it, read through ChunkseeKit's public API.
@@ -568,7 +574,7 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
+        let layer = HeatMapLayer(reader: { reader }, work: BackgroundWork())
         layer.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
@@ -602,10 +608,11 @@ enum StructureTestWorld {
         let gate = AsyncReadGate<RegionFacts>(), work = BackgroundWork()
         let older = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
         let newer = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
-        let layer = HeatMapLayer(reader: older, work: work)
+        let source = HeatReaderSource(older)
+        let layer = HeatMapLayer(reader: { source.reader }, work: work)
         layer.isShown = true
         await gate.waitForRequest("older")
-        layer.replaceReader(newer)
+        source.reader = newer
         await gate.waitForRequest("newer")
         await gate.finish("newer", with: try TestWorld.facts())
         // Replacement publishes while the retired read is still held. The loader's drain
@@ -633,7 +640,7 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
+        let layer = HeatMapLayer(reader: { reader }, work: BackgroundWork())
         layer.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)

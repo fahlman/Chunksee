@@ -122,6 +122,61 @@ struct RefreshLoaderTests {
         func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
     }
 
+    @Test(.timeLimit(.minutes(1))) func partialResultsPublishWithoutLosingFailedDemandOrStartingRetryLoops() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<RefreshRead<Int>>()
+        let loader = RefreshLoader(partialRead: { _, request, _ in await gate.read(request.rawValue) },
+            work: work, priority: .utility, whenInactive: .finish, source: "fixed", initialValue: 1,
+            firstRequest: Demand.metadata, merge: { $0.merging($1) })
+        loader.request(source: "fixed", isEnabled: true, refresh: .contents)
+        await gate.waitForRequest("contents"); await gate.finish("contents", with: .partial(2))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2)
+        #expect(await gate.requested == ["contents"])
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.waitForRequest("contents", count: 2)
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.finish("contents", with: .partial(3))
+        await gate.waitForRequest("contents", count: 3)
+        #expect(loader.value == 3)
+        await gate.finish("contents", with: .complete(4))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 4)
+        #expect(await gate.requested == ["contents", "contents", "contents"])
+        loader.request(source: "fixed", isEnabled: true, refresh: .metadata)
+        await gate.waitForRequest("metadata"); await gate.finish("metadata", with: .complete(5))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 5)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func partialPublicationObserversCanReplaceOrCloseWithoutLeakingRetryStrength(close: Bool) async {
+        let work = BackgroundWork(), gate = AsyncReadGate<RefreshRead<Int>>()
+        let loader = RefreshLoader(partialRead: { source, request, _ in await gate.read(source + request.rawValue) },
+            work: work, priority: .utility, whenInactive: .finish, source: "a", initialValue: 1,
+            firstRequest: Demand.metadata, merge: { $0.merging($1) })
+        withObservationTracking(options: [.didSet]) { _ = loader.value } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                if close { loader.close() }
+                else { loader.request(source: "b", isEnabled: true, refresh: .metadata) }
+            }
+        }
+        loader.request(source: "a", isEnabled: true, refresh: .contents)
+        await gate.waitForRequest("acontents"); await gate.finish("acontents", with: .partial(2))
+        if close {
+            await loader.waitUntilFinished()
+            #expect(loader.isClosed && loader.value == nil)
+            #expect(await gate.requested == ["acontents"])
+        } else {
+            await gate.waitForRequest("bmetadata"); await gate.finish("bmetadata", with: .complete(3))
+            await loader.waitUntilFinished()
+            #expect(loader.source == "b" && loader.value == 3)
+            #expect(await gate.requested == ["acontents", "bmetadata"])
+        }
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func typedRequestsKeepProgressAndMergeFollowingDemand() async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
         let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish, source: "fixed",

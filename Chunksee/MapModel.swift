@@ -71,6 +71,7 @@ final class MapModel {
     private var failed: Set<RegionPosition> = []
     private var renderer: RegionTileRenderer
     @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
+    @ObservationIgnored private let readDefinitions: @MainActor () -> MapDefinitions
     private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
     private var gameData: GameDataLibrary? { gameResources.data }
     private var gameArtwork: GameArtworkLibrary? { gameResources.artwork }
@@ -106,13 +107,13 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    init(gameResources: @escaping @MainActor () -> MapGameResources,
+    init(definitions: @escaping @MainActor () -> MapDefinitions,
+         gameResources: @escaping @MainActor () -> MapGameResources,
          savedLighting: @escaping @MainActor () -> MapLighting?,
          nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
          work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
-         surfaceContext: MapSurfaceContext = .unknown, heightScale: MapHeightScale? = nil,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
@@ -122,6 +123,8 @@ final class MapModel {
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
         readGameResources = gameResources
+        readDefinitions = definitions
+        let definitions = definitions()
         readSavedLighting = savedLighting
         readNightLighting = nightLighting
         renderWork = work.makeScope()
@@ -133,20 +136,21 @@ final class MapModel {
         self.readDetail = readDetail
         shadowWork = work.makeScope()
         self.dimension = dimension
-        self.heightScale = heightScale
+        self.heightScale = definitions.heightScale
         self.readTopBlocksFor = readTopBlocks
         self.renderTile = renderTile
         self.writeCache = writeCache
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: surfaceContext,
+        self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
                                            chunkConcurrency: max(1, chunkConcurrency),
-                                           cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: heightScale)
+                                           cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: definitions.heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
         observeLighting()
         observeGameResources()
+        observeDefinitions()
         updateTopBlockReads()
     }
 
@@ -739,14 +743,26 @@ final class MapModel {
         surfaceChanged()
     }
 
-    func setDimensionSettings(_ settings: DimensionSettings?, water: GameTag?) {
-        let context = MapSurfaceContext(settings: settings, water: water)
-        let scale = MapHeightScale(settings: settings)
+    private func adoptDefinitions() {
+        let definitions = readDefinitions(), context = definitions.context, scale = definitions.heightScale
         guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
         renderer.surfaceContext = context
         renderer.heightScale = scale
         heightScale = scale
         surfaceChanged()
+    }
+
+    private func observeDefinitions() {
+        guard !isClosed else { return }
+        withObservationTracking(options: [.didSet]) {
+            _ = readDefinitions()
+        } onChange: { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                self.observeDefinitions()
+                self.adoptDefinitions()
+            }
+        }
     }
 
     /// Changing a hidden block can change its Y as well as its colour. Late reads of the previous

@@ -257,7 +257,8 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let players = PlayerRoster([])
+        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
                                  firstDimension: nil, savedSearches: saved,
                                  execute: { await gate.read("\($0.queries[0])-\($0.players.count)") }, gameNames: { .unavailable })
         search.text = "query"
@@ -266,7 +267,7 @@ import Testing
             await gate.finish("\(query)-0", with: [query: [hit("Previous \(query)")]])
         }
         await search.waitForSearch()
-        search.playerRoster.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
+        players.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
         for query in ["saved", "query"] { await gate.waitForRequest("\(query)-1") }
         #expect(search.results.map(\.title) == ["Previous query"])
         #expect(search.results(for: "saved").map(\.title) == ["Previous saved"])

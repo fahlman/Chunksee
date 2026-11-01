@@ -1,5 +1,6 @@
 import CoreGraphics
 import ChunkseeKit
+import Observation
 import SwiftUI
 
 /// The time-spent heat map: each chunk colored by how long players spent near it
@@ -78,23 +79,35 @@ final class HeatMapLayer {
         }
     }
     private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
+    private let readReader: @MainActor () -> RegionReader?
     private var hasReader: Bool { loader.source.reader != nil }
     nonisolated private struct Source: Equatable, Sendable {
         let reader: RegionReader?
         static func == (lhs: Self, rhs: Self) -> Bool { lhs.reader === rhs.reader }
     }
     @ObservationIgnored private var rememberedVisibility: LayerVisibility?
-    init(reader: RegionReader?, work: BackgroundWork) {
+    init(reader: @escaping @MainActor () -> RegionReader?, work: BackgroundWork) {
+        readReader = reader
         loader = RefreshLoader(work: work, priority: .userInitiated, whenInactive: .finish,
-                               source: Source(reader: reader)) { source, previous in
+                               source: Source(reader: reader())) { source, previous in
             guard let reader = source.reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }
+        observeReader()
     }
 
-    func replaceReader(_ reader: RegionReader?) {
+    private func observeReader() {
         guard !loader.isClosed else { return }
-        loader.request(source: Source(reader: reader), isEnabled: isShown && reader != nil, reread: false)
+        withObservationTracking(options: [.didSet]) {
+            _ = readReader()
+        } onChange: { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.loader.isClosed else { return }
+                self.observeReader()
+                let reader = self.readReader()
+                self.loader.request(source: Source(reader: reader), isEnabled: self.isShown && reader != nil, reread: false)
+            }
+        }
     }
 
     /// Restores this tab's flag without making a second live copy in LayerVisibility.

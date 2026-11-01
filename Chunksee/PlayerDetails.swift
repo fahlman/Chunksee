@@ -181,12 +181,12 @@ struct PlayerDetailView: View {
             Section("Ender Chest") {
                 SlotGrid(slots: player.inventorySlots(in: .enderChest))
             }
-            PlayerRecordsSections(records: records, definitionGeneration: session.resources.definitionReadGeneration,
+            PlayerRecordsSections(records: records, definitionInput: session.resources.definitionInput,
                                   showsAllStatistics: $showsAllStatistics)
         }
         .formStyle(.grouped)
         .task(id: RecordRequest(uuid: player.uuid, name: session.names.name(for: player.uuid), saved: player.lastSaved,
-                               definitions: session.resources.definitionReadGeneration)) {
+                               definitions: session.resources.definitionInput)) {
             await session.selection.playerRecords.load(player.uuid, name: session.names.name(for: player.uuid))
         }
         .sheet(isPresented: $showsAllStatistics) {
@@ -198,7 +198,7 @@ struct PlayerDetailView: View {
         var uuid: UUID
         var name: String?
         var saved: Date?
-        var definitions: Int
+        var definitions: WorldDefinitionInput
     }
 
     private var gameMode: String { gameNames.gameMode(player.gameMode) }
