@@ -80,6 +80,7 @@ final class HeatMapLayer {
     }
     private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
     private let readReader: @MainActor () -> RegionReader?
+    @ObservationIgnored private var inputObservation: ModelObservation?
     private var hasReader: Bool { loader.source.reader != nil }
     nonisolated private struct Source: Equatable, Sendable {
         let reader: RegionReader?
@@ -97,16 +98,11 @@ final class HeatMapLayer {
     }
 
     private func observeReader() {
-        guard !loader.isClosed else { return }
-        withObservationTracking(options: [.didSet]) {
-            _ = readReader()
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.loader.isClosed else { return }
-                self.observeReader()
-                let reader = self.readReader()
-                self.loader.request(source: Source(reader: reader), isEnabled: self.isShown && reader != nil, reread: false)
-            }
+        inputObservation = ModelObservation(self, isActive: { !$0.loader.isClosed }, read: {
+            _ = $0.readReader()
+        }) { layer, _ in
+            let reader = layer.readReader()
+            layer.loader.request(source: Source(reader: reader), isEnabled: layer.isShown && reader != nil, reread: false)
         }
     }
 
@@ -135,6 +131,7 @@ final class HeatMapLayer {
     }
 
     func cancel() {
+        inputObservation?.cancel()
         loader.close()
     }
 }
