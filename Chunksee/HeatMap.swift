@@ -75,6 +75,7 @@ final class HeatMapLayer {
     var isShown: Bool { readIsShown() }
     private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
     private let readReader: @MainActor () -> RegionReader?
+    @ObservationIgnored private var inputObservation: ModelObservation?
     private var hasReader: Bool { loader.source.reader != nil }
     nonisolated private struct Source: Equatable, Sendable {
         let reader: RegionReader?
@@ -93,20 +94,12 @@ final class HeatMapLayer {
     }
 
     private func observeInputs() {
-        guard !loader.isClosed else { return }
-        let previousReader = readReader(), previouslyShown = isShown
-        withObservationTracking(options: [.didSet]) {
-            _ = readReader()
-            _ = isShown
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.loader.isClosed else { return }
-                self.observeInputs()
-                let reader = self.readReader()
-                guard reader !== previousReader || self.isShown != previouslyShown else { return }
-                self.loader.request(source: Source(reader: reader), isEnabled: self.isShown && reader != nil, reread: false)
-            }
+        inputObservation = ModelObservation(self, isActive: { !$0.loader.isClosed }, read: {
+            (reader: $0.readReader(), shown: $0.isShown)
+        }) { layer, previous in
+            let reader = layer.readReader()
+            guard reader !== previous.reader || layer.isShown != previous.shown else { return }
+            layer.loader.request(source: Source(reader: reader), isEnabled: layer.isShown && reader != nil, reread: false)
         }
     }
 
@@ -128,6 +121,7 @@ final class HeatMapLayer {
     }
 
     func cancel() {
+        inputObservation?.cancel()
         loader.close()
     }
 }

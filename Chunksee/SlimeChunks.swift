@@ -57,6 +57,7 @@ nonisolated enum SlimeChunks {
 
     private var regions: Set<RegionPosition>
     private let loader: RefreshLoader<Int64?, Set<RegionPosition>, Masks>
+    @ObservationIgnored private var inputObservation: ModelObservation?
     private var isClosed: Bool { loader.isClosed || loader.work.isClosed }
 
     nonisolated private struct Masks: Sendable {
@@ -91,19 +92,11 @@ nonisolated enum SlimeChunks {
     /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
     /// so neither a drawn mask nor a late read can describe the previous seed.
     private func observeInputs() {
-        guard !isClosed else { return }
-        let previous = seed, previouslyShown = isShown
-        withObservationTracking(options: [.didSet]) {
-            _ = seed
-            _ = isShown
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeInputs()
-                guard self.seed != previous || self.isShown != previouslyShown else { return }
-                self.update(reread: self.seed != previous || self.isShown)
-            }
+        inputObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (seed: $0.seed, shown: $0.isShown)
+        }) { layer, previous in
+            guard layer.seed != previous.seed || layer.isShown != previous.shown else { return }
+            layer.update(reread: layer.seed != previous.seed || layer.isShown)
         }
     }
 
@@ -118,6 +111,6 @@ nonisolated enum SlimeChunks {
         loader.request(source: seed, isEnabled: isShown && isAvailable, refresh: reread ? regions : nil)
     }
 
-    func cancel() { loader.close() }
+    func cancel() { inputObservation?.cancel(); loader.close() }
     func waitForImages() async { await loader.waitUntilFinished() }
 }

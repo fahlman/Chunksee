@@ -98,7 +98,7 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.81.0`, resolved to `0.81.0` (`8151a2ad7bcfc2f02282368e1f475758ecabe389`).
+  minor" from `0.82.0`, resolved to `0.82.0` (`b745edb5bec8d8e02f708f4087f31e7f54fb87e4`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
@@ -564,6 +564,7 @@ older scan envelopes.
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
 | `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
+| `ModelObservation.swift` | Main-actor synchronous model observation, with weak ownership, registration identity and one rearming policy |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
@@ -773,6 +774,14 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
+ModelObservation owns registration identity, cancellation and rearming for the ten subscriptions
+in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore, SelectionModel, WorldIndexStore,
+WorldQueryStore and WorldSession. It tracks new dependencies before reacting and rejects callbacks
+captured before their registration was retired, so nested source changes cannot multiply subscriptions.
+Models hold observations, observations hold
+owners weakly, and explicit close cancels reactions. The slime layer also stops observing when its
+world closes. Existing invalidation and record-demand decisions stay in their models; no native
+resource-notification migration is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors
@@ -1678,18 +1687,30 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
 
 ## Toolchain and platforms
 
-Rechecked on 2026-10-18 against [Apple's releases](https://developer.apple.com/news/releases/),
-[its SDK table](https://developer.apple.com/xcode/system-requirements), and the
+Rechecked on 2026-10-30 against [Apple's App Store listing](https://apps.apple.com/us/app/xcode/id497799835?mt=12),
+[its SDK table](https://developer.apple.com/xcode/system-requirements),
+[Apple's releases](https://developer.apple.com/news/releases/), and the
 [Swift releases](https://www.swift.org/install/macos/), then compared with the installed tools
-and the project's settings. Xcode 27.2 and Swift snapshots are previews, not the stable toolchain.
+and the project's settings. Xcode 27.2 is the final App Store release; the releases feed still
+shows its earlier RC. Compiler and SDK versions below are from the selected final installation.
 
-- **Compiler:** Xcode 27.1 (`27A9275`) and Apple Swift 6.4 (`swiftlang-6.4.0.34.1`).
+- **Compiler:** Xcode 27.2 (`27B52`) and Apple Swift 6.4.2 (`swiftlang-6.4.2.1.9`).
 - **Swift language mode:** 6 (`SWIFT_VERSION = 6.0`). The app and test targets also use:
   - `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
   - approachable concurrency
   - complete strict concurrency checking
-- **SDK:** macOS 27.0 SDK.
+- **SDK:** macOS 27.2 SDK.
 - **Minimum macOS:** 27 (`MACOSX_DEPLOYMENT_TARGET = 27.0`). The app is Mac only, arm64.
+
+Xcode's Metal Toolchain component must also be installed to compile `MapLighting.metal`.
+If Xcode reports that component missing, restore it with
+`xcodebuild -downloadComponent MetalToolchain`; `xcrun metal --version` verifies that it can run.
+Record the exit status and output of `xcodebuild -checkFirstLaunchStatus` with the check
+evidence. A nonzero setup status does not, on its own, block the required Release build and
+tests. Both actual checks must pass with the selected toolchain and pinned dependencies;
+preserve and diagnose any failure. Setup status is an environment diagnostic, not evidence
+that the app builds or its tests pass.
+This setup does not change the project's Swift language mode or minimum macOS.
 
 The sidebar's width modifiers belong to the `NavigationSplitView` column root (the
 `ScrollViewReader`), not its nested `List`. The column opens at 220 points and its SwiftUI
@@ -2278,7 +2299,18 @@ MapView.readout requires an explicit naming snapshot, and its former describe po
 The shared equipment section gets its slot headings from GameNames.equipmentSlot, preserving the
 existing app wording and readable fallback for unfamiliar saved slots. EquipmentPresentation owns
 only the nonempty rows and their order; player and creature equipment membership is unchanged.
-Game-rule consumers and the final naming audit remain before foundation step 5e and #438 are
+World Info gets game-rule names and sorted rows from GameNames, retaining every raw saved ID and
+value. Modern IDs use the game's registry description-key format. Older literal keys can use the
+direct replacement exposed by Kit 0.82.0 from the selected game's language metadata; the app does
+not guess replacements or follow chains. Per-key selected-language/English fallback and readable
+saved words remain available without artwork or game files. WorldDetails retains the typed
+wandering-trader rule interpretation and no longer formats rule names.
+The registry description-key format has one owner inside GameNames. Displayed rule, block,
+map-group and mob names use its shared localized natural comparison with saved IDs as the
+equal-name tie-break; storage and search item summaries use that comparison after their existing
+quantity priority. Linked pets use it within each dimension, retaining dimension-first grouping.
+LayerGroups asks the service for ordered groups and does not choose its own name order.
+The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
