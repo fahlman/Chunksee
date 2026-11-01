@@ -34,6 +34,7 @@ final class WorldIndexStore {
     var readers: [RegionReader] { loader.source.readers }
     private let loader: RefreshLoader<ReaderSource, Pass, RegionSnapshot>
     private let projection: RefreshLoader<ProjectionSource, RefreshInvalidation, WorldIndexSnapshot>
+    @ObservationIgnored private var playerObservation: ModelObservation?
     var isClosed: Bool { loader.isClosed || loader.work.isClosed || projection.isClosed }
 
     /// Catalog additions belong to this same source. Each pass captures its reader array on
@@ -117,13 +118,10 @@ final class WorldIndexStore {
     /// Index and player facts publish together after the carried-pet merge runs off-main.
     /// Views keep the previous coherent snapshot while a newer one is being prepared.
     private func observePlayers() {
-        withObservationTracking(options: [.didSet]) { _ = playerRoster.snapshot } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observePlayers()
-                self.refreshProjection()
-            }
+        playerObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.playerRoster.snapshot
+        }) { store, _ in
+            store.refreshProjection()
         }
     }
 
@@ -210,6 +208,7 @@ final class WorldIndexStore {
     /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
     /// still drains the cancelled reads.
     func cancel() {
+        playerObservation?.cancel()
         guard !loader.isClosed else { return }
         // Closing stops reads; it does not remove facts from a document still finishing
         // its close. Retain the same immutable publication until its owner is released.
