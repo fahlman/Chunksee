@@ -743,12 +743,13 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
-ModelObservation owns registration identity, cancellation and rearming for the six subscriptions
-in MapModel, HeatMapLayer, PlayerRecordStore and SelectionModel. It tracks new dependencies before
-reacting and rejects callbacks captured before their registration was retired, so nested source
-changes cannot multiply subscriptions. Models hold observations, observations hold owners weakly,
-and explicit close cancels reactions. Existing invalidation and record-demand decisions stay in
-their models; no native resource-notification migration or later query store is introduced here.
+ModelObservation owns registration identity, cancellation and rearming for the seven subscriptions
+in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore and SelectionModel. It tracks new
+dependencies before reacting and rejects callbacks captured before their registration was retired,
+so nested source changes cannot multiply subscriptions. Models hold observations, observations hold
+owners weakly, and explicit close cancels reactions. The slime layer also stops observing when its
+world closes. Existing invalidation and record-demand decisions stay in their models; no native
+resource-notification migration or later query store is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors

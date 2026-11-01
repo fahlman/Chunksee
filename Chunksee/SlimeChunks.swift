@@ -62,6 +62,7 @@ nonisolated enum SlimeChunks {
     private var images: [RegionPosition: CGImage] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var visibility: LayerVisibility?
+    @ObservationIgnored private var seedObservation: ModelObservation?
     private var isClosed = false
     private let work: BackgroundWork
     private let readImages: @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage]
@@ -78,19 +79,14 @@ nonisolated enum SlimeChunks {
     /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
     /// so neither a drawn mask nor a late read can describe the previous seed.
     private func observeSeed() {
-        guard !isClosed else { return }
-        let previous = seed
-        withObservationTracking(options: [.didSet]) { _ = seed } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeSeed()
-                guard self.seed != previous else { return }
-                self.task?.cancel()
-                self.images = [:]
-                self.completed = []
-                self.load()
-            }
+        seedObservation = ModelObservation(self, isActive: { !$0.isClosed && !$0.work.isClosed }, read: {
+            $0.seed
+        }) { layer, previous in
+            guard layer.seed != previous else { return }
+            layer.task?.cancel()
+            layer.images = [:]
+            layer.completed = []
+            layer.load()
         }
     }
 
@@ -122,6 +118,6 @@ nonisolated enum SlimeChunks {
         }
     }
 
-    func cancel() { isClosed = true; task?.cancel() }
+    func cancel() { isClosed = true; seedObservation?.cancel(); task?.cancel() }
     func waitForImages() async { while let task { await task.value } }
 }
