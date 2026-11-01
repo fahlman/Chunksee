@@ -234,6 +234,9 @@ final class MapModel {
                 // (fahlman/Chunksee#6 has a standalone reproduction).
                 let result: Result<RegionTileRenderer.RenderedTile?, any Error>
                 do {
+                    #if CHUNKSEE_TEST_HOST
+                    PlayerObservationComparisonMetrics.tileStarted()
+                    #endif
                     let tile = try await render(renderer, region)
                     result = .success(tile)
                 } catch {
@@ -248,7 +251,15 @@ final class MapModel {
     private func finish(_ region: RegionPosition, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
         // A job cancelled because its region left the view was already removed (and may have been
         // replaced by a newer job for the same region); its result is dropped.
-        guard inFlight[region]?.id == id else { return }
+        #if CHUNKSEE_TEST_HOST
+        PlayerObservationComparisonMetrics.tileFinished()
+        #endif
+        guard inFlight[region]?.id == id else {
+            #if CHUNKSEE_TEST_HOST
+            PlayerObservationComparisonMetrics.tileRetired()
+            #endif
+            return
+        }
         inFlight[region] = nil
         guard !isClosed else {
             queue = []
@@ -260,6 +271,9 @@ final class MapModel {
             // Job identity guards source replacement and file-change notifications. The typed
             // key independently guards every drawing input before pixels or disk work publish.
             if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer.accepts(tile.key) {
+                #if CHUNKSEE_TEST_HOST
+                PlayerObservationComparisonMetrics.tilePublished(in: region)
+                #endif
                 store(tile, for: region)
                 if let operation = tile.cacheWrite, operation.key == tile.key.surface {
                     let write = writeCache
@@ -664,11 +678,20 @@ final class MapModel {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
         let renderer = readoutRenderer, cached = readoutRegion, read = readTopBlocksFor
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
+            #if CHUNKSEE_TEST_HOST
+            PlayerObservationComparisonMetrics.readoutStarted()
+            #endif
             let result = await read(chunk, renderer, cached)
+            #if CHUNKSEE_TEST_HOST
+            PlayerObservationComparisonMetrics.readoutFinished()
+            #endif
             guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }
             self.activeTopBlockReads[chunk] = nil
             // A read cancelled for another chunk, or of a file the game has since saved, isn't kept.
             guard let result, !Task.isCancelled, !self.isClosed, self.regionGenerations[region, default: 0] == generation else { return }
+            #if CHUNKSEE_TEST_HOST
+            PlayerObservationComparisonMetrics.readoutPublished()
+            #endif
             self.readoutRegion = result.file
             self.topBlocks[chunk] = result.blocks
             self.topBlockOrder.append(chunk)
