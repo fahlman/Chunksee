@@ -11,6 +11,7 @@ final class SelectionModel {
     @ObservationIgnored private weak var source: WorldSession?
     private(set) var playerRecords: PlayerRecordStore.Handle?
     private var isClosed = false
+    @ObservationIgnored private var selectionObservation: ModelObservation?
     private var selectedItem: SidebarItem?
     private var inspectorIsShown = false
     /// A map can remain under a selected location while its inspector shows that location.
@@ -294,19 +295,13 @@ final class SelectionModel {
 
     /// Selection, including its live resolution, owns record demand even for hidden windows.
     private func observeSelection() {
-        guard !isClosed else { return }
-        withObservationTracking(options: [.didSet]) {
-            _ = selectedItem.flatMap(resolve)
-            if let overlayID { _ = resolve(.inGameMap(overlayID)) }
-            _ = inspector
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.discardMissingSelection()
-                self.observeSelection()
-                self.updatePlayerRecords()
-            }
+        selectionObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.selectedItem.flatMap($0.resolve)
+            if let overlayID = $0.overlayID { _ = $0.resolve(.inGameMap(overlayID)) }
+            _ = $0.inspector
+        }) { selection, _ in
+            selection.discardMissingSelection()
+            selection.updatePlayerRecords()
         }
     }
 
@@ -319,6 +314,7 @@ final class SelectionModel {
     }
 
     func close() {
+        selectionObservation?.cancel()
         isClosed = true
         playerRecords?.close()
         playerRecords = nil
