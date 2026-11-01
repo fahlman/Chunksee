@@ -26,6 +26,7 @@ final class PlayerRecordStore {
     private let gameSource: @MainActor () -> WorldGameDataSource?
     private var entries: [UUID: Entry] = [:]
     private var isClosed = false
+    private var sourceObservation: ModelObservation?
 
     init(world: WorldReadSource, work: BackgroundWork, names: PlayerNames,
          gameSource: @escaping @MainActor () -> WorldGameDataSource?) {
@@ -92,18 +93,12 @@ final class PlayerRecordStore {
     /// All sources are main-actor publications. didSet invalidates old work synchronously,
     /// including when a window is hidden, without a view task or another request counter.
     private func observeSources() {
-        guard !isClosed else { return }
-        withObservationTracking(options: [.didSet]) {
-            _ = gameSource()
-            _ = names.local
-            _ = names.online
-        } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeSources()
-                for (uuid, entry) in self.entries { self.update(entry, uuid: uuid, reread: false) }
-            }
+        sourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.gameSource()
+            _ = $0.names.local
+            _ = $0.names.online
+        }) { store, _ in
+            for (uuid, entry) in store.entries { store.update(entry, uuid: uuid, reread: false) }
         }
     }
 
@@ -121,6 +116,7 @@ final class PlayerRecordStore {
     }
 
     func close() {
+        sourceObservation?.cancel()
         isClosed = true
         for entry in entries.values { entry.loader.close() }
         entries = [:]
