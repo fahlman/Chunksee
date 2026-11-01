@@ -228,6 +228,9 @@ final class WorldResources {
         ) { [minecraft = names.minecraft] source, _ in
             guard await minecraft.generation == source.generation else { throw CancellationError() }
             let library = try await readGameAssets(minecraft)
+#if CHUNKSEE_TEST_HOST
+            await PlayerObservationComparisonMetrics.completedAssetRead()
+#endif
             guard await minecraft.generation == source.generation else { throw CancellationError() }
             return GameAssetSelection(library: library)
         }
