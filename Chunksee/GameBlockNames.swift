@@ -7,10 +7,7 @@ extension GameNames {
     nonisolated func blockIDs(in catalog: Set<String>, matching query: String) -> [String] {
         catalog.map { (id: $0, name: block($0)) }
             .filter { query.isEmpty || $0.name.localizedStandardContains(query) || $0.id.localizedStandardContains(query) }
-            .sorted {
-                let comparison = $0.name.localizedStandardCompare($1.name)
-                return comparison == .orderedSame ? $0.id < $1.id : comparison == .orderedAscending
-            }
+            .sorted { Self.namePrecedes($0.name, id: $0.id, $1.name, id: $1.id) }
             .map { $0.id }
     }
 
