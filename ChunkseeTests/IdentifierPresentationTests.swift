@@ -10,7 +10,7 @@ import Testing
         #expect(ReadableName.from(prefix + "diamond_sword") == "Diamond Sword")
         #expect(ItemAppearance.symbol(for: prefix + "diamond_sword") == ItemAppearance.symbol(for: "minecraft:diamond_sword"))
         #expect(GameNames.unavailable.name(prefix + "aviate_one_cm", in: "stat") == "Aviate One Cm")
-        #expect(WorldDetails.readableRule(prefix + "keep_inventory") == "Keep Inventory")
+        #expect(GameNames.unavailable.gameRule(prefix + "keep_inventory") == "Keep Inventory")
         #expect(GameNames.unavailable.appearanceValue(prefix + "red_blue") == "Red Blue")
         #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)
         let bed = PlaceMarker(PointOfInterest(type: prefix + "home", x: 1, y: 64, z: 2, freeTickets: 0))
@@ -25,7 +25,7 @@ import Testing
         #expect(!BlockColors.isWater("mod:water"))
         #expect(ReadableName.from("mod:minecraft:home") == "Mod:minecraft:home")
         #expect(ReadableName.from("minecraft:") == "Minecraft:")
-        #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
+        #expect(GameNames.unavailable.gameRule("doDaylightCycle") == "Do Daylight Cycle")
     }
 
     @Test(arguments: ["minecraft:", "", ":"])

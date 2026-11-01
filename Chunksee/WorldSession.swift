@@ -68,6 +68,7 @@ final class WorldSession {
     let navigation: MapNavigation
     private(set) var isClosed = false
     @ObservationIgnored private var closingTask: Task<Void, Never>?
+    @ObservationIgnored private var presentationObservation: ModelObservation?
 
     init(resources: WorldResources, dimensionID: String? = nil,
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
@@ -111,6 +112,7 @@ final class WorldSession {
     /// Closing drains this dimension's reads; the world's shared reads stay alive for the others.
     func close() {
         guard !isClosed else { return }
+        presentationObservation?.cancel()
         isClosed = true
         saveView()
         search.cancel()
@@ -165,19 +167,14 @@ final class WorldSession {
     /// Save the whole choice value independently of the view lifetime. The main-actor observer
     /// also tells the shared index when Dark Spots needs its additional facts.
     private func observeMapPresentation() {
-        guard !isClosed else { return }
-        let previous = mapPresentation
-        withObservationTracking(options: [.didSet]) { _ = mapPresentation } onChange: { [weak self] event in
-            event.cancel()
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeMapPresentation()
-                let current = self.mapPresentation
-                guard current != previous else { return }
-                self.resources.settings.save(current, for: self.selectedDimensionID)
-                if current.overlays.showsDarkSpots != previous.overlays.showsDarkSpots {
-                    self.resources.darkSpotsVisibilityChanged()
-                }
+        presentationObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            $0.mapPresentation
+        }) { session, previous in
+            let current = session.mapPresentation
+            guard current != previous else { return }
+            session.resources.settings.save(current, for: session.selectedDimensionID)
+            if current.overlays.showsDarkSpots != previous.overlays.showsDarkSpots {
+                session.resources.darkSpotsVisibilityChanged()
             }
         }
     }
