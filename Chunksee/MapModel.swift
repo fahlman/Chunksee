@@ -237,7 +237,16 @@ final class MapModel {
                     #if CHUNKSEE_TEST_HOST
                     PlayerObservationComparisonMetrics.tileStarted()
                     #endif
+#if CHUNKSEE_TEST_HOST
+                    let tile = try await RechooseDiagnosticTrace.$renderJob.withValue(id) {
+                        let span = RechooseDiagnosticTrace.start("tile.operation", detail: "region=\(region.x),\(region.z)")
+                        defer { RechooseDiagnosticTrace.end("tile.operation", span) }
+                        return try await render(renderer, region)
+                    }
+#endif
+#if !CHUNKSEE_TEST_HOST
                     let tile = try await render(renderer, region)
+#endif
                     result = .success(tile)
                 } catch {
                     result = .failure(error)
@@ -252,6 +261,7 @@ final class MapModel {
         // A job cancelled because its region left the view was already removed (and may have been
         // replaced by a newer job for the same region); its result is dropped.
         #if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.mark("tile.finish", job: id, detail: "accepted=\(inFlight[region]?.id == id)")
         PlayerObservationComparisonMetrics.tileFinished()
         #endif
         guard inFlight[region]?.id == id else {
@@ -410,6 +420,9 @@ final class MapModel {
     }
 
     func cancel() {
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.mark("map.cancel", detail: "jobs=\(inFlight.values.map(\.id).sorted())")
+#endif
         lastRequest = nil
         renderWork.cancel()
         inFlight = [:]

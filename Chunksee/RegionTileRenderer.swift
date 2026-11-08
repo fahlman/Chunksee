@@ -361,16 +361,32 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// method would otherwise run on the main actor when called from the map model.
     @concurrent
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
+#if CHUNKSEE_TEST_HOST
+        let diagnosticSpan = RechooseDiagnosticTrace.start("renderer", detail: "data=\(gameData != nil),artwork=\(gameArtwork != nil),colors=\(currentBiomeColors != nil)")
+        defer { RechooseDiagnosticTrace.end("renderer", diagnosticSpan) }
+#endif
         if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         guard let key = cacheKey(for: region) else { return nil }
         var surface: Canvas?
         var cacheWrite: CacheWrite?
         var scanned = false
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.mark("cache.lookup.begin")
+#endif
         if let cache, let cached = cache.load(key) {
+#if CHUNKSEE_TEST_HOST
+            RechooseDiagnosticTrace.mark("cache.hit")
+#endif
             surface = cached
         } else {
+#if CHUNKSEE_TEST_HOST
+            RechooseDiagnosticTrace.mark("cache.miss")
+#endif
             surface = try await self.surface(for: region)
+#if CHUNKSEE_TEST_HOST
+            RechooseDiagnosticTrace.mark("surface.complete")
+#endif
             scanned = true
             if let cache, let surface {
                 if savesInBackground {
@@ -382,6 +398,9 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         guard let surface else { return nil }
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.mark("image.prepare.begin")
+#endif
         var drawing = style == .height ? (pixels: surface.pixels, normals: nil as [UInt8]?)
             : surface.drawingPixels(heightScale: heightScale, includesNormals: usesSavedLighting)
         if let nightLight = surface.nightLight {
@@ -396,6 +415,9 @@ nonisolated struct RegionTileRenderer: Sendable {
                                          width: Self.previewSide, height: Self.previewSide, colorSpace: CGColorSpace.linearSRGB)
             guard normals != nil, previewNormals != nil else { return nil }
         }
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.mark("image.prepare.complete")
+#endif
         return RenderedTile(key: ImageKey(surface: key, preparation: preparation, chunk: nil),
                             full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
                             cacheWrite: cacheWrite,
@@ -524,6 +546,10 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
                                 neighbors: BiomeRows) async throws -> ColoredChunk {
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.count("color.started")
+        defer { RechooseDiagnosticTrace.count("color.finished") }
+#endif
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
         let states = scanned.states
@@ -774,6 +800,10 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     private static func scan(_ file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext, cutawayY: Int?, blockFilter: MapBlockFilter,
                              darkSpots: DarkSpots? = nil, coverage: (@Sendable (BlockState) -> MapBlockCoverage)? = nil) -> (sections: ColorSections, columns: [Column?])? {
+#if CHUNKSEE_TEST_HOST
+        RechooseDiagnosticTrace.count("scan.started")
+        defer { RechooseDiagnosticTrace.count("scan.finished") }
+#endif
         guard let chunk = readChunk(file, localX: localX, localZ: localZ, darkSpots: darkSpots) else { return nil }
         return scan(chunk, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots, coverage: coverage)
     }
