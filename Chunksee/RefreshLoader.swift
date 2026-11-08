@@ -106,8 +106,14 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
             repeat {
                 guard !Task.isCancelled, !work.isClosed else { return }
                 let updated: RefreshRead<Value>?
+#if CHUNKSEE_TEST_HOST
+                let diagnosticSpan = RechooseDiagnosticTrace.start("loader.read", detail: String(reflecting: Source.self))
+#endif
                 do { updated = try await read(source, request, self?.value) }
                 catch { updated = nil }
+#if CHUNKSEE_TEST_HOST
+                RechooseDiagnosticTrace.end("loader.read", diagnosticSpan, detail: "returned=\(updated != nil)")
+#endif
                 guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed,
                       self.active?.id == id else { return }
                 // A thrown failure preserves the value; a partial result supplies its own

@@ -15,6 +15,7 @@ import Testing
         let expected: String?
         let expectedAssetReads: Int
         let timing: Bool
+        let diagnostic: Bool
     }
     enum Failure: Error { case configuration, mismatch(String), cache(String), document, pixels }
     actor Scans {
@@ -49,6 +50,7 @@ import Testing
             throw Failure.configuration
         }
         let config = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(filePath: path)))
+        guard config.timing, config.diagnostic else { throw Failure.configuration }
         let output = URL(filePath: config.output, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let expected: [String: String] = try config.expected.map {
@@ -65,6 +67,7 @@ import Testing
                 var coldFinalFiles: [String: String] = [:]
                 for phase in ["cold", "reopen"] {
                     let key = "\(artwork ? "artwork-on" : "artwork-off")-\(phase)"
+                    RechooseDiagnosticTrace.beginRow("rep-\(repetition)/" + key)
                     let defaults = TestDefaults.make(), scans = Scans()
                     let model = AppModel(defaults: defaults, cacheRoot: cache, readRegion: { dimension, region, options in
                         await scans.record()
@@ -87,6 +90,7 @@ import Testing
                     }
                     do {
                         PlayerObservationComparisonMetrics.begin(firstRegion: regions[0])
+                        RechooseDiagnosticTrace.phase("initialReady")
                         let initialStart = Stamp()
                         guard case .dimension(let snapshot) = try await reader.readFolder(
                             world.appendingPathComponent("dimensions/minecraft/overworld")) else { throw Failure.document }
@@ -115,6 +119,8 @@ import Testing
                         timings["initialReady"] = initialStart.values
 
                         stage = "initial views"
+                        RechooseDiagnosticTrace.phase(stage)
+                        RechooseDiagnosticTrace.phase("initialDrawing")
                         let initialDrawingStart = Stamp()
                         let firstViews = try await Self.draw(regions, on: map)
                         timings["initialDrawing"] = initialDrawingStart.values
@@ -129,12 +135,14 @@ import Testing
                         }
 
                         stage = "same-content refresh"
+                        RechooseDiagnosticTrace.phase(stage)
                         let colorReads = Scans(), readColors = resources.readBiomeColors
                         resources.readBiomeColors = { world, data, artwork, previous, reload in
                             await colorReads.record()
                             return try await readColors(world, data, artwork, previous, reload)
                         }
                         let retained = map.tiles
+                        RechooseDiagnosticTrace.phase("refresh")
                         let refreshStart = Stamp()
                         resources.worldChanged([world.appendingPathComponent("datapacks")])
                         await Self.settle(resources, map)
@@ -148,12 +156,14 @@ import Testing
                         try Self.checkDrained(refreshMetrics)
 
                         stage = "scheduled same-content refresh"
+                        RechooseDiagnosticTrace.phase(stage)
                         let burstReads = Scans()
                         resources.readBiomeColors = { world, data, artwork, previous, reload in
                             await colorReads.record(); await burstReads.record()
                             return try await readColors(world, data, artwork, previous, reload)
                         }
                         let burstTiles = map.tiles
+                        RechooseDiagnosticTrace.phase("scheduledRefresh")
                         let scheduledStart = Stamp()
                         let clock = ContinuousClock(), began = clock.now
                         var issueOffsets: [Double] = []
@@ -187,6 +197,7 @@ import Testing
                         }
 
                         stage = "overlapping game-file activations"
+                        RechooseDiagnosticTrace.phase(stage)
                         let assetTiles = map.tiles, assetBefore = PlayerObservationComparisonMetrics.snapshot.assetReads
                         PlayerObservationComparisonMetrics.holdAssetReads()
                         resources.refreshGameAssets()
@@ -204,6 +215,8 @@ import Testing
                         try Self.checkDrained(assetMetrics)
 
                         stage = "source remove and rechoose"
+                        RechooseDiagnosticTrace.phase(stage)
+                        RechooseDiagnosticTrace.phase("remove")
                         let removalStart = Stamp()
                         model.names.minecraft.forget()
                         guard map.currentRenderer.gameData == nil, map.currentRenderer.gameArtwork == nil else {
@@ -212,6 +225,7 @@ import Testing
                         await Self.settle(resources, map)
                         await model.names.minecraft.waitUntilIdle()
                         timings["remove"] = removalStart.values
+                        RechooseDiagnosticTrace.phase("rechoose")
                         let rechooseStart = Stamp()
                         model.names.minecraft.choose(game)
                         await Self.settle(resources, map)
@@ -223,6 +237,8 @@ import Testing
                         try Self.checkDrained(sourceMetrics)
 
                         stage = "restored views"
+                        RechooseDiagnosticTrace.phase(stage)
+                        RechooseDiagnosticTrace.phase("restoredDrawing")
                         let restoredDrawingStart = Stamp()
                         let restoredViews = try await Self.draw(regions, on: map)
                         timings["restoredDrawing"] = restoredDrawingStart.values
@@ -246,11 +262,13 @@ import Testing
                         signatures[key] = signature
 
                         stage = "closing"
+                        RechooseDiagnosticTrace.phase(stage)
                         await close()
                         let finalFiles = try Self.archiveSnapshot(cache)
                         let cycleRewrites = finalFiles.filter { initialFiles[$0.key] != $0.value }.count
                         if phase == "cold" { coldFinalFiles = finalFiles }
                         let row: [String: Any] = [
+                            "diagnosticOnly": true,
                             "key": key, "repetition": repetition,
                             "phase": config.timing ? (repetition == 0 ? "warmup" : "measured") : "proof",
                             "timings": timings, "peakRSSBytes": Self.peakRSSBytes(),
@@ -267,6 +285,7 @@ import Testing
                             "finalCacheFiles": finalFiles,
                             "notificationIssueOffsetsSeconds": issueOffsets,
                         ]
+                        try Self.writeTrace(to: output.appendingPathComponent("rep-\(repetition)/" + key + "/diagnostic.json"))
                         records.append(row)
                         try Self.json(records).write(to: output.appendingPathComponent("records.json"))
                     } catch { failed = error }
@@ -276,6 +295,7 @@ import Testing
                         let failure: [String: Any] = ["key": key, "stage": stage,
                             "error": String(describing: error), "metrics": (try? Self.object(failedMetrics)) ?? NSNull(),
                             "scans": failedScans]
+                        try? Self.writeTrace(to: output.appendingPathComponent("diagnostic-failure.json"))
                         try? Self.json(failure).write(to: output.appendingPathComponent("failure.json"))
                         throw error
                     }
@@ -284,6 +304,14 @@ import Testing
         }
         try Self.json(signatures).write(to: output.appendingPathComponent("proof.json"))
         print("PLAYER_OBSERVATION_COMPARISON completed \(records.count) rows")
+    }
+
+    private static func writeTrace(to url: URL) throws {
+        let report = RechooseDiagnosticTrace.report
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try encoder.encode(report).write(to: url)
+        guard !report.overflow else { throw Failure.mismatch("diagnostic trace overflow") }
     }
 
     private static func request(_ region: RegionPosition, on map: MapModel) {
