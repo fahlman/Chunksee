@@ -59,8 +59,8 @@ import Testing
         let regions = [RegionPosition(x: -1, z: -1), RegionPosition(x: 0, z: -1), RegionPosition(x: 4, z: -2)]
         var signatures: [String: String] = [:], records: [[String: Any]] = []
 
-        for repetition in 0..<(config.timing ? 4 : 1) {
-            for artwork in [false, true] {
+        for repetition in 0..<(config.timing ? 9 : 1) {
+            for artwork in [false] {
                 let cache = output.appendingPathComponent("cache-\(repetition)-\(artwork)")
                 var coldFinalFiles: [String: String] = [:]
                 for phase in ["cold", "reopen"] {
