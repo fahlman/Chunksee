@@ -1285,6 +1285,9 @@ WorldResources uses that common drain for detached tabs too; it keeps no retirin
 table or cleanup tasks. Each WorldSession retains its own closing join because a native document
 reread or move must await that session before replacing it. DocumentGroup still owns document
 closure, and the world releases folder access only after its readers and registered work finish.
+The detached-tab close test controls the initial biome-color publication before or after the first
+render enters. Late colors cancel and replace that render; distinct read identities let the test
+release both operations while checking that world closure still waits for the retired one.
 
 WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
 tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
