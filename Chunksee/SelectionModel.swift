@@ -9,7 +9,9 @@ import Observation
 @Observable
 final class SelectionModel {
     @ObservationIgnored private weak var source: WorldSession?
-    let playerRecords: PlayerRecordsModel
+    private(set) var playerRecords: PlayerRecordStore.Handle?
+    private var isClosed = false
+    @ObservationIgnored private var selectionObservation: ModelObservation?
     private var selectedItem: SidebarItem?
     private var inspectorIsShown = false
     /// A map can remain under a selected location while its inspector shows that location.
@@ -21,8 +23,7 @@ final class SelectionModel {
 
     init(source: WorldSession) {
         self.source = source
-        playerRecords = PlayerRecordsModel(work: source.resources.backgroundWork,
-            read: { [weak resources = source.resources] uuid, name in await resources?.playerRecords(for: uuid, name: name) })
+        observeInspector()
     }
 
     var inspector: Inspector? {
@@ -43,11 +44,9 @@ final class SelectionModel {
             case .player(let id)?: select(.player(id))
             case .selection?: inspectorIsShown = true
             case nil:
-                let previous = inspector
                 inspectorIsShown = false
                 overlayID = nil
                 if selectedItem == .worldInfo || selectedItem == .storage { selectedItem = nil }
-                if inspector != previous { playerRecords.cancel() }
             }
             if newValue != nil { revealSelectedRow() }
         }
@@ -134,7 +133,6 @@ final class SelectionModel {
             if selectedItem == .worldInfo || selectedItem == .storage { return }
             if case .inGameMap(let id)? = selectedItem, overlayID == id { return }
         }
-        let previous = inspector
         let resolved = item.flatMap(resolve)
         selectedItem = resolved == nil ? nil : item
         switch detailItem(resolved) {
@@ -146,7 +144,6 @@ final class SelectionModel {
         }
         inspectorIsShown = true
         if resolved != nil { followHeight(height) }
-        if inspector != previous { playerRecords.cancel() }
     }
 
     /// Only sidebar input navigates and reveals a hidden layer; map input keeps focus/viewport.
@@ -285,6 +282,27 @@ final class SelectionModel {
         select(.inGameMap(map.id))
     }
 
-    func close() { playerRecords.close() }
-    func waitForReads() async { await playerRecords.waitForReads() }
+    /// Selection, including its live resolution, owns record demand even for hidden windows.
+    private func observeInspector() {
+        selectionObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.inspector
+        }) { model, _ in
+            model.updatePlayerRecords()
+        }
+    }
+
+    private func updatePlayerRecords() {
+        let uuid: UUID?
+        if case .player(let selected) = inspector { uuid = selected } else { uuid = nil }
+        guard uuid != playerRecords?.uuid else { return }
+        playerRecords?.close()
+        playerRecords = uuid.flatMap { source?.resources.playerRecords.acquire($0) }
+    }
+
+    func close() {
+        selectionObservation?.cancel()
+        isClosed = true
+        playerRecords?.close()
+        playerRecords = nil
+    }
 }

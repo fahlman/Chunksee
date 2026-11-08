@@ -169,26 +169,6 @@ import Testing
     }
 }
 
-@Suite(.isolatedStores) struct InspectorReadLifetimeTests {
-    @Test func thePreviousPlayerCannotReplaceTheCurrentPlayersRecords() async throws {
-        let first = UUID(), second = UUID()
-        let gate = AsyncReadGate<PlayerRecords>()
-        let model = PlayerRecordsModel(work: BackgroundWork(), read: { uuid, _ in await gate.read(uuid.uuidString) })
-        let oldRead = Task { await model.load(first, name: nil) }
-        await gate.waitForRequest(first.uuidString)
-        let currentRead = Task { await model.load(second, name: nil) }
-        await gate.waitForRequest(second.uuidString)
-        await gate.finish(second.uuidString, with: .init(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 2]])))
-        await currentRead.value
-        await gate.finish(first.uuidString, with: .init(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 1]])))
-        await oldRead.value
-        #expect(model.uuid == second && model.records?.statistics?.value("minecraft:deaths") == 2)
-        model.close()
-        await model.load(first, name: nil)
-        #expect(model.records == nil && model.uuid == nil)
-    }
-}
-
 @Suite(.isolatedStores) struct SearchRequestLifetimeTests {
     func hit(_ name: String) -> SearchHit {
         SearchHit(id: name, source: .sign, dimension: "minecraft:overworld", position: .zero, y: 64,

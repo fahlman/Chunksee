@@ -69,13 +69,12 @@ final class WorldSession {
         selection.close()
         imageExport.close()
         map?.close()
-        let search = search, heatMap = heatMap, slimeChunks = slimeChunks, selection = selection
+        let search = search, heatMap = heatMap, slimeChunks = slimeChunks
         let map = map, imageExport = imageExport
         let task = Task {
             await search.waitForTasks()
             await heatMap.waitForReads()
             await slimeChunks.waitForImages()
-            await selection.waitForReads()
             await map?.waitForRenders()
             await imageExport.waitUntilIdle()
         }

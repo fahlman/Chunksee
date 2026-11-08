@@ -251,7 +251,7 @@ import Testing
             await resources.waitForRefresh()
             let map = try #require(session.map), scale = try #require(map.heightScale)
             let definitions = resources.details.definitions, players = resources.playerSnapshot
-            let reader = try #require(resources.readers[id]), input = resources.definitionInput
+            let reader = try #require(resources.readers[id]), generation = names.minecraft.generation
             map.setStyle(.height)
 
             // Settings uses this same source change. Failed discovery leaves the replacement
@@ -260,7 +260,7 @@ import Testing
             await gate.waitForRequest("selection")
             await gate.finish("selection", with: .failure(ReadFailure.unavailable))
             await resources.waitForRefresh()
-            #expect(resources.definitionInput != input)
+            #expect(names.minecraft.generation != generation)
             #expect(resources.details.definitions == definitions && resources.playerSnapshot === players)
             #expect(resources.readers[id] === reader)
             #expect(map.heightScale == scale && map.style == .height)

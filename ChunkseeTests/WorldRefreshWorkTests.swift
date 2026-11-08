@@ -16,19 +16,21 @@ struct WorldRefreshWorkTests {
         return (url, resources)
     }
 
-    @Test(.timeLimit(.minutes(1))) func closingCancelsTheReadAndDropsCoalescedRefreshes() async throws {
+    @Test(.timeLimit(.minutes(1))) func closingCancelsTheReadAndDropsScheduledRefreshes() async throws {
         let (url, resources) = try await makeResources()
         defer { try? FileManager.default.removeItem(at: url) }
-        let gate = AsyncReadGate<[PlayerInfo]>()
+        let gate = AsyncReadGate<[PlayerInfo]>(), scheduling = AsyncReadGate<Void>()
+        resources.waitBeforeRefresh = { _ in await scheduling.read("save") }
         let file = url.appendingPathComponent("level.dat")
         resources.readPlayers = { _, _ in await gate.read("older") }
         resources.worldChanged([file])
+        await scheduling.waitForRequest("save"); await scheduling.finish("save", with: ())
         await gate.waitForRequest("older")
-        let originalInput = resources.definitionInput
         resources.readPlayers = { _, _ in await gate.read("newer") }
         resources.worldChanged([file])
-        for await input in Observations({ resources.definitionInput }) where input != originalInput { break }
+        await scheduling.waitForRequest("save", count: 2)
         resources.close()
+        await scheduling.waitForCancellation("save"); await scheduling.finish("save", with: ())
         let closedPlayers = resources.playerSnapshot
         await gate.waitForCancellation("older")
         let late = PlayerInfo(uuid: UUID(), nbt: .compound([
