@@ -460,6 +460,14 @@ notifications coalesce through the world's existing scheduling path without copy
 discovery tables. Saved in-game maps still use their prepared opening sources until their separate
 snapshot step adopts Kit's failure-aware map-read result.
 
+WorldLifetimeTests keeps the app owner alive across repeated real document-reader openings and
+checks that closed world resources, sessions, search/slime models and the info loader are released
+after their registered work drains. The info loader remains world-owned with an internal read-only
+reference for that lifetime check. The test uses a synthetic save by default; the optional
+CHUNKSEE_LIFETIME_WORLD and CHUNKSEE_LIFETIME_GAME environment paths select evidence-only copies
+for the same correctness check. Weak-reference assertions do not measure memory footprint or
+replace the separate performance acceptance check.
+
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
 by WorldPreparation. Each resource category remains independently available. A failed
