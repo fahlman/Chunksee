@@ -132,6 +132,59 @@ import Synchronization
         if let failure { throw failure }
     }
 
+    @Test(arguments: [false, true])
+    func restoredUnchangedArchiveRecoversBiomeColors(artwork: Bool) async throws {
+        let game = try artworkFixture(), root = try TestWorld.make(chunks: [])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root, game: game)
+        resources.names.minecraft.usesGameArtwork = artwork
+        let visible = WorldSession(resources: resources), hidden = WorldSession(resources: resources)
+        var failure: (any Error)?
+        do {
+            await resources.waitForRefresh()
+            // Keep the original handle alive so discovery must exercise its same-file reuse.
+            let original = try #require(await resources.names.minecraft.library())
+            let colors = try #require(resources.biomeColors)
+            let stamp = try #require(CacheKey.fileStamp(for: game.jar))
+            let generation = resources.names.minecraft.generation
+            #expect(colors.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+            #expect(colors.biome("test:sample").color(.grass, x: 0, z: 0) == (artwork ? 0xff0000 : nil))
+
+            let parked = game.root.appendingPathComponent("parked.jar")
+            try FileManager.default.moveItem(at: game.jar, to: parked)
+            resources.refreshGameAssets()
+            await resources.waitForRefresh()
+            for session in [visible, hidden] {
+                #expect(session.map?.currentRenderer.gameData == nil)
+                #expect(session.map?.currentRenderer.gameArtwork == nil)
+                #expect(session.map?.currentRenderer.biomeColors?.biome("test:sample")
+                    .color(.water, x: 0, z: 0) == nil)
+            }
+
+            try FileManager.default.moveItem(at: parked, to: game.jar)
+            let restoredStamp = try #require(CacheKey.fileStamp(for: game.jar))
+            #expect(restoredStamp.size == stamp.size && restoredStamp.modified == stamp.modified)
+            resources.refreshGameAssets()
+            await resources.waitForRefresh()
+            #expect(resources.names.minecraft.generation == generation)
+            #expect(await resources.names.minecraft.library() === original)
+            #expect(resources.biomeColors?.sourceKey == colors.sourceKey)
+            for session in [visible, hidden] {
+                let renderer = try #require(session.map?.currentRenderer)
+                #expect(renderer.gameData === original.data)
+                #expect((renderer.gameArtwork != nil) == artwork)
+                #expect(renderer.biomeColors?.sourceKey == colors.sourceKey)
+                #expect(renderer.biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+                #expect(renderer.biomeColors?.biome("test:sample").color(.grass, x: 0, z: 0)
+                    == (artwork ? 0xff0000 : nil))
+            }
+        } catch { failure = error }
+        visible.close(); hidden.close(); resources.close()
+        await resources.waitUntilClosed()
+        resources.names.minecraft.forget(); await resources.names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
     @Test func replacedAndClosedSourcesRejectDelayedAssetResults() async throws {
         let game = try artworkFixture(), replacement = try artworkFixture(), root = try TestWorld.make(chunks: [])
         defer { game.remove(); replacement.remove(); try? FileManager.default.removeItem(at: root) }
