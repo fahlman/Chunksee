@@ -98,11 +98,19 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.84.0`, resolved to `0.84.0` (`4efb6399f194f8f13d7976a95f7921fe94ab571c`).
+  minor" from `0.86.0`, resolved to `0.86.0` (`a286b4f123196cf1da2b9c7470785031d5734ab5`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.86.0 owns the game archive's file-validity identity. The app uses its public
+    SourceIdentity, captured source identity and validity check instead of copying stat fields.
+    Its existing game-source cache text and interpretation versions remain unchanged.
+  - Kit 0.85.0 keeps saved NBT text strings literal. Historical JSON text is normalized by
+    the reader at the game's field-specific upgrade boundaries; callers with standalone JSON
+    use `TextComponent.content(json:)`. The app's labels and search preserve quoted and
+    JSON-looking saved names. RegionFacts revision 33 rebuilds saved-text facts once;
+    terrain, lighting and artwork interpretation identities are unchanged by this release.
   - Kit 0.84.0 removes `GameAssets.Version: Decodable`; version-notice fixtures now use
     `GameAssets` and its `version` property, matching the production reader. The existing
     Kit interpretation identities invalidate older terrain and region-fact caches on adoption.
@@ -1718,8 +1726,14 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameResourceLibraries enumerates installed jars and uses
 Kit's version metadata to select the newest declared release; if none is installed, it uses the
 newest readable version of any kind. Build time orders known dates, with data version as a fallback
-when dates are unavailable. World version never gates selection. File stamps are checked before
-and after reads. Each jar is capped at 128 MiB; the registry retains small version metadata and weak
+when dates are unavailable. World version never gates selection. The app pairs the path with
+Kit's `GameAssets.SourceIdentity`, which owns the complete file-validity rule for path discovery
+and opened readers. Discovery checks the current path before and after opening, matches the
+captured source identity, and checks the opened reader's validity. Kit's opaque stable metadata
+key combines with the path and game version in the existing game-source cache text.
+A restored jar can keep its modification date while invalidating its old reader;
+that file gets a fresh library rather than a cached handle whose resource reads fail.
+Each jar is capped at 128 MiB; the registry retains small version metadata and weak
 references to live GameResourceLibrary source handles. It retains at most the best uncached archive
 while choosing a source. One file shares its separate data and artwork actors across worlds.
 
@@ -1937,8 +1951,7 @@ the map's rules. Height ignores the asset source.
 The shared library bounds color results (including misses), reuses decoded textures, and clears
 all caches on retirement. A retired reader cancels map work instead of caching fallback colors
 under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
-includes a stable URL/size/modification/version
-source key; changing or removing the source cancels old map jobs and redraws through MapModel's
+includes a stable file-identity/version source key; changing or removing the source cancels old map jobs and redraws through MapModel's
 existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
 selected block models through this same projection, UV, tint and rasterization path. Kit owns the
 position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
