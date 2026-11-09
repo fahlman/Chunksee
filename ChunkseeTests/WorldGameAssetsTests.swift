@@ -155,9 +155,10 @@ import Synchronization
             resources.refreshGameAssets()
             await resources.waitForRefresh()
             for session in [visible, hidden] {
-                #expect(session.map?.currentRenderer.gameData == nil)
-                #expect(session.map?.currentRenderer.gameArtwork == nil)
-                #expect(session.map?.currentRenderer.biomeColors?.biome("test:sample")
+                let renderer = try #require(session.map?.currentRenderer)
+                #expect(renderer.gameData == nil)
+                #expect(renderer.gameArtwork == nil)
+                #expect(renderer.biomeColors?.biome("test:sample")
                     .color(.water, x: 0, z: 0) == nil)
             }
 
