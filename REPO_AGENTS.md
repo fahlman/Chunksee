@@ -98,11 +98,16 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.84.0`, resolved to `0.84.0` (`4efb6399f194f8f13d7976a95f7921fe94ab571c`).
+  minor" from `0.85.0`, resolved to `0.85.0` (`529734485bb60aa5d3bb7f90f5cdac395808080b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.85.0 keeps saved NBT text strings literal. Historical JSON text is normalized by
+    the reader at the game's field-specific upgrade boundaries; callers with standalone JSON
+    use `TextComponent.content(json:)`. The app's labels and search preserve quoted and
+    JSON-looking saved names. RegionFacts revision 33 rebuilds saved-text facts once;
+    terrain, lighting and artwork interpretation identities are unchanged by this release.
   - Kit 0.84.0 removes `GameAssets.Version: Decodable`; version-notice fixtures now use
     `GameAssets` and its `version` property, matching the production reader. The existing
     Kit interpretation identities invalidate older terrain and region-fact caches on adoption.
