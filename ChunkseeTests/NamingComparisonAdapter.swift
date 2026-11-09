@@ -1,11 +1,21 @@
 import ChunkseeKit
 import CoreGraphics
 import Foundation
+import Testing
 @testable import ChunkseeTestHost
 
 /// API adapter only; the endpoint's shipping formatter still supplies the displayed text.
 @MainActor
 enum NamingComparisonAdapter {
+    static func requireNameContext(_ session: WorldSession, expected: UUID?) throws {
+        try #require(session.resources.gameNames.identity == expected)
+        try #require(MapContent(session: session).gameNames.identity == expected)
+    }
+
+    static func emptyContent(gameNames: GameNames) -> MapContent {
+        MapContent(gameNames: gameNames)
+    }
+
     static func storage(_ session: WorldSession) -> [StoredItem] {
         session.resources.gameNames.storedItems(session.presentation.selectedIndex.storage)
     }

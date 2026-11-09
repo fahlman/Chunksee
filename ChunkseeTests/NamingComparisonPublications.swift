@@ -7,6 +7,12 @@ import Testing
 
 extension NamingComparison {
     @concurrent static func verify(_ root: URL, against expected: [String: String]) async throws {
+        try verifyFiles(root, against: expected)
+    }
+
+    // Foundation's synchronous enumerator cannot be iterated in an async function.
+    // The concurrent entry point keeps this blocking file scan off the main actor.
+    nonisolated private static func verifyFiles(_ root: URL, against expected: [String: String]) throws {
         try #require(!expected.isEmpty)
         let rootValues = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         try #require(rootValues.isDirectory == true && rootValues.isSymbolicLink == false)
