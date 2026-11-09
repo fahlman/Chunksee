@@ -18,7 +18,7 @@ import Testing
         #expect(GameNames.unavailable.itemName(of: stack) == "Diamond “\(name)”")
         #expect(GameNames.unavailable.tradeDescription(stack) == "1 Diamond “\(name)”")
         let summary = try #require(WorldSearch.summary(of: [stack], query: SearchQuery(name), gameNames: .unavailable))
-        #expect(summary.text == "1 Diamond “\(name)”")
+        #expect(summary.text(in: .unavailable) == "1 Diamond “\(name)”")
         #expect(summary.count == 1)
     }
 
