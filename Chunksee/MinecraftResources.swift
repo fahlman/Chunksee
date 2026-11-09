@@ -1,4 +1,5 @@
 import ChunkseeKit
+import Darwin
 import Foundation
 import Observation
 
@@ -116,8 +117,34 @@ final class MinecraftResources {
 actor GameResourceLibraries {
     nonisolated private struct Identity: Hashable {
         let url: URL
+        let device: dev_t
+        let inode: ino_t
         let size: Int
-        let modified: Int64
+        let mode: mode_t
+        let modifiedSeconds: time_t
+        let modifiedNanoseconds: Int
+        let changedSeconds: time_t
+        let changedNanoseconds: Int
+
+        init?(url: URL) {
+            var info = stat()
+            guard url.withUnsafeFileSystemRepresentation({ path in
+                path.map { fstatat(AT_FDCWD, $0, &info, 0) } ?? -1
+            }) == 0, info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+                  let size = Int(exactly: info.st_size), size >= 0 else { return nil }
+            self.url = url
+            device = info.st_dev; inode = info.st_ino; self.size = size; mode = info.st_mode
+            modifiedSeconds = info.st_mtimespec.tv_sec
+            modifiedNanoseconds = info.st_mtimespec.tv_nsec
+            changedSeconds = info.st_ctimespec.tv_sec
+            changedNanoseconds = info.st_ctimespec.tv_nsec
+        }
+
+        func sourceKey(for version: GameAssets.Version) -> String {
+            CacheKey.hash("\(url.absoluteString)|\(device)|\(inode)|\(size)|\(mode)"
+                + "|\(modifiedSeconds)|\(modifiedNanoseconds)|\(changedSeconds)|\(changedNanoseconds)"
+                + "|\(version.id)|\(version.dataVersion)")
+        }
     }
     nonisolated private final class WeakLibrary {
         weak var value: GameResourceLibrary?
@@ -165,8 +192,9 @@ actor GameResourceLibraries {
             guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
             let url = entry.appendingPathComponent(entry.lastPathComponent + ".jar").resolvingSymlinksInPath()
             // Bound one archive, and retain at most the best uncached candidate during discovery.
-            guard let stamp = CacheKey.fileStamp(for: url), (1...134_217_728).contains(stamp.size) else { continue }
-            let key = Identity(url: url, size: stamp.size, modified: stamp.modified)
+            // Kit invalidates an opened archive when its inode or change time changes too.
+            // A restored file may keep size/mtime but must not reuse that invalid reader.
+            guard let key = Identity(url: url), (1...134_217_728).contains(key.size) else { continue }
             seen.insert(key)
             let assets: GameAssets?
             let version: GameAssets.Version
@@ -175,7 +203,7 @@ actor GameResourceLibraries {
                 version = known
             } else {
                 guard let opened = try? GameAssets(contentsOf: url),
-                      let after = CacheKey.fileStamp(for: url), after.size == stamp.size, after.modified == stamp.modified else { continue }
+                      Identity(url: url) == key else { continue }
                 assets = opened
                 version = opened.version
                 versions[key] = version
@@ -186,7 +214,7 @@ actor GameResourceLibraries {
         versions = versions.filter { seen.contains($0.key) }
         guard let selected else { return nil }
         let key = selected.key
-        guard let stamp = CacheKey.fileStamp(for: key.url), stamp.size == key.size, stamp.modified == key.modified else { return nil }
+        guard Identity(url: key.url) == key else { return nil }
         if let cached = live[key]?.value { return cached }
         if let data = live[key]?.data, let artwork = live[key]?.artwork {
             let library = GameResourceLibrary(data: data, artwork: artwork)
@@ -194,10 +222,9 @@ actor GameResourceLibraries {
             return library
         }
         guard let assets = try selected.assets ?? GameAssets(contentsOf: key.url),
-              let after = CacheKey.fileStamp(for: key.url), after.size == stamp.size, after.modified == stamp.modified else { return nil }
+              Identity(url: key.url) == key else { return nil }
         try Task.checkCancellation()
-        let data = live[key]?.data ?? GameDataLibrary(assets: assets,
-            sourceKey: CacheKey.hash("\(key.url.absoluteString)|\(stamp.size)|\(stamp.modified)|\(assets.version.id)|\(assets.version.dataVersion)"))
+        let data = live[key]?.data ?? GameDataLibrary(assets: assets, sourceKey: key.sourceKey(for: assets.version))
         let pictures = GameResourceLibrary(data: data, artwork: GameArtworkLibrary(assets: assets, data: data))
         live[key] = WeakLibrary(pictures)
         return pictures
