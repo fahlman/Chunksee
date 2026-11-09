@@ -129,7 +129,7 @@ actor GameResourceLibraries {
         init?(url: URL) {
             var info = stat()
             guard url.withUnsafeFileSystemRepresentation({ path in
-                path.map { Darwin.stat($0, &info) } ?? -1
+                path.map { fstatat(AT_FDCWD, $0, &info, 0) } ?? -1
             }) == 0, info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
                   let size = Int(exactly: info.st_size), size >= 0 else { return nil }
             self.url = url
