@@ -74,8 +74,10 @@ struct MarkerLabel {
     }
 
     static func draw(_ labels: [MarkerLabel], in context: GraphicsContext) {
-        for index in MarkerLabelLayout.visibleIndices(labels.map(\.placement)) {
+        let visible = MarkerLabelLayout.visibleIndices(labels.map(\.placement))
+        for index in visible {
             labels[index].draw(in: context)
         }
+        NamingComparisonTrace.recorder?.didDraw(labels, indices: visible)
     }
 }
