@@ -12,6 +12,16 @@ import Testing
         return .compound(["id": .string(id), "count": .int(count), "components": .compound(components)])
     }
 
+    @Test(arguments: ["\"Sword\"", "[1]", "{}"])
+    func literalSavedNamesStayVisibleAndSearchable(name: String) throws {
+        let stack = try #require(ItemStack(item("minecraft:diamond", name: name)))
+        #expect(GameNames.unavailable.itemName(of: stack) == "Diamond “\(name)”")
+        #expect(GameNames.unavailable.tradeDescription(stack) == "1 Diamond “\(name)”")
+        let summary = try #require(WorldSearch.summary(of: [stack], query: SearchQuery(name), gameNames: .unavailable))
+        #expect(summary.text == "1 Diamond “\(name)”")
+        #expect(summary.count == 1)
+    }
+
     @Test func searchKeepsKindsNamesAndContainerContext() throws {
         let container = NBT.compound([
             "id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
