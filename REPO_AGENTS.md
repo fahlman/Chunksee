@@ -1725,7 +1725,11 @@ replace the source or close the loader. This avoids nested delivery and a deferr
 dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
-file identity. Definition, player and index generations reject canceled/closed-world results.
+file identity. `WorldGameAssets` also observes SwiftUI's `appearsActive`: returning focus to a
+document rechecks through the same world loader, since a Mac scene can remain active while
+another app has focus. Losing focus adds no refresh. Initial/source/language and scene-phase
+requests remain intact, and overlapping requests still coalesce in the shared loader.
+Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
