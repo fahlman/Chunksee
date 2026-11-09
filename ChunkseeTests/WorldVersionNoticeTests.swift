@@ -47,8 +47,9 @@ import Testing
 
     @Test(arguments: [nil, 5_999, 6_000, 6_001, 9_999] as [Int?])
     func comparisonUsesDataVersionsAndNeverNames(_ number: Int?) throws {
-        let selected = try JSONDecoder().decode(GameAssets.Version.self,
-            from: ItemPictureFixture.json(["id": "9999 Release", "world_version": 6_000]))
+        let fixture = try game(6_000, name: "9999 Release")
+        defer { fixture.remove() }
+        let selected = try #require(try GameAssets(contentsOf: fixture.jar)).version
         let notice = WorldVersionNotice(saved: try saved(number, name: "0001 Snapshot"), game: selected)
         #expect((notice != nil) == (number.map { $0 > 6_000 } ?? false))
         if let notice {
@@ -57,8 +58,9 @@ import Testing
     }
 
     @Test func missingVersionNameDoesNotInventOneOrSuppressTheNotice() throws {
-        let selected = try JSONDecoder().decode(GameAssets.Version.self,
-            from: ItemPictureFixture.json(["id": "Selected Release", "world_version": 6_000]))
+        let fixture = try game(6_000)
+        defer { fixture.remove() }
+        let selected = try #require(try GameAssets(contentsOf: fixture.jar)).version
         let version = try saved(6_001, name: nil)
         let notice = try #require(WorldVersionNotice(saved: version, game: selected))
         #expect(notice.message(locale: Locale(identifier: "en_US")) == "This world was saved with a newer Minecraft version than the selected Minecraft Selected Release. Chunksee will show what it can read.")
