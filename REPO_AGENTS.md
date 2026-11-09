@@ -1695,8 +1695,12 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameResourceLibraries enumerates installed jars and uses
 Kit's version metadata to select the newest declared release; if none is installed, it uses the
 newest readable version of any kind. Build time orders known dates, with data version as a fallback
-when dates are unavailable. World version never gates selection. File stamps are checked before
-and after reads. Each jar is capped at 128 MiB; the registry retains small version metadata and weak
+when dates are unavailable. World version never gates selection. File identity covers the path,
+device/inode, size, mode and nanosecond modification/change times, matching the facts that Kit's
+opened archive checks. Identity is checked before and after reads and supplies the game-source
+cache key. A restored jar can keep its modification date while invalidating its old reader;
+that file gets a fresh library rather than a cached handle whose resource reads fail.
+Each jar is capped at 128 MiB; the registry retains small version metadata and weak
 references to live GameResourceLibrary source handles. It retains at most the best uncached archive
 while choosing a source. One file shares its separate data and artwork actors across worlds.
 
@@ -1914,8 +1918,7 @@ the map's rules. Height ignores the asset source.
 The shared library bounds color results (including misses), reuses decoded textures, and clears
 all caches on retirement. A retired reader cancels map work instead of caching fallback colors
 under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
-includes a stable URL/size/modification/version
-source key; changing or removing the source cancels old map jobs and redraws through MapModel's
+includes a stable file-identity/version source key; changing or removing the source cancels old map jobs and redraws through MapModel's
 existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
 selected block models through this same projection, UV, tint and rasterization path. Kit owns the
 position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
