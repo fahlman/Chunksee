@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/fahlman/ChunkseeKit.git",
       "state" : {
-        "revision" : "529734485bb60aa5d3bb7f90f5cdac395808080b",
-        "version" : "0.85.0"
+        "revision" : "a286b4f123196cf1da2b9c7470785031d5734ab5",
+        "version" : "0.86.0"
       }
     }
   ],
