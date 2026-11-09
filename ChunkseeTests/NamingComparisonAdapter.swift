@@ -7,7 +7,7 @@ import Testing
 /// API adapter only; the endpoint's shipping formatter still supplies the displayed text.
 @MainActor
 enum NamingComparisonAdapter {
-    static func requireNameContext(_ session: WorldSession, expected: UUID?) throws {
+    static func requireNameContext(_ session: WorldSession, expected: GameNames.Identity?) throws {
         try #require(session.resources.gameNames.identity == expected)
         try #require(MapContent(session: session).gameNames.identity == expected)
     }
