@@ -164,7 +164,9 @@ struct NamingComparison {
                     try #require(resources.gameNames.name(key: key, fallback: "(missing)") == value)
                 }
                 let namesID = resources.gameNames.identity
-                try #require(sessions.allSatisfy { MapContent(session: $0).gameNames.identity == namesID })
+                for session in sessions {
+                    try NamingComparisonAdapter.requireNameContext(session, expected: namesID)
+                }
                 let folder = output.appendingPathComponent(stage)
                 try await snapshot(sessions[0], to: folder)
                 try syntheticNames(resources.gameNames, to: folder.appendingPathComponent("synthetic-names"))
@@ -247,7 +249,8 @@ struct NamingComparison {
     static func validate(_ view: View) throws {
         try #require(!view.id.isEmpty && view.id.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" })
         try #require(view.center.count == 2 && view.hover.count == 2 && view.picks.allSatisfy { $0.count == 2 })
-        try #require((view.center + view.hover + view.picks.flatMap { $0 }).allSatisfy(\.isFinite))
+        let finiteCoordinates = (view.center + view.hover + view.picks.flatMap { $0 }).allSatisfy { $0.isFinite }
+        try #require(finiteCoordinates)
         try #require([1.0, 2.0, 8.0].contains(view.scale))
         try #require((view.selectedKind == nil) == (view.selectedID == nil))
     }
