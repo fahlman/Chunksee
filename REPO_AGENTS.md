@@ -98,11 +98,14 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.85.0`, resolved to `0.85.0` (`529734485bb60aa5d3bb7f90f5cdac395808080b`).
+  minor" from `0.86.0`, resolved to `0.86.0` (`a286b4f123196cf1da2b9c7470785031d5734ab5`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.86.0 owns the game archive's file-validity identity. The app uses its public
+    SourceIdentity, captured source identity and validity check instead of copying stat fields.
+    Its existing game-source cache text and interpretation versions remain unchanged.
   - Kit 0.85.0 keeps saved NBT text strings literal. Historical JSON text is normalized by
     the reader at the game's field-specific upgrade boundaries; callers with standalone JSON
     use `TextComponent.content(json:)`. The app's labels and search preserve quoted and
@@ -1695,10 +1698,12 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameResourceLibraries enumerates installed jars and uses
 Kit's version metadata to select the newest declared release; if none is installed, it uses the
 newest readable version of any kind. Build time orders known dates, with data version as a fallback
-when dates are unavailable. World version never gates selection. File identity covers the path,
-device/inode, size, mode and nanosecond modification/change times, matching the facts that Kit's
-opened archive checks. Identity is checked before and after reads and supplies the game-source
-cache key. A restored jar can keep its modification date while invalidating its old reader;
+when dates are unavailable. World version never gates selection. The app pairs the path with
+Kit's `GameAssets.SourceIdentity`, which owns the complete file-validity rule for path discovery
+and opened readers. Discovery checks the current path before and after opening, matches the
+captured source identity, and checks the opened reader's validity. Kit's opaque stable metadata
+key combines with the path and game version in the existing game-source cache text.
+A restored jar can keep its modification date while invalidating its old reader;
 that file gets a fresh library rather than a cached handle whose resource reads fail.
 Each jar is capped at 128 MiB; the registry retains small version metadata and weak
 references to live GameResourceLibrary source handles. It retains at most the best uncached archive

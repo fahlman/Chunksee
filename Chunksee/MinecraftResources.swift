@@ -1,5 +1,4 @@
 import ChunkseeKit
-import Darwin
 import Foundation
 import Observation
 
@@ -117,33 +116,16 @@ final class MinecraftResources {
 actor GameResourceLibraries {
     nonisolated private struct Identity: Hashable {
         let url: URL
-        let device: dev_t
-        let inode: ino_t
-        let size: Int
-        let mode: mode_t
-        let modifiedSeconds: time_t
-        let modifiedNanoseconds: Int
-        let changedSeconds: time_t
-        let changedNanoseconds: Int
+        let source: GameAssets.SourceIdentity
 
         init?(url: URL) {
-            var info = stat()
-            guard url.withUnsafeFileSystemRepresentation({ path in
-                path.map { fstatat(AT_FDCWD, $0, &info, 0) } ?? -1
-            }) == 0, info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
-                  let size = Int(exactly: info.st_size), size >= 0 else { return nil }
+            guard let source = try? GameAssets.SourceIdentity(contentsOf: url) else { return nil }
             self.url = url
-            device = info.st_dev; inode = info.st_ino; self.size = size; mode = info.st_mode
-            modifiedSeconds = info.st_mtimespec.tv_sec
-            modifiedNanoseconds = info.st_mtimespec.tv_nsec
-            changedSeconds = info.st_ctimespec.tv_sec
-            changedNanoseconds = info.st_ctimespec.tv_nsec
+            self.source = source
         }
 
         func sourceKey(for version: GameAssets.Version) -> String {
-            CacheKey.hash("\(url.absoluteString)|\(device)|\(inode)|\(size)|\(mode)"
-                + "|\(modifiedSeconds)|\(modifiedNanoseconds)|\(changedSeconds)|\(changedNanoseconds)"
-                + "|\(version.id)|\(version.dataVersion)")
+            CacheKey.hash("\(url.absoluteString)|\(source.cacheKey)|\(version.id)|\(version.dataVersion)")
         }
     }
     nonisolated private final class WeakLibrary {
@@ -192,9 +174,9 @@ actor GameResourceLibraries {
             guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
             let url = entry.appendingPathComponent(entry.lastPathComponent + ".jar").resolvingSymlinksInPath()
             // Bound one archive, and retain at most the best uncached candidate during discovery.
-            // Kit invalidates an opened archive when its inode or change time changes too.
+            // Kit owns the identity used by both discovery and the opened reader.
             // A restored file may keep size/mtime but must not reuse that invalid reader.
-            guard let key = Identity(url: url), (1...134_217_728).contains(key.size) else { continue }
+            guard let key = Identity(url: url), (1...134_217_728).contains(key.source.byteCount) else { continue }
             seen.insert(key)
             let assets: GameAssets?
             let version: GameAssets.Version
@@ -203,6 +185,7 @@ actor GameResourceLibraries {
                 version = known
             } else {
                 guard let opened = try? GameAssets(contentsOf: url),
+                      opened.sourceIdentity == key.source, opened.isUnchanged,
                       Identity(url: url) == key else { continue }
                 assets = opened
                 version = opened.version
@@ -222,6 +205,7 @@ actor GameResourceLibraries {
             return library
         }
         guard let assets = try selected.assets ?? GameAssets(contentsOf: key.url),
+              assets.sourceIdentity == key.source, assets.isUnchanged,
               Identity(url: key.url) == key else { return nil }
         try Task.checkCancellation()
         let data = live[key]?.data ?? GameDataLibrary(assets: assets, sourceKey: key.sourceKey(for: assets.version))
