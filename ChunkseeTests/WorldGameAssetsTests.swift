@@ -142,7 +142,7 @@ import Synchronization
         var failure: (any Error)?
         do {
             await resources.waitForRefresh()
-            // Keep the original handle alive so discovery must exercise its same-file reuse.
+            // Keep the old handle alive so recovery cannot depend on weak-cache eviction.
             let original = try #require(await resources.names.minecraft.library())
             let colors = try #require(resources.biomeColors)
             let stamp = try #require(CacheKey.fileStamp(for: game.jar))
@@ -167,17 +167,22 @@ import Synchronization
             resources.refreshGameAssets()
             await resources.waitForRefresh()
             #expect(resources.names.minecraft.generation == generation)
-            #expect(await resources.names.minecraft.library() === original)
-            #expect(resources.biomeColors?.sourceKey == colors.sourceKey)
+            let restored = try #require(await resources.names.minecraft.library())
+            let restoredColors = try #require(resources.biomeColors)
+            #expect(restoredColors.source == GameResourceSource(data: restored.data,
+                artwork: resources.names.minecraft.artwork(for: restored)))
+            #expect(restoredColors.sourceKey.catalog == colors.sourceKey.catalog)
+            #expect(restoredColors.sourceKey.colorMaps == colors.sourceKey.colorMaps)
             for session in [visible, hidden] {
                 let renderer = try #require(session.map?.currentRenderer)
-                #expect(renderer.gameData === original.data)
+                #expect(renderer.gameData === restored.data)
                 #expect((renderer.gameArtwork != nil) == artwork)
-                #expect(renderer.biomeColors?.sourceKey == colors.sourceKey)
+                #expect(renderer.biomeColors?.sourceKey == restoredColors.sourceKey)
                 #expect(renderer.biomeColors?.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
                 #expect(renderer.biomeColors?.biome("test:sample").color(.grass, x: 0, z: 0)
                     == (artwork ? 0xff0000 : nil))
             }
+            withExtendedLifetime(original) {}
         } catch { failure = error }
         visible.close(); hidden.close(); resources.close()
         await resources.waitUntilClosed()
