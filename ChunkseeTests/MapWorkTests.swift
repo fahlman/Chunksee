@@ -6,43 +6,89 @@ import Testing
 
 @Suite(.isolatedStores)
 struct MapWorkTests {
-    @Test(.timeLimit(.minutes(1))) func worldClosureWaitsForARenderInAnAlreadyClosedTab() async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func worldClosureWaitsForARenderInAnAlreadyClosedTab(lateColors: Bool) async throws {
         let chunk = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
         let url = try TestWorld.make(chunks: [chunk]), defaults = TestDefaults.make()
         defer { try? FileManager.default.removeItem(at: url) }
-        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
-                                       savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+        let names = PlayerNames(defaults: defaults)
+        let snapshot = try await WorldSnapshot.read(url)
+        let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
+        let folder = try WorldFolders(defaults: defaults).remember(url)
+        let resources = WorldResources(prepared: prepared, names: names,
+                                       savedSearches: SavedSearches(defaults: defaults),
+                                       settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
-        await resources.index.waitForIndex()
-        let opening = try resources.opening()
+        let colors = AsyncReadGate<Void>()
+        // Install the held reader before yielding to the initial refresh. Its real publication
+        // can replace a render; the test must finish each read it allows to start.
+        resources.readBiomeColors = { world, data, artwork, previous, reload in
+            let result = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                  previous: previous, reload: reload)
+            await colors.read("initial")
+            return result
+        }
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-        let tab = WorldSession(resources: resources, renderTile: { _, _ in await render.read("render") })
-        let map = try #require(tab.map)
-        map.viewport.center = CGPoint(x: 8, y: 8)
-        map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
-        await render.waitForRequest("render")
-        tab.close()
-        await render.waitForCancellation("render")
-        #expect(tab.isClosed && !resources.isClosed)
-        // The last document opening finishes after this tab detached. The common owner must
-        // retain its canceled render, even though no live session remains in WorldResources.
-        opening.finish()
-        var finishedReads = false
-        let draining = Task.immediate {
-            await resources.backgroundWork.waitUntilFinished()
-            finishedReads = true
+        let numbers = ReadNumbers()
+        var failure: (any Error)?
+        do {
+            await colors.waitForRequest("initial")
+            await resources.index.waitForIndex()
+            if !lateColors {
+                await colors.finish("initial", with: ())
+                await resources.waitForRefresh()
+            }
+            let opening = try resources.opening()
+            let tab = WorldSession(resources: resources, renderTile: { _, _ in
+                await render.read(String(await numbers.next()))
+            })
+            let map = try #require(tab.map)
+            map.viewport.center = CGPoint(x: 8, y: 8)
+            map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+            await render.waitForRequest("0")
+            if lateColors {
+                await colors.finish("initial", with: ())
+                await resources.waitForRefresh()
+                await render.waitForCancellation("0")
+                await render.waitForRequest("1")
+            }
+            tab.close()
+            let current = lateColors ? "1" : "0"
+            await render.waitForCancellation(current)
+            try #require(await render.requested == (lateColors ? ["0", "1"] : ["0"]))
+            #expect(tab.isClosed && !resources.isClosed)
+            // The last opening finishes after the tab detached. The common owner must retain
+            // both the current render and any render retired by the initial color publication.
+            opening.finish()
+            var finishedReads = false
+            let draining = Task.immediate {
+                await resources.backgroundWork.waitUntilFinished()
+                finishedReads = true
+            }
+            var finishedClosing = false
+            let closing = Task.immediate {
+                await resources.waitUntilClosed()
+                finishedClosing = true
+            }
+            #expect(resources.isClosed && !finishedReads && !finishedClosing)
+            if lateColors {
+                await render.finish("1", with: nil)
+                await map.waitUntilIdle()
+                #expect(!finishedReads && !finishedClosing)
+            }
+            await render.finish("0", with: nil)
+            await draining.value
+            await closing.value
+            await tab.waitUntilClosed()
+            #expect(finishedReads && finishedClosing && map.tiles.isEmpty && !map.isLoading)
+        } catch {
+            failure = error
         }
-        var finishedClosing = false
-        let closing = Task.immediate {
-            await resources.waitUntilClosed()
-            finishedClosing = true
-        }
-        #expect(resources.isClosed && !finishedReads && !finishedClosing)
-        await render.finish("render", with: nil)
-        await draining.value
-        await closing.value
-        await tab.waitUntilClosed()
-        #expect(finishedReads && finishedClosing && map.tiles.isEmpty && !map.isLoading)
+        resources.close()
+        await colors.releaseAllAndFuture(with: ())
+        await render.releaseAllAndFuture(with: nil)
+        await resources.waitUntilClosed()
+        if let failure { throw failure }
     }
 
     @Test(.timeLimit(.minutes(1))) func ownerClosureCancelsMapReadsAndRejectsLatePixelsAndCopies() async throws {
