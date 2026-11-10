@@ -54,6 +54,8 @@ nonisolated struct DimensionContent: Sendable {
             return values
         }
         guard !Task.isCancelled else { return previous ?? DimensionContent() }
+        let namingSpan = NamingPublicationProbe.begin(.dimensionProjection)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let shared = previousIndex.updating(available: available, selected: selected,
                                            replacements: replacements.values.map(\.index))
         var part = DimensionContent()
@@ -229,6 +231,8 @@ nonisolated enum WorldSearch {
     /// All scans and sorting for a query run on the concurrent executor, using one snapshot.
     @concurrent
     static func execute(_ request: SearchRequest) async -> [String: [SearchHit]] {
+        let namingSpan = NamingPublicationProbe.begin(.queryExecution)
+        defer { NamingPublicationProbe.end(namingSpan) }
         var results: [String: [SearchHit]] = [:]
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }

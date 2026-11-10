@@ -112,6 +112,8 @@ final class WorldQueryStore {
     }
 
     private static func context(index: WorldIndexStore, names: PlayerNames, singleplayerUUID: UUID?, gameNames: GameNames) -> Context {
+        let namingSpan = NamingPublicationProbe.begin(.queryContext)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let snapshot = index.snapshot
         let labels = Dictionary(uniqueKeysWithValues: snapshot.players.players.map {
             ($0.uuid, GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
@@ -121,13 +123,15 @@ final class WorldQueryStore {
     }
 
     private func loader(source: Source, read: @escaping @Sendable (Source) async throws -> Value) -> RefreshLoader<Source, RefreshInvalidation, Value> {
-        RefreshLoader(progressRead: { source, _, _, _ in .complete(try await read(source)) },
+        let loader = RefreshLoader<Source, RefreshInvalidation, Value>(progressRead: { source, _, _, _ in .complete(try await read(source)) },
             scope: work.makeScope(), priority: .userInitiated, whenInactive: .cancel, source: source,
             firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, _, next in
                 guard next.isActive, previous.sources.gameNamesID == next.context.key.gameNamesID,
                       previous.sources.singleplayerUUID == next.context.key.singleplayerUUID else { return nil }
                 return previous
             })
+        loader.namingProbePhase = .queryPublication
+        return loader
     }
 
     func acquire() -> Handle {

@@ -12,10 +12,6 @@ enum NamingComparisonAdapter {
         try #require(MapContent(session: session).gameNames.identity == expected)
     }
 
-    static func emptyContent(gameNames: GameNames) -> MapContent {
-        MapContent(gameNames: gameNames)
-    }
-
     static func storage(_ session: WorldSession) -> [StoredItem] {
         session.resources.gameNames.storedItems(session.presentation.selectedIndex.storage)
     }

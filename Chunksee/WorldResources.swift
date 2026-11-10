@@ -125,6 +125,8 @@ final class WorldResources {
         guard let library = source.library else { return .unavailable }
         guard let read = await self?.readLanguage else { throw CancellationError() }
         let language = await read(library, source.preference, source.folder)
+        let namingSpan = NamingPublicationProbe.begin(.nameConstruction)
+        defer { NamingPublicationProbe.end(namingSpan) }
         if let previous, previous.hasSameContents(as: language) { return previous }
         return GameNames(language)
     }
@@ -478,6 +480,7 @@ final class WorldResources {
     func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
         guard !isClosed else { return }
         if let preferredLanguage { languagePreference = preferredLanguage }
+        languageLoader.namingProbePhase = .namePublication
         languageLoader.request(source: languageSource, isEnabled: true, reread: reload)
     }
 

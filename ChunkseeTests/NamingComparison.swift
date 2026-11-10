@@ -5,8 +5,8 @@ import Foundation
 import Testing
 @testable import ChunkseeTestHost
 
-/// Evidence-only, untimed proof. Each invocation has one artwork choice and one fresh process.
-/// A later timing plan must be reviewed separately; this entry point deliberately has no timing mode.
+/// Evidence-only first proof for the timing paths: two artwork choices, each cold and reopened.
+/// No acceptance batch or repetition count is enabled before its separate plan is approved.
 @Suite(.isolatedStores)
 @MainActor
 struct NamingComparison {
@@ -30,7 +30,6 @@ struct NamingComparison {
         let world: String
         let game: String
         let output: String
-        let artwork: Bool
         let worldFiles: [String: String]
         let gameFiles: [String: String]
         let expectedLanguageValues: [String: [String: String]]
@@ -52,17 +51,17 @@ struct NamingComparison {
         init(_ value: AnyObject) { self.value = value }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["CHUNKSEE_NAMING_COMPARISON"] != nil),
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CHUNKSEE_NAMING_TIMING"] != nil),
           .timeLimit(.minutes(5)))
     func copiedWorldProof() async throws {
         try #require(Bundle.main.bundleIdentifier == "com.fahlsing.Chunksee.Tests")
-        let path = try #require(ProcessInfo.processInfo.environment["CHUNKSEE_NAMING_COMPARISON"])
+        let path = try #require(ProcessInfo.processInfo.environment["CHUNKSEE_NAMING_TIMING"])
         let config = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(filePath: path)))
         let root = "/Users/ryan/Developer/Chunksee-runs/"
         try #require(config.mode == "proof")
         try #require(config.world == root + "world-snapshot-loaders-evidence/game-assets/paired-1/input-world")
         try #require(config.game == root + "naming-stack-comparison-evidence/inputs-1/input-game")
-        try #require(config.output.hasPrefix(NSHomeDirectory() + "/Library/Caches/NamingComparison-"))
+        try #require(config.output.hasPrefix(NSHomeDirectory() + "/Library/Caches/NamingTiming-"))
         try #require(!config.queries.isEmpty && !config.views.isEmpty)
         try #require(Set(config.queries).count == config.queries.count)
         try #require(Set(config.requiredNonemptyQueries).isSubset(of: Set(config.queries)))
@@ -79,24 +78,52 @@ struct NamingComparison {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         try await Self.verify(URL(filePath: config.world), against: config.worldFiles)
         try await Self.verify(URL(filePath: config.game), against: config.gameFiles)
-        let owners = try await Self.run(config, output: output)
-        try #require(owners.allSatisfy { $0.value == nil })
-        try #require(NamingComparisonTrace.recorder == nil)
+        try #require(NamingComparisonMeasures.intendedFrenchQueries.isSubset(of: Set(config.queries)))
+        try #require(config.queries.count == 17 && config.views.count == 8)
+        // No fixed view draws one of the four intentionally expanded French searches.
+        // Keep every view scored; this is checked against the immutable workload before a run.
+        try #require(config.views.allSatisfy {
+            !NamingComparisonMeasures.intendedFrenchQueries.contains($0.query)
+        })
+        var completed: [String] = []
+        for artwork in [false, true] {
+            let cell = "artwork-\(artwork ? "on" : "off")"
+            let cache = output.appendingPathComponent("cache-" + cell)
+            var coldFiles: [String: NamingComparisonMeasures.CacheFile] = [:]
+            for phase in ["cold", "reopen"] {
+                let folder = output.appendingPathComponent(cell + "/" + phase)
+                let before = try await NamingComparisonMeasures.cacheFiles(cache)
+                try #require(phase == "cold" ? before.isEmpty : before == coldFiles)
+                let owners = try await Self.run(config, artwork: artwork, phase: phase,
+                                               output: folder, cache: cache)
+                try #require(owners.allSatisfy { $0.value == nil })
+                let after = try await NamingComparisonMeasures.cacheFiles(cache)
+                try #require(!after.isEmpty)
+                try Self.write([
+                    "cache-files-before.json": NamingComparisonCapture.encoded(before),
+                    "cache-files-after.json": NamingComparisonCapture.encoded(after),
+                ], to: folder)
+                if phase == "cold" { coldFiles = after }
+                else { try #require(before == after) }
+                completed.append(cell + "/" + phase)
+            }
+        }
         try await Self.verify(URL(filePath: config.world), against: config.worldFiles)
         try await Self.verify(URL(filePath: config.game), against: config.gameFiles)
         try Self.write(["completion.json": NamingComparisonCapture.json([
-            "drained": true, "retainedOwners": 0, "artwork": config.artwork,
+            "drained": true, "retainedOwners": 0, "completedCells": completed,
             "processLocale": Locale.current.identifier, "preferredLanguages": Locale.preferredLanguages,
             "renderLocale": NamingComparisonCapture.locale.identifier,
         ])], to: output)
     }
 
-    static func run(_ config: Configuration, output: URL) async throws -> [Weak] {
+    static func run(_ config: Configuration, artwork: Bool, phase: String, output: URL, cache: URL) async throws -> [Weak] {
+        let setupStart = NamingComparisonMeasures.Stamp()
         let defaults = TestDefaults.make()
         let names = PlayerNames(defaults: defaults)
         try #require(!names.looksUpOnline)
         names.minecraft.choose(URL(filePath: config.game, directoryHint: .isDirectory))
-        names.minecraft.usesGameArtwork = config.artwork
+        names.minecraft.usesGameArtwork = artwork
         let saved = SavedSearches(defaults: defaults)
         for query in config.savedQueries { saved.add(query) }
         for entry in saved.all { saved.setShown(entry.id, false) }
@@ -104,6 +131,11 @@ struct NamingComparison {
         var sessions: [WorldSession] = []
         let scans = Scans()
         var stage = "open"
+        var measures: [[String: Any]] = []
+        var componentsActive = false
+        let expectedReads = phase == "cold" ? [
+            "minecraft:overworld/-1,-1", "minecraft:overworld/0,-1", "minecraft:overworld/4,-2",
+        ] : []
 
         func close() async {
             for session in sessions { session.close() }
@@ -116,9 +148,18 @@ struct NamingComparison {
             await names.minecraft.waitUntilIdle()
         }
         do {
+            NamingPublicationProbe.start()
+            componentsActive = true
+            let initialStart = NamingComparisonMeasures.Stamp()
+            let snapshotSpan = NamingPublicationProbe.begin(.worldSnapshot)
             let initialSnapshot = try await WorldSnapshot.read(URL(filePath: config.world, directoryHint: .isDirectory))
-            world = try await WorldResources(snapshot: initialSnapshot, names: names,
-                savedSearches: saved, defaults: defaults, cacheRoot: output.appendingPathComponent("cache"),
+            NamingPublicationProbe.end(snapshotSpan)
+            let remembered = try WorldFolders(defaults: defaults).remember(initialSnapshot.access.url)
+            let preparationSpan = NamingPublicationProbe.begin(.worldPreparation)
+            let prepared = try await WorldPreparation.read(initialSnapshot, minecraft: names.minecraft)
+            NamingPublicationProbe.end(preparationSpan)
+            world = WorldResources(prepared: prepared, names: names,
+                savedSearches: saved, settings: WorldSettings(folder: remembered, defaults: defaults), cacheRoot: cache,
                 watchWorld: { _, _ in nil },
                 readRegion: { dimension, region, options in
                     await scans.append("\(dimension.id)/\(region.x),\(region.z)")
@@ -155,8 +196,53 @@ struct NamingComparison {
                 resources.readers.values.map { Weak($0) }
             for (index, language) in ["en_US", "fr_FR", "en_US"].enumerated() {
                 stage = "language-\(index)-\(language)"
+                let languageStart = NamingComparisonMeasures.Stamp()
                 resources.refreshGameLanguage(preferredLanguage: language)
                 await settle(sessions)
+                let publicationEnd = NamingComparisonMeasures.Stamp()
+                if index == 0 {
+                    let report = NamingPublicationProbe.finish()
+                    componentsActive = false
+                    // Preserve raw spans before any validation or calculation can fail.
+                    try write(["initial-components.json": NamingComparisonCapture.encoded(report)], to: output)
+                    try #require(report.isComplete)
+                    let summary = try report.summarized()
+                    let counts = Dictionary(grouping: report.spans, by: { $0.phase.rawValue }).mapValues { $0.count }
+                    for phase in ["worldSnapshot", "worldPreparation"] { try #require(counts[phase] == 1) }
+                    for phase in ["regionIO", "regionProjection"] { try #require((counts[phase] ?? 0) >= 3) }
+                    for phase in ["languageRead", "nameConstruction", "dimensionProjection", "indexSnapshot",
+                                  "queryContext", "queryExecution", "namePublication", "indexPublication", "queryPublication"] {
+                        try #require((counts[phase] ?? 0) > 0)
+                    }
+                    let carriedPets = resources.index.playerSnapshot.shoulderPets.count
+                    if carriedPets > 0 { try #require((counts["carriedPetProjection"] ?? 0) > 0) }
+                    try write([
+                        "initial-component-summary.json": NamingComparisonCapture.encoded(summary),
+                        "initial-component-coverage.json": NamingComparisonCapture.json([
+                            "phaseCounts": counts, "carriedPets": carriedPets,
+                            "openingStartNanoseconds": initialStart.wall,
+                            "openingEndNanoseconds": publicationEnd.wall,
+                            "threadCPUClock": "CLOCK_THREAD_CPUTIME_ID",
+                        ]),
+                    ], to: output)
+                    measures.append(["operation": "cellSetup", "primary": false,
+                        "interval": setupStart.until(initialStart)])
+                    measures.append(["operation": "initialWorldRead", "primary": true,
+                        "decisionFields": ["wallSeconds"],
+                        "interval": ["wallSeconds": summary.worldReadWallSeconds],
+                        "cpuScope": "Not attributed across asynchronous reads"])
+                    measures.append(["operation": "initialNamesAndIndex", "primary": true,
+                        "decisionFields": ["wallSeconds", "threadCPUSeconds"],
+                        "interval": ["wallSeconds": summary.namesAndIndexWallSeconds,
+                                     "threadCPUSeconds": summary.namesAndIndexThreadCPUSeconds]])
+                    measures.append(["operation": "completeOpen", "primary": false,
+                        "interval": initialStart.until(publicationEnd),
+                        "scope": "Whole-process CPU is context, not the names-group CPU decision"])
+                }
+                let languageInterval = languageStart.until(publicationEnd)
+                measures.append(["operation": "languagePublication", "languagePhase": index,
+                    "language": language, "primary": index != 0,
+                    "interval": index == 0 ? ["wallSeconds": languageInterval["wallSeconds"]!] : languageInterval])
                 try #require(resources.gameNames.identity != nil)
                 let expectedLanguage = try #require(config.expectedLanguageValues[language])
                 try #require(!expectedLanguage.isEmpty)
@@ -168,11 +254,25 @@ struct NamingComparison {
                     try NamingComparisonAdapter.requireNameContext(session, expected: namesID)
                 }
                 let folder = output.appendingPathComponent(stage)
+                let captureStart = NamingComparisonMeasures.Stamp()
                 try await snapshot(sessions[0], to: folder)
-                try syntheticNames(resources.gameNames, to: folder.appendingPathComponent("synthetic-names"))
+                let captureEnd = NamingComparisonMeasures.Stamp()
+                measures.append(["operation": "publicationCapture", "languagePhase": index,
+                    "primary": false, "interval": captureStart.until(captureEnd)])
+                try write(["language-tables.json": NamingComparisonCapture.json(
+                    NamingComparisonMeasures.languageTables(resources.gameNames))], to: folder)
                 for (queryIndex, query) in config.queries.enumerated() {
+                    let queryStart = NamingComparisonMeasures.Stamp()
                     for session in sessions { session.search.text = query }
                     for session in sessions { await session.search.waitForSearch() }
+                    let queryEnd = NamingComparisonMeasures.Stamp()
+                    measures.append(["operation": "queryPublication", "languagePhase": index,
+                        "language": language, "query": query,
+                        "primary": NamingComparisonMeasures.isScored(query: query, language: language),
+                        "decision": NamingComparisonMeasures.isScored(query: query, language: language)
+                            ? "scored" : "reported-intended-membership-change",
+                        "resultCounts": sessions.map { $0.search.results.count },
+                        "interval": queryStart.until(queryEnd)])
                     for (window, session) in sessions.enumerated() {
                         try write(["query-\(queryIndex)-window-\(window).json": NamingComparisonCapture.json([
                             "query": query,
@@ -187,9 +287,8 @@ struct NamingComparison {
                         try #require(sessions[0].search.results.count < WorldSearch.blockResultLimit)
                     }
                 }
-                var sawCollision = false
                 for view in config.views {
-                    var firstWindow: [String: Data]?
+                    var firstWindow: [String: String]?
                     for (window, session) in sessions.enumerated() {
                         stage = "language-\(index)/\(view.id)/window-\(window)"
                         session.visibility.structures = view.hidesBaseMarkers ? [] : Set(config.structureGroups.compactMap(StructureGroup.init(rawValue:)))
@@ -210,26 +309,37 @@ struct NamingComparison {
                         let destination = folder.appendingPathComponent("\(view.id)/window-\(window)")
                         let artifacts = try await NamingComparisonCapture.capture(
                             session, picks: view.picks.map(point), hover: point(view.hover), to: destination)
-                        let collision = try checkCaptions(artifacts, view: view)
-                        sawCollision = sawCollision || collision
-                        if let firstWindow { try #require(artifacts == firstWindow) }
-                        else { firstWindow = artifacts }
+                        try checkOutput(artifacts, view: view)
+                        let signatures = artifacts.mapValues { data in
+                            SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                        }
+                        if let firstWindow { try #require(signatures == firstWindow) }
+                        else { firstWindow = signatures }
                     }
                 }
-                try #require(sawCollision)
                 try #require(resources.gameNames.identity == namesID)
-                try #require(await scans.paths.sorted() == [
-                    "minecraft:overworld/-1,-1", "minecraft:overworld/0,-1", "minecraft:overworld/4,-2",
-                ])
+                try #require(await scans.paths.sorted() == expectedReads)
             }
-            try write(["region-reads.json": NamingComparisonCapture.json(await scans.paths)], to: output)
+            let closeStart = NamingComparisonMeasures.Stamp()
             await close()
+            let closeEnd = NamingComparisonMeasures.Stamp()
+            measures.append(["operation": "closeAndDrain", "primary": false,
+                "interval": closeStart.until(closeEnd)])
+            try write([
+                "region-reads.json": NamingComparisonCapture.json(await scans.paths),
+                "measurements.json": NamingComparisonCapture.json(measures),
+            ], to: output)
             return owners
         } catch {
             await close()
+            if componentsActive {
+                let report = NamingPublicationProbe.finish()
+                componentsActive = false
+                try? write(["failure-initial-components.json": NamingComparisonCapture.encoded(report)], to: output)
+            }
             try? write(["failure.json": NamingComparisonCapture.json([
                 "stage": stage, "error": String(describing: error),
-                "regionReads": await scans.paths, "drained": true,
+                "regionReads": await scans.paths, "drained": true, "measurements": measures,
             ])], to: output)
             throw error
         }
@@ -269,8 +379,10 @@ struct NamingComparison {
         }
     }
 
-    static func checkCaptions(_ artifacts: [String: Data], view: View) throws -> Bool {
-        var collision = false
+    /// The new untraced PNG and geometry must be compared with the approved endpoint capture.
+    /// The retained proof established the caption families; this check does not claim a new trace.
+    static func checkOutput(_ artifacts: [String: Data], view: View) throws {
+        try #require(artifacts["render.png"] != nil)
         if let blockID = view.expectedBlockID {
             let data = try #require(artifacts["readout.json"])
             let readout = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -278,22 +390,6 @@ struct NamingComparison {
             try #require(block["id"] as? String == blockID)
             if let depth = view.expectedWaterDepth { try #require(block["waterDepth"] as? Int == depth) }
         }
-        let bytes = try #require(artifacts["caption-passes.json"])
-        let passes = try #require(JSONSerialization.jsonObject(with: bytes) as? [[String: Any]])
-        try #require(!passes.isEmpty)
-        for pass in passes {
-            let drawn = try #require(pass["drawnIDs"] as? [String])
-            let candidates = try #require(pass["candidates"] as? [[String: Any]])
-            collision = collision || candidates.count > drawn.count
-            try #require(Set(view.requiredDrawnIDs).isSubset(of: Set(drawn)))
-            if view.allowsNoCaptions {
-                try #require(view.scale == 1 && view.selectedKind == nil && drawn.isEmpty)
-                try #require((pass["formatted"] as? [Any])?.isEmpty == true)
-            } else {
-                try #require(!drawn.isEmpty)
-            }
-        }
-        return collision
     }
 
     static func write(_ artifacts: [String: Data], to folder: URL) throws {

@@ -37,6 +37,8 @@ extension SearchIndex {
     @concurrent
     func including(_ pets: [ShoulderPet]) async -> SearchIndex {
         guard !Task.isCancelled else { return self }
+        let namingSpan = NamingPublicationProbe.begin(.carriedPetProjection)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let carriedIDs = Set(pets.map(\.id))
         let located = Dictionary(grouping: pets.compactMap(\.marker), by: \.dimension)
         var result = self
