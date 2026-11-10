@@ -354,7 +354,7 @@ nonisolated struct GameNames: Sendable {
 
     /// Only facts used by an item label. Search summaries do not retain nested inventories,
     /// book pages or equipment components merely to display a matching stack's name.
-    nonisolated struct ItemName: Equatable, Sendable {
+    nonisolated struct ItemName: Hashable, Sendable {
         let id: String
         let customName: String?
         let bookTitle: String?
@@ -366,6 +366,30 @@ nonisolated struct GameNames: Sendable {
             let book = item.customName == nil ? item.book : nil
             bookTitle = book?.title
             bookAuthor = book?.author
+        }
+    }
+
+    /// One search reuses labels across repeated stacks. Keeping the cache local to that search
+    /// bounds its lifetime and prevents reuse with another language or naming snapshot.
+    nonisolated struct ItemLabels: Sendable {
+        private let names: GameNames
+        private let locale: Locale
+        private var labels: [ItemName: String] = [:]
+
+        init(_ names: GameNames, locale: Locale = .current) {
+            self.names = names
+            self.locale = locale
+        }
+
+        mutating func label(of item: ItemStack) -> String {
+            label(ItemName(item))
+        }
+
+        mutating func label(_ item: ItemName) -> String {
+            if let existing = labels[item] { return existing }
+            let label = names.itemLabel(item, locale: locale)
+            labels[item] = label
+            return label
         }
     }
 
