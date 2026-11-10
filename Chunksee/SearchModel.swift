@@ -179,6 +179,7 @@ final class SearchModel {
                 guard !Task.isCancelled, let self, !self.isClosed,
                       self.playerRoster.snapshot === next.playerSnapshot,
                       self.playerSnapshot === next.playerSnapshot,
+                      self.indexStore.revision == next.indexRevision,
                       self.readGameNames().identity == next.gameNamesID,
                       self.readSingleplayerUUID() == next.singleplayerUUID,
                       self.sourceGeneration == generation, self.activeQueries[query]?.id == id else { return }

@@ -157,7 +157,7 @@ struct ModelObservationTests {
         let derived = ModelObservation(input, isActive: { _ in true }, read: { $0.primary }) { input, _ in
             input.alternate = input.primary
         }
-        let store = PlayerRecordStore(world: try World(contentsOf: root), work: work,
+        let store = PlayerRecordStore(world: WorldReadSource(try World(contentsOf: root)), work: work,
             names: PlayerNames(defaults: TestDefaults.make()), gameSource: {
                 _ = input.primary
                 _ = input.alternate

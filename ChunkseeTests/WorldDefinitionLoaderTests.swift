@@ -21,7 +21,7 @@ import Testing
             ])
             world = try World(contentsOf: root)
             initial = try WorldDefinitions.read(world, assets: nil)
-            loader = WorldDefinitionLoader(world: world, work: work,
+            loader = WorldDefinitionLoader(world: WorldReadSource(world), work: work,
                 gameSource: .init(generation: generation, selection: .loaded(library)),
                 dimensions: world.dimensions(), definitions: initial, players: [])
         }

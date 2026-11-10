@@ -220,15 +220,15 @@ import SwiftUI
             let reopened = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
             #expect(reopened.map?.depth == MapDepth(y: -20, isSurface: false))
             #expect(nether.map?.depth == MapDepth(y: 31, isSurface: true))
-            reopened.restoreView(from: nether)
+            try await resources.replaceSource(from: WorldSnapshot.read(f.url))
             #expect(reopened.map?.depth.cutawayY == -20)
             nether.close()
             await nether.waitUntilClosed()
             let again = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
             #expect(again.map?.depth == MapDepth(y: 31, isSurface: true))
-            let reread = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
-            reread.restoreView(from: reopened)
-            #expect(reread.map?.depth == reopened.map?.depth)
+            try await resources.replaceSource(from: WorldSnapshot.read(f.url))
+            #expect(reopened.map?.depth == MapDepth(y: -20, isSurface: false))
+            #expect(again.map?.depth == MapDepth(y: 31, isSurface: true))
         }
     }
 

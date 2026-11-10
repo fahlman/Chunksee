@@ -260,7 +260,7 @@ import Testing
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(Set(map.tiles.keys) == [neighbor] && Set(map.previews.keys) == [neighbor])
         map.setStyle(.height); await map.waitUntilIdle()
-        #expect(map.lighting == nil && !map.currentRenderer.usesSavedLighting)
+        #expect(try map.lighting == nil && !requiredRenderer(map).usesSavedLighting)
         #expect(map.tiles[neighbor]?.normals == nil && map.tiles[neighbor]?.storageUnits == 1)
         map.setStyle(.normal); await map.waitUntilIdle()
         #expect(map.lighting != nil && map.tiles[neighbor]?.normals != nil)
@@ -319,7 +319,7 @@ import Testing
             for scheme in [ColorScheme.light, .dark] {
                 let copy = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                     scale: 1, colorScheme: scheme, locale: .current, contrast: .increased))
-                let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+                let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                     content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: .current,
                     contrast: .increased, progress: { _, _ in })
                 #expect(try pngPixels(copy) == pngPixels(export))

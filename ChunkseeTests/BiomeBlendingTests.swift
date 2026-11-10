@@ -138,7 +138,7 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("false")
-        let previousRenderer = map.currentRenderer
+        let previousRenderer = (try requiredRenderer(map))
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setBiomeBlending(true)
@@ -146,7 +146,7 @@ import Testing
         await render.waitForRequest("true")
         map.setBiomeBlending(true)
         let blended = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("true", with: try map.currentRenderer.fixtureTile(blended, for: .init(x: 0, z: 0)))
+        await render.finish("true", with: try (try requiredRenderer(map)).fixtureTile(blended, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let old = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
         await render.finish("false", with: try previousRenderer.fixtureTile(old, for: .init(x: 0, z: 0)))
@@ -154,7 +154,7 @@ import Testing
         await columns.finish("0", with: (file, Array(repeating: block, count: 256)))
         await columns.finish("1", with: (file, Array(repeating: block, count: 256)))
         await map.waitForRenders()
-        #expect(map.tiles[.init(x: 0, z: 0)]?.image === blended && map.currentRenderer.blendsBiomeColors)
+        #expect(try map.tiles[.init(x: 0, z: 0)]?.image === blended && requiredRenderer(map).blendsBiomeColors)
         #expect(map.topBlock(at: CGPoint(x: 1, y: 1)) == block && copiedY == 15)
         #expect(await render.requested == ["false", "true"])
         map.close()
@@ -178,8 +178,8 @@ import Testing
         let restored = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
         #expect(restored.map?.blendsBiomeColors == true && second.map?.blendsBiomeColors == false)
         first.map?.setBiomeBlending(false)
-        restored.restoreView(from: first)
-        #expect(restored.map?.blendsBiomeColors == false)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
+        #expect(first.map?.blendsBiomeColors == false && restored.map?.blendsBiomeColors == true)
         let saved = WorldSettings(id: resources.settings.worldID, defaults: defaults)
         saved.save(MapViewport(), for: "minecraft:overworld", selected: nil)
         #expect(saved.blendsBiomeColors(for: "minecraft:overworld")) // Other saves preserve the choice.

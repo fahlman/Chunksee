@@ -25,14 +25,12 @@ nonisolated struct WorldMapSnapshot: Sendable {
 /// The Kit map reader uses only the world's root; each map file supplies its own saved metadata.
 /// Changes to level facts, dimension catalogs, game definitions or artwork do not replace this source.
 nonisolated struct WorldMapSource: Equatable, Sendable {
-    let world: World
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.world.url == rhs.world.url }
+    let worldSource: WorldReadSource
 
     @concurrent
     func read(retaining previous: WorldMapSnapshot?) async throws -> RefreshRead<WorldMapSnapshot> {
         try Task.checkCancellation()
-        let result = WorldMapSnapshot.read(world, retaining: previous)
+        let result = WorldMapSnapshot.read(worldSource.world, retaining: previous)
         try Task.checkCancellation()
         return result
     }

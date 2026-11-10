@@ -46,6 +46,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     @ObservationIgnored private var isEnabled = false
     @ObservationIgnored private var pending: Request?
     @ObservationIgnored private var retry: Request?
+    @ObservationIgnored private var replacementID = UUID()
 
     init(partialRead: @escaping @Sendable (Source, Request, Value?) async throws -> RefreshRead<Value>,
          work: BackgroundWork, priority: TaskPriority?, whenInactive: InactiveReadPolicy, source: Source,
@@ -77,21 +78,15 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
         let replaced = self.source != source
         let retained = replaced ? value.flatMap { retainingValue($0, self.source, source) } : nil
         if replaced {
-            work.cancel()
-            active = nil
+            retireRead()
             pending = firstRequest
-            retry = nil
         }
         self.isEnabled = isEnabled
         if let refresh { pending = merged(pending, refresh) }
         if replaced {
             // Publish source and its compatible value together. Observers may synchronously
             // request another source; only their current demand may run after this callback.
-            let previous = publication
-            publication = (source, retained)
-            guard !self.isClosed, !work.isClosed, self.source == source else { return }
-            published(previous, publication)
-            guard !self.isClosed, !work.isClosed, self.source == source else { return }
+            guard publishReplacement(source: source, value: retained) else { return }
         }
         if !self.isEnabled, whenInactive == .cancel, let active {
             retry = merged(retry, active.request)
@@ -130,6 +125,31 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
             } while true
         }) != nil else { return }
         active = (id, request)
+    }
+
+    /// A document read already prepared a coherent value for a replacement source. Admit it
+    /// through the same owner that cancels old passes and rejects their late completions.
+    func replace(source: Source, value: Value?) {
+        guard !isClosed, !work.isClosed else { return }
+        retireRead()
+        pending = nil
+        isEnabled = false
+        _ = publishReplacement(source: source, value: value)
+    }
+
+    private func retireRead() {
+        work.cancel()
+        active = nil
+        retry = nil
+    }
+
+    private func publishReplacement(source: Source, value: Value?) -> Bool {
+        let id = UUID(), previous = publication
+        replacementID = id
+        publication = (source, value)
+        guard !isClosed, !work.isClosed, replacementID == id else { return false }
+        published(previous, publication)
+        return !isClosed && !work.isClosed && replacementID == id
     }
 
     private func merged(_ previous: Request?, _ request: Request) -> Request {

@@ -92,8 +92,4 @@ final class MapAnnotations {
         ruler.mark(point)
     }
 
-    /// Native rereads keep the measurement, but never revive a draft sheet.
-    func restore(from previous: MapAnnotations) {
-        ruler = previous.ruler
-    }
 }

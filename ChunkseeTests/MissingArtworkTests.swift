@@ -118,8 +118,8 @@ import Testing
         resources.refreshGameAssets()
         await resources.waitForRefresh()
         let region = RegionPosition(x: 0, z: 0), point = CGPoint(x: 12, y: 8)
-        let data = try #require(map.currentRenderer.gameData), reader = resources.readers["minecraft:overworld"]
-        let original = try #require(try await map.currentRenderer.tile(for: region))
+        let data = try #require((try requiredRenderer(map)).gameData), reader = resources.readers["minecraft:overworld"]
+        let original = try #require(try await (try requiredRenderer(map)).tile(for: region))
         let pixels = try ItemPictureFixture.pixels(original.full.image)
         #expect(pixels.color(4, 8) == [124, 0, 124, 255])
         #expect(pixels.color(12, 8) == [124, 0, 124, 255])
@@ -130,18 +130,18 @@ import Testing
 
         names.minecraft.usesGameArtwork = false
         await resources.waitForRefresh()
-        #expect(map.currentRenderer.gameData === data && map.currentRenderer.gameArtwork == nil)
+        #expect(try requiredRenderer(map).gameData === data && requiredRenderer(map).gameArtwork == nil)
         #expect(resources.readers["minecraft:overworld"] === reader)
         #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == notice)
-        let fallback = try #require(try await map.currentRenderer.tile(for: region))
+        let fallback = try #require(try await (try requiredRenderer(map)).tile(for: region))
         let expected = try #require(BlockColors.color(for: "test:missing_texture"))
         #expect(try ItemPictureFixture.pixels(fallback.full.image).color(4, 8) == [expected.red, expected.green, expected.blue, 255])
 
         names.minecraft.usesGameArtwork = true
         await resources.waitForRefresh()
-        let restored = try #require(try await map.currentRenderer.tile(for: region))
+        let restored = try #require(try await (try requiredRenderer(map)).tile(for: region))
         #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == pixels.bytes)
-        #expect(map.currentRenderer.gameData === data && resources.readers["minecraft:overworld"] === reader)
+        #expect(try requiredRenderer(map).gameData === data && resources.readers["minecraft:overworld"] === reader)
         #expect(map.blockDefinitionNotice(for: map.topBlock(at: point)) == notice)
         session.close()
         await session.waitUntilClosed()
