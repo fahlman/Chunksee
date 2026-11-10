@@ -8,6 +8,18 @@ import Testing
 /// Evidence clocks stay in the test bundle. No per-tile recorder runs in the product.
 @MainActor
 enum MapComparisonMeasures {
+    /// The process high-water mark includes startup and evidence capture. Read it after
+    /// the whole artwork workload; it cannot be reset or attributed to one operation.
+    static func processResources() throws -> [String: Any] {
+        var usage = rusage()
+        try #require(getrusage(RUSAGE_SELF, &usage) == 0)
+        try #require(usage.ru_maxrss > 0)
+        return ["processID": ProcessInfo.processInfo.processIdentifier,
+                "peakRSSBytes": Int64(usage.ru_maxrss),
+                "source": "getrusage(RUSAGE_SELF).ru_maxrss",
+                "scope": "Process launch through one completed artwork cell, input checks and evidence capture; final resource-record creation/writing and test-framework teardown excluded"]
+    }
+
     nonisolated struct Stamp {
         let wall = DispatchTime.now().uptimeNanoseconds
         let cpu = Self.cpuSeconds()

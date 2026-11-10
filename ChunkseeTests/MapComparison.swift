@@ -119,6 +119,8 @@ struct MapComparison {
             "processLocale": Locale.current.identifier, "preferredLanguages": Locale.preferredLanguages,
             "renderLocale": MapComparisonEvidence.locale.identifier,
         ])], to: output)
+        try MapComparisonEvidence.write(["process-resources.json": MapComparisonEvidence.json(
+            MapComparisonMeasures.processResources())], to: output)
     }
 
     static func run(_ config: Configuration, output: URL) async throws -> [Weak] {
