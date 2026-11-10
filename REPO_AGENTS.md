@@ -468,8 +468,24 @@ snapshot. The snapshot supplies World Info, version notices, world/spawn present
 single-player labels, so these consumers do not keep separate opening values. Dimension-source
 changes retain only compatible borders; closure and replacement reject retired reads. Non-region
 notifications coalesce through the world's existing scheduling path without copying Kit's file
-discovery tables. Saved in-game maps still use their prepared opening sources until their separate
-snapshot step adopts Kit's failure-aware map-read result.
+discovery tables.
+
+Saved in-game maps have a separate WorldMapSnapshot through the shared RefreshLoader. Opening and refresh
+use Kit's readMapItems result: resolved values advance, unresolved IDs keep their previous map
+when available, and incomplete listings cannot remove absent maps. Without a prior value, a
+readable fallback remains useful. A complete listing removes absent resolved IDs. Prepared picture
+keys publish with map values, and unchanged content reuses its source. Sidebar, inspector and kept
+overlays already resolve the live map ID; their independent selection, opacity and navigation
+choices do not move into the world.
+SelectionModel clears a removed selected identity together with its inspector and kept overlay;
+restoring the file leaves it unselected and available to choose again. Deliberately hiding an
+inspector still keeps a selected identity that remains available.
+Non-region saved-data notifications refresh maps, while
+region writes, dimension catalog changes and game-resource changes do not. The map reader uses
+only the world's root and the metadata in each map file, so unreadable level metadata does not
+prevent readable maps from advancing. Close and source replacement reject retired results.
+Kit 0.80.0 supplies this read result; its terrain revision 2 and region-facts revision 30 also
+retire the previous reader caches through the existing typed identities, with no app-owned bump.
 
 WorldLifetimeTests keeps the app owner alive across repeated real document-reader openings and
 checks that closed world resources, sessions, search/slime models and the info loader are released

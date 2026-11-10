@@ -18,11 +18,11 @@ nonisolated struct WorldDetails: Sendable {
     var dragonFight: EnderDragonFight? { info.dragonFight }
     var wanderingTrader: WanderingTraderTimer? { info.wanderingTrader }
     /// Every readable saved map, including blank pictures and unavailable dimensions.
-    var maps: [MapItem] { mapSources.map(\.map) }
-    let mapSources: [InGameMapImage.Source]
+    var maps: [MapItem] { mapSnapshot.sources.map(\.map) }
+    let mapSnapshot: WorldMapSnapshot
 
     func mapImageSource(for id: Int) -> InGameMapImage.Source? {
-        mapSources.first { $0.map.id == id }
+        mapSnapshot.sources.first { $0.map.id == id }
     }
 
     var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
@@ -45,7 +45,7 @@ nonisolated struct WorldDetails: Sendable {
     static func read(_ world: World) -> WorldDetails {
         WorldDetails(definitions: (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions(),
                      info: WorldInfoSnapshot.read(world, dimensions: world.dimensions()).value,
-                     mapSources: world.mapItems().map(InGameMapImage.Source.init))
+                     mapSnapshot: WorldMapSnapshot.read(world).value)
     }
 
     /// `minecraft:keep_inventory` and the older `keepInventory` both become "Keep Inventory".

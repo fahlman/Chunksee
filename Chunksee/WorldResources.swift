@@ -35,11 +35,11 @@ final class WorldResources {
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
     private let openingInfo: WorldInfoSnapshot
-    private let mapSources: [InGameMapImage.Source]
+    private let openingMaps: WorldMapSnapshot
     var infoSnapshot: WorldInfoSnapshot { infoLoader.value ?? openingInfo }
     var details: WorldDetails {
         WorldDetails(definitions: definitionLoader.value?.definitions ?? WorldDefinitions(),
-                     info: infoSnapshot, mapSources: mapSources)
+                     info: infoSnapshot, mapSnapshot: mapLoader.value ?? WorldMapSnapshot(sources: []))
     }
     let names: PlayerNames
     let savedSearches: SavedSearches
@@ -73,6 +73,21 @@ final class WorldResources {
     private func refreshInfo() {
         guard !isClosed else { return }
         infoLoader.request(source: infoSource, isEnabled: true, refresh: .refresh)
+    }
+    @ObservationIgnored private lazy var mapLoader = RefreshLoader<WorldMapSource, RefreshInvalidation, WorldMapSnapshot>(
+        partialRead: { [weak self] source, _, previous in
+            guard let read = await self?.readMaps else { throw CancellationError() }
+            return try await read(source, previous)
+        }, work: backgroundWork, priority: .utility, whenInactive: .finish,
+        source: WorldMapSource(world: world), initialValue: openingMaps,
+        firstRequest: .refresh, merge: { _, newer in newer }
+    )
+    @ObservationIgnored var readMaps: @Sendable (WorldMapSource, WorldMapSnapshot?) async throws -> RefreshRead<WorldMapSnapshot> = {
+        try await $0.read(retaining: $1)
+    }
+    private func refreshMaps() {
+        guard !isClosed else { return }
+        mapLoader.request(source: WorldMapSource(world: world), isEnabled: true, refresh: .refresh)
     }
     var playerRoster: any PlayerSnapshotSource { definitionLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
@@ -258,7 +273,7 @@ final class WorldResources {
         access = snapshot.access
         dimensionDocuments = snapshot.dimensionDocuments
         openingInfo = snapshot.details.info
-        mapSources = snapshot.details.mapSources
+        openingMaps = snapshot.details.mapSnapshot
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
@@ -586,6 +601,7 @@ final class WorldResources {
         nightLightingLoader.close()
         lightingLoader.close()
         infoLoader.close()
+        mapLoader.close()
         definitionLoader.close()
         playerRecords.close()
         let readers = Array(readers.values), index = index
@@ -707,7 +723,7 @@ final class WorldResources {
 
     /// Waits for active and coalesced refresh passes, without waiting for unrelated world work.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, infoLoader.work, assetLoader.work, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, infoLoader.work, mapLoader.work, assetLoader.work, languageLoader.work])
         await playerRecords.waitUntilFinished()
         await index.waitForProjection()
     }
@@ -733,7 +749,7 @@ final class WorldResources {
             refreshNightLighting(reread: true)
         }
         if lightingChanged { refreshLighting() }
-        if worldDataChanged { refreshInfo(); playerRecords.refresh() }
+        if worldDataChanged { refreshInfo(); refreshMaps(); playerRecords.refresh() }
         if biomesChanged {
             refreshDefinitions()
         } else if playersChanged {
