@@ -106,7 +106,6 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     @concurrent
     private func surface(for region: RegionPosition) async throws -> Canvas? {
-        MapComparisonTrace.record(.surface, region: region)
         guard style != .height || heightScale != nil,
               let file = try dimension.region(x: region.x, z: region.z) else { return nil }
         let coverage = style == .height ? nil : try await gameArtwork?.mapCoverageReader()
@@ -369,10 +368,8 @@ nonisolated struct RegionTileRenderer: Sendable {
         var cacheWrite: CacheWrite?
         var scanned = false
         if let cache, let cached = cache.load(key) {
-            MapComparisonTrace.record(.tileHit, region: region, key: key)
             surface = cached
         } else {
-            MapComparisonTrace.record(.tileMiss, region: region, key: key)
             surface = try await self.surface(for: region)
             scanned = true
             if let cache, let surface {
@@ -413,11 +410,7 @@ nonisolated struct RegionTileRenderer: Sendable {
         guard gameArtwork != nil, style != .height else { return nil }
         try await gameArtwork?.checkAvailable()
         guard let key = cacheKey(for: region) else { return nil }
-        if let cache, let detail = cache.loadDetail(key) {
-            MapComparisonTrace.record(.detailHit, region: region, key: key)
-            return DetailSurface(key: key, surface: detail)
-        }
-        MapComparisonTrace.record(.detailMiss, region: region, key: key)
+        if let cache, let detail = cache.loadDetail(key) { return DetailSurface(key: key, surface: detail) }
         guard let surface = try await surface(for: region) else { return nil }
         try Task.checkCancellation()
         if let cache { cache.storeDetail(surface, for: key) }

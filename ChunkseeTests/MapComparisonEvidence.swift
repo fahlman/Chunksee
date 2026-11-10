@@ -73,13 +73,17 @@ enum MapComparisonEvidence {
 
     /// This is the screen's real drawing entry and legend, without opening a native window.
     /// Native input, layout and accessibility checks remain separate.
-    static func live(_ session: WorldSession, appearance: ColorScheme) throws -> MapImage {
+    static func live(_ session: WorldSession, appearance: ColorScheme,
+                     draws: MapComparisonMeasures.Draws) throws -> MapImage {
         let map = try #require(session.map), content = MapContent(session: session)
         var renderedContrast: ColorSchemeContrast?
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             renderedContrast = context.environment.colorSchemeContrast
+            let start = MapComparisonMeasures.Stamp()
             MapView.drawMap(map, content: content, portalStatus: { session.presentation.linkStatus(for: $0) },
                             displayScale: 1, in: context, size: size)
+            let end = MapComparisonMeasures.Stamp()
+            draws.intervals.append(start.until(end))
         }
         .modifier(MapLegendOverlay(layers: content))
         .environment(\.colorScheme, appearance)
@@ -100,13 +104,24 @@ enum MapComparisonEvidence {
         for (name, appearance) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
             let output = folder.appendingPathComponent(name)
             var artifacts: [String: Data] = [:]
+            let draws = MapComparisonMeasures.Draws()
+            var intervals: [String: Any] = [:]
             do {
-                let live = try live(session, appearance: appearance)
+                let liveStart = MapComparisonMeasures.Stamp()
+                let live = try live(session, appearance: appearance, draws: draws)
+                let liveEnd = MapComparisonMeasures.Stamp()
+                intervals["liveImageIncludingDrawAndPNG"] = liveStart.until(liveEnd)
+                intervals["screenDrawCalls"] = draws.intervals
+                try #require(!draws.intervals.isEmpty)
                 artifacts["live.png"] = live.data
                 let livePixels = try pixels(live)
                 artifacts["live.rgba"] = livePixels
-                let copy: MapImage = try #require(MapImage.render(session: session, colorScheme: appearance,
-                    locale: locale, contrast: .standard))
+                let copyStart = MapComparisonMeasures.Stamp()
+                let renderedCopy = MapImage.render(session: session, colorScheme: appearance,
+                    locale: locale, contrast: .standard)
+                let copyEnd = MapComparisonMeasures.Stamp()
+                intervals["copyImageIncludingPNG"] = copyStart.until(copyEnd)
+                let copy = try #require(renderedCopy)
                 artifacts["copy.png"] = copy.data
                 let copyPixels = try pixels(copy)
                 artifacts["copy.rgba"] = copyPixels
@@ -130,11 +145,17 @@ enum MapComparisonEvidence {
                     let plan = try MapExportPlan(bounds: CGRect(x: -257, y: -448, width: 512, height: 384), blocksPerPixel: 1)
                     try #require(plan.viewport == map.viewport && plan.size == size)
                     var progress: [[Int]] = []
-                    let exported = try await MapImage.export(plan: plan, regions: map.availableRegions,
-                        renderer: requiredRenderer(map), content: MapContent(session: session),
+                    let exportRenderer = try requiredRenderer(map)
+                    let exportContent = MapContent(session: session)
+                    let exportRegions = map.availableRegions
+                    let exportStart = MapComparisonMeasures.Stamp()
+                    let exported = try await MapImage.export(plan: plan, regions: exportRegions,
+                        renderer: exportRenderer, content: exportContent,
                         portalStatus: { session.presentation.linkStatus(for: $0) },
                         colorScheme: appearance, locale: locale, contrast: .standard,
                         progress: { progress.append([$0, $1]) })
+                    let exportEnd = MapComparisonMeasures.Stamp()
+                    intervals["exportIncludingPNGAndProgress"] = exportStart.until(exportEnd)
                     artifacts["export.png"] = exported.data
                     artifacts["export.rgba"] = try pixels(exported)
                     artifacts["export-progress.json"] = try json(progress)
@@ -144,9 +165,12 @@ enum MapComparisonEvidence {
                     count += 1
                 }
             } catch {
+                intervals["screenDrawCalls"] = draws.intervals
+                artifacts["drawing-intervals.json"] = try? json(intervals)
                 try? write(artifacts, to: output)
                 throw error
             }
+            artifacts["drawing-intervals.json"] = try json(intervals)
             try write(artifacts, to: output)
         }
         return count
