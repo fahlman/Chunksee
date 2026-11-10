@@ -44,6 +44,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     /// The producer installs dependent work before making requests. Run it after synchronous
     /// Observation delivery, in the publishing turn; it does not notify consumers itself.
     @ObservationIgnored var published: @MainActor (Publication, Publication) -> Void = { _, _ in }
+    @ObservationIgnored var namingProbePhase: NamingPublicationProbe.Phase?
     private struct ActiveRead {
         let id: UUID
         var request: Request
@@ -183,6 +184,8 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     /// Intermediate and final values have exactly the same admission and reentrancy checks.
     private func publish(_ value: Value, source: Source, readID: UUID) -> Bool {
         guard !Task.isCancelled, !isClosed, !work.isClosed, active?.id == readID else { return false }
+        let namingSpan = NamingPublicationProbe.begin(namingProbePhase)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let previous = publication
         publication = (source, value)
         guard !isClosed, !work.isClosed, active?.id == readID else { return false }
@@ -209,6 +212,8 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     }
 
     private func publishReplacement(source: Source, value: Value?) -> Bool {
+        let namingSpan = NamingPublicationProbe.begin(namingProbePhase)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let id = UUID(), previous = publication
         replacementID = id
         publication = (source, value)

@@ -120,6 +120,8 @@ actor RegionReader {
     private nonisolated static func readAndSave(_ dimension: ChunkseeKit.Dimension, key: ScanCache.Key,
                                                 cache: ScanCache, read: Read) async throws -> RegionFacts {
         try Task.checkCancellation()
+        let namingSpan = NamingPublicationProbe.begin(.regionIO)
+        defer { NamingPublicationProbe.end(namingSpan) }
         if let saved = cache.load(key) {
             try Task.checkCancellation()
             return saved

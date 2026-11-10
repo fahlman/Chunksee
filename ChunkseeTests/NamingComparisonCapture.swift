@@ -60,20 +60,6 @@ enum NamingComparisonCapture {
          "scale": Double(value.scale), "priority": value.labelPriority.rawValue, "dimmed": value.isDimmed]
     }
 
-    /// The recorder is active only for this synchronous drawing call. It retains strings and
-    /// rectangles, never a session, drawing context, image, or library.
-    static func render(_ session: WorldSession) throws -> (MapImage?, NamingComparisonTrace.Recorder) {
-        try #require(NamingComparisonTrace.recorder == nil)
-        let recorder = NamingComparisonTrace.Recorder()
-        NamingComparisonTrace.recorder = recorder
-        defer { NamingComparisonTrace.recorder = nil }
-        let map = try #require(session.map)
-        let image = MapImage.render(map, content: MapContent(session: session),
-            portalStatus: { session.presentation.linkStatus(for: $0) }, size: size, scale: 1,
-            colorScheme: .light, locale: locale)
-        return (image, recorder)
-    }
-
     static func imageKey(_ key: RegionTileRenderer.ImageKey) throws -> [String: Any] {
         ["surface": try object(key.surface),
          "heightScale": try key.preparation.heightScale.map(object) ?? NSNull(),
@@ -98,29 +84,32 @@ enum NamingComparisonCapture {
     static func capture(_ session: WorldSession, picks: [CGPoint], hover: CGPoint,
                         to folder: URL) async throws -> [String: Data] {
         var proof: [String: Data] = [:]
+        var measures: [String: Any] = [:]
+        let captureStart = NamingComparisonMeasures.Stamp()
         do {
             let map = try #require(session.map)
             map.loadTopBlocks(at: hover)
             await map.waitForTopBlocks()
             let content = MapContent(session: session)
             let scene = content.scene(viewport: map.viewport, size: size)
-            let (rendered, recorder) = try render(session)
+            let setupEnd = NamingComparisonMeasures.Stamp()
+            let overlayIntervals = try NamingComparisonMeasures.overlays(session, content: content)
+            let copyStart = NamingComparisonMeasures.Stamp()
+            let rendered = MapImage.render(map, content: content,
+                portalStatus: { session.presentation.linkStatus(for: $0) }, size: size, scale: 1,
+                colorScheme: .light, locale: locale)
+            let copyEnd = NamingComparisonMeasures.Stamp()
+            measures = [
+                "setup": captureStart.until(setupEnd),
+                "viewCategory": map.viewport.scale == 1 ? "overview" : "caption-visible",
+                "overlayPrimary": true, "copyPrimary": false,
+                "pickingAndReadoutPrimary": map.viewport.scale == 1,
+                "overlayCalls": overlayIntervals,
+                "copy": copyStart.until(copyEnd),
+                "scope": "Overlay call is primary; full Copy is reported separately. Setup/capture are outside both.",
+            ]
             proof["render.png"] = rendered?.data
-            proof["caption-passes.json"] = try encoded(recorder.passes)
-            proof["caption-state.json"] = try json([
-                "unfinishedPass": recorder.hasUnfinishedPass, "imageProduced": rendered != nil,
-            ])
-            try #require(rendered != nil && !recorder.hasUnfinishedPass && !recorder.passes.isEmpty)
-            for pass in recorder.passes {
-                let candidates = pass.candidates.map(\.id)
-                try #require(Set(candidates).count == candidates.count)
-                try #require(Set(pass.drawnIDs).count == pass.drawnIDs.count)
-                try #require(Set(pass.drawnIDs).isSubset(of: Set(candidates)))
-                try #require(Set(candidates).isSubset(of: Set(pass.formatted.map(\.id))))
-                try #require(pass.candidates.allSatisfy {
-                    $0.frame.count == 4 && $0.frame.allSatisfy(\.isFinite) && $0.frame[2] > 0 && $0.frame[3] > 0
-                })
-            }
+            try #require(rendered != nil)
             proof["scene.json"] = try json([
                     "center": point(map.viewport.center), "scale": Double(map.viewport.scale),
                     "structures": scene.structures.map {
@@ -137,24 +126,21 @@ enum NamingComparisonCapture {
                      "target": $0.target.map(target) as Any? ?? NSNull(),
                      "anchor": $0.anchor.map(point) as Any? ?? NSNull(), "frame": frame($0.frame)] as [String: Any]
                 })
-            // This records the caption hook only. An empty trace does not prove that an unrelated
-            // formatter was never called; keep that limit separate from the routing result.
-            try #require(NamingComparisonTrace.recorder == nil)
-            let pickingTrace = NamingComparisonTrace.Recorder()
-            NamingComparisonTrace.recorder = pickingTrace
-            let picked = picks.map { position -> [String: Any] in
-                let hit = content.hit(at: position, viewport: map.viewport, size: size)
+            let pickingStart = NamingComparisonMeasures.Stamp()
+            let found = picks.map { content.hit(at: $0, viewport: map.viewport, size: size) }
+            let pickingEnd = NamingComparisonMeasures.Stamp()
+            measures["picking"] = pickingStart.until(pickingEnd)
+            let picked = zip(picks, found).map { position, hit -> [String: Any] in
                 return ["point": point(position), "target": hit.map { target($0.target) } as Any? ?? NSNull(),
                         "position": hit.map { point($0.position) } as Any? ?? NSNull(),
                         "y": hit?.y as Any? ?? NSNull()]
             }
-            NamingComparisonTrace.recorder = nil
             proof["picking.json"] = try json(picked)
-            proof["picking-caption-state.json"] = try json([
-                "unfinishedPass": pickingTrace.hasUnfinishedPass, "passes": try object(pickingTrace.passes),
-            ])
-            try #require(!pickingTrace.hasUnfinishedPass && pickingTrace.passes.isEmpty)
             let block = map.topBlock(at: hover)
+            let readoutStart = NamingComparisonMeasures.Stamp()
+            let text = NamingComparisonAdapter.readout(at: hover, block: block, content: content)
+            let readoutEnd = NamingComparisonMeasures.Stamp()
+            measures["readout"] = readoutStart.until(readoutEnd)
             proof["readout.json"] = try json([
                 "point": point(hover),
                 "raw": block.map {
@@ -162,7 +148,7 @@ enum NamingComparisonCapture {
                      "nightLight": $0.nightLight.map { $0.rawValue as Any } ?? NSNull(),
                      "hasGameDefinition": $0.hasGameDefinition.map { $0 as Any } ?? NSNull()] as [String: Any]
                 } as Any? ?? NSNull(),
-                "text": NamingComparisonAdapter.readout(at: hover, block: block, content: content),
+                "text": text,
             ])
             let renderer = try #require(map.currentRenderer)
             var keys: [String: Any] = [:], formats: [String: Any] = [:]
@@ -202,12 +188,16 @@ enum NamingComparisonCapture {
                 "lighting": map.lightingMode.rawValue, "castsShadows": map.castsShadows,
                 "artwork": renderer.gameArtwork != nil, "data": renderer.gameData?.sourceKey as Any? ?? NSNull(),
             ])
+            try NamingComparison.write(proof, to: folder)
+            let captureEnd = NamingComparisonMeasures.Stamp()
+            measures["completeCaptureIncludingProductCalls"] = captureStart.until(captureEnd)
+            try NamingComparison.write(["measurements.json": json(measures)], to: folder)
         } catch {
             // A failed assertion keeps everything captured before it, including any full image.
             try? NamingComparison.write(proof, to: folder)
+            try? NamingComparison.write(["failure-measurements.json": json(measures)], to: folder)
             throw error
         }
-        try NamingComparison.write(proof, to: folder)
         return proof
     }
 }

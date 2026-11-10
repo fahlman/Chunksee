@@ -63,6 +63,8 @@ final class WorldIndexStore {
         let index: SearchIndex
         let portals: [String: [NetherPortal]]
         init(_ index: SearchIndex) {
+            let namingSpan = NamingPublicationProbe.begin(.indexSnapshot)
+            defer { NamingPublicationProbe.end(namingSpan) }
             self.index = index
             portals = index.dimensions.mapValues { $0.places.compactMap(\.portal) }
         }
@@ -107,6 +109,8 @@ final class WorldIndexStore {
             initialValue: regions,
             firstRequest: Pass(firstDimension: firstDimension, changes: nil),
             merge: { previous, next in var merged = previous; merged.merge(next); return merged })
+        loader.namingProbePhase = .indexPublication
+        projection.namingProbePhase = .indexPublication
         loader.published = { [weak self] previous, current in
             guard let self, !self.isClosed, let snapshot = current.value, previous.value !== snapshot else { return }
             self.refreshProjection()

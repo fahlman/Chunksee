@@ -112,6 +112,8 @@ actor GameDataLibrary {
 
     func language(_ preference: String, minecraftDirectory: URL?) -> GameLanguage? {
         guard !Task.isCancelled, let assets else { return nil }
+        let namingSpan = NamingPublicationProbe.begin(.languageRead)
+        defer { NamingPublicationProbe.end(namingSpan) }
         let choices = assets.languageCodes(minecraftDirectory: minecraftDirectory)
         return GameLanguageChoice.language(for: preference, available: choices) { code in
             guard !Task.isCancelled else { return nil }

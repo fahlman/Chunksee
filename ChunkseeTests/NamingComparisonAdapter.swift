@@ -13,10 +13,6 @@ enum NamingComparisonAdapter {
         // capture path still records and checks its actual formatted captions.
     }
 
-    static func emptyContent(gameNames _: GameNames) -> MapContent {
-        MapContent()
-    }
-
     static func storage(_ session: WorldSession) -> [StoredItem] {
         session.presentation.selectedIndex.storage
     }

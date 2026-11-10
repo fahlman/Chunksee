@@ -68,14 +68,11 @@ struct MarkerStyle {
                priority: MarkerLabelLayout.Priority, at point: CGPoint, scale: CGFloat, dimmed: Bool = false,
                in context: GraphicsContext) -> MarkerLabel? {
         guard scale >= 2 || priority == .selected else { return nil }
-        let resolvedName = name()
-        let text = context.resolve(Text(resolvedName).font(Self.captionFont).foregroundStyle(symbol.color))
+        let text = context.resolve(Text(name()).font(Self.captionFont).foregroundStyle(symbol.color))
         let size = text.measure(in: CGSize(width: 200, height: 30))
         let label = CGRect(x: point.x - size.width / 2 - 4, y: point.y + MarkerGeometry.radius(at: scale) + 2,
                            width: size.width + 8, height: size.height + 2)
-        let result = MarkerLabel(placement: .init(id: id(), priority: priority, frame: label), text: text,
-                                 background: fill.opacity(0.85), opacity: dimmed ? Self.dimmedOpacity : 1)
-        NamingComparisonTrace.recorder?.didFormat(id: result.placement.id, text: resolvedName)
-        return result
+        return MarkerLabel(placement: .init(id: id(), priority: priority, frame: label), text: text,
+                           background: fill.opacity(0.85), opacity: dimmed ? Self.dimmedOpacity : 1)
     }
 }
