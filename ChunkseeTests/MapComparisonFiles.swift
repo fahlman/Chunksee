@@ -22,7 +22,10 @@ nonisolated enum MapComparisonFiles {
         var result: [String: CacheFile] = [:]
         for url in try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: Array(fields)) {
             let values = try url.resourceValues(forKeys: fields)
-            try #require(values.isRegularFile == true && values.isSymbolicLink == false)
+            try #require(values.isSymbolicLink == false)
+            // ScanCache owns a child folder; TileCache reads and writes direct files only.
+            if values.isDirectory == true { continue }
+            try #require(values.isRegularFile == true)
             let attributes = try manager.attributesOfItem(atPath: url.path)
             result[url.lastPathComponent] = CacheFile(
                 size: try #require(attributes[.size] as? NSNumber).uint64Value,
