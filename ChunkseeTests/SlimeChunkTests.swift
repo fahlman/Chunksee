@@ -172,6 +172,30 @@ import Testing
         await work.waitUntilFinished()
     }
 
+    @Test(.timeLimit(.minutes(1))) func regionChangesDuringAReadKeepProgressAndComputeOnlyMissingMasks() async throws {
+        let first = RegionPosition(x: 0, z: 0), removed = RegionPosition(x: 1, z: 0), last = RegionPosition(x: 2, z: 0)
+        let firstImage = try #require(SlimeChunks.image(region: first, seed: 42))
+        let removedImage = try #require(SlimeChunks.image(region: removed, seed: 42))
+        let lastImage = try #require(SlimeChunks.image(region: last, seed: 42))
+        let work = BackgroundWork(), gate = AsyncReadGate<[RegionPosition: CGImage]>()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, regions: [first], work: work,
+            readImages: { regions, _ in await gate.read(regions.map { String($0.x) }.sorted().joined(separator: ",")) })
+        layer.isShown = true
+        await gate.waitForRequest("0")
+        layer.regionsChanged([first, removed])
+        layer.regionsChanged([first, removed, last])
+        await gate.finish("0", with: [first: firstImage])
+        await gate.waitForRequest("1,2")
+        #expect(layer.visibleImages[first] === firstImage && layer.isLoading)
+        layer.regionsChanged([first, last])
+        await gate.releaseAllAndFuture(with: [removed: removedImage, last: lastImage])
+        await layer.waitForImages()
+        #expect(await gate.requested == ["0", "1,2"])
+        #expect(layer.visibleImages[first] === firstImage && layer.visibleImages[last] === lastImage)
+        #expect(layer.visibleImages[removed] == nil && !layer.isLoading)
+        layer.cancel(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func closingOneLayerLeavesItsSiblingRunning() async throws {
         let region = RegionPosition(x: 0, z: 0), work = BackgroundWork()
         let gate = AsyncReadGate<[RegionPosition: CGImage]>()

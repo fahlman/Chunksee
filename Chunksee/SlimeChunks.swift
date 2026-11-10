@@ -47,46 +47,60 @@ nonisolated enum SlimeChunks {
         didSet {
             guard !isClosed, isShown != oldValue else { return }
             visibility?.rememberSlimeChunks(isShown)
-            if isShown { load() } else { task?.cancel() }
+            update(reread: isShown)
         }
     }
     private let readSeed: @MainActor () -> Int64?
     var seed: Int64? { readSeed() }
     var isAvailable: Bool { seed != nil }
-    var isLoading: Bool { isAvailable && isShown && !regions.isSubset(of: completed) }
-    var visibleImages: [RegionPosition: CGImage] { isShown && isAvailable ? images : [:] }
+    var isLoading: Bool { !isClosed && isAvailable && isShown && !regions.isSubset(of: loader.value?.completed ?? []) }
+    var visibleImages: [RegionPosition: CGImage] {
+        guard !isClosed, isShown, isAvailable else { return [:] }
+        return loader.value?.images.filter { regions.contains($0.key) } ?? [:]
+    }
     var visibleSeed: Int64? { isShown ? seed : nil }
 
     private var regions: Set<RegionPosition>
-    private var completed: Set<RegionPosition> = []
-    private var images: [RegionPosition: CGImage] = [:]
-    @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var visibility: LayerVisibility?
+    private let loader: RefreshLoader<Int64?, Set<RegionPosition>, Masks>
     @ObservationIgnored private var seedObservation: ModelObservation?
-    private var isClosed = false
-    private let work: BackgroundWork
-    private let readImages: @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage]
+    private var isClosed: Bool { loader.isClosed || loader.work.isClosed }
+
+    nonisolated private struct Masks: Sendable {
+        var completed: Set<RegionPosition> = []
+        var images: [RegionPosition: CGImage] = [:]
+    }
 
     init(dimensionID: String?, seed: @escaping @MainActor () -> Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
          readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
         readSeed = { dimensionID == "minecraft:overworld" ? seed() : nil }
         self.regions = regions
-        self.work = work
-        self.readImages = readImages
+        loader = RefreshLoader(work: work, priority: nil, whenInactive: .cancel,
+            source: dimensionID == "minecraft:overworld" ? seed() : nil,
+            firstRequest: regions, merge: { _, current in current }) { seed, regions, previous in
+                guard let seed else { return Masks() }
+                var next = previous ?? Masks()
+                next.completed.formIntersection(regions)
+                next.images = next.images.filter { regions.contains($0.key) }
+                let missing = regions.subtracting(next.completed)
+                guard !missing.isEmpty else { return next }
+                let images = await readImages(missing, seed)
+                try Task.checkCancellation()
+                next.images.merge(images.filter { regions.contains($0.key) }) { _, new in new }
+                next.completed.formUnion(missing)
+                return next
+            }
         observeSeed()
     }
 
     /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
     /// so neither a drawn mask nor a late read can describe the previous seed.
     private func observeSeed() {
-        seedObservation = ModelObservation(self, isActive: { !$0.isClosed && !$0.work.isClosed }, read: {
+        seedObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
             $0.seed
         }) { layer, previous in
             guard layer.seed != previous else { return }
-            layer.task?.cancel()
-            layer.images = [:]
-            layer.completed = []
-            layer.load()
+            layer.update(reread: true)
         }
     }
 
@@ -98,26 +112,14 @@ nonisolated enum SlimeChunks {
     func regionsChanged(_ regions: Set<RegionPosition>) {
         guard !isClosed else { return }
         self.regions = regions
-        completed.formIntersection(regions)
-        images = images.filter { regions.contains($0.key) }
-        load()
+        update(reread: true)
     }
 
-    private func load() {
-        guard !isClosed, !work.isClosed, isShown, let seed, task == nil else { return }
-        let missing = regions.subtracting(completed)
-        guard !missing.isEmpty else { return }
-        let readImages = readImages, work = work
-        task = work.start(priority: Task.currentPriority) { [weak self] in
-            defer { self?.task = nil; self?.load() }
-            guard !Task.isCancelled, !work.isClosed else { return }
-            let images = await readImages(missing, seed)
-            guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed, self.seed == seed else { return }
-            self.images.merge(images.filter { self.regions.contains($0.key) }) { _, new in new }
-            self.completed.formUnion(missing.intersection(self.regions))
-        }
+    private func update(reread: Bool) {
+        guard !isClosed else { return }
+        loader.request(source: seed, isEnabled: isShown && isAvailable, refresh: reread ? regions : nil)
     }
 
-    func cancel() { isClosed = true; seedObservation?.cancel(); task?.cancel() }
-    func waitForImages() async { while let task { await task.value } }
+    func cancel() { seedObservation?.cancel(); loader.close() }
+    func waitForImages() async { await loader.waitUntilFinished() }
 }

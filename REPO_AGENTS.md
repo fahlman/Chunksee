@@ -996,12 +996,15 @@ closes only that search's scope. World close refuses further queries, rejects la
 clears completed active handles without leaving `isSearching` stuck. The scope supplies the
 drain, replacing the separate task table; source generations and result retention remain local.
 
-WorldIndexStore registers index passes in a BackgroundWork scope supplied by its world. A local
-index close cancels/drains only its passes; world-owner close rejects late publication and queued
-work. The index still owns merged region-change requests, dimension priority and publication as
-each dimension finishes. Its current-task handle serves `waitForIndex`; the scope retains and
-drains every pass, replacing the separate task dictionary. Search models forward the explicit
-owner when they construct their own index. SavedQueryResults registers its passes in a separate
+WorldIndexStore uses RefreshLoader for incremental index passes. The producer owns merged
+region-change requests, dimension priority and one publication per completed dimension; the loader
+owns coalescing, source replacement, cancellation and stale-result rejection. Catalog additions
+queue without retiring the running pass. Reader replacement starts a new source, retaining only
+compatible completed facts. Initial loading stays visible through the complete first pass even
+when an earlier dimension has published. Waiting for the current index does not join retired reads;
+the loader's BackgroundWork scope still drains all of them before access is released. Creature/player
+projection continues to publish its combined index and player value coherently. Search models
+forward the explicit owner when they construct their own index. SavedQueryResults registers its passes in a separate
 scope of the same owner. Its query entries keep only handles needed for individual retirement;
 the scope retains canceled retired passes until they return and supplies the complete drain.
 Explicit cache/index close releases waiter continuations immediately, while world-owner close
@@ -1293,7 +1296,11 @@ strength until retried, while only a new external request schedules a following 
 The internal RefreshLoader API has Source, Request and Value parameters and accepts a prepared
 initial value, so opening's already interpreted source can be published without another read or
 temporary empty state. Closing clears the publication as well as canceling its scope, releasing
-the retained value while retired reads drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
+the retained value while retired reads drain. Incremental producers publish through a progress
+callback that uses the same admission and reentrancy checks as the final value. A rejected callback
+tells the producer to stop; an old final result is rejected independently. The loader exposes the
+accepted pass's starting value and activity for progress presentation, and its current handle for
+result waits; BackgroundWork remains the lifetime registry and complete drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
 language and heat-map consumers keep their existing contracts. Each loader declares whether an
 inactive read finishes or cancels: Time Spent keeps
 its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last
@@ -1707,13 +1714,14 @@ SlimeChunkLayer's visibility and availability; the row and command stay visible 
 unavailable. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
-change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer
+change the seed rule. Mask generation uses RefreshLoader under the world's BackgroundWork owner. The layer
 observes the current saved seed; an actual seed change clears prior masks and rejects their late
 completion, while unchanged-seed saves reuse them. A successfully unavailable seed disables the
-overlay until a later readable seed restores it. The layer retains its single active handle for
-hide/close cancellation and local draining; hiding and then
-showing resumes missing masks after the canceled pass finishes. World close cancels/drains the
-registered task and prevents late publication or a following pass. Closing one layer leaves its
+overlay until a later readable seed restores it. The loader owns hide/close cancellation and draining;
+showing again requests the current region set while retired reads drain independently. Same-seed
+region changes coalesce, retain completed masks and compute only the missing ones. Removed regions
+are hidden immediately and pruned by the next accepted pass. World close cancels/drains the
+registered work and prevents late publication or a following pass. Closing one layer leaves its
 siblings running. The center's chunk status is
 in the map's accessibility value; pointer hover shows the same checked rule in the readout.
 
