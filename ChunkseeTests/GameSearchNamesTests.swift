@@ -59,4 +59,75 @@ import Testing
             content: .container(kind: "minecraft:chest", customName: nil, items: zeroOnly.items))
         #expect(hit.count == 0 && hit.detail(in: .unavailable) == "0 Zero “Field Notes”")
     }
+
+    @Test func repeatedItemsKeepTheirNamesCountsAndEachSearchLanguage() async throws {
+        let english = try await EnchantmentNameFixture.names(), french = try await EnchantmentNameFixture.names("fr_FR")
+        let saved = ItemLabelTests()
+        let containers = ItemContainer.containers(inChunk: .compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
+                "Items": .list([
+                    saved.item("test:token", count: 2),
+                    saved.item("test:token", count: 3, name: "Morning"),
+                    saved.item("test:token", count: 4, name: "Morning"),
+                    saved.item("test:token", count: 5, name: "Evening"),
+                ])]),
+            .compound(["id": .string("minecraft:chest"), "x": .int(1), "y": .int(64), "z": .int(0),
+                "Items": .list([
+                    saved.item("test:token", count: 17),
+                    saved.item("test:token", count: 19, name: "Morning"),
+                    saved.item("test:token", count: 23, name: "Evening"),
+                ])]),
+        ])]))
+        let index = SearchIndex.overworld(DimensionContent(containers: containers))
+        func search(_ text: String, _ names: GameNames) -> [SearchHit] {
+            WorldSearch.search(text, in: index, players: [], gameNames: names) { _ in .named("") }
+        }
+
+        let first = search("trade token", english), translated = search("jeton", french)
+        #expect(first == translated && search("trade token", english) == first)
+        #expect(first.map(\.count) == [59, 14])
+        #expect(first.map { $0.items.map(\.count) } == [[23, 19, 17], [7, 5, 2]])
+        #expect(first.first?.detail(in: english) == "23 Trade Token “Evening”, 19 Trade Token “Morning”, 17 Trade Token")
+        #expect(translated.first?.detail(in: french) == "23 Jeton “Evening”, 19 Jeton “Morning”, 17 Jeton")
+        #expect(search("jeton", english).isEmpty && search("trade token", french).isEmpty)
+        #expect(search("test:token", french) == translated)
+        let evening = search("test:token evening", french)
+        #expect(evening.map(\.count) == [23, 5])
+        #expect(evening.allSatisfy { $0.items.map(\.name.customName) == ["Evening"] })
+    }
+
+    @Test func repeatedBookLabelsKeepAuthorsTitlesAndPerStackPageMatches() throws {
+        func book(_ count: Int32, title: String, author: String, page: String) -> NBT {
+            ItemLabelTests().item("minecraft:written_book", count: count, extra: [
+                "minecraft:written_book_content": .compound([
+                    "title": .string(title), "author": .string(author), "pages": .list([.string(page)]),
+                ]),
+            ])
+        }
+        let containers = ItemContainer.containers(inChunk: .compound(["block_entities": .list([
+            .compound(["id": .string("minecraft:chest"), "x": .int(0), "y": .int(64), "z": .int(0),
+                "Items": .list([
+                    book(7, title: "Field Notes", author: "Ada", page: "desert"),
+                    book(11, title: "Field Notes", author: "Ada", page: "forest"),
+                    book(13, title: "Field Notes", author: "Bea", page: "desert"),
+                    book(17, title: "Other Notes", author: "Ada", page: "mountain"),
+                ])]),
+        ])]))
+        let index = SearchIndex.overworld(DimensionContent(containers: containers))
+        func search(_ text: String) -> [SearchHit] {
+            WorldSearch.search(text, in: index, players: [], gameNames: .unavailable) { _ in .named("") }
+        }
+
+        #expect(search("forest").map(\.count) == [11])
+        #expect(search("desert").map(\.count) == [20])
+        #expect(search("mountain").map(\.count) == [17])
+        #expect(search("other notes").map(\.count) == [17])
+        let field = try #require(search("field notes").first)
+        #expect(field.count == 31)
+        #expect(field.items.map { $0.text(in: .unavailable) } == [
+            "18 Written Book “Field Notes” by Ada", "13 Written Book “Field Notes” by Bea",
+        ])
+        #expect(search("ada").map(\.count) == [35])
+        #expect(search("bea").map(\.count) == [13])
+    }
 }

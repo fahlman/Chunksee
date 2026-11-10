@@ -317,7 +317,12 @@ nonisolated enum WorldSearch {
 
     /// Whether an item matches every word in its readable name, id, custom name or book text.
     static func matches(_ item: ItemStack, query: SearchQuery, gameNames: GameNames) -> Bool {
-        var text = [gameNames.itemLabel(of: item), item.id]
+        var labels = GameNames.ItemLabels(gameNames)
+        return matches(item, query: query, labels: &labels)
+    }
+
+    private static func matches(_ item: ItemStack, query: SearchQuery, labels: inout GameNames.ItemLabels) -> Bool {
+        var text = [labels.label(of: item), item.id]
         if let book = item.book { text.append(book.searchText) }
         return query.matches(text.joined(separator: "\n"))
     }
@@ -327,9 +332,9 @@ nonisolated enum WorldSearch {
         let text: String
         var id: String { name.id }
 
-        init(_ item: ItemStack, gameNames: GameNames) {
+        init(_ item: ItemStack, labels: inout GameNames.ItemLabels) {
             name = GameNames.ItemName(item)
-            text = gameNames.itemLabel(name)
+            text = labels.label(name)
         }
 
         // Preserve same-ID, same-visible-label grouping, even when distinct raw names produce
@@ -346,8 +351,13 @@ nonisolated enum WorldSearch {
 
     /// Matching item facts, with nested contents included and the existing quantity/name order.
     static func summary(of items: [ItemStack], query: SearchQuery, gameNames: GameNames) -> ItemSummary? {
-        let totals = ItemTotals(in: items, matching: { matches($0, query: query, gameNames: gameNames) },
-                               groupingBy: { ItemLabel($0, gameNames: gameNames) })
+        var labels = GameNames.ItemLabels(gameNames)
+        return summary(of: items, query: query, labels: &labels)
+    }
+
+    private static func summary(of items: [ItemStack], query: SearchQuery, labels: inout GameNames.ItemLabels) -> ItemSummary? {
+        let totals = ItemTotals(in: items, matching: { matches($0, query: query, labels: &labels) },
+                               groupingBy: { ItemLabel($0, labels: &labels) })
         guard !totals.isEmpty else { return nil }
         let matches = totals.quantities.sorted {
             if $0.value != $1.value { return $0.value > $1.value }
@@ -364,17 +374,18 @@ nonisolated enum WorldSearch {
             return search(filter, query: query, in: index, gameNames: gameNames)
         }
         guard !query.isEmpty else { return [] }
+        var labels = GameNames.ItemLabels(gameNames)
         var hits: [SearchHit] = []
         for player in players {
             guard !Task.isCancelled else { return [] }
             let who = name(player)
             let location = PlayerPresentation.position(of: player)
-            if let found = summary(of: player.searchableInventory, query: query, gameNames: gameNames) {
+            if let found = summary(of: player.searchableInventory, query: query, labels: &labels) {
                 hits.append(SearchHit(id: "inventory-\(player.uuid)", dimension: location?.dimension,
                                       position: location.map { CGPoint(x: $0.x, y: $0.z) }, y: location.flatMap { Coordinates.block($0.y) },
                                       content: .inventory(playerID: player.uuid, name: who, items: found.items)))
             }
-            if let found = summary(of: player.enderChest, query: query, gameNames: gameNames) {
+            if let found = summary(of: player.enderChest, query: query, labels: &labels) {
                 hits.append(SearchHit(id: "ender-\(player.uuid)", dimension: nil, position: nil, y: nil,
                                       content: .enderChest(playerID: player.uuid, name: who, items: found.items)))
             }
@@ -382,7 +393,7 @@ nonisolated enum WorldSearch {
         for entry in index.containers {
             guard !Task.isCancelled else { return [] }
             let container = entry.value
-            guard let found = summary(of: container.items, query: query, gameNames: gameNames) else { continue }
+            guard let found = summary(of: container.items, query: query, labels: &labels) else { continue }
             hits.append(SearchHit(id: "\(entry.dimension)@\(container.kind)@\(container.x),\(container.y),\(container.z)",
                                   dimension: entry.dimension,
                                   position: MapCoordinates.center(of: CGPoint(x: container.x, y: container.z)), y: container.y,
