@@ -1,6 +1,7 @@
 import Darwin
 import CoreGraphics
 import Foundation
+import ChunkseeKit
 import Testing
 @testable import ChunkseeTestHost
 
