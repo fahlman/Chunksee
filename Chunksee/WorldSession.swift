@@ -42,10 +42,7 @@ final class WorldSession {
         self.renderTile = renderTile
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(settings: resources.settings, dimension: selected)
-        search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
-                             singleplayerUUID: { [weak resources] in resources?.world.level.singleplayerUUID }, firstDimension: selected,
-                             savedSearches: resources.savedSearches, indexStore: resources.index,
-                             gameNames: { [weak resources] in resources?.gameNames ?? GameNames.unavailable })
+        search = SearchModel(queryStore: resources.queryStore)
         heatMap = HeatMapLayer(reader: { [weak resources] in selected.flatMap { resources?.readers[$0] } },
                                work: resources.backgroundWork)
         selectedDimensionID = selected

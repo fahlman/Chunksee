@@ -150,6 +150,34 @@ struct ModelObservationTests {
         withExtendedLifetime((left, right)) {}
     }
 
+    @Test func querySourceWorkStaysBoundedAfterNestedReplacement() async {
+        let defaults = TestDefaults.make(), work = BackgroundWork(), input = Input(), reads = Count()
+        let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
+        let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: PlayerRoster([]))
+        let derived = ModelObservation(input, isActive: { _ in true }, read: { $0.primary }) { input, _ in
+            input.alternate = input.primary
+        }
+        let store = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
+            singleplayerUUID: { nil }, gameNames: {
+                _ = input.primary
+                _ = input.alternate
+                _ = input.probe
+                reads.value += 1
+                return .unavailable
+            })
+        reads.value = 0
+        input.probe += 1
+        let singleChange = reads.value
+        #expect(singleChange > 0)
+        for value in 1...10 { input.primary = value }
+        reads.value = 0
+        input.probe += 1
+        #expect(reads.value == singleChange)
+        store.close(); index.cancel(); work.close()
+        await work.waitUntilFinished()
+        withExtendedLifetime(derived) {}
+    }
+
     @Test func playerSourceWorkStaysBoundedAfterNestedReplacement() async throws {
         let root = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }

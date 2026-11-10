@@ -95,7 +95,7 @@ import Testing
         let player = PlayerInfo(uuid: uuid, nbt: .compound([
             "Inventory": .list([item("minecraft:diamond", 1)]), "EnderItems": .list([item("minecraft:diamond", 2)]),
         ]))
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { uuid },
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { uuid },
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults), gameNames: { .unavailable })
         search.text = "diamond"
         await search.waitForSearch()
@@ -103,8 +103,7 @@ import Testing
         await names.lookUp([uuid])
         await search.waitForSearch()
         #expect(Set(search.results.map(\.title)) == ["You’s inventory", "You’s ender chest"])
-        search.cancel()
-        await search.waitForTasks()
+        await search.closeTestWorld()
     }
 
     @Test func storageTotalsCountNestedItemsOncePerContainer() {

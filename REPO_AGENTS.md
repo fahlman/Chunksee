@@ -570,7 +570,7 @@ older scan envelopes.
 | `Structures.swift` | Native structure groups, marker geometry, names, icons, colors and default visibility |
 | `Places.swift` | Native place groups and markers, plus portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
-| `SearchModel.swift`, `SavedQueryResults.swift` | Independent per-dimension search controls/snapshots, saved-query commands and the shared sidebar/map result projection; the world index owns shared pending/completed saved-query work |
+| `SearchModel.swift`, `WorldQueryStore.swift` | Independent per-dimension search controls, saved-query commands and the shared sidebar/map result projection; WorldQueryStore owns the world's typed and saved query publications |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
 | `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
@@ -778,13 +778,14 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
-ModelObservation owns registration identity, cancellation and rearming for the seven subscriptions
-in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore and SelectionModel. It tracks new
-dependencies before reacting and rejects callbacks captured before their registration was retired,
-so nested source changes cannot multiply subscriptions. Models hold observations, observations hold
+ModelObservation owns registration identity, cancellation and rearming for the nine subscriptions
+in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore, SelectionModel, WorldIndexStore and
+WorldQueryStore. It tracks new dependencies before reacting and rejects callbacks captured before
+their registration was retired, so nested source changes cannot multiply subscriptions.
+Models hold observations, observations hold
 owners weakly, and explicit close cancels reactions. The slime layer also stops observing when its
 world closes. Existing invalidation and record-demand decisions stay in their models; no native
-resource-notification migration or later query store is introduced here.
+resource-notification migration is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors
@@ -978,38 +979,38 @@ labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader use
 world catalog for scan options and search aliases; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
 ScanCache continues to store core RegionFacts, with no cache-format change.
 
-`SearchModel.results(for:)` reads published results for the current or a saved query. It never
-starts a synchronous scan. Each query retains its previous snapshot until its replacement is
-ready. Each world's `WorldIndexStore.savedQueries` shares identical pending/completed saved-query
-work across dimension documents, keyed by index revision, the shared player-snapshot identity and
-player-name presentation. `WorldResources` publishes one immutable `PlayerSnapshot` per completed
-player read; current and later documents share that instance. Checking query sources never compares
-player NBT. A newly published read invalidates saved results even if its data happens to be equal;
-names can invalidate independently. Typed unsaved queries remain per document. Removing a saved query retires its cached
-work; an active typed waiter can still finish. Closing one document releases its wait without
-cancelling a sibling's saved query. Closing the world cancels and drains shared passes, including
-retired work still finishing after cancellation. Callers that need snapshots await `waitForSearch()`.
-SearchModel registers its typed/saved-query waiter tasks in its own BackgroundWork scope. Active
-queries retain their identity and handle for selective cancellation; canceled replacements stay
-in the common registry until they finish. Local close releases saved-query waiter leases and
-closes only that search's scope. World close refuses further queries, rejects late results and
-clears completed active handles without leaving `isSearching` stuck. The scope supplies the
-drain, replacing the separate task table; source generations and result retention remain local.
+`WorldResources.queryStore` owns typed and saved query publications through RefreshLoader.
+It observes the world's coherent index/player snapshot, player names, game-language identity and
+singleplayer identity even when no window is visible. SearchModel keeps only a window's query
+handle and presentation helpers; results(for:) reads publications and never scans synchronously.
+Unsaved typed queries have independent loaders per window. Saved queries share one loader per
+query and source across open and later documents. Their publication key includes index revision,
+player-snapshot identity, names, game-language identity and singleplayer identity; no NBT comparison
+is needed. A source change cancels old work through the loader. Previous coherent hits remain
+visible while replacements load, except changed language or singleplayer labels clear immediately.
+Clearing the current query clears its displayed hits immediately.
+Saving a completed typed query immediately shares that same result; retained hits from another
+query are never adopted as the new saved query's result.
 
-WorldIndexStore uses RefreshLoader for incremental index passes. The producer owns merged
-region-change requests, dimension priority and one publication per completed dimension; the loader
-owns coalescing, source replacement, cancellation and stale-result rejection. Catalog additions
-queue without retiring the running pass. Reader replacement starts a new source, retaining only
-compatible completed facts. Initial loading stays visible through the complete first pass even
-when an earlier dimension has published. Waiting for the current index does not join retired reads;
-the loader's BackgroundWork scope still drains all of them before access is released. Creature/player
-projection continues to publish its combined index and player value coherently. Search models
-forward the explicit owner when they construct their own index. SavedQueryResults registers its passes in a separate
-scope of the same owner. Its query entries keep only handles needed for individual retirement;
-the scope retains canceled retired passes until they return and supplies the complete drain.
-Explicit cache/index close releases waiter continuations immediately, while world-owner close
-also refuses new reads and rejects late results. Saved-query caching, source identity and each
-document's waiter lease remain owned by SavedQueryResults.
+Saved queries have individual waiter leases. An active typed waiter survives removal of its saved
+query; the entry retires after its final use. Closing one window releases only its waiters and typed
+loader, while a sibling's shared producer continues. World closure releases all continuations and
+cancels/drains active and retired producers. Nested BackgroundWork scopes group these loaders in
+the same lifetime registry: a window drains its own retired reads, and the store drains removed
+saved-query entries without keeping another task table. Callers that need current results await
+waitForSearch(); full lifetime draining remains separate.
+
+WorldIndexStore uses RefreshLoader for incremental index passes and their player projection.
+The producer owns merged region-change requests, dimension priority and one publication per
+completed dimension; the loader owns coalescing, source replacement, cancellation and stale-result
+rejection. Catalog additions queue without retiring the running pass. Reader replacement starts
+a new source, retaining only compatible completed facts. Initial loading stays visible through
+the complete first pass even when an earlier dimension has published. WorldIndexSnapshot publishes
+the projected index, its player snapshot and revision atomically. Queries wait for this projection
+instead of mixing new players with old carried pets. Waiting for the current index does not join
+retired reads; BackgroundWork still drains all of them before access is released.
+Closing the index retains its final immutable snapshot while the closing document is still
+alive, without permitting later reads or publications to change it.
 
 `PlayerNames` owns local reads and online batches across documents. Its app-wide BackgroundWork
 instance has independent local-cache and online-lookup scopes; a world's close cannot cancel
