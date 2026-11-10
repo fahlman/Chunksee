@@ -41,6 +41,10 @@ enum MapComparisonMeasures {
         if view.id == "boundary" {
             try #require(before.values.allSatisfy { $0 == 0 })
         }
+        let renderer = try requiredRenderer(map)
+        let directory = try #require(renderer.cache).directory
+        let imagesBefore = try cacheKeys(map)
+        let cacheBefore = try await MapComparisonFiles.cacheInventory(directory)
         let start = Stamp()
         map.requestTiles(visibleIn: MapComparisonEvidence.size, displayScale: 1)
         await map.waitUntilIdle()
@@ -48,11 +52,46 @@ enum MapComparisonMeasures {
         let end = Stamp()
         let after = ["tiles": map.tiles.count, "previews": map.previews.count,
                      "detail": map.detailImages.count, "shadows": map.shadowImages.count]
-        try MapComparisonEvidence.write(["terrain-load-interval.json": MapComparisonEvidence.json([
+        let measurement: [String: Any] = [
             "interval": start.until(end), "before": before, "after": after,
             "view": view.id, "drained": !map.isLoading && map.unfinishedCacheWrites == 0,
             "scope": "requestTiles through terrain/detail/shadow/cache-write drain; world and settings setup excluded",
-        ])], to: folder)
+        ]
+        do {
+            let cacheAfter = try await MapComparisonFiles.cacheInventory(directory)
+            let imagesAfter = try cacheKeys(map)
+            try MapComparisonEvidence.write([
+                "terrain-load-interval.json": MapComparisonEvidence.json(measurement),
+                "terrain-cache-before.json": MapComparisonEvidence.json([
+                    "files": try MapComparisonEvidence.object(cacheBefore), "images": imagesBefore,
+                ]),
+                "terrain-cache-after.json": MapComparisonEvidence.json([
+                    "files": try MapComparisonEvidence.object(cacheAfter), "images": imagesAfter,
+                ]),
+            ], to: folder)
+        } catch {
+            // A metadata/capture failure must not discard a completed product interval.
+            try? MapComparisonEvidence.write([
+                "terrain-load-interval.json": MapComparisonEvidence.json(measurement),
+            ], to: folder)
+            throw error
+        }
         try #require(!map.isLoading && map.unfinishedCacheWrites == 0)
+    }
+
+    /// Retained image identities distinguish memory reuse from disk reads. File names come
+    /// from the product's typed keys, including sidecars; the test does not rebuild key rules.
+    private static func cacheKeys(_ map: MapModel) throws -> [String: Any] {
+        func record(_ image: CachedMapImage) throws -> [String: Any] {
+            let key = image.key.surface
+            return ["key": try MapComparisonEvidence.object(key),
+                    "fileName": try #require(key.fileName),
+                    "detailFileName": try #require(key.detailFileName), "prefix": key.prefix]
+        }
+        var tiles: [String: Any] = [:], previews: [String: Any] = [:], detail: [String: Any] = [:]
+        for (region, image) in map.tiles { tiles["r\(region.x).\(region.z)"] = try record(image) }
+        for (region, image) in map.previews { previews["r\(region.x).\(region.z)"] = try record(image) }
+        for (chunk, image) in map.detailImages { detail["\(chunk.x).\(chunk.z)"] = try record(image) }
+        return ["tiles": tiles, "previews": previews, "detail": detail]
     }
 }
