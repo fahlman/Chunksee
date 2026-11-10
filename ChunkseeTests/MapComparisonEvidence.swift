@@ -75,18 +75,22 @@ enum MapComparisonEvidence {
     /// Native input, layout and accessibility checks remain separate.
     static func live(_ session: WorldSession, appearance: ColorScheme) throws -> MapImage {
         let map = try #require(session.map), content = MapContent(session: session)
+        var renderedContrast: ColorSchemeContrast?
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+            renderedContrast = context.environment.colorSchemeContrast
             MapView.drawMap(map, content: content, portalStatus: { session.presentation.linkStatus(for: $0) },
                             displayScale: 1, in: context, size: size)
         }
         .modifier(MapLegendOverlay(layers: content))
         .environment(\.colorScheme, appearance)
-        .environment(\.colorSchemeContrast, .standard)
         .environment(\.locale, locale)
         .frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: canvas)
         renderer.scale = 1
         let image: CGImage = try #require(renderer.cgImage)
+        // Contrast is read-only. Require the actual synchronous render to match Copy/export
+        // without changing the Mac's accessibility preferences.
+        try #require(renderedContrast == .standard)
         return try #require(MapImage.png(image))
     }
 
