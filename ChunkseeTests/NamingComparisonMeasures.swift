@@ -10,6 +10,18 @@ import Testing
 /// Evidence clocks only. File capture and serialization happen after each product interval.
 @MainActor
 enum NamingComparisonMeasures {
+    /// The process high-water mark includes startup and evidence capture. Read it after
+    /// the whole workload; it cannot be reset or attributed to an individual cell.
+    static func processResources() throws -> [String: Any] {
+        var usage = rusage()
+        try #require(getrusage(RUSAGE_SELF, &usage) == 0)
+        try #require(usage.ru_maxrss > 0)
+        return ["processID": ProcessInfo.processInfo.processIdentifier,
+                "peakRSSBytes": Int64(usage.ru_maxrss),
+                "source": "getrusage(RUSAGE_SELF).ru_maxrss",
+                "scope": "Process launch through four completed cells, input checks and evidence capture; final resource-record writing and test-framework teardown excluded"]
+    }
+
     nonisolated struct Stamp {
         let wall = DispatchTime.now().uptimeNanoseconds
         let cpu = Self.cpuSeconds()

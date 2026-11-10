@@ -5,8 +5,8 @@ import Foundation
 import Testing
 @testable import ChunkseeTestHost
 
-/// Evidence-only first proof for the timing paths: two artwork choices, each cold and reopened.
-/// No acceptance batch or repetition count is enabled before its separate plan is approved.
+/// One fixed workload: two artwork choices, each cold and reopened. A separately approved
+/// controller decides whether this host is an output proof or a fresh-process repetition.
 @Suite(.isolatedStores)
 @MainActor
 struct NamingComparison {
@@ -115,6 +115,8 @@ struct NamingComparison {
             "processLocale": Locale.current.identifier, "preferredLanguages": Locale.preferredLanguages,
             "renderLocale": NamingComparisonCapture.locale.identifier,
         ])], to: output)
+        try Self.write(["process-resources.json": NamingComparisonCapture.json(
+            NamingComparisonMeasures.processResources())], to: output)
     }
 
     static func run(_ config: Configuration, artwork: Bool, phase: String, output: URL, cache: URL) async throws -> [Weak] {
