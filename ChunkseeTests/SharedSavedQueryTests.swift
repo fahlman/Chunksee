@@ -21,7 +21,7 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: { nil },
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index, gameNames: { .unavailable })
         }
@@ -59,7 +59,7 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: { nil },
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.queries[0]) }, indexStore: index, gameNames: { .unavailable })
         }
@@ -90,7 +90,7 @@ import Testing
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, indexStore: index, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
@@ -116,7 +116,7 @@ import Testing
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let model = SearchModel(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
@@ -152,7 +152,7 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func document(_ players: PlayerRoster) -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: { nil },
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read(String($0.players[0].experienceLevel!)) }, indexStore: index, gameNames: { .unavailable })
         }
@@ -187,7 +187,7 @@ import Testing
         }
         let players = PlayerRoster([player(1)])
         func document(_ label: String) -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: { nil },
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read("\(label)-\($0.players[0].experienceLevel!)") }, gameNames: { .unavailable })
         }
@@ -229,7 +229,7 @@ import Testing
         await index.waitForIndex()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         func document() -> SearchModel {
-            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: nil,
+            SearchModel(readers: [], work: work, playerRoster: players, names: names, singleplayerUUID: { nil },
                         firstDimension: nil, savedSearches: saved,
                         execute: { await gate.read($0.playerNames[uuid]!.text) }, indexStore: index, gameNames: { .unavailable })
         }

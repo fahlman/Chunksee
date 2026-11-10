@@ -41,7 +41,7 @@ final class WorldSession {
         let selected = dimensionID ?? resources.defaultDimensionID
         visibility = LayerVisibility(settings: resources.settings, dimension: selected)
         search = SearchModel(readers: [], work: resources.backgroundWork, playerRoster: resources.playerRoster, names: resources.names,
-                             singleplayerUUID: resources.world.level.singleplayerUUID, firstDimension: selected,
+                             singleplayerUUID: { [weak resources] in resources?.world.level.singleplayerUUID }, firstDimension: selected,
                              savedSearches: resources.savedSearches, indexStore: resources.index,
                              gameNames: { [weak resources] in resources?.gameNames ?? GameNames.unavailable })
         heatMap = HeatMapLayer(reader: { [weak resources] in selected.flatMap { resources?.readers[$0] } },
@@ -51,7 +51,7 @@ final class WorldSession {
         map = initialMap
         initialMap?.setDarkSpots(visibility.rememberedDarkSpots)
         navigation = MapNavigation(map: initialMap)
-        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: resources.details.seed,
+        slimeChunks = SlimeChunkLayer(dimensionID: selected, seed: { [weak resources] in resources?.details.seed },
                                      regions: initialMap?.availableRegions ?? [], work: resources.backgroundWork)
         heatMap.restoreVisibility(from: visibility)
         slimeChunks.restoreVisibility(from: visibility)

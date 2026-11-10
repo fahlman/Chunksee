@@ -30,14 +30,17 @@ final class SearchModel {
     private var displayedQuery = ""
     var isActive: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
     var results: [SearchHit] {
-        isActive && sources?.gameNamesID == readGameNames().identity ? queryResults[displayedQuery] ?? [] : []
+        isActive && hasCurrentNames ? queryResults[displayedQuery] ?? [] : []
     }
 
     let indexStore: WorldIndexStore
     private let ownsIndex: Bool
     private let readGameNames: @MainActor () -> GameNames
     private let names: PlayerNames
-    private let singleplayerUUID: UUID?
+    private let readSingleplayerUUID: @MainActor () -> UUID?
+    private var hasCurrentNames: Bool {
+        sources?.gameNamesID == readGameNames().identity && sources?.singleplayerUUID == readSingleplayerUUID()
+    }
     private let savedSearches: SavedSearches
     private let execute: @Sendable (SearchRequest) async -> [String: [SearchHit]]
     private let work: BackgroundWork.Scope
@@ -51,7 +54,8 @@ final class SearchModel {
     @ObservationIgnored private var sources: SearchSources?
     private var isClosed: Bool { work.isClosed }
 
-    init(readers: [RegionReader], work: BackgroundWork, playerRoster: any PlayerSnapshotSource, names: PlayerNames, singleplayerUUID: UUID?,
+    init(readers: [RegionReader], work: BackgroundWork, playerRoster: any PlayerSnapshotSource, names: PlayerNames,
+         singleplayerUUID: @escaping @MainActor () -> UUID?,
          firstDimension: String?, savedSearches: SavedSearches,
          execute: @escaping @Sendable (SearchRequest) async -> [String: [SearchHit]] = WorldSearch.execute,
          indexStore: WorldIndexStore? = nil, gameNames: @escaping @MainActor () -> GameNames) {
@@ -62,7 +66,7 @@ final class SearchModel {
         precondition(self.indexStore.playerRoster === playerRoster)
         readGameNames = gameNames
         self.names = names
-        self.singleplayerUUID = singleplayerUUID
+        readSingleplayerUUID = singleplayerUUID
         self.savedSearches = savedSearches
         self.execute = execute
         observeSources()
@@ -70,7 +74,7 @@ final class SearchModel {
     }
 
     func results(for query: String) -> [SearchHit] {
-        guard sources?.gameNamesID == readGameNames().identity else { return [] }
+        guard hasCurrentNames else { return [] }
         return query == text ? results : queryResults[query] ?? []
     }
 
@@ -109,6 +113,7 @@ final class SearchModel {
             _ = savedSearches.all
             _ = indexStore.revision
             _ = playerRoster.snapshot
+            _ = readSingleplayerUUID()
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, !self.isClosed else { return }
@@ -126,14 +131,15 @@ final class SearchModel {
         let queries = Set(([text] + Array(saved)).filter {
             !$0.trimmingCharacters(in: .whitespaces).isEmpty
         })
+        let singleplayerUUID = readSingleplayerUUID()
         let playerNames = Dictionary(uniqueKeysWithValues: players.map {
             ($0.uuid, PlayerPresentation.label(of: $0, singleplayerUUID: singleplayerUUID, knownName: names.name(for: $0.uuid)))
         })
         let gameNames = readGameNames()
         let next = SearchSources(names: playerNames, playerSnapshot: playerSnapshot, indexRevision: indexStore.revision,
-                                 gameNamesID: gameNames.identity)
+                                 gameNamesID: gameNames.identity, singleplayerUUID: singleplayerUUID)
         if next != sources {
-            if next.gameNamesID != sources?.gameNamesID { queryResults = [:] }
+            if next.gameNamesID != sources?.gameNamesID || next.singleplayerUUID != sources?.singleplayerUUID { queryResults = [:] }
             sources = next
             sourceGeneration = UUID()
             for query in activeQueries.values { cancelQuery(query) }
@@ -174,6 +180,7 @@ final class SearchModel {
                       self.playerRoster.snapshot === next.playerSnapshot,
                       self.playerSnapshot === next.playerSnapshot,
                       self.readGameNames().identity == next.gameNamesID,
+                      self.readSingleplayerUUID() == next.singleplayerUUID,
                       self.sourceGeneration == generation, self.activeQueries[query]?.id == id else { return }
                 self.activeQueries[query] = nil
                 guard let found else { self.isSearching = !self.activeQueries.isEmpty; return }

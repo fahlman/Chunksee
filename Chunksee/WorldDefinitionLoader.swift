@@ -2,22 +2,16 @@ import ChunkseeKit
 import Foundation
 import Observation
 
-/// Definitions and players interpreted with them have one publication. Independent saved-version
-/// metadata can advance even when the dependent player read needs to be retried.
+/// Definitions and players interpreted with them have one publication. Independent saved facts
+/// belong to WorldInfoSnapshot and never wait for this dependent pair.
 @Observable
 final class WorldDefinitionLoader: PlayerSnapshotSource {
     nonisolated struct Facts: Sendable {
         var definitions: WorldDefinitions
-        let borders: [String: WorldBorder]
         let players: PlayerSnapshot
         /// The game source of the completed definition/player read, retained during replacement.
         /// Prepared new dimensions may extend settings before the next complete read.
         let source: WorldGameDataSource.Identity
-    }
-
-    nonisolated struct Value: Sendable {
-        var facts: Facts?
-        var savedVersion: SavedMinecraftVersion
     }
 
     nonisolated private struct DimensionInput: Equatable, Sendable {
@@ -41,7 +35,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         }
     }
 
-    typealias ReadDefinitions = @Sendable (World, GameDataLibrary?) async throws -> WorldResources.DefinitionSnapshot
+    typealias ReadDefinitions = @Sendable (World, GameDataLibrary?) async throws -> WorldDefinitions
     typealias ReadPlayers = @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]?
 
     /// The production operations and injected test operations are captured once per pass.
@@ -50,14 +44,13 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         var players: ReadPlayers = { await WorldResources.readPlayers($0, enchantments: $1) }
     }
 
-    private let loader: RefreshLoader<Source, Request, Value>
+    private let loader: RefreshLoader<Source, Request, Facts>
     private let reads: Reads
-    private let unavailable: Value
     private let emptyPlayers = PlayerSnapshot([])
-    @ObservationIgnored var published: @MainActor (Value) -> Void = { _ in }
+    @ObservationIgnored var published: @MainActor (Facts?) -> Void = { _ in }
 
-    var value: Value { loader.value ?? unavailable }
-    var snapshot: PlayerSnapshot { value.facts?.players ?? emptyPlayers }
+    var value: Facts? { loader.value }
+    var snapshot: PlayerSnapshot { value?.players ?? emptyPlayers }
     var work: BackgroundWork.Scope { loader.work }
     var isClosed: Bool { loader.isClosed }
     var readDefinitions: ReadDefinitions {
@@ -71,16 +64,14 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
 
     init(world: World, work: BackgroundWork, gameSource: WorldGameDataSource,
          dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions,
-         borders: [String: WorldBorder], players: [PlayerInfo], savedVersion: SavedMinecraftVersion) {
+         players: [PlayerInfo]) {
         let reads = Reads()
         self.reads = reads
-        unavailable = Value(facts: nil, savedVersion: savedVersion)
         let source = Source(game: gameSource,
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
-        let initial = Value(facts: Facts(definitions: definitions, borders: borders,
-            players: PlayerSnapshot(players), source: source.game.identity), savedVersion: savedVersion)
+        let initial = Facts(definitions: definitions, players: PlayerSnapshot(players), source: source.game.identity)
         loader = RefreshLoader(partialRead: { source, request, previous in
             let readDefinitions = await reads.definitions, readPlayers = await reads.players
             try Task.checkCancellation()
@@ -89,20 +80,19 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                 guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
                 let updated = try await readDefinitions(world, library)
                 try Task.checkCancellation()
-                let players = await readPlayers(world, updated.definitions.enchantments)
-                try Task.checkCancellation()
-                guard let players else {
-                    return .partial(Value(facts: previous?.facts, savedVersion: updated.savedVersion))
-                }
-                return .complete(Value(facts: Facts(definitions: updated.definitions, borders: updated.borders,
-                    players: PlayerSnapshot(players), source: source.game.identity), savedVersion: updated.savedVersion))
-            case .players:
-                guard let previous, let facts = previous.facts,
-                      let players = await readPlayers(world, facts.definitions.enchantments) else {
+                guard let players = await readPlayers(world, updated.enchantments) else {
                     throw CancellationError()
                 }
-                return .complete(Value(facts: Facts(definitions: facts.definitions, borders: facts.borders,
-                    players: PlayerSnapshot(players), source: facts.source), savedVersion: previous.savedVersion))
+                try Task.checkCancellation()
+                return .complete(Facts(definitions: updated, players: PlayerSnapshot(players), source: source.game.identity))
+            case .players:
+                guard let previous,
+                      let players = await readPlayers(world, previous.definitions.enchantments) else {
+                    throw CancellationError()
+                }
+                try Task.checkCancellation()
+                return .complete(Facts(definitions: previous.definitions,
+                    players: PlayerSnapshot(players), source: previous.source))
             }
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
             firstRequest: .definitions, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
@@ -112,13 +102,13 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                 // succeeds; RefreshLoader still cancels and rejects every retired in-flight read.
                 let added = Set(current.preparedDimensions.keys).subtracting(previous.preparedDimensions.keys)
                 for id in added {
-                    retained.facts?.definitions.dimensionSettings[id] = current.preparedDimensions[id]?.settings
+                    retained.definitions.dimensionSettings[id] = current.preparedDimensions[id]?.settings
                 }
                 return retained
             })
         loader.published = { [weak self] _, current in
             guard let self, !self.isClosed else { return }
-            self.published(current.value ?? self.unavailable)
+            self.published(current.value)
         }
     }
 

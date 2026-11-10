@@ -368,7 +368,8 @@ global rows and in-game map overlays remain. The shared map callback announces a
 deselection through Apple's accessibility API; other focus contexts keep their own Escape.
 
 All of the app's code is presentation; world-format rules live in ChunkseeKit.
-WorldResources owns the saved version and the comparison with its current selected game library.
+WorldResources derives the saved version from its current WorldInfoSnapshot and owns the comparison
+with its selected game library.
 WorldVersionNotice compares the supplied data versions and displays their supplied names; absent
 saved data versions do not produce a newer-world notice. A successful metadata refresh updates
 the saved version, and source-generation checks reject retired game files. The non-blocking map
@@ -458,6 +459,26 @@ and the tag's membership identity is computed once in the immutable surface cont
 Water inputs are explicit, so omitting an argument cannot drop the composed tag.
 Tile renderer version 35 discards the older fluid classification and water pixels.
 The depth cap and Height/Water Depth scales remain.
+WorldResources owns one WorldInfoSnapshot through RefreshLoader. Opening and refresh share the
+same Kit reads for current level metadata, seed, game rules, weather, day time, dimension borders,
+dragon fight and wandering-trader state. Saved-only facts do not depend on game definitions or
+artwork. Successful absent values clear old facts; a failed field retains only that field from
+the same world while other readable fields advance. An unreadable level.dat retains the prior
+snapshot. The snapshot supplies World Info, version notices, world/spawn presentation and
+single-player labels, so these consumers do not keep separate opening values. Dimension-source
+changes retain only compatible borders; closure and replacement reject retired reads. Non-region
+notifications coalesce through the world's existing scheduling path without copying Kit's file
+discovery tables. Saved in-game maps still use their prepared opening sources until their separate
+snapshot step adopts Kit's failure-aware map-read result.
+
+WorldLifetimeTests keeps the app owner alive across repeated real document-reader openings and
+checks that closed world resources, sessions, search/slime models and the info loader are released
+after their registered work drains. The info loader remains world-owned with an internal read-only
+reference for that lifetime check. The test uses a synthetic save by default; the optional
+CHUNKSEE_LIFETIME_WORLD and CHUNKSEE_LIFETIME_GAME environment paths select evidence-only copies
+for the same correctness check. Weak-reference assertions do not measure memory footprint or
+replace the separate performance acceptance check.
+
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
 by WorldPreparation. Each resource category remains independently available. A failed
@@ -467,9 +488,9 @@ trading definitions and the shared NotableBlock.Catalog. Current health and othe
 available when maximum health cannot be established.
 
 Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
-definition demand dominates player-only demand. A failed dependent player read can still publish
-the independently read saved version, while keeping coherent facts and retrying the stronger
-request on the next external demand. Replacing game inputs cancels obsolete reads while retaining
+definition demand dominates player-only demand. A failed dependent player read keeps coherent
+facts and retries the stronger request on the next external demand; independent saved facts
+continue through WorldInfoSnapshot. Replacing game inputs cancels obsolete reads while retaining
 the completed definition/player facts until their coherent replacement is ready. Those retained
 facts carry the producing game generation and library identity; they are never relabeled as
 the new source. This producer's compatible projection retains the completed scale and reader
@@ -482,8 +503,8 @@ completed absence starts a real no-game read and removes facts the remaining wor
 supply. This preserves Height when reselecting game files without retaining an unavailable scale
 after a confirmed removal.
 Prepared dimension additions extend only new settings synchronously; later
-definition reads remain authoritative. WorldDetails projects definitions and borders from this
-publication; its other opening facts remain for step 5b. Player/index/search consumers share the
+definition reads remain authoritative. WorldDetails projects definitions from this publication
+and saved facts, including borders, from WorldInfoSnapshot. Player/index/search consumers share the
 producer's immutable player snapshot rather than another editable roster. Maps observe explicit
 definition inputs, and Time Spent observes its reader; neither receives manual refresh pushes.
 
@@ -741,12 +762,13 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
-ModelObservation owns registration identity, cancellation and rearming for the six subscriptions
-in MapModel, HeatMapLayer, PlayerRecordStore and SelectionModel. It tracks new dependencies before
-reacting and rejects callbacks captured before their registration was retired, so nested source
-changes cannot multiply subscriptions. Models hold observations, observations hold owners weakly,
-and explicit close cancels reactions. Existing invalidation and record-demand decisions stay in
-their models; no native resource-notification migration or later query store is introduced here.
+ModelObservation owns registration identity, cancellation and rearming for the seven subscriptions
+in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore and SelectionModel. It tracks new
+dependencies before reacting and rejects callbacks captured before their registration was retired,
+so nested source changes cannot multiply subscriptions. Models hold observations, observations hold
+owners weakly, and explicit close cancels reactions. The slime layer also stops observing when its
+world closes. Existing invalidation and record-demand decisions stay in their models; no native
+resource-notification migration or later query store is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors
@@ -1172,6 +1194,9 @@ accepted read publishes one immutable PlayerSnapshot there; searches observe tha
 instead of receiving pushed assignments in every tab. SearchSources still compares snapshot
 identity, so query edits never traverse saved player NBT. Shared saved queries continue to reuse
 only matching publications, and closed searches do not restart when the roster changes.
+The current level snapshot supplies the single-player identity to searches. It participates in
+shared-query identity and late-result checks, so changed personal labels cannot reuse or publish
+results made for the previous identity.
 
 StatisticRow supplies shared names and native values to the player inspector and All Statistics.
 The table's raw category/statistic IDs keep row identity independent of equal readable names;
@@ -1660,7 +1685,10 @@ unavailable. `SlimeChunkLayer` builds a small
 32×32 mask per saved region using `World.isSlimeChunk`, off the main actor, reusing masks across
 panning, zoom, toggles and export. New regions add work; entity saves and terrain edits do not
 change the seed rule. Mask generation registers with the world's BackgroundWork owner. The layer
-retains its single active handle for hide/close cancellation and local draining; hiding and then
+observes the current saved seed; an actual seed change clears prior masks and rejects their late
+completion, while unchanged-seed saves reuse them. A successfully unavailable seed disables the
+overlay until a later readable seed restores it. The layer retains its single active handle for
+hide/close cancellation and local draining; hiding and then
 showing resumes missing masks after the canceled pass finishes. World close cancels/drains the
 registered task and prevents late publication or a following pass. Closing one layer leaves its
 siblings running. The center's chunk status is

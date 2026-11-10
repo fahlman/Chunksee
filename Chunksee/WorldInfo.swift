@@ -7,18 +7,19 @@ nonisolated struct WorldDetails: Sendable {
     /// Independently available type and generation metadata, keyed by the saved dimension ID.
     var definitions = WorldDefinitions()
     var dimensionSettings: [String: DimensionSettings] { definitions.dimensionSettings }
-    var seed: Int64?
+    let info: WorldInfoSnapshot
+    var seed: Int64? { info.seed }
     /// Saved identifiers remain the identity; readable names are presentation only.
-    var gameRules: [String: GameRuleValue] = [:]
-    var weather: Weather?
-    var dayTime: Int?
+    var gameRules: [String: GameRuleValue] { info.gameRules }
+    var weather: Weather? { info.weather }
+    var dayTime: Int? { info.dayTime }
     /// World borders by dimension id.
-    var borders: [String: WorldBorder] = [:]
-    var dragonFight: EnderDragonFight?
-    var wanderingTrader: WanderingTraderTimer?
+    var borders: [String: WorldBorder] { info.borders }
+    var dragonFight: EnderDragonFight? { info.dragonFight }
+    var wanderingTrader: WanderingTraderTimer? { info.wanderingTrader }
     /// Every readable saved map, including blank pictures and unavailable dimensions.
     var maps: [MapItem] { mapSources.map(\.map) }
-    private var mapSources: [InGameMapImage.Source] = []
+    let mapSources: [InGameMapImage.Source]
 
     func mapImageSource(for id: Int) -> InGameMapImage.Source? {
         mapSources.first { $0.map.id == id }
@@ -42,19 +43,9 @@ nonisolated struct WorldDetails: Sendable {
 
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
-        var details = WorldDetails()
-        details.definitions = (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions()
-        details.seed = try? world.seed()
-        details.gameRules = (try? world.gameRules()) ?? [:]
-        details.weather = try? world.weather()
-        details.dayTime = try? world.dayTime()
-        for dimension in world.dimensions() {
-            if let border = try? world.worldBorder(of: dimension) { details.borders[dimension.id] = border }
-        }
-        details.dragonFight = try? world.enderDragonFight()
-        details.wanderingTrader = try? world.wanderingTrader()
-        details.mapSources = world.mapItems().map(InGameMapImage.Source.init)
-        return details
+        WorldDetails(definitions: (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions(),
+                     info: WorldInfoSnapshot.read(world, dimensions: world.dimensions()).value,
+                     mapSources: world.mapItems().map(InGameMapImage.Source.init))
     }
 
     /// `minecraft:keep_inventory` and the older `keepInventory` both become "Keep Inventory".
