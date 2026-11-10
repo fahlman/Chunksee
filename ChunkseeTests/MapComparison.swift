@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import ChunkseeTestHost
 
-/// Evidence-only correctness and cache proof. There is deliberately no timing mode.
+/// Draft timing-output proof. The approved cache proof remains in its original immutable probes.
 @Suite(.isolatedStores)
 @MainActor
 struct MapComparison {
@@ -60,7 +60,6 @@ struct MapComparison {
         let game: String
         let output: String
         let artwork: Bool
-        let cacheSeed: String?
         let worldFiles: [String: String]
         let gameFiles: [String: String]
         let states: [State]
@@ -79,24 +78,17 @@ struct MapComparison {
         init(_ value: AnyObject) { self.value = value }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["CHUNKSEE_MAP_COMPARISON"] != nil),
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CHUNKSEE_MAP_TIMING_OUTPUT_PROOF"] != nil),
           .timeLimit(.minutes(10)))
-    func copiedWorldProof() async throws {
+    func copiedWorldTimingOutputProof() async throws {
         try #require(Bundle.main.bundleIdentifier == "com.fahlsing.Chunksee.Tests")
-        let path = try #require(ProcessInfo.processInfo.environment["CHUNKSEE_MAP_COMPARISON"])
+        let path = try #require(ProcessInfo.processInfo.environment["CHUNKSEE_MAP_TIMING_OUTPUT_PROOF"])
         let config = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(filePath: path)))
         let root = "/Users/ryan/Developer/Chunksee-runs/"
-        try #require(config.mode == "writer" || config.mode == "reuse")
+        try #require(config.mode == "drawing-proof")
         try #require(config.world == root + "world-snapshot-loaders-evidence/game-assets/paired-1/input-world")
         try #require(config.game == root + "naming-stack-comparison-evidence/inputs-1/input-game")
-        try #require(config.output.hasPrefix(NSHomeDirectory() + "/Library/Caches/MapComparison-"))
-        try #require((config.mode == "reuse") == (config.cacheSeed != nil))
-        if let seed = config.cacheSeed {
-            try #require(seed.hasPrefix(root + "map-presentation-drawing-comparison-evidence/immutable-caches/"))
-            let url = URL(filePath: seed, directoryHint: .isDirectory)
-            try #require(url.standardizedFileURL.path == url.path)
-            try #require(url.resolvingSymlinksInPath().path == url.path)
-        }
+        try #require(config.output.hasPrefix(NSHomeDirectory() + "/Library/Caches/MapTimingProof-"))
         try #require(config.states.map(\.id) == [
             "normal-surface", "height-surface", "water-depth-surface", "normal-saved-shadows",
             "water-depth-saved-shadows", "normal-cutaway", "normal-filter", "normal-disabled-filter",
@@ -133,25 +125,11 @@ struct MapComparison {
         let defaults = TestDefaults.make()
         try MapComparisonFixture.seed(defaults)
         let cache = output.appendingPathComponent("cache", isDirectory: true)
-        if let seed = config.cacheSeed {
-            try await MapComparisonFiles.copyCache(from: URL(filePath: seed, directoryHint: .isDirectory), to: cache)
-        }
-        let tileDirectory = try #require(TileCache.directory(forWorldAt: URL(filePath: config.world),
-            dimensionID: MapComparisonFixture.dimension, root: cache))
-        let before = config.mode == "reuse" ? try await MapComparisonFiles.snapshot(tileDirectory) : nil
-        if let before {
-            let dates = try await MapComparisonFiles.directoryDates(cache)
-            try MapComparisonEvidence.write([
-                "cache-files-before.json": MapComparisonEvidence.encoded(before),
-                "cache-directory-dates-before.json": MapComparisonEvidence.encoded(dates),
-            ], to: output)
-        }
         let names = PlayerNames(defaults: defaults)
         var world: WorldResources?, session: WorldSession?
         var owners = [Weak(names), Weak(names.minecraft)]
         let scans = Scans()
         var stage = "open"
-        MapComparisonTrace.begin()
 
         func open() async throws -> WorldSession {
             let snapshot = try await WorldSnapshot.read(URL(filePath: config.world, directoryHint: .isDirectory))
@@ -193,63 +171,46 @@ struct MapComparison {
             var current = try await open()
             try MapComparisonFixture.requireInitialChoices(current)
             var imageCount = 0
-            if config.mode == "writer" {
-                try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
-                    to: output.appendingPathComponent("settings-initial"))
-                try MapComparisonEvidence.write([
-                    "choices.json": MapComparisonEvidence.json(MapComparisonState.choices(current)),
-                ], to: output.appendingPathComponent("settings-initial"))
-                stage = "states"
-                imageCount += try await states(config, session: current, output: output)
-                stage = "overlays"
-                imageCount += try await overlays(config, session: current, output: output)
-                stage = "definitions"
-                imageCount += try await definitions(config, session: current, output: output)
-                try #require(imageCount == 148)
-                let expected = try MapComparisonEvidence.json(MapComparisonState.choices(current))
-                try MapComparisonEvidence.write(["choices.json": expected],
-                    to: output.appendingPathComponent("settings-before-close"))
-                try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
-                    to: output.appendingPathComponent("settings-before-close"))
-                stage = "close-reopen"
-                await close()
-                current = try await open()
-                let restored = try MapComparisonEvidence.json(MapComparisonState.choices(current))
-                try MapComparisonEvidence.write(["choices.json": restored],
-                    to: output.appendingPathComponent("settings-reopened"))
-                try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
-                    to: output.appendingPathComponent("settings-reopened"))
-                try #require(expected == restored)
-            }
-            stage = "canonical-cache"
-            try await canonical(config, session: current, output: output)
+            try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
+                to: output.appendingPathComponent("settings-initial"))
+            try MapComparisonEvidence.write([
+                "choices.json": MapComparisonEvidence.json(MapComparisonState.choices(current)),
+            ], to: output.appendingPathComponent("settings-initial"))
+            stage = "states"
+            imageCount += try await states(config, session: current, output: output)
+            stage = "overlays"
+            imageCount += try await overlays(config, session: current, output: output)
+            stage = "definitions"
+            imageCount += try await definitions(config, session: current, output: output)
+            try #require(imageCount == 148)
+            let expected = try MapComparisonEvidence.json(MapComparisonState.choices(current))
+            try MapComparisonEvidence.write(["choices.json": expected],
+                to: output.appendingPathComponent("settings-before-close"))
+            try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
+                to: output.appendingPathComponent("settings-before-close"))
+            stage = "close-reopen"
+            await close()
+            current = try await open()
+            let restored = try MapComparisonEvidence.json(MapComparisonState.choices(current))
+            try MapComparisonEvidence.write(["choices.json": restored],
+                to: output.appendingPathComponent("settings-reopened"))
+            try MapComparisonFixture.capture(defaults, settings: current.resources.settings,
+                to: output.appendingPathComponent("settings-reopened"))
+            try #require(expected == restored)
             let map = try #require(current.map)
             await map.waitForRenders()
             try #require(map.unfinishedCacheWrites == 0)
             stage = "close"
             await close()
-            let events = MapComparisonTrace.end()
-            let after = try await MapComparisonFiles.snapshot(tileDirectory)
-            let dates = try await MapComparisonFiles.directoryDates(cache)
             try MapComparisonEvidence.write([
-                "cache-events.json": MapComparisonEvidence.encoded(events),
-                "cache-files-after.json": MapComparisonEvidence.encoded(after),
-                "cache-directory-dates-after.json": MapComparisonEvidence.encoded(dates),
                 "aggregate-region-reads.json": MapComparisonEvidence.encoded(await scans.paths),
-                "counts.json": MapComparisonEvidence.json(["writerImages": imageCount]),
+                "counts.json": MapComparisonEvidence.json(["proofImages": imageCount]),
             ], to: output)
-            if let before {
-                try #require(after == before)
-                try #require(!events.contains { $0.kind == .surface || $0.kind == .tileMiss || $0.kind == .detailMiss })
-            } else {
-                try #require(events.contains { $0.kind == .surface })
-            }
             names.minecraft.forget()
             await names.minecraft.waitUntilIdle()
             return owners
         } catch {
             await close()
-            let events = MapComparisonTrace.end()
             names.minecraft.forget()
             await names.minecraft.waitUntilIdle()
             let category: String
@@ -261,7 +222,6 @@ struct MapComparison {
                 "failure.json": MapComparisonEvidence.json([
                     "stage": stage, "category": category, "error": String(describing: error),
                 ]),
-                "partial-cache-events.json": MapComparisonEvidence.encoded(events),
                 "partial-aggregate-region-reads.json": MapComparisonEvidence.encoded(await scans.paths),
             ], to: output)
             throw error
