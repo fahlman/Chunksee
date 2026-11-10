@@ -109,6 +109,42 @@ import Testing
         }
     }
 
+    @Test func interpretedVillagerDataReachesNamesSearchAndMapAccessibility() async throws {
+        let names = try await names("is_IS")
+        let cases: [(String, NBT?, String, String?)] = [
+            ("minecraft:villager", nil, "Þorpsbúi", "None"),
+            ("minecraft:villager", .string("unreadable"), "Þorpsbúi", "None"),
+            ("minecraft:villager", .compound(["profession": .int(7)]), "Þorpsbúi", "None"),
+            ("minecraft:villager", .compound(["profession": .string("")]), "Þorpari", nil),
+            ("minecraft:zombie_villager", nil, "Zombie Villager", nil),
+            ("minecraft:villager", .compound([
+                "profession": .string("test:keepers/hive"), "level": .int(0),
+            ]), "Apiary Keeper", "Apiary Keeper, Novice"),
+        ]
+        for (kind, data, expectedName, expectedProfession) in cases {
+            var fields: [String: NBT] = [
+                "id": .string(kind), "Pos": .list([.double(2), .double(64), .double(3)]),
+            ]
+            fields["VillagerData"] = data
+            let saved = try #require(Creature(Fixtures.mob(fields)))
+            let original = try #require(saved.villager?.savedData)
+            #expect(original.value == data && original.entityID == kind)
+            #expect(names.creature(saved) == expectedName)
+            #expect(names.profession(of: saved, definitions: nil, locale: Locale(identifier: "en_US")) == expectedProfession)
+
+            let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
+            let index = SearchIndex.overworld(DimensionContent(mobTypes: MobTypes([marker])))
+            let hits = WorldSearch.search("creature:\(expectedName)", in: index, players: [], gameNames: names) { _ in .named("") }
+            #expect(hits.map { $0.title(in: names) } == [expectedName])
+            #expect(hits.first?.position == marker.position)
+            var content = MapContent(gameNames: names)
+            content.creatures = [marker]
+            let locations = content.accessibleLocations(viewport: MapViewport(center: marker.position, scale: 1),
+                                                         size: CGSize(width: 100, height: 100))
+            #expect(locations.map(\.name) == [expectedName])
+        }
+    }
+
     @Test func dyeNamesDoNotRenameGenericAppearanceIDsOrDiscardTraits() async throws {
         let names = try await names("fr_FR"), locale = Locale(identifier: "en_US")
         #expect(names.dyeColor("red") == "Rouge" && names.dyeColor("minecraft:white") == "Blanc")
