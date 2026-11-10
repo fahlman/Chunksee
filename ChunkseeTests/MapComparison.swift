@@ -23,6 +23,30 @@ struct MapComparison {
         let shadows: Bool
         let blending: Bool
         let filter: Filter
+
+        private enum CodingKeys: String, CodingKey {
+            case id, style, surface, y, lighting, shadows, blending, filter
+        }
+
+        init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            id = try values.decode(String.self, forKey: .id)
+            guard let style = MapStyle(rawValue: try values.decode(String.self, forKey: .style)) else {
+                throw DecodingError.dataCorruptedError(forKey: .style, in: values,
+                                                      debugDescription: "Unknown map style")
+            }
+            self.style = style
+            surface = try values.decode(Bool.self, forKey: .surface)
+            y = try values.decode(Int.self, forKey: .y)
+            guard let lighting = MapLightingMode(rawValue: try values.decode(String.self, forKey: .lighting)) else {
+                throw DecodingError.dataCorruptedError(forKey: .lighting, in: values,
+                                                      debugDescription: "Unknown map lighting mode")
+            }
+            self.lighting = lighting
+            shadows = try values.decode(Bool.self, forKey: .shadows)
+            blending = try values.decode(Bool.self, forKey: .blending)
+            filter = try values.decode(Filter.self, forKey: .filter)
+        }
     }
     nonisolated struct View: Decodable, Sendable {
         let id: String
