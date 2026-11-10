@@ -2305,6 +2305,11 @@ not retain book pages or nested inventories. Temporary comparison keys preserve 
 same-ID/same-label grouping and quantity/name sort. Matching trade inputs stay typed, while biome
 results keep identity and chunk count without retaining drawing paths. WorldQueryStore's existing
 identity guard still rejects old-language results; no publication or query-lifetime rule changes.
+Plain item searches use GameNames.ItemLabels to resolve each distinct saved label once per search.
+The local cache includes item ID, literal custom name, book title and author, holds the search's
+naming snapshot and locale, and is discarded with the search. It is shared across player inventory,
+ender-chest and container matching/aggregation within that search. Book page matching still reads
+each stack's own saved text; quantities and visible-label grouping keep their existing owners.
 GameNames also owns player names and their location, inventory and absent-owner phrases.
 GameNames.PlayerName preserves the personal pronoun, literal account name or unnamed UUID instead
 of keeping a formatted fallback. Player markers and search results retain those inputs; map captions
