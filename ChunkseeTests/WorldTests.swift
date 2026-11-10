@@ -163,6 +163,32 @@ import Testing
         #expect(WorldSearch.search("block:emerald", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.isEmpty)
     }
 
+    @Test func blockSearchKeepsTheSameTiedChunksAndPinsAfterAnEquivalentIndexRefresh() {
+        let firstChunkX = -500
+        let strongest = ChunkDeposit(chunk: ChunkPosition(x: 2000, z: 0),
+            deposit: BlockDeposit(block: .diamond, count: 100, minY: -64, maxY: -49))
+        let tied = (0..<(WorldSearch.blockResultLimit + 500)).map { index in
+            ChunkDeposit(chunk: ChunkPosition(x: firstChunkX + index, z: 0),
+                deposit: BlockDeposit(block: .diamond, count: 36, minY: -64, maxY: -49))
+        }
+        func search(_ ties: [ChunkDeposit]) -> [SearchHit] {
+            let index = SearchIndex.overworld(DimensionContent(blocks: [strongest] + ties))
+            return WorldSearch.search("block:diamond", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
+        }
+
+        // Both inputs are richest first, but a refreshed index may enumerate equal counts differently.
+        let before = search(tied), after = search(Array(tied.reversed()))
+        let selectedTies = firstChunkX..<(firstChunkX + WorldSearch.blockResultLimit - 1)
+        var expectedIDs = Set(selectedTies.map { "minecraft:overworld@diamond@\($0),0" })
+        expectedIDs.insert("minecraft:overworld@diamond@2000,0")
+        #expect(before.count == WorldSearch.blockResultLimit)
+        #expect(Set(before.map(\.id)) == expectedIDs)
+        #expect(before.first?.count == 100 && before.first?.position == CGPoint(x: 32008, y: 8))
+        #expect(after.map(\.id) == before.map(\.id))
+        #expect(after.map(\.position) == before.map(\.position))
+        #expect(after.map(\.count) == before.map(\.count) && after.map(\.y) == before.map(\.y))
+    }
+
     @Test func signsAndBooksMatchTheirText() throws {
         let side = { (lines: [String]) in NBT.compound(["messages": .list(lines.map(NBT.string))]) }
         let chunk = NBT.compound(["block_entities": .list([

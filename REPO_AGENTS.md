@@ -98,11 +98,18 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.86.0`, resolved to `0.86.0` (`a286b4f123196cf1da2b9c7470785031d5734ab5`).
+  minor" from `0.87.1`, resolved to `0.87.1` (`33747afb9960dc146c018c777e69dd6f512d9ed0`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.87.1 selects tied notable-block deposits in a stable order before applying the
+    search limit. The app keeps its display ordering and consumes that membership directly,
+    so unchanged searches retain their listed chunks and map pins. GameNames uses Kit's
+    `PlayerInfo.shortIdentifier(for:)` for unnamed-player UUID fragments; the app owns the
+    surrounding localized wording. Full UUID identities remain unchanged. This adoption
+    changes no terrain, region-fact, artwork or light interpretation version and needs no
+    cache invalidation.
   - Kit 0.86.0 owns the game archive's file-validity identity. The app uses its public
     SourceIdentity, captured source identity and validity check instead of copying stat fields.
     Its existing game-source cache text and interpretation versions remain unchanged.
