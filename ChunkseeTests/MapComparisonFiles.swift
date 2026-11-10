@@ -4,6 +4,35 @@ import Testing
 
 /// Blocking file reads stay off the main actor. Foundation enumeration itself is synchronous.
 nonisolated enum MapComparisonFiles {
+    struct CacheFile: Codable, Equatable, Sendable {
+        let size: UInt64
+        let modified: Double
+        let device: UInt64
+        let inode: UInt64
+    }
+
+    /// Metadata only: reading payloads here would warm files before the measured load.
+    /// A fresh private dimension folder may not exist until its first cache write.
+    @concurrent static func cacheInventory(_ root: URL) async throws -> [String: CacheFile] {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: root.path) else { return [:] }
+        let fields: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        let values = try root.resourceValues(forKeys: fields)
+        try #require(values.isDirectory == true && values.isSymbolicLink == false)
+        var result: [String: CacheFile] = [:]
+        for url in try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: Array(fields)) {
+            let values = try url.resourceValues(forKeys: fields)
+            try #require(values.isRegularFile == true && values.isSymbolicLink == false)
+            let attributes = try manager.attributesOfItem(atPath: url.path)
+            result[url.lastPathComponent] = CacheFile(
+                size: try #require(attributes[.size] as? NSNumber).uint64Value,
+                modified: try #require(attributes[.modificationDate] as? Date).timeIntervalSince1970,
+                device: try #require(attributes[.systemNumber] as? NSNumber).uint64Value,
+                inode: try #require(attributes[.systemFileNumber] as? NSNumber).uint64Value)
+        }
+        return result
+    }
+
     struct Record: Codable, Equatable, Sendable {
         let sha256: String
         let size: UInt64
