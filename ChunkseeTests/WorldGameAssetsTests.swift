@@ -432,7 +432,11 @@ import Synchronization
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
             nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
-                                sections: [section], extra: ["yPos": .int(0)]))])
+                                sections: [section], extra: ["yPos": .int(0)]))],
+            dimensionSettings: ["minecraft:overworld": TestWorld.noiseDimension(
+                type: .string("minecraft:overworld"),
+                noise: .compound(["noise": .compound(["min_y": .int(-64), "height": .int(384)]),
+                                  "sea_level": .int(63)]))])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let resources = try await resources(root, game: game)
         let session = WorldSession(resources: resources)
@@ -443,6 +447,7 @@ import Synchronization
             await resources.waitForRefresh()
             let numeric = try #require(resources.biomeColors)
             let map = try #require(session.map), region = RegionPosition(x: 0, z: 0)
+            try #require(map.heightScale != nil)
             #expect(numeric.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
             resources.readBiomeColors = { world, data, artwork, previous, reload in
                 let colors = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
@@ -477,6 +482,7 @@ import Synchronization
             #expect(interim.key != finished.key)
 
             map.setStyle(.height)
+            #expect(map.style == .height)
             #expect(try requiredRenderer(map).colorSourceKey == nil)
         } catch {
             failure = error
