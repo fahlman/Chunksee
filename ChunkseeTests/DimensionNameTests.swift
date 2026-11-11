@@ -37,6 +37,11 @@ import Testing
         #expect(session.presentation.dimensionName("mod_b:sky_realm") == "Sky Realm (mod_b:sky_realm)")
         #expect(session.presentation.dimensionName("unavailable:void_realm") == "Void Realm")
         #expect(session.presentation.dimensionName("minecraft:the_end") == "The End")
+        #expect(session.presentation.mapTitle(in: "mod_a:caves", locale: Locale(identifier: "en_US"))
+            == "Map of Caves (mod_a:caves) in \(session.presentation.displayName)")
+        let english = session.presentation.dimensionNameStyle.locale(Locale(identifier: "en_US"))
+        #expect(english.mapTitle(in: "mod_a:caves", world: #"{"text":"Literal world name"}"#)
+            == #"Map of Caves (mod_a:caves) in {"text":"Literal world name"}"#)
         for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
             let style = session.presentation.dimensionNameStyle.locale(locale)
             #expect(style.format("mod_a:caves") == "Caves (mod_a:caves)")
@@ -54,6 +59,7 @@ import Testing
         var document: WorldSession? = try await session(url)
         defer { document?.close() }
         let presentation = try #require(document?.presentation)
+        let capturedNames = presentation.dimensionNameStyle
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         defer { continuation.finish() }
         var iterator = updates.makeAsyncIterator()
@@ -72,12 +78,14 @@ import Testing
         #expect(changed == true)
         #expect(presentation.dimensionName("mod_a:caves") == "Caves (mod_a:caves)")
         #expect(presentation.dimensionName("mod_b:caves") == "Caves (mod_b:caves)")
+        #expect(capturedNames.format("mod_a:caves") == "Caves")
         document?.close()
         await document?.waitUntilClosed()
         weak let released = document
         document = nil
         #expect(released == nil)
         #expect(presentation.selectedDimension == nil && presentation.listedPlayers.isEmpty)
+        #expect(presentation.dimensionName("mod_a:caves") == "Caves")
     }
 
     @Test func customLabelsCannotHideWhichVanillaDimensionTheyMatch() async throws {

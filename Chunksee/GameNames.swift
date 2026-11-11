@@ -86,6 +86,44 @@ nonisolated struct GameNames: Sendable {
         }
         return name(key: "gameMode.\(id)", fallback: ReadableName.from(id))
     }
+
+    func dimensionStyle(for dimensionIDs: [String]) -> DimensionStyle {
+        DimensionStyle(dimensionIDs: dimensionIDs)
+    }
+
+    /// Immutable dimension captions and collision context, without retaining a document.
+    nonisolated struct DimensionStyle: FormatStyle, Sendable {
+        private let dimensionIDs: [String]
+        private var locale = Locale.autoupdatingCurrent
+
+        fileprivate init(dimensionIDs: [String]) { self.dimensionIDs = dimensionIDs }
+
+        func locale(_ locale: Locale) -> Self {
+            var copy = self
+            copy.locale = locale
+            return copy
+        }
+
+        func format(_ id: String) -> String {
+            let name = name(id)
+            let isAmbiguous = dimensionIDs.contains { $0 != id && self.name($0) == name }
+            return isAmbiguous ? String(localized: "\(name) (\(id))", locale: locale) : name
+        }
+
+        func mapTitle(in dimensionID: String, world: String) -> String {
+            let dimension = format(dimensionID)
+            return String(localized: "Map of \(dimension) in \(world)", locale: locale)
+        }
+
+        private func name(_ id: String) -> String {
+            switch id {
+            case "minecraft:overworld": String(localized: "Overworld", locale: locale)
+            case "minecraft:the_nether": String(localized: "The Nether", locale: locale)
+            case "minecraft:the_end": String(localized: "The End", locale: locale)
+            default: ReadableName.from(id)
+            }
+        }
+    }
 }
 
 extension EnvironmentValues {
