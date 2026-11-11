@@ -796,7 +796,7 @@ build bounds; without bounds Height is unavailable. The existing column scan and
 supply all three styles. Normal keeps its block colours and relief. Height replaces colours with
 a fixed Lab lightness ramp; Water Depth replaces water colours, keeping normal land/relief and
 labelling the existing 32-block cap as “32 or deeper.” Core Graphics prepares the sRGB ramps once.
-The on-screen/exported MapLegendOverlay hosts the styles and existing overlay keys; MapLegendScale
+The on-screen/exported MapLegend hosts the styles and existing overlay keys; MapLegendScale
 shares bar/tick layout with Time Spent. No world files or normal app defaults are written by tests.
 
 Normal and Water Depth land lighting share MapRelief: north/west height differences vary contrast
@@ -1558,8 +1558,11 @@ Loading states use native labeled ProgressView controls with sentence-case activ
 and an ellipsis. MapView groups map, slime-chunk and Time Spent activity in its live status bar.
 The existing async models own readiness and cancellation.
 
-MapLegendOverlay owns one bottom-trailing material container for the visible map and MapImage
-export. MapContent supplies the active map style and height scale, shown Time Spent scale,
+MapLegend owns the shared material container and keys for the visible map and MapImage export.
+MapView lays that trailing key above its live status bar in one bottom stack, so wrapped
+coordinates and lighting details cannot overlap it. An absent status bar reserves no space.
+MapLegendOverlay places the key at the bottom trailing corner of exported images, which have
+no live status bar. MapContent supplies the active map style and height scale, shown Time Spent scale,
 Slime Chunks key and World Border key;
 no separate legend visibility is stored. SlimeChunks.pixel supplies the mask and legend color,
 and WorldBorderStyle supplies the edge and key's line treatment. HeatMapLegend keeps its scale

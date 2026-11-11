@@ -166,7 +166,14 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move South")) { map.viewport.pan(.south, in: size) }
         .accessibilityAction(named: Text("Move West")) { map.viewport.pan(.west, in: size) }
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(.east, in: size) }
-        .overlay(alignment: .bottom) { statusBar }
+        .overlay(alignment: .bottom) {
+            // One layout keeps the key clear of wrapped coordinates and lighting details.
+            VStack(spacing: 0) {
+                MapLegend(layers: content)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if showsStatusBar { statusBar }
+            }
+        }
         .toolbar { MapToolbar(session: session, map: map, showsHeightPopover: $showsHeightPopover) }
         .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
     }
@@ -328,6 +335,11 @@ struct MapView: View {
         for line in grid.horizontal where grid.isLabeled(line) { label(line.block, at: CGPoint(x: 0, y: line.position)) }
     }
 
+    private var showsStatusBar: Bool {
+        hoverPoint != nil || map.isLoading || map.availableRegions.isEmpty
+            || session.annotations.ruler.isEnabled || session.slimeChunks.isLoading || session.heatMap.isLoading
+    }
+
     private var statusBar: some View {
         HStack(spacing: 12) {
             if session.annotations.ruler.isEnabled {
@@ -375,7 +387,6 @@ struct MapView: View {
         .padding(.vertical, 5)
         .background(.regularMaterial, in: Capsule())
         .padding(8)
-        .opacity(hoverPoint == nil && !map.isLoading && !map.availableRegions.isEmpty && !session.annotations.ruler.isEnabled && !session.slimeChunks.isLoading && !session.heatMap.isLoading ? 0 : 1)
     }
 
     /// Blocks are named from 100% zoom, where a block is at least a point across.
