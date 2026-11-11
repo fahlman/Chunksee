@@ -64,7 +64,7 @@ struct NativeSidebarProbe {
             window.setContentSize(CGSize(width: 900, height: 650))
             window.orderFront(nil)
             try await SidebarNativeDriver.afterUpdate(window) {
-                window.occlusionState.contains(.visible) && session.routing.openDocument != nil
+                window.isVisible && session.routing.openDocument != nil
             }
             await map.waitUntilIdle()
             // Existing native accessibility tests use this request to materialize SwiftUI's tree.
