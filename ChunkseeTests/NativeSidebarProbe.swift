@@ -52,7 +52,9 @@ struct NativeSidebarProbe {
             let markers = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
             try #require(markers.count == count && Set(markers.map(\.id)).count == count)
             try #require(session.presentation.spawnPoint == .zero)
-            let nearest = try #require(markers.first { $0.position == .zero })
+            let nearest = try #require(markers.first {
+                $0.blockPosition == BlockPosition(blockX: 0, blockY: 12, blockZ: 0)
+            })
             let map = try #require(session.map)
             map.setLightingMode(.daylight)
             map.setCastsShadows(false)
