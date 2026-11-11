@@ -179,7 +179,7 @@ struct MapScene {
             return StructureItem(item: Item(label: .structure(marker), layer: .structure,
                 target: .row(.structure(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .structure(marker.group),
-                labelPriority: content.selectedItem == .structure(marker.id) ? .selected : .other),
+                labelPriority: content.highlighted.contains(.row(.structure(marker.id))) ? .selected : .other),
                 outline: outline, portalRoom: marker.portalRoom.map { viewport.viewPoint(for: $0, in: size) })
         }
         let candidateBounds = pointer.map { point in
@@ -192,8 +192,7 @@ struct MapScene {
             // Picking applies each body's exact radius below, including the boundary. Drawing
             // clips the broad bucket candidates before preparing styles or names.
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = content.selectedItem == .place(marker.id)
-                || marker.portal.map { content.selection == .portal($0) } == true
+            let selected = content.highlighted.contains(.row(.place(marker.id)))
             items.append(Item(label: .place(marker), layer: marker.portal == nil ? .place : .portal,
                 target: .row(.place(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .place(marker.group),
@@ -203,8 +202,8 @@ struct MapScene {
         for marker in content.nearbyCreatures(viewport: viewport, size: size, bounds: candidateBounds) {
             let point = viewport.viewPoint(for: marker.position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = content.selection == .creature(marker)
-            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(marker.id) ? .selected
+            let selected = content.highlighted.contains(.row(.creature(marker.id)))
+            let priority: MarkerLabelLayout.Priority = selected ? .selected
                 : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
             let row: SidebarItem = marker.group == .mob || content.selectedItem == .mobCreature(marker.id)
                 ? .mobCreature(marker.id) : .creature(marker.id)
@@ -218,7 +217,7 @@ struct MapScene {
             guard let position = hit.position else { continue }
             let point = viewport.viewPoint(for: position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = hit.id == content.selectedHitID
+            let selected = content.highlighted.contains(.searchHit(hit.id))
             items.append(Item(label: .search(hit), layer: .search,
                 target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
                 anchor: position, point: point, scale: viewport.scale, style: .search,
@@ -230,12 +229,12 @@ struct MapScene {
         for marker in content.players {
             let point = viewport.viewPoint(for: marker.anchor, in: size)
             guard playerBounds.contains(point) else { continue }
-            let selected = marker.playerID == content.selectedPlayerID
+            let selected = content.highlighted.contains(.row(.player(marker.playerID)))
             items.append(Item(label: .player(marker), layer: .player,
                 target: .row(.player(marker.playerID)), position: marker.position, y: marker.y,
                 anchor: marker.anchor, point: point, scale: viewport.scale,
                 style: .player(marker.kind),
-                labelPriority: selected || content.selectedItem == .player(marker.playerID) ? .selected : .player,
+                labelPriority: selected ? .selected : .player,
                 isDimmed: marker.isOutdated))
         }
         for place in content.savedPlaces {
@@ -244,7 +243,7 @@ struct MapScene {
             items.append(Item(label: .pin(id: "saved-" + place.id.uuidString, name: place.name), layer: .savedPlace,
                 target: .row(.savedPlace(place.id)), position: place.position, y: nil,
                 anchor: place.mapPosition, point: point, scale: viewport.scale, style: .savedPlace,
-                labelPriority: content.selectedItem == .savedPlace(place.id) ? .selected : .other))
+                labelPriority: content.highlighted.contains(.row(.savedPlace(place.id))) ? .selected : .other))
         }
         self.items = items
     }

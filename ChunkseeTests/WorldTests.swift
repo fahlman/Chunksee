@@ -207,7 +207,7 @@ import Testing
         await session.search.waitForSearch()
         #expect(session.search.results.map { $0.detail(in: .unavailable) } == ["2 Golden Apple"])
         session.selection.choose(.hit(query: session.search.text, id: session.search.results[0].id))
-        #expect(session.selection.selectedHitID == session.search.results[0].id)
+        #expect(session.selection.highlighted == [.searchHit(session.search.results[0].id)])
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()

@@ -288,7 +288,7 @@ import Testing
         let sharedHit = try #require(nether.search.results(for: "diamond").first)
         nether.selection.choose(.hit(query: "diamond", id: sharedHit.id))
         overworld.selection.choose(.worldInfo)
-        #expect(nether.selection.selectedHitID == sharedHit.id && overworld.selection.selectedHitID == nil)
+        #expect(nether.selection.highlighted.contains(.searchHit(sharedHit.id)) && overworld.selection.highlighted.isEmpty)
         #expect(nether.selection.sidebarSelection == .hit(query: "diamond", id: sharedHit.id))
         #expect(overworld.selection.sidebarSelection == .worldInfo)
 

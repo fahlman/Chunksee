@@ -29,9 +29,11 @@ struct WorldView: View {
                     Section("World", isExpanded: sectionExpanded(.world)) {
                         Label("World Info", systemImage: WorldInfoView.symbol)
                             .tag(SidebarItem.worldInfo)
+                            .repeatSidebarSelection(.worldInfo, in: session.selection)
                             .help("Show the world’s settings, time, weather and game rules")
                         Label("Storage", systemImage: StorageView.symbol)
                             .tag(SidebarItem.storage)
+                            .repeatSidebarSelection(.storage, in: session.selection)
                             .help("Show totals of the items stored in this dimension’s containers")
                         MapVisibilityRow(isShown: $session.visibility.showsTimeSpent) {
                             Label("Time Spent", systemImage: "clock.fill")
@@ -273,10 +275,8 @@ struct WorldView: View {
     }
 
     var inspectorShown: Binding<Bool> {
-        Binding { session.selection.inspector != nil } set: {
-            guard let target = session.commandTarget else { return }
-            if !$0 { target.selection.inspector = nil }
-            else if target.selection.inspector == nil { target.selection.inspector = .world }
+        Binding { session.selection.isInspectorShown } set: {
+            session.commandTarget?.selection.isInspectorShown = $0
         }
     }
 

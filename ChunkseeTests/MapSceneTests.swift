@@ -62,6 +62,7 @@ import Testing
         let marker = MapMarker(id: "location", playerID: UUID(), kind: kind,
                                position: position, y: 48, name: .named("Friend"), isOutdated: true)
         var content = MapContent(gameNames: .unavailable); content.players = [marker]; content.selectedItem = .player(marker.playerID)
+        content.highlighted = [.row(.player(marker.playerID))]
         let viewport = MapViewport(center: anchor, scale: 32)
         let item = try #require(content.scene(viewport: viewport, size: size).items.first)
         let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
@@ -72,10 +73,10 @@ import Testing
         #expect(location.y == 48 && hit.y == 48)
         #expect(location.target == hit.target && hit.target == item.target)
         #expect(item.labelPriority == .selected && item.isDimmed)
-        // Sidebar and inspector selection use the same highlight state.
-        content.selectedPlayerID = marker.playerID
-        let highlighted = try #require(content.scene(viewport: viewport, size: size).items.first)
-        #expect(highlighted.labelPriority == .selected && highlighted.frame == item.frame)
+        // Row routing does not decide highlighting; only the derived set does.
+        content.highlighted = []
+        let ordinary = try #require(content.scene(viewport: viewport, size: size).items.first)
+        #expect(ordinary.labelPriority == .player && ordinary.frame == item.frame)
     }
 
     @Test func searchPinsShareSelectedGeometryAndSavedCoordinatesWithoutOffscreenTargets() throws {
@@ -85,7 +86,7 @@ import Testing
         var second = first
         second.id = "second"; second.y = 62
         let viewport = MapViewport(center: position, scale: 2)
-        var content = MapContent(gameNames: .unavailable); content.hits = [first, second]; content.selectedHitID = first.id
+        var content = MapContent(gameNames: .unavailable); content.hits = [first, second]; content.highlighted = [.searchHit(first.id)]
         let items = content.scene(viewport: viewport, size: size).items
         let selected = try #require(items.first)
         #expect(selected.frame == CGRect(x: 191, y: 91, width: 18, height: 18))
@@ -117,7 +118,7 @@ import Testing
         for showPet in [false, true] {
             content.places = showPet ? [] : [spawner]
             content.creatures = showPet ? [pet] : []
-            content.selection = showPet ? .creature(pet) : nil
+            content.highlighted = showPet ? [.row(.creature(pet.id))] : []
             let position = showPet ? pet.position : spawner.position
             let viewport = MapViewport(center: position, scale: 32)
             let item = try #require(content.scene(viewport: viewport, size: size).items.first)
@@ -140,7 +141,7 @@ import Testing
         let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: place.position.x, y: 64,
             z: place.position.y, owner: UUID()), dimension: portal.dimension))
         var content = MapContent(gameNames: .unavailable)
-        content.places = [place]; content.creatures = [pet]; content.selection = .portal(portal)
+        content.places = [place]; content.creatures = [pet]; content.highlighted = [.row(.place(place.id))]
         content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
         let hit = SearchHit(id: "pin", dimension: portal.dimension,
             position: place.position, y: 70, content: .sign(kind: "minecraft:sign", lines: ["Overlapping"]))

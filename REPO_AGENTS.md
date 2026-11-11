@@ -563,7 +563,7 @@ older scan envelopes.
 | `MarkerGeometry.swift` | Marker body/symbol dimensions and pointer reach, with one common size at each zoom and selection-independent targets |
 | `MapNavigation.swift`, `MapToolbar.swift`, `MapDepth.swift`, `MapZoom.swift`, `MapAdjustmentPopover.swift` | Local navigation/history and native height/zoom popovers; shared adjustment layout/buttons, with MapModel owning viewport/depth |
 | `DimensionRouting.swift` | Native opening callback, observable opening error, validated location focus and dispatch of cross-dimension app actions |
-| `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector and overlay presentation, and scoped player-record reads |
+| `SelectionModel.swift` | One live selected identity, sidebar/map actions, inspector visibility, retained overlay, derived map highlights, and scoped player-record reads |
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
 | `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s annotation actions and ruler, portal calculations and native draft controls; WorldSession.sheet owns the drafts, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
@@ -669,9 +669,13 @@ reconstructs the spawn or chooses its block rule. MapDestination keeps the saved
 separate from its map anchor; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
-current shared world data. It refers weakly to its document and adds no snapshot or closed flag.
-The document closes and drains its player-record reads with its other feature models. Native
-inspector bindings observe this model; marker drawing/highlights read its same derived selection.
+current shared world data. It refers weakly to its document and retains no detail snapshot.
+The document stops its observation and closes and drains its player-record reads with its other
+feature models. Native inspector bindings use `isInspectorShown`; showing details again preserves
+the selected identity, highlights and overlay without navigating. Only an empty selection with no
+usable retained overlay falls back to World Info. MapContent captures the owner's derived
+`Set<MapTarget>` for every drawing path. Its separate row identity only keeps ordinary-versus-mob
+creature routing; it does not decide highlighting.
 Each WorldSession has one fixed dimension, map and visibility scope. Cross-dimension actions
 route only through the native document opener; an unavailable opener cannot replace the source
 map. Back/Forward stores that document's viewports, and a native reread/move restores view,
@@ -1417,7 +1421,8 @@ they add no readers. Missing heights stay absent; map centers, biome areas and s
 acquire an invented Y. Maps retain their thumbnail, with the shared map symbol as a fallback.
 Selection, visibility, menus and navigation remain outside this stateless label.
 
-Selected location labels in the sidebar repeat SelectionModel.choose on an ordinary click.
+Selected sidebar labels, including World Info and Storage, repeat SelectionModel.choose on an
+ordinary click, reopening hidden details for the selected row.
 The existing native List primary action supplies Return and double-click behavior.
 A single sidebar modifier-key observer leaves modified clicks to native
 selection, and player visibility buttons remain outside the label gesture. Map marker clicks
@@ -1431,11 +1436,20 @@ remains selectable without a mappable location. SearchHit.title is always the it
 detail carries ancillary matching contents, kind or counts. SelectedSearchSection retains that
 context when a search opens an existing player, pet or portal inspector. The native inspector
 visibility and an in-game map retained under other locations are separate presentation state.
+Hiding the inspector preserves both, including World Info and Storage selection. Map highlights
+do not depend on inspector visibility: search pins and the live items they resolve to share the
+selected treatment, including a selected creature at overview zoom. Marker geometry, picking,
+layer visibility and biome-area styling remain unchanged. Removing the selected live identity clears
+its selection and retained overlay even while hidden. Removing only a retained map preserves a
+different selected location. Neither is restored merely because the same ID later reappears.
+Hidden player details release their record
+handle, while another window or statistics sheet can keep its shared read alive.
 Every selected item has an inspector, superseding #167's non-detail-close rule under Ryan's #350
 decision. Selecting an unavailable map or saved place shows its details without navigating or
 overlaying it on the wrong dimension. Sidebar, pointer, VoiceOver and linked-pet input share that
 selection transition. Empty/stale map input clears transient row/pin selection
-while retaining the overlay and World Info, Storage or the overlay's own row. Map clicks and
+while retaining the overlay and World Info, Storage or the overlay's own row. Clearing a selection
+keeps the inspector's visibility; a retained overlay cannot reopen hidden details. Map clicks and
 VoiceOver marker actions select the corresponding native sidebar row. Sidebar selection and
 repeated-row actions call `choose`; the List binding and its simultaneous focus gesture request
 sidebar focus, including when an already-selected row leaves the binding unchanged. The List's
@@ -1454,7 +1468,8 @@ Every drawn search pin has a reachable row. Save Search enablement
 uses the same trimmed-query rule in the sidebar and Navigate menu.
 Search Results and saved-query headings share CountedText's count/limited-count wording; the
 old small result-limit footer is gone. Searching/No matches remain empty-list states. Starting
-the ruler dismisses all location inspectors through their shared selection category.
+the ruler hides all location inspectors through their shared selection category while keeping
+their selection, map highlights and retained overlay.
 
 LocationRow owns the generic Location label (Last Location for a player’s saved location), following
 Ryan’s 2026-10-20 choice. World Spawn, Last Death, Respawn Point and a map’s Center keep their specific roles.

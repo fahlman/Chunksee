@@ -263,7 +263,7 @@ enum StructureTestWorld {
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))
-        #expect(session.selection.mapSelection == .creature(pet))
+        #expect(session.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         try save(health: 4)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: dimension.id)
@@ -273,15 +273,24 @@ enum StructureTestWorld {
         #expect(refreshed.creature.sittingOrder == false && refreshed.creature.collarColor == "blue")
         #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
         #expect(refreshed.creature.equipment?["body"]?.id == "minecraft:wolf_armor")
-        #expect(session.selection.mapSelection == .creature(refreshed) && MapContent(session: session).selection == .creature(refreshed))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing refreshed creature details"); return }
+        #expect(detail == refreshed)
+        #expect(session.selection.highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))] && MapContent(session: session).highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))])
         #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
         session.map?.viewport.scale = 0.125
         let map = MapContent(session: session)
         let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
         let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
+        session.selection.isInspectorShown = false
+        let hidden = MapContent(session: session)
+        let viewport = try #require(session.map).viewport
+        let hiddenLocation = try #require(hidden.accessibleLocations(viewport: viewport,
+            size: CGSize(width: 400, height: 300)).first { $0.target == .row(.creature(refreshed.id)) })
+        #expect(hiddenLocation.position == location.position && hiddenLocation.frame == location.frame)
+        #expect(hidden.highlighted == map.highlighted)
         var disclosure = SidebarDisclosure()
         disclosure.selectOnMap(location.target, y: nil, in: session)
-        #expect(session.selection.sidebarSelection == .creature(refreshed.id) && session.selection.mapSelection == .creature(refreshed))
+        #expect(session.selection.sidebarSelection == .creature(refreshed.id) && session.selection.highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))])
         session.close()
         await session.waitUntilClosed()
     }
@@ -309,24 +318,24 @@ enum StructureTestWorld {
         #expect(MapContent(session: session).creatures.map { $0.name(in: session.resources.gameNames) } == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
         session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
-        #expect(MapContent(session: session).selection == .creature(summer))
+        #expect(MapContent(session: session).highlighted == [.row(.creature(summer.id)), .row(.mobCreature(summer.id))])
         #expect(session.selection.sidebarSelection == .creature(summer.id))
         #expect(session.selection.inspector == .selection)   // its details show in the inspector
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.mapSelection == nil && session.selection.inspector == nil && session.selection.sidebarSelection == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.inspector == nil && session.selection.sidebarSelection == nil)
         session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
         session.selection.inspector = .world                 // showing something else lets go of it
-        #expect(session.selection.mapSelection == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         // Choosing the creature in the sidebar shows its layer, centers on it and selects it.
         session.visibility.creatures = []
         session.map?.viewport = MapViewport(center: .zero, scale: 0.25)
         session.selection.choose(.creature(summer.id))
-        #expect(session.visibility.creatures == [.pet] && session.selection.mapSelection == .creature(summer))
+        #expect(session.visibility.creatures == [.pet] && session.selection.highlighted == [.row(.creature(summer.id)), .row(.mobCreature(summer.id))])
         // The map centers on it but keeps the zoom the user chose.
         #expect(session.map?.viewport == MapViewport(center: summer.position, scale: 0.25))
-        // World Info stays selected in the sidebar only while the inspector shows it.
+        // Choosing World Info replaces the creature selection.
         session.selection.choose(.worldInfo)
-        #expect(session.selection.inspector == .world && session.selection.mapSelection == nil)
+        #expect(session.selection.inspector == .world && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         session.selection.inspector = .storage
         #expect(session.selection.sidebarSelection == .storage)
         #expect(session.presentation.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!) == "Player 00000001 (not in this world)")
@@ -727,7 +736,7 @@ enum StructureTestWorld {
                                             in: nether.dimension) == .missingDimension)
         let before = session.map?.viewport
         session.selection.show(nether)
-        #expect(!session.presentation.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
+        #expect(!session.presentation.canShow(nether) && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.map?.viewport == before)
         session.selection.show(try #require(session.presentation.inGameMaps.first { $0.id == 3 }))
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == before?.scale)
@@ -735,9 +744,13 @@ enum StructureTestWorld {
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
         session.selection.mapClicked(nil, y: nil)
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
-        // Closing the inspector takes it away.
+        // Hiding details keeps the chosen overlay and reopening shows the same map.
         session.selection.inspector = nil
-        #expect(session.selection.mapSelection == nil && MapContent(session: session).inGameMap == nil)
+        #expect(session.selection.inspector == nil && session.selection.sidebarSelection == .inGameMap(3))
+        #expect(session.selection.inGameMapOverlay?.id == 3 && MapContent(session: session).inGameMap?.map.id == 3)
+        session.selection.isInspectorShown = true
+        guard case .inGameMap(let selected)? = session.selection.inspectorItem else { Issue.record("Missing retained map details"); return }
+        #expect(selected.id == 3)
         session.close()
         await session.waitUntilClosed()
         #expect(!session.presentation.canShow(nether))
