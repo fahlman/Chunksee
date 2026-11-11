@@ -78,8 +78,8 @@ import Testing
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         defer { first.close(); second.close() }
         await first.search.waitForIndex(); await second.search.waitForIndex()
-        let inspector = WorldView(session: first).inspectorShown
-        let otherInspector = WorldView(session: second).inspectorShown
+        let inspector = WorldView.inspectorBinding(for: first, appearsActive: true)
+        let otherInspector = WorldView.inspectorBinding(for: second, appearsActive: true)
         let presentations: [(WorldSession) -> Void] = [
             { $0.presentSheet(.coordinates) },
             { $0.presentSheet(.imageExport) },
@@ -118,6 +118,60 @@ import Testing
         await first.waitUntilClosed(); await second.waitUntilClosed()
         inspector.wrappedValue = true
         #expect(!inspector.wrappedValue && first.selection.sidebarSelection == nil)
+    }
+
+    @Test(arguments: [true, false])
+    func inactiveInspectorWritesPreserveEachWindowsSelection(sharedWorld: Bool) async throws {
+        let roots = try (0..<(sharedWorld ? 1 : 2)).map { _ in try TestWorld.make(chunks: []) }
+        defer { for root in roots { try? FileManager.default.removeItem(at: root) } }
+        let firstResources = try await resources(roots[0])
+        var secondResources = firstResources
+        if !sharedWorld { secondResources = try await resources(roots[1]) }
+        let first = WorldSession(resources: firstResources), second = WorldSession(resources: secondResources)
+        defer { first.close(); second.close() }
+        try #require(first.viewID != second.viewID && first.selectedDimensionID == second.selectedDimensionID)
+        try #require((first.resources === second.resources) == sharedWorld)
+        let activeFirst = WorldView.inspectorBinding(for: first, appearsActive: true)
+        let inactiveFirst = WorldView.inspectorBinding(for: first, appearsActive: false)
+        let activeSecond = WorldView.inspectorBinding(for: second, appearsActive: true)
+        let inactiveSecond = WorldView.inspectorBinding(for: second, appearsActive: false)
+
+        first.selection.choose(.storage)
+        try #require(activeFirst.wrappedValue && !activeSecond.wrappedValue)
+        inactiveFirst.wrappedValue = false
+        inactiveSecond.wrappedValue = true
+        #expect(activeFirst.wrappedValue && first.selection.sidebarSelection == .storage)
+        #expect(!activeSecond.wrappedValue && second.selection.sidebarSelection == nil)
+        #expect(second.selection.sidebarRevealRequest == nil)
+
+        // Deliberate Hide retains the selected identity; an inactive Show cannot override it.
+        activeFirst.wrappedValue = false
+        inactiveFirst.wrappedValue = true
+        #expect(!activeFirst.wrappedValue && first.selection.sidebarSelection == .storage)
+        activeSecond.wrappedValue = true
+        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        let previousReveal = try #require(second.selection.sidebarRevealRequest)
+        activeSecond.wrappedValue = true
+        #expect(second.selection.sidebarRevealRequest != previousReveal)
+        inactiveSecond.wrappedValue = false
+        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+
+        activeFirst.wrappedValue = true
+        #expect(first.selection.inspector == .storage && first.selection.sidebarSelection == .storage)
+        activeFirst.wrappedValue = false
+        first.selection.choose(.storage)
+        #expect(inactiveFirst.wrappedValue && first.selection.sidebarSelection == .storage)
+        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+
+        first.close()
+        await first.waitUntilClosed()
+        let closedVisibility = activeFirst.wrappedValue
+        let closedSelection = first.selection.sidebarSelection
+        for shown in [true, false] { activeFirst.wrappedValue = shown }
+        #expect(activeFirst.wrappedValue == closedVisibility && first.selection.sidebarSelection == closedSelection)
+        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        second.close()
+        await second.waitUntilClosed()
     }
 
     private func deaths(_ handle: PlayerRecordStore.Handle?) -> Int? {

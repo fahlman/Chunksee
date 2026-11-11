@@ -10,6 +10,7 @@ struct WorldView: View {
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.appearsActive) private var appearsActive
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
@@ -273,8 +274,15 @@ struct WorldView: View {
         }
     }
 
-    var inspectorShown: Binding<Bool> {
+    private var inspectorShown: Binding<Bool> {
+        Self.inspectorBinding(for: session, appearsActive: appearsActive)
+    }
+
+    static func inspectorBinding(for session: WorldSession, appearsActive: Bool) -> Binding<Bool> {
         Binding { session.selection.isInspectorShown } set: {
+            // Tab changes can send visibility to this binding before the scene activates.
+            // Only the active scene may turn that presentation write into a choice.
+            guard appearsActive else { return }
             session.commandTarget?.selection.isInspectorShown = $0
         }
     }
