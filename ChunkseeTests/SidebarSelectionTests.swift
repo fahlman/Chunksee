@@ -221,7 +221,8 @@ import Testing
         #expect(map.depth.cutawayY == 65)
     }
 
-    @Test func selectedHeightIsRememberedPerTabAndDoesNotTrackLiveMovement() async throws {
+    @Test(arguments: [false, true])
+    func selectedHeightIsRememberedPerTabAndDoesNotTrackLiveMovement(_ fromMobList: Bool) async throws {
         let url = try selectionWorld(petY: 48)
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"), withIntermediateDirectories: true)
@@ -234,14 +235,16 @@ import Testing
         defer { session.close(); sibling.close() }
         await session.search.waitForIndex()
         let pet = try #require(session.presentation.selectedIndex.creatures.first)
+        let row: SidebarItem = fromMobList ? .mobCreature(pet.id) : .creature(pet.id)
         sibling.map?.setDepth(MapDepth(y: -20, isSurface: false))
-        session.selection.choose(.creature(pet.id))
+        session.selection.choose(row)
         #expect(session.map?.depth == MapDepth(y: 48, isSurface: true))
         session.map?.setDepth(MapDepth(y: 101, isSurface: false))
         session.selection.isInspectorShown = false
         let file = url.appendingPathComponent("dimensions/minecraft/overworld/entities/r.0.0.mca")
         let moved = NBT.compound(["DataVersion": .int(5023), "Position": .intArray([0, 0]), "Entities": .list([Fixtures.mob([
-            "id": .string("minecraft:fox"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Map Fox"),
+            "id": .string("minecraft:wolf"), "UUID": .intArray([1, 2, 3, 4]), "Health": .float(10), "CustomName": .string("Moved Pet"),
+            "Owner": .intArray([9, 8, 7, 6]),
             "Pos": .list([.double(13), .double(32), .double(13)]),
         ])])])
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: moved)])).write(to: file)
@@ -250,12 +253,22 @@ import Testing
         await session.search.waitForIndex()
         let current = try #require(session.presentation.selectedIndex.creatures.first)
         #expect(current.id == pet.id && current.creature.y == 32)
-        #expect(!session.selection.isInspectorShown && session.selection.sidebarSelection == .creature(pet.id))
+        #expect(pet.group == .named && current.group == .pet)
+        #expect(!session.selection.isInspectorShown && session.selection.sidebarSelection == row)
+        var disclosure = SidebarDisclosure()
+        disclosure.collapsedSections = [.creatures, .mobs]
+        disclosure.reveal(row, in: session)
+        #expect(disclosure.creatures == (fromMobList ? [] : [.pet]))
+        #expect(disclosure.mobTypes == (fromMobList ? ["minecraft:wolf"] : []))
+        let content = MapContent(session: session), size = CGSize(width: 800, height: 600)
+        let viewport = MapViewport(center: current.position, scale: 8)
+        #expect(content.target(at: CGPoint(x: 400, y: 300), viewport: viewport, size: size) == .row(row))
+        #expect(content.scene(viewport: viewport, size: size).items.first { $0.target == .row(row) }?.labelPriority == .selected)
         session.selection.isInspectorShown = true
         guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing live creature details"); return }
-        #expect(detail == current)
+        #expect(detail.marker == current && detail.list == (fromMobList ? .mobs("minecraft:wolf") : .creatures(.pet)))
         #expect(session.selection.highlighted == [.row(.creature(current.id)), .row(.mobCreature(current.id))] && session.map?.depth.cutawayY == 101)
-        session.selection.choose(.creature(pet.id))
+        session.selection.choose(row)
         #expect(session.map?.depth.cutawayY == 32)
         session.close()
         await session.waitUntilClosed()
@@ -520,7 +533,7 @@ import Testing
         await session.search.waitForSearch()
         let current = try #require(session.presentation.selectedIndex.creatures.first { $0.group == .pet })
         guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing live search details"); return }
-        #expect(detail == current && current.creature.health == 6)
+        #expect(detail.marker == current && current.creature.health == 6)
         #expect(session.selection.highlighted == [.searchHit(hit.id), .row(.creature(current.id)), .row(.mobCreature(current.id))])
         #expect(session.selection.sidebarSelection == row && session.map?.viewport == viewport && session.map?.depth.cutawayY == 101)
         try save([])

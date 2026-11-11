@@ -150,7 +150,7 @@ import Testing
         let current = try #require(session.presentation.linkedPets(to: owner).first)
         #expect(current.id == moved.id && current.carrier == nil && current.position.x == 13.5)
         guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing landed pet details"); return }
-        #expect(detail == current)
+        #expect(detail.marker == current)
         #expect(session.selection.highlighted == [.row(.creature(current.id)), .row(.mobCreature(current.id))])
         #expect(session.resources.playerSnapshot.shoulderPets.isEmpty)
         session.close()

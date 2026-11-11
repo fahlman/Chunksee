@@ -183,7 +183,7 @@ import Testing
         let moved = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == firstID })
         #expect(moved.id == first.id && moved.position != first.position && moved.name(in: session.resources.gameNames) == "Renamed")
         guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing moved pet details"); return }
-        #expect(detail == moved)
+        #expect(detail.marker == moved)
         #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
         session.selection.showLinkedPet(first, ownedBy: owner)
         #expect(session.map?.viewport.center == moved.position && session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])

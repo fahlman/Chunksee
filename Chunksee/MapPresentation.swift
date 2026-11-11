@@ -56,14 +56,15 @@ nonisolated struct LayerVisibility: Equatable, Sendable, Codable {
         return appearance
     }
 
-    mutating func reveal(_ marker: CreatureMarker, inMobList: Bool = false) {
-        if inMobList || marker.group == .mob {
-            mobTypes.insert(marker.creature.id)
-            if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
-                mobAppearances[marker.creature.id] = nil
+    mutating func reveal(_ selection: CreatureSelection) {
+        switch selection.list {
+        case .mobs(let id):
+            mobTypes.insert(id)
+            if let filter = mobAppearances[id], filter != MobAppearance(selection.marker.creature.appearance) {
+                mobAppearances[id] = nil
             }
-        } else {
-            creatures.insert(marker.group)
+        case .creatures(let group):
+            creatures.insert(group)
         }
     }
 

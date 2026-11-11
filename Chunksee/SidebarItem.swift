@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import Foundation
 
@@ -35,6 +36,34 @@ nonisolated enum MapTarget: Hashable, Sendable {
     case searchHit(SearchHit.ID)
 }
 
+/// A creature can appear in its special group and its mob type. Resolve that choice with the
+/// live marker so disclosure, visibility and map picking preserve the same row route.
+nonisolated struct CreatureSelection: Equatable, Sendable {
+    enum List: Equatable, Sendable {
+        case creatures(CreatureGroup)
+        case mobs(String)
+    }
+
+    let marker: CreatureMarker
+    let list: List
+
+    init(_ marker: CreatureMarker, selectedRow: SidebarItem?) {
+        self.marker = marker
+        if marker.group == .mob || selectedRow == .mobCreature(marker.id) {
+            list = .mobs(marker.creature.id)
+        } else {
+            list = .creatures(marker.group)
+        }
+    }
+
+    var row: SidebarItem {
+        switch list {
+        case .creatures: .creature(marker.id)
+        case .mobs: .mobCreature(marker.id)
+        }
+    }
+}
+
 /// Current data for a sidebar identity. Selection resolves it again after a live update.
 enum ResolvedSidebarItem {
     case worldInfo
@@ -42,7 +71,7 @@ enum ResolvedSidebarItem {
     case savedPlace(SavedPlace)
     case structure(StructureMarker)
     case place(PlaceMarker)
-    case creature(CreatureMarker)
+    case creature(CreatureSelection)
     case mobType(MobTypes.Kind)
     case biome(BiomeArea)
     case inGameMap(MapItem)
@@ -56,7 +85,7 @@ extension ResolvedSidebarItem {
         switch self {
         case .structure(let marker): return marker.y
         case .place(let marker): return marker.y
-        case .creature(let marker): return BlockPosition.coordinate(containing: marker.creature.y)
+        case .creature(let selection): return BlockPosition.coordinate(containing: selection.marker.creature.y)
         case .player(let player):
             guard let location = PlayerPresentation.position(of: player), location.dimension == dimension else { return nil }
             return BlockPosition.coordinate(containing: location.y)

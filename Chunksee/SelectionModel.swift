@@ -99,10 +99,10 @@ final class SelectionModel {
         case .savedPlace(let place)?: targets.insert(.row(.savedPlace(place.id)))
         case .structure(let marker)?: targets.insert(.row(.structure(marker.id)))
         case .place(let marker)?: targets.insert(.row(.place(marker.id)))
-        case .creature(let marker)?:
+        case .creature(let selection)?:
             // Both sidebar rows identify the same drawn creature; picking keeps its row route.
-            targets.insert(.row(.creature(marker.id)))
-            targets.insert(.row(.mobCreature(marker.id)))
+            targets.insert(.row(.creature(selection.marker.id)))
+            targets.insert(.row(.mobCreature(selection.marker.id)))
         case .biome(let area)?: targets.insert(.row(.biome(area.id)))
         case .player(let player)?: targets.insert(.row(.player(player.uuid)))
         case .worldInfo?, .storage?, .mobType?, .inGameMap?, .hit?, nil: break
@@ -120,7 +120,8 @@ final class SelectionModel {
         case .savedPlace(let id): return source.annotations.listedPlaces.first { $0.id == id }.map(ResolvedSidebarItem.savedPlace)
         case .structure(let id): return index.structures.first { $0.id == id }.map(ResolvedSidebarItem.structure)
         case .place(let id): return index.places.first { $0.id == id }.map(ResolvedSidebarItem.place)
-        case .creature(let id), .mobCreature(let id): return index.mobTypes.marker(id).map(ResolvedSidebarItem.creature)
+        case .creature(let id), .mobCreature(let id):
+            return index.mobTypes.marker(id).map { .creature(CreatureSelection($0, selectedRow: item)) }
         case .mobType(let id): return index.mobTypes.kind(id).map(ResolvedSidebarItem.mobType)
         case .biome(let id): return index.biomeAreas.first { $0.id == id }.map(ResolvedSidebarItem.biome)
         case .inGameMap(let id): return source.presentation.inGameMaps.first { $0.id == id }.map(ResolvedSidebarItem.inGameMap)
@@ -186,10 +187,9 @@ final class SelectionModel {
         case .place(let marker):
             source.visibility.places.insert(marker.group)
             source.navigation.focus(on: marker.position)
-        case .creature(let marker):
-            if case .mobCreature = item { source.visibility.reveal(marker, inMobList: true) }
-            else { source.visibility.reveal(marker) }
-            source.navigation.focus(on: marker.position)
+        case .creature(let selection):
+            source.visibility.reveal(selection)
+            source.navigation.focus(on: selection.marker.position)
         case .biome(let area):
             source.visibility.biomes.insert(area.group)
             source.navigation.focus(on: area.position)
@@ -216,7 +216,7 @@ final class SelectionModel {
                 case .creature:
                     if let dimension = hit.dimension,
                        let marker = source.search.index.dimensions[dimension]?.mobTypes.marker(markerID) {
-                        source.visibility.reveal(marker)
+                        source.visibility.reveal(CreatureSelection(marker, selectedRow: item))
                     }
                 case .biome(let group): source.visibility.biomes.insert(group)
                 }
