@@ -167,11 +167,12 @@ struct MapView: View {
         .accessibilityAction(named: Text("Move West")) { map.viewport.pan(.west, in: size) }
         .accessibilityAction(named: Text("Move East")) { map.viewport.pan(.east, in: size) }
         .overlay(alignment: .bottom) {
-            // One layout keeps the key clear of wrapped coordinates and lighting details.
+            // The key stays anchored while the readout above it appears, disappears or wraps.
             VStack(spacing: 0) {
-                MapLegend(layers: content)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                 if showsStatusBar { statusBar }
+                MapLegend(layers: content)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .toolbar { MapToolbar(session: session, map: map, showsHeightPopover: $showsHeightPopover) }

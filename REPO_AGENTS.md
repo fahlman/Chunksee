@@ -1562,8 +1562,9 @@ and an ellipsis. MapView groups map, slime-chunk and Time Spent activity in its 
 The existing async models own readiness and cancellation.
 
 MapLegend owns the shared material container and keys for the visible map and MapImage export.
-MapView lays that trailing key above its live status bar in one bottom stack, so wrapped
-coordinates and lighting details cannot overlap it. An absent status bar reserves no space.
+MapView anchors that trailing key below its live status bar in one bottom stack, so wrapped
+coordinates and lighting details cannot overlap it. The key stays still as the readout appears,
+disappears or wraps; an absent status bar reserves no space.
 MapLegendOverlay places the key at the bottom trailing corner of exported images, which have
 no live status bar. If the complete key cannot fit at its natural size, the image omits it rather
 than clipping or shrinking its text; the requested image dimensions and terrain remain intact.

@@ -140,7 +140,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: cache.directory.path))
     }
 
-    @Test func heightAndWaterDepthExportsMatchTheViewIncludingTheirLegends() async throws {
+    @Test func heightAndWaterDepthExportsShareCompleteKeysWhenTheyFit() async throws {
         let root = try TestWorld.make(chunks: [
             TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:air", "minecraft:stone", "minecraft:water"]) { x, y, _ in
                 if x < 8 { return y <= 8 ? 1 : 0 }
@@ -156,26 +156,35 @@ import Testing
         let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
-        let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
-        map.viewport = plan.viewport
-        for style in [MapStyle.height, .waterDepth] {
-            map.setStyle(style)
-            for depth in [MapDepth(), MapDepth(y: 4, isSurface: false)] {
-                map.setDepth(depth)
-                map.requestTiles(visibleIn: plan.size, displayScale: 1)
-                await map.waitUntilIdle()
-                let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
-                for appearance in [ColorScheme.light, .dark] {
-                    let image = try await MapImage.export(plan: plan, regions: map.availableRegions,
-                        renderer: (try requiredRenderer(map)), content: content, portalStatus: { _ in nil },
-                        colorScheme: appearance, locale: Locale(identifier: "en_US"), progress: { _, _ in })
-                    let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
-                        size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
-                    #expect(try pixels(image) == pixels(view))
-                    // A matching terrain image alone would miss the shared style legend.
-                    let withoutLegend = try #require(MapImage.renderWithoutLegend(map, content: content,
-                        size: plan.size, colorScheme: appearance, locale: Locale(identifier: "en_US")))
-                    #expect(try pixels(image) != pixels(withoutLegend))
+        for (side, showsKey) in [(105.0, false), (512.0, true)] {
+            let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: side, height: side), blocksPerPixel: 1)
+            map.viewport = plan.viewport
+            for style in [MapStyle.height, .waterDepth] {
+                map.setStyle(style)
+                for depth in [MapDepth(), MapDepth(y: 4, isSurface: false)] {
+                    map.setDepth(depth)
+                    map.requestTiles(visibleIn: plan.size, displayScale: 1)
+                    await map.waitUntilIdle()
+                    let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
+                    for appearance in [ColorScheme.light, .dark] {
+                        let image = try await MapImage.export(plan: plan, regions: map.availableRegions,
+                            renderer: (try requiredRenderer(map)), content: content, portalStatus: { _ in nil },
+                            colorScheme: appearance, locale: Locale(identifier: "en_US"), progress: { _, _ in })
+                        let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
+                            size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                        for result in [image, view] {
+                            let source = try #require(CGImageSourceCreateWithData(result.data as CFData, nil))
+                            let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+                            #expect(decoded.width == Int(side) && decoded.height == Int(side))
+                        }
+                        let actual = try pixels(image)
+                        #expect(try actual == pixels(view))
+                        let withoutLegend = try #require(MapImage.renderWithoutLegend(map, content: content,
+                            size: plan.size, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                        // Tiny output keeps all its terrain; ordinary output still includes the key.
+                        #expect(try (actual != pixels(withoutLegend)) == showsKey)
+                        #expect(stride(from: 3, to: actual.count, by: 4).contains { actual[$0] != 0 })
+                    }
                 }
             }
         }
