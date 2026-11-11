@@ -191,7 +191,7 @@ import Testing
             let player = PlayerInfo(uuid: carrier, nbt: input)
             let snapshot = PlayerSnapshot([player])
             let carried = try #require(snapshot.shoulderPets.first)
-            #expect(snapshot.shoulderPets.count == 1 && carried.name == "Gray" && carried.creature.owner == owner)
+            #expect(snapshot.shoulderPets.count == 1 && GameNames.unavailable.creature(carried.creature) == "Gray" && carried.creature.owner == owner)
             var part = DimensionContent()
             let regionCreature = try #require(Creature(parrot(bird)))
             part.creatures = [try #require(CreatureMarker(regionCreature, dimension: overworld))]
@@ -210,12 +210,12 @@ import Testing
                      (villager, "Farmer"),
                      (Creature(id: "minecraft:parrot", x: 0, y: 64, z: 0, owner: owner), "Parrot")]
         for (creature, expected) in cases {
-            #expect(ShoulderPet(creature: creature, carrier: carrier, index: 0).name == expected)
-            #expect(CreatureMarker(creature, dimension: overworld)?.name == expected)
+            #expect(GameNames.unavailable.creature(ShoulderPet(creature: creature, carrier: carrier, index: 0).creature) == expected)
+            #expect(CreatureMarker(creature, dimension: overworld)?.name(in: .unavailable) == expected)
         }
         villager.customName = "Bob"
-        #expect(ShoulderPet(creature: villager, carrier: carrier, index: 0).name == "Bob")
-        #expect(CreatureMarker(villager, dimension: overworld)?.name == "Bob")
+        #expect(GameNames.unavailable.creature(ShoulderPet(creature: villager, carrier: carrier, index: 0).creature) == "Bob")
+        #expect(CreatureMarker(villager, dimension: overworld)?.name(in: .unavailable) == "Bob")
     }
 
 }

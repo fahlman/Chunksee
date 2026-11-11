@@ -85,7 +85,7 @@ import Testing
             await map.waitUntilIdle()
             for appearance in [ColorScheme.light, .dark] {
                 for grid in [false, true] {
-                    var content = MapContent()
+                    var content = MapContent(gameNames: .unavailable)
                     content.showsGrid = grid
                     var progress: [Int] = []
                     let actual = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: renderer,
@@ -120,7 +120,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let task = Task {
             try await MapImage.export(plan: plan, regions: [region], renderer: RegionTileRenderer(dimension: dimension),
-                content: MapContent(), portalStatus: { _ in nil }, colorScheme: .light, locale: .current,
+                content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, colorScheme: .light, locale: .current,
                 progress: { finished, _ in #expect(finished == 0) }, readTile: { _, _ in await gate.read("tile") })
         }
         await gate.waitForRequest("tile")
@@ -164,7 +164,7 @@ import Testing
                 map.setDepth(depth)
                 map.requestTiles(visibleIn: plan.size, displayScale: 1)
                 await map.waitUntilIdle()
-                var content = MapContent()
+                var content = MapContent(gameNames: .unavailable)
                 content.mapStyle = style
                 content.heightScale = scale
                 for appearance in [ColorScheme.light, .dark] {
@@ -175,7 +175,7 @@ import Testing
                         size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
                     #expect(try pixels(image) == pixels(view))
                     // A matching terrain image alone would miss the shared style legend.
-                    let withoutLegend = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil },
+                    let withoutLegend = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil },
                         size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
                     #expect(try pixels(image) != pixels(withoutLegend))
                 }

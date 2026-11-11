@@ -218,7 +218,7 @@ import Testing
         let entityFile = try write([entities(31, name: "Updated")], in: dimension, folder: .entities, region: 0)
         await changed([entityFile], in: resources)
         #expect(await reads.requested == ["\(overworld)@0,0"])
-        #expect(resources.index.index.dimensions[overworld]?.creatures.contains { $0.name == "Updated" } == true)
+        #expect(resources.index.index.dimensions[overworld]?.creatures.contains { $0.name(in: resources.gameNames) == "Updated" } == true)
         try await matchesCompleteRead(resources, dimension: dimension)
         await reads.reset()
         let poiFile = try write([poi(512, type: "minecraft:home")], in: dimension, folder: .pointsOfInterest, region: 1)

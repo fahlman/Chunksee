@@ -4,6 +4,7 @@ import SwiftUI
 
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
+    let gameNames: GameNames
     var mapStyle = MapStyle.normal
     var lighting: MapLighting?
     var shadowLight: MapShadow.Light?
@@ -127,7 +128,7 @@ struct MapContent {
 extension MapContent {
     /// A value projected from live document models, without retaining the document or a cache.
     init(session: WorldSession) {
-        self.init()
+        self.init(gameNames: session.resources.gameNames)
         guard session.map != nil, let id = session.selectedDimensionID else { return }
         mapStyle = session.map?.style ?? .normal
         lighting = session.map?.lighting

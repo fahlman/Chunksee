@@ -15,7 +15,7 @@ import Testing
         second.id = "second"; second.playerID = UUID(); second.label = "Second"; second.y = 62
         let search = SearchHit(id: "sign", source: .sign, dimension: saved.dimension,
                                position: saved.mapPosition, y: 70, title: "Sign", detail: "Sign", count: 1)
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.savedPlaces = [saved]; content.players = [first, second]; content.hits = [search]
         let viewport = MapViewport(center: saved.mapPosition, scale: 32)
 
@@ -42,7 +42,7 @@ import Testing
 
     @Test func captionsCanEnterBeforePlayerBodiesWithoutAddingOffscreenAccessibleChildren() {
         let viewport = MapViewport(center: .zero, scale: 2)
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.players = [-61.0, -50, -25, -19, 20].enumerated().map { index, x in
             MapMarker(id: "edge-\(index)", playerID: UUID(), kind: .player,
                       position: viewport.blockPoint(at: CGPoint(x: x, y: 100), in: size),
@@ -61,7 +61,7 @@ import Testing
         let anchor = kind == .player ? position : CGPoint(x: -8.5, y: -16.5)
         let marker = MapMarker(id: "location", playerID: UUID(), kind: kind,
                                position: position, y: 48, label: "Friend", isOutdated: true)
-        var content = MapContent(); content.players = [marker]; content.selectedItem = .player(marker.playerID)
+        var content = MapContent(gameNames: .unavailable); content.players = [marker]; content.selectedItem = .player(marker.playerID)
         let viewport = MapViewport(center: anchor, scale: 32)
         let item = try #require(content.scene(viewport: viewport, size: size).items.first)
         let location = try #require(content.accessibleLocations(viewport: viewport, size: size).first)
@@ -85,7 +85,7 @@ import Testing
         var second = first
         second.id = "second"; second.y = 62
         let viewport = MapViewport(center: position, scale: 2)
-        var content = MapContent(); content.hits = [first, second]; content.selectedHitID = first.id
+        var content = MapContent(gameNames: .unavailable); content.hits = [first, second]; content.selectedHitID = first.id
         let items = content.scene(viewport: viewport, size: size).items
         let selected = try #require(items.first)
         #expect(selected.frame == CGRect(x: 191, y: 91, width: 18, height: 18))
@@ -113,7 +113,7 @@ import Testing
         let spawner = PlaceMarker(Spawner(x: -9, y: 48, z: -17, mob: "minecraft:zombie"))
         let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: -8.7, y: 62.25, z: -16.2,
             customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         for showPet in [false, true] {
             content.places = showPet ? [] : [spawner]
             content.creatures = showPet ? [pet] : []
@@ -139,7 +139,7 @@ import Testing
         let place = PlaceMarker(portal)
         let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: place.position.x, y: 64,
             z: place.position.y, owner: UUID()), dimension: portal.dimension))
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.places = [place]; content.creatures = [pet]; content.selection = .portal(portal)
         content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
         let hit = SearchHit(id: "pin", source: .sign, dimension: portal.dimension,

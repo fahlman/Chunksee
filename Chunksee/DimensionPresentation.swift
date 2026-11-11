@@ -147,8 +147,10 @@ final class DimensionPresentation {
     /// Owned pets elsewhere need links; pets on this player's shoulders already show full details.
     func linkedPets(to playerID: UUID) -> [CreatureMarker] {
         guard let source else { return [] }
+        let gameNames = source.resources.gameNames
         return source.search.index.creatures.map(\.value).filter { $0.creature.owner == playerID && $0.carrier != playerID }
-            .sorted { ($0.dimension, $0.name, $0.id) < ($1.dimension, $1.name, $1.id) }
+            .sorted { ($0.dimension, gameNames.creature($0.creature), $0.id)
+                < ($1.dimension, gameNames.creature($1.creature), $1.id) }
     }
 
     var hasUnnamedPlayers: Bool {

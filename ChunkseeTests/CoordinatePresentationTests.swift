@@ -13,7 +13,7 @@ import Testing
         let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: position, cacheDirectory: nil)
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally(); map.close() }
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.players = [.init(id: "player", playerID: UUID(), kind: .player, position: position,
                                  y: -0.1, label: "Player", isOutdated: false)]
         let location = try #require(content.accessibleLocations(viewport: .init(center: position, scale: 32),
@@ -40,14 +40,14 @@ import Testing
         for kind in [MapMarker.Kind.death, .respawn] {
             let player = MapMarker(id: "point", playerID: UUID(), kind: kind, position: block, y: 64,
                                    label: "Location", isOutdated: false)
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.players = [player]
             #expect(player.anchor == blockCenter)
             #expect(content.hit(at: center, viewport: viewport, size: size)?.target == .row(.player(player.playerID)))
             #expect(content.accessibleLocations(viewport: viewport, size: size).first?.anchor == blockCenter)
         }
         let saved = SavedPlace(name: "Base", dimension: "minecraft:overworld", x: -9, z: -17)
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.savedPlaces = [saved]
         #expect(saved.position == block && saved.mapPosition == blockCenter)
         #expect(content.hit(at: center, viewport: viewport, size: size)?.target == .row(.savedPlace(saved.id)))

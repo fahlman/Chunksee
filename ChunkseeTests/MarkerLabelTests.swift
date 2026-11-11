@@ -126,7 +126,7 @@ import Testing
             MapMarker(id: $0, playerID: UUID(), kind: .player, position: .zero,
                       y: 64, label: "Player " + $0, isOutdated: false)
         }
-        var content = MapContent(); content.players = markers
+        var content = MapContent(gameNames: .unavailable); content.players = markers
         let size = CGSize(width: 400, height: 200)
         let before = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         content.players.reverse()

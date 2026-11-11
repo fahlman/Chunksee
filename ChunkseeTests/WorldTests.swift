@@ -356,7 +356,7 @@ import Testing
         #expect(search("villager:").first?.detail == "Villager")
         // Plain and filtered searches present the same creature without changing its selection identity or location.
         let named = try #require(search("summer").first)
-        #expect(named.title == wolf.name && named.detail == "Wolf")
+        #expect(named.title == wolf.name(in: .unavailable) && named.detail == "Wolf")
         for query in ["pet:summer", "creature:summer", "pet:minecraft:wolf"] {
             let hit = try #require(search(query).first)
             #expect(hit.detail == named.detail && hit.title == named.title)
@@ -386,7 +386,7 @@ import Testing
         func search(_ query: String) -> [SearchHit] { WorldSearch.search(query, in: index, players: [], gameNames: .unavailable) { _ in .named("") } }
         let mending = search("trade:mending")
         #expect(mending.map(\.title) == ["Librarian"])
-        #expect(VillagerText.inspectorProfession(librarian, gameNames: .unavailable) == "Librarian, Level 5")
+        #expect(GameNames.unavailable.profession(of: librarian, definitions: nil) == "Librarian, Level 5")
         // With no definition, the saved level stays visible even for a familiar vanilla ID.
         #expect(mending.first?.detail == "1 Enchanted Book (Mending I) for 24 Emerald + 1 Book")
         #expect(mending.first?.position == CGPoint(x: 30, y: -12))

@@ -23,7 +23,7 @@ struct AccessibleMapLocation: Identifiable {
 struct MapView: View {
     let session: WorldSession
     @Bindable var map: MapModel
-    var content = MapContent()
+    var content: MapContent
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
     /// Called with the clicked marker’s identity and saved height, or nil for empty map.
@@ -288,10 +288,10 @@ struct MapView: View {
             return image
         }
         for structure in scene.structures {
-            add(structure.draw(in: context, symbol: symbol))
+            add(structure.draw(in: context, gameNames: content.gameNames, symbol: symbol))
         }
         for item in scene.items {
-            add(item.draw(in: context, portalStatus: portalStatus, symbol: symbol))
+            add(item.draw(in: context, gameNames: content.gameNames, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: viewport, size: size)

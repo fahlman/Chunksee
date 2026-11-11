@@ -26,7 +26,7 @@ import Testing
         await map.waitUntilIdle()
         for appearance in [ColorScheme.light, .dark] {
             for (slime, boundary) in [(false, false), (true, false), (false, true), (true, true)] {
-                var content = MapContent()
+                var content = MapContent(gameNames: .unavailable)
                 content.slimeSeed = slime ? 42 : nil
                 content.border = boundary ? border : nil
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },

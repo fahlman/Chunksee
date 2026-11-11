@@ -216,10 +216,10 @@ enum StructureTestWorld {
         let villager = try #require(Creature(entity("minecraft:villager", x: 0, z: 0, extra: [
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
-        #expect(marker.group == .villager && marker.name == "Librarian")
+        #expect(marker.group == .villager && marker.name(in: .unavailable) == "Librarian")
         #expect(GameNames.unavailable.merchantLevel(5) == "Level 5")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
-        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
+        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name(in: .unavailable) == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == .mob)
     }
 
@@ -306,7 +306,7 @@ enum StructureTestWorld {
         // Once read, the sidebar can list every Overworld biome, found or not.
         #expect(session.presentation.possibleBiomes.count == 4 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
-        #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
+        #expect(MapContent(session: session).creatures.map { $0.name(in: session.resources.gameNames) } == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
         session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
         #expect(MapContent(session: session).selection == .creature(summer))
@@ -336,7 +336,7 @@ enum StructureTestWorld {
         session.search.text = "summer"
         await session.search.waitForIndex()
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == [summer.name])
+        #expect(session.search.results.map(\.title) == [summer.name(in: session.resources.gameNames)])
         #expect(session.search.results.first?.detail == "Wolf")
         #expect(session.search.results.first?.source == .layer(.creature(.pet), markerID: summer.id))
     }

@@ -32,7 +32,7 @@ import SwiftUI
 
     @Test func elevenThousandOffscreenMarkersUseNearbyCandidatesAndKeepFullScanLocations() {
         let places = places(), creatures = creatures()
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.places = places; content.creatures = creatures
         content.selection = .creature(creatures[3])
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
@@ -50,7 +50,7 @@ import SwiftUI
                     let locations = content.accessibleLocations(viewport: viewport, size: size)
                     #expect(locations.map(\.id) == expectedPlaces.map { "place-" + $0.id } + expectedCreatures.map { "creature-" + $0.id })
                     #expect(content.scene(viewport: viewport, size: size).items.map(\.id) == locations.map(\.id))
-                    #expect(locations.map(\.name) == expectedPlaces.map(\.name) + expectedCreatures.map(\.name))
+                    #expect(locations.map(\.name) == expectedPlaces.map(\.name) + expectedCreatures.map { $0.name(in: content.gameNames) })
                     #expect(locations.map(\.position) == expectedPlaces.map(\.position) + expectedCreatures.map(\.position))
                     #expect(locations.map(\.target) == expectedPlaces.map { MapTarget.row(.place($0.id)) } + expectedCreatures.map { MapTarget.row(.creature($0.id)) })
                     if scale == 2 && shown.contains(.spawner) {
@@ -68,7 +68,7 @@ import SwiftUI
     }
 
     @Test func hitDistancesPortalPriorityAndLaterItemTiesMatchTheFullVisibleList() {
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         let places = places(), creatures = creatures()
         content.places = places; content.creatures = creatures
         content.selection = .creature(creatures[3])
@@ -114,7 +114,7 @@ import SwiftUI
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
         for scale in [0.125, 2.0] {
             map.viewport = MapViewport(center: .zero, scale: scale)
-            var content = MapContent(), reference = MapContent()
+            var content = MapContent(gameNames: .unavailable), reference = MapContent(gameNames: .unavailable)
             content.places = places; content.creatures = creatures; content.selection = .creature(creatures[3])
             reference.selection = content.selection
             reference.places = places.filter { (scale >= 0.125 || $0.group == .portal) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }

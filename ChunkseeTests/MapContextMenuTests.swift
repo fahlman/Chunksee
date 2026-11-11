@@ -37,7 +37,7 @@ import Testing
         try await withSession { session in
             let map = try #require(session.map)
             map.viewport = MapViewport(center: .zero, scale: 2)
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.savedPlaces = [
                 SavedPlace(name: "West Marker", dimension: map.dimension.id, x: -50, z: -30),
                 SavedPlace(name: "East Marker", dimension: map.dimension.id, x: 40, z: 25),
@@ -90,7 +90,7 @@ import Testing
             let place = try #require(session.savedPlaces.add(name: "Fixture", dimension: map.dimension.id, at: CGPoint(x: -8, y: -8)))
             map.viewport = MapViewport(center: place.position, scale: 2)
             let original = map.viewport
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.savedPlaces = [place]
             let board = NSPasteboard.withUniqueName()
             defer { board.releaseGlobally() }
@@ -133,7 +133,7 @@ import Testing
             let original = map.viewport, click = CGPoint(x: 208, y: 150)
             let board = NSPasteboard.withUniqueName()
             defer { board.releaseGlobally() }
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.creatures = [pet]
             let root = try #require(MapContextMenuContent(at: click, session: session, map: map,
                                                          content: content, size: size, pasteboard: board))
@@ -166,7 +166,7 @@ import Testing
             #expect(tappedRuler.distance == 50 && session.annotations.ruler.distance == 50)
 
             let emptyRoot = try #require(MapContextMenuContent(at: click, session: session, map: map,
-                                                              content: MapContent(), size: size, pasteboard: board))
+                                                              content: MapContent(gameNames: .unavailable), size: size, pasteboard: board))
             let emptyMenu = menu(emptyRoot)
             try perform("Copy Coordinates", in: emptyMenu)
             await map.waitForCoordinateReads()
@@ -181,7 +181,7 @@ import Testing
             #expect(session.annotations.portalDraft?.entrance == .init(x: -5, y: 2, z: -9))
             session.annotations.portalDraft = nil
             tappedRuler.clear()
-            let emptyLocation = try #require(MapContent().location(at: click, viewport: map.viewport, size: size))
+            let emptyLocation = try #require(MapContent(gameNames: .unavailable).location(at: click, viewport: map.viewport, size: size))
             tappedRuler.mark(emptyLocation.position)
             #expect(tappedRuler.start == session.annotations.ruler.start)
             #expect(emptyLocation.target == nil && emptyLocation.y == nil)
@@ -229,18 +229,18 @@ import Testing
 
             let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: -8.7, y: 63.9, z: -8.1,
                                                            owner: UUID()), dimension: map.dimension.id))
-            var content = MapContent()
+            var content = MapContent(gameNames: .unavailable)
             content.creatures = [pet]
             try await check(pet, content: content, copied: "-9 63 -9", block: CGPoint(x: -9, y: -9))
 
             let place = PlaceMarker(Spawner(x: -7, y: -23, z: -4, mob: "minecraft:zombie"))
-            content = MapContent()
+            content = MapContent(gameNames: .unavailable)
             content.places = [place]
             try await check(place, content: content, copied: "-7 -23 -4", block: CGPoint(x: -7, y: -4))
 
             var structure = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                               pieces: [("piece", [-14, -60, -14, -11, -41, -11])]))
-            content = MapContent()
+            content = MapContent(gameNames: .unavailable)
             content.structures = [structure]
             try await check(structure, content: content, copied: "-12 -50 -12", block: CGPoint(x: -12, y: -12))
             structure.y = nil
@@ -344,7 +344,7 @@ import Testing
             unmapped.close()
             await unmapped.waitUntilClosed()
             let root = try #require(MapContextMenuContent(at: CGPoint(x: 200, y: 150), session: session, map: map,
-                                                         content: MapContent(), size: size, pasteboard: board))
+                                                         content: MapContent(gameNames: .unavailable), size: size, pasteboard: board))
             let mapMenu = menu(root)
             let rowMenu = menu(LocationMenu(session: session, position: .zero, dimension: map.dimension.id, y: 64, pasteboard: board))
             session.close()
@@ -365,7 +365,7 @@ import Testing
             #expect(session.savedPlaces.all == [place] && session.annotations.draft == nil)
             #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
             #expect(board.string(forType: .string) == "unchanged")
-            #expect(MapContextMenuContent(at: .zero, session: session, map: map, content: MapContent(), size: size) == nil)
+            #expect(MapContextMenuContent(at: .zero, session: session, map: map, content: MapContent(gameNames: .unavailable), size: size) == nil)
         }
     }
 
@@ -380,7 +380,7 @@ import Testing
             var received: [CGPoint] = []
             let view = MapScrollView(perform: { _ in }, contextContent: { point in
                 received.append(point)
-                return MapContextMenuContent(at: point, session: session, map: map, content: MapContent(), size: size)
+                return MapContextMenuContent(at: point, session: session, map: map, content: MapContent(gameNames: .unavailable), size: size)
             })
             own.contentView = view
             @MainActor func event(_ window: NSWindow, at point: CGPoint, control: Bool = false) throws -> NSEvent {

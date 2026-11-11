@@ -12,17 +12,17 @@ nonisolated protocol MapLayerGroup: Hashable {
 nonisolated protocol MapLayerMarker: Identifiable where ID == String {
     associatedtype Group: MapLayerGroup
     var group: Group { get }
-    var name: String { get }
+    func name(in gameNames: GameNames) -> String
     var position: CGPoint { get }
     /// Saved Y for map and sidebar coordinate commands; nil uses the map's terrain.
     var yCoordinate: Double? { get }
     /// What a search filter such as `structure:` matches: the name and kind, plus anything else
     /// that identifies the marker.
-    var searchText: String { get }
+    func searchText(in gameNames: GameNames) -> String
 }
 
 extension MapLayerMarker {
-    var searchText: String { name + " " + group.name }
+    nonisolated func searchText(in gameNames: GameNames) -> String { name(in: gameNames) + " " + group.name }
 }
 
 extension StructureGroup: MapLayerGroup {}
@@ -30,15 +30,18 @@ extension PlaceGroup: MapLayerGroup {}
 extension CreatureGroup: MapLayerGroup {}
 extension StructureMarker: MapLayerMarker {
     var yCoordinate: Double? { y.map(Double.init) }
-    var searchText: String { name + " " + group.name + " " + structureID }
+    nonisolated func name(in gameNames: GameNames) -> String { name }
+    nonisolated func searchText(in gameNames: GameNames) -> String { name + " " + group.name + " " + structureID }
 }
 extension PlaceMarker: MapLayerMarker {
     var yCoordinate: Double? { Double(y) }
-    var searchText: String { [name, group.name, type, mob ?? "", lootTable ?? ""].joined(separator: " ") }
+    nonisolated func name(in gameNames: GameNames) -> String { name }
+    nonisolated func searchText(in gameNames: GameNames) -> String { [name, group.name, type, mob ?? "", lootTable ?? ""].joined(separator: " ") }
 }
 extension CreatureMarker: MapLayerMarker {
     var yCoordinate: Double? { creature.y }
-    nonisolated var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.creature(creature) }
+    nonisolated func searchText(in gameNames: GameNames) -> String { gameNames.creatureSearchText(self) }
 }
 
 /// Sidebar groups for one layer (structures, places, creatures or biomes). Groups are listed
@@ -54,6 +57,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
     let item: (Marker) -> SidebarItem
     @Binding var expandedGroups: Set<Marker.Group>
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
@@ -74,7 +78,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                             if let creature = row.marker as? CreatureMarker {
                                 MobLocationLabel(marker: creature)
                             } else {
-                                LocationLabel(title: Text(row.marker.name)) {
+                                LocationLabel(title: Text(row.marker.name(in: gameNames))) {
                                     Image(systemName: row.marker.group.symbol)
                                 }
                             }

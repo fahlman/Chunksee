@@ -114,7 +114,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         try pack(at: root, grass: 0xff0000)
         let colors = try MapBiomeColors.read(in: World(contentsOf: root), source: .init(data: "test", artwork: .unavailable), assets: nil)
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "test:land"])
         content.biomeColors = colors
         let viewport = MapViewport(center: CGPoint(x: 8, y: 8), scale: 4)
