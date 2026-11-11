@@ -4,6 +4,7 @@ import ChunkseeKit
 import ChunkseeKitTestSupport
 import Darwin
 import Observation
+import OSLog
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
@@ -14,6 +15,7 @@ struct NativeSidebarProbe {
     @Test func validatesDisclosureSelectionGridAndMapReveal() async throws {
         let count = 31
         let root = try SidebarProbeWorld.make(spawners: count)
+        SidebarProbeTrace.event("fixture created")
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("minecraft:overworld"))
             .documentURL(inWorldAt: root).resolvingSymlinksInPath()
@@ -32,23 +34,33 @@ struct NativeSidebarProbe {
             TestDocumentWindows.makeDocument = nil
             created.finish()
         }
+        SidebarProbeTrace.event("opening native document")
         let (native, reused) = try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+        SidebarProbeTrace.event("native opener returned; awaiting SwiftUI document")
         try #require(!reused)
         let document = try #require(await iterator.next(isolation: #isolation))
+        SidebarProbeTrace.event("SwiftUI document received")
         func close() async {
+            SidebarProbeTrace.event("closing document and draining session")
             native.close()
             document.session?.close()
             await document.session?.waitUntilClosed()
+            SidebarProbeTrace.event("session drained; draining game resources")
             await model.names.minecraft.waitUntilIdle()
+            SidebarProbeTrace.event("cleanup complete")
         }
         do {
+            SidebarProbeTrace.event("awaiting session publication")
             for await _ in Observations<Void, Never>.untilFinished({
                 document.session == nil && document.openingFailure == nil ? .next(()) : .finish
             }) {}
             try #require(document.openingFailure == nil)
             let session = try #require(document.session)
+            SidebarProbeTrace.event("session published; awaiting index")
             await session.search.waitForIndex()
+            SidebarProbeTrace.event("index finished; awaiting resources")
             await session.resources.waitForRefresh()
+            SidebarProbeTrace.event("resources finished; checking fixture")
             let markers = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
             try #require(markers.count == count && Set(markers.map(\.id)).count == count)
             try #require(session.presentation.spawnPoint == .zero)
@@ -65,18 +77,24 @@ struct NativeSidebarProbe {
             window.appearance = NSAppearance(named: .aqua)
             window.setContentSize(CGSize(width: 900, height: 650))
             window.orderFront(nil)
+            SidebarProbeTrace.event("window readiness entered: visible=\(window.isVisible), routingInstalled=\(session.routing.openDocument != nil)")
             try await SidebarNativeDriver.afterUpdate(window) {
                 window.isVisible && session.routing.openDocument != nil
             }
+            SidebarProbeTrace.event("window ready; awaiting initial map work")
             await map.waitUntilIdle()
+            SidebarProbeTrace.event("initial map work finished; activating accessibility tree")
             // Existing native accessibility tests use this request to materialize SwiftUI's tree.
             let activation = await Task.detached {
                 var windows: CFTypeRef?
                 return AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()),
                     kAXWindowsAttribute as CFString, &windows).rawValue
             }.value
+            SidebarProbeTrace.event("accessibility request returned: status=\(activation)")
             try #require(activation == AXError.success.rawValue)
+            SidebarProbeTrace.event("locating native sidebar controls")
             let driver = try SidebarNativeDriver(window: window, groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
+            SidebarProbeTrace.event("native sidebar controls located")
             let collapsedRows = driver.outline.numberOfRows
             try #require(!driver.isExpanded)
             // Reading one actual main-thread counter verifies the source, not action speed.
@@ -104,7 +122,9 @@ struct NativeSidebarProbe {
             let selected = try #require(session.selection.sidebarSelection)
             guard case .place(let selectedID) = selected else { throw SidebarProbeError.wrongSelection }
             try #require(markers.contains { $0.id == selectedID })
+            SidebarProbeTrace.event("selection verified; awaiting map work")
             await map.waitUntilIdle()
+            SidebarProbeTrace.event("selection map work finished")
             try await driver.perform("Grid while expanded", action: {
                 try driver.performVisibilityAction(label: "Grid", show: false)
             }, ready: {
@@ -144,6 +164,15 @@ struct NativeSidebarProbe {
 }
 
 private enum SidebarProbeError: Error { case wrongSelection, invalidCPURead }
+
+/// Temporary checkpoints locate a stalled setup wait without changing its conditions.
+private enum SidebarProbeTrace {
+    static let logger = Logger(subsystem: "com.fahlsing.Chunksee.Tests", category: "SidebarProbe")
+
+    static func event(_ message: String) {
+        logger.notice("Sidebar probe phase: \(message, privacy: .public)")
+    }
+}
 
 private enum SidebarProbeWorld {
     static func make(spawners count: Int) throws -> URL {
@@ -251,21 +280,34 @@ private final class SidebarNativeDriver {
 
     func perform(_ name: String, action: () throws -> Void, ready: () -> Bool) async throws {
         print("Sidebar probe action: \(name)")
-        try await Self.afterUpdate(window, action: action, ready: ready)
+        try await Self.afterUpdate(window, label: name, action: action, ready: ready)
         print("Sidebar probe observed: \(name), nativeRows=\(outline.numberOfRows), expanded=\(isExpanded), selectedRow=\(outline.selectedRow)")
     }
 
-    static func afterUpdate(_ window: NSWindow, action: () throws -> Void = {}, ready: () -> Bool) async throws {
+    static func afterUpdate(_ window: NSWindow, label: String = "window readiness",
+                            action: () throws -> Void = {}, ready: () -> Bool) async throws {
         let (updates, updated) = AsyncStream.makeStream(of: Void.self)
         let observer = NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification,
             object: window, queue: .main) { _ in updated.yield(()) }
-        defer { NotificationCenter.default.removeObserver(observer); updated.finish() }
+        var updateCount = 0
+        var satisfied = false
+        defer {
+            NotificationCenter.default.removeObserver(observer)
+            updated.finish()
+            SidebarProbeTrace.event("\(label) wait ended: updates=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
+        }
         try action()
         window.viewsNeedDisplay = true
+        SidebarProbeTrace.event("\(label) awaiting native update")
         for await _ in updates {
+            updateCount += 1
             window.contentView?.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
-            if ready() { return }
+            satisfied = ready()
+            if updateCount == 1 || satisfied {
+                SidebarProbeTrace.event("\(label) update: count=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
+            }
+            if satisfied { return }
         }
         throw CancellationError()
     }
