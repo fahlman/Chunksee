@@ -98,11 +98,35 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.82.0`, resolved to `0.82.0` (`b745edb5bec8d8e02f708f4087f31e7f54fb87e4`).
+  minor" from `0.88.0`, resolved to `0.88.0` (`4b8e4b9795e0e71a785a4f25b58786af23d0b2fc`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.88.0 supplies Minecraft-derived villager defaults and retains the original
+    VillagerData through `Villager.savedData`. Names, search and map labels consume that
+    interpretation directly; the app adds no fallback parsing or default table. A missing
+    whole record on a zombie villager leaves its randomly chosen profession unavailable.
+    RegionFacts revision 34 and asset-reader revision 2 invalidate affected cached values
+    through the existing shared identities. Terrain and lighting identities stay unchanged.
+  - Kit 0.87.1 selects tied notable-block deposits in a stable order before applying the
+    search limit. The app keeps its display ordering and consumes that membership directly,
+    so unchanged searches retain their listed chunks and map pins. GameNames uses Kit's
+    `PlayerInfo.shortIdentifier(for:)` for unnamed-player UUID fragments; the app owns the
+    surrounding localized wording. Full UUID identities remain unchanged. That release
+    changes no terrain, region-fact, artwork or light interpretation version and needs no
+    cache invalidation.
+  - Kit 0.86.0 owns the game archive's file-validity identity. The app uses its public
+    SourceIdentity, captured source identity and validity check instead of copying stat fields.
+    Its existing game-source cache text and interpretation versions remain unchanged.
+  - Kit 0.85.0 keeps saved NBT text strings literal. Historical JSON text is normalized by
+    the reader at the game's field-specific upgrade boundaries; callers with standalone JSON
+    use `TextComponent.content(json:)`. The app's labels and search preserve quoted and
+    JSON-looking saved names. RegionFacts revision 33 rebuilds saved-text facts once;
+    terrain, lighting and artwork interpretation identities are unchanged by this release.
+  - Kit 0.84.0 removes `GameAssets.Version: Decodable`; version-notice fixtures now use
+    `GameAssets` and its `version` property, matching the production reader. The existing
+    Kit interpretation identities invalidate older terrain and region-fact caches on adoption.
   - Kit 0.66.1 supplies verified omitted 26.3 block properties to model and tint resolution.
     TileCache version 25 combines saved-time lighting, optional nighttime status and deferred
     close-up texture data, and invalidates colors drawn before the compact-default fix.
@@ -482,6 +506,14 @@ only the world's root and the metadata in each map file, so unreadable level met
 prevent readable maps from advancing. Close and source replacement reject retired results.
 Kit 0.80.0 supplies this read result; its terrain revision 2 and region-facts revision 30 also
 retire the previous reader caches through the existing typed identities, with no app-owned bump.
+
+WorldLifetimeTests keeps the app owner alive across repeated real document-reader openings and
+checks that closed world resources, sessions, search/slime models and the info loader are released
+after their registered work drains. The info loader remains world-owned with an internal read-only
+reference for that lifetime check. The test uses a synthetic save by default; the optional
+CHUNKSEE_LIFETIME_WORLD and CHUNKSEE_LIFETIME_GAME environment paths select evidence-only copies
+for the same correctness check. Weak-reference assertions do not measure memory footprint or
+replace the separate performance acceptance check.
 
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
@@ -1362,6 +1394,9 @@ WorldResources uses that common drain for detached tabs too; it keeps no retirin
 table or cleanup tasks. Each WorldSession retains its own closing join because a native document
 reread or move must await that session before replacing it. DocumentGroup still owns document
 closure, and the world releases folder access only after its readers and registered work finish.
+The detached-tab close test controls the initial biome-color publication before or after the first
+render enters. Late colors cancel and replace that render; distinct read identities let the test
+release both operations while checking that world closure still waits for the retired one.
 
 WorldResources registers live refreshes in a scope of the same BackgroundWork owner. The scope
 tracks overlapping player reads and supplies the refresh-only drain; world close cancels and
@@ -1803,8 +1838,14 @@ lease until completion; choosing/removing the folder cancels its asset scope and
 generation so old results cannot publish. GameResourceLibraries enumerates installed jars and uses
 Kit's version metadata to select the newest declared release; if none is installed, it uses the
 newest readable version of any kind. Build time orders known dates, with data version as a fallback
-when dates are unavailable. World version never gates selection. File stamps are checked before
-and after reads. Each jar is capped at 128 MiB; the registry retains small version metadata and weak
+when dates are unavailable. World version never gates selection. The app pairs the path with
+Kit's `GameAssets.SourceIdentity`, which owns the complete file-validity rule for path discovery
+and opened readers. Discovery checks the current path before and after opening, matches the
+captured source identity, and checks the opened reader's validity. Kit's opaque stable metadata
+key combines with the path and game version in the existing game-source cache text.
+A restored jar can keep its modification date while invalidating its old reader;
+that file gets a fresh library rather than a cached handle whose resource reads fail.
+Each jar is capped at 128 MiB; the registry retains small version metadata and weak
 references to live GameResourceLibrary source handles. It retains at most the best uncached archive
 while choosing a source. One file shares its separate data and artwork actors across worlds.
 
@@ -1842,9 +1883,13 @@ continuous-observation runner is asynchronous, so these consumers
 keep didSet tracking to invalidate old sources before the setter returns.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
-file identity. The view task follows activation, world identity and language preference; source
-replacement belongs to the world observer and cannot also restart that task. Definition, player
-and index generations reject canceled/closed-world results.
+file identity. `WorldGameAssets` also observes SwiftUI's `appearsActive`: returning focus to a
+document rechecks through the same world loader, since a Mac scene can remain active while
+another app has focus. Losing focus adds no refresh. The view task follows activation, world
+identity and language preference; source replacement belongs to the world observer and cannot
+also restart that task. Initial, focus, language and scene-phase requests remain intact, and
+overlapping requests still coalesce in the shared loader.
+Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
 covers a hidden document tab while Settings is active, then rechooses the folder and checks
@@ -2043,8 +2088,7 @@ the map's rules. Height ignores the asset source.
 The shared library bounds color results (including misses), reuses decoded textures, and clears
 all caches on retirement. A retired reader cancels map work instead of caching fallback colors
 under its old source key. TileCache version 17 invalidates previous UV-lock fallback pixels and
-includes a stable URL/size/modification/version
-source key; changing or removing the source cancels old map jobs and redraws through MapModel's
+includes a stable file-identity/version source key; changing or removing the source cancels old map jobs and redraws through MapModel's
 existing invalidator. No archive or installed artwork is bundled. At 800% and above, the close-up map draws supported
 selected block models through this same projection, UV, tint and rasterization path. Kit owns the
 position-based weighted/multipart choice; the app never duplicates its seed formula or catalog.
@@ -2320,6 +2364,11 @@ not retain book pages or nested inventories. Temporary comparison keys preserve 
 same-ID/same-label grouping and quantity/name sort. Matching trade inputs stay typed, while biome
 results keep identity and chunk count without retaining drawing paths. WorldQueryStore's existing
 identity guard still rejects old-language results; no publication or query-lifetime rule changes.
+Plain item searches use GameNames.ItemLabels to resolve each distinct saved label once per search.
+The local cache includes item ID, literal custom name, book title and author, holds the search's
+naming snapshot and locale, and is discarded with the search. It is shared across player inventory,
+ender-chest and container matching/aggregation within that search. Book page matching still reads
+each stack's own saved text; quantities and visible-label grouping keep their existing owners.
 GameNames also owns player names and their location, inventory and absent-owner phrases.
 GameNames.PlayerName preserves the personal pronoun, literal account name or unnamed UUID instead
 of keeping a formatted fallback. Player markers and search results retain those inputs; map captions

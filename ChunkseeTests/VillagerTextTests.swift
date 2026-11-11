@@ -23,14 +23,17 @@ import Testing
         return try #require(Creature(Fixtures.mob(fields)))
     }
 
-    @Test func savedDefaultsComeFromKitAndUnnamedLevelsStayVisible() throws {
-        let cases: [(Int32?, String)] = [(nil, "Farmer, Level 1"), (0, "Farmer, Level 0"), (6, "Farmer, Level 6")]
-        for (level, expected) in cases {
+    @Test func gameDerivedLevelsReachTheInspectorAndSearch() throws {
+        let cases: [(Int32?, Int, String)] = [
+            (nil, 1, "Farmer, Level 1"), (0, 1, "Farmer, Level 1"), (6, 6, "Farmer, Level 6"),
+        ]
+        for (level, interpretedLevel, expected) in cases {
             let saved = try creature(level: level)
             let villager = try #require(saved.villager)
             let marker = try #require(CreatureMarker(saved, dimension: "minecraft:overworld"))
             let hits = WorldSearch.search("trade:emerald", in: .overworld(DimensionContent(mobTypes: MobTypes([marker]))), players: [], gameNames: .unavailable) { _ in .named("") }
-            #expect(villager.level == level.map(Int.init) ?? 1)
+            #expect(villager.level == interpretedLevel)
+            #expect(villager.savedData?.value?["level"] == level.map(NBT.int))
             #expect(marker.name(in: .unavailable) == "Farmer")
             #expect(hits.map { $0.title(in: .unavailable) } == ["Farmer"])
             #expect(GameNames.unavailable.profession(of: saved, definitions: nil) == expected)
@@ -74,11 +77,12 @@ import Testing
     }
 
     @Test func theInspectorDistinguishesUnknownProfessionsFromUnemployment() throws {
-        let unknownProfessions: [String?] = [nil, "", "invalid value", "minecraft:"]
+        let unknownProfessions = ["", "minecraft:"]
         for profession in unknownProfessions {
             #expect(GameNames.unavailable.profession(of: try creature(profession: profession), definitions: nil) == nil)
         }
-        for profession in ["minecraft:none", "none", ":none"] {
+        let unemployedProfessions: [String?] = [nil, "invalid value", "minecraft:none", "none", ":none"]
+        for profession in unemployedProfessions {
             #expect(GameNames.unavailable.profession(of: try creature(profession: profession, offers: false), definitions: nil) == "None")
         }
         #expect(GameNames.unavailable.profession(of: try creature(profession: "minecraft:farmer", offers: false), definitions: nil) == "Farmer, Level 1")
