@@ -42,9 +42,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     var gameSource: GameResourceSource { GameResourceSource(data: materials.data, artwork: materials.artwork) }
 
     private var currentBiomeColors: MapBiomeColors? {
-        guard style.inputs.materialColors, let biomeColors, biomeColors.source.data == gameSource.data,
-              biomeColors.source.artwork == .unavailable || biomeColors.source.artwork == gameSource.artwork else { return nil }
-        return biomeColors
+        style.inputs.materialColors ? biomeColors?.available(for: gameSource) : nil
     }
     enum ColorSource: Hashable, Sendable, Encodable {
         case game(String)

@@ -33,6 +33,35 @@ import Testing
         #expect(first.removingArtwork().sourceKey.colorMaps == nil)
     }
 
+    @Test func drawingAndDirectRenderingRejectIncompatibleColorSources() async throws {
+        let fixture = try fixture(), root = try world()
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let library = try fixture.library(), world = try World(contentsOf: root)
+        let dimension = try #require(world.dimension("overworld"))
+        let colors = try await library.data.biomeColors(in: world, artwork: library)
+        let numeric = colors.removingArtwork()
+        let otherData = try MapBiomeColors.read(in: world,
+            source: .init(data: "other-data", artwork: .unavailable), assets: nil)
+        let otherArtwork = try MapBiomeColors.read(in: world,
+            source: .init(data: library.data.sourceKey, artwork: .game("other-artwork")), assets: nil)
+        let cases: [(colors: MapBiomeColors, artwork: GameArtworkLibrary?, accepted: Bool)] = [
+            (colors, library, true), (numeric, library, true), (numeric, nil, true),
+            (colors, nil, false), (otherData, library, false), (otherArtwork, library, false),
+        ]
+        for item in cases {
+            let drawing = MapGameResources(data: library.data, artwork: item.artwork, biomeColors: item.colors)
+            #expect((drawing.biomeColors != nil) == item.accepted)
+            var direct = RegionTileRenderer(dimension: dimension)
+            direct.gameData = library.data; direct.gameArtwork = item.artwork; direct.biomeColors = item.colors
+            let expected: RegionTileRenderer.ColorSource = item.accepted
+                ? .biomes(item.colors.sourceKey, blending: nil) : .game(library.data.sourceKey)
+            #expect(direct.colorSourceKey == expected)
+            direct.biomeColors = drawing.biomeColors
+            #expect(direct.colorSourceKey == expected)
+        }
+        await library.close()
+    }
+
     @Test func worldsShareTheArchiveButKeepTheirOwnResolvedColorsAndStableKeys() async throws {
         let fixture = try fixture()
         defer { fixture.remove() }

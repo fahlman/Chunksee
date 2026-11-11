@@ -427,6 +427,66 @@ import Synchronization
         await resources.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
     }
 
+    @Test func numericColorsStayInTerrainAndOutlinesWhileArtworkColorsLoad() async throws {
+        let game = try artworkFixture()
+        let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+                                sections: [section], extra: ["yPos": .int(0)]))])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root, game: game)
+        let session = WorldSession(resources: resources)
+        let gate = AsyncReadGate<Void>()
+        var failure: (any Error)?
+        do {
+            resources.names.minecraft.usesGameArtwork = false
+            await resources.waitForRefresh()
+            let numeric = try #require(resources.biomeColors)
+            let map = try #require(session.map), region = RegionPosition(x: 0, z: 0)
+            #expect(numeric.biome("test:sample").color(.water, x: 0, z: 0) == 0x123456)
+            resources.readBiomeColors = { world, data, artwork, previous, reload in
+                let colors = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                      previous: previous, reload: reload)
+                await gate.read("artwork")
+                return colors
+            }
+            resources.names.minecraft.usesGameArtwork = true
+            await gate.waitForRequest("artwork")
+            let pending = try requiredRenderer(map)
+            #expect(pending.gameArtwork != nil)
+            #expect(resources.biomeColors?.sourceKey == numeric.sourceKey)
+            #expect(resources.mapGameResources.biomeColors?.sourceKey == numeric.sourceKey)
+            #expect(MapContent(session: session).biomeColors?.sourceKey == numeric.sourceKey)
+            #expect(pending.biomeColors?.sourceKey == numeric.sourceKey)
+            #expect(pending.colorSourceKey == .biomes(numeric.sourceKey, blending: nil))
+            #expect(try !numeric.matchesMetadata(resources.world, source: pending.gameSource))
+            let interim = try #require(try await pending.tile(for: region))
+
+            await gate.finish("artwork", with: ())
+            await resources.waitForRefresh()
+            let complete = try requiredRenderer(map)
+            let colors = try #require(complete.biomeColors)
+            #expect(colors.sourceKey != numeric.sourceKey)
+            #expect(colors.source.artwork == complete.gameSource.artwork)
+            #expect(resources.biomeColors?.sourceKey == colors.sourceKey)
+            #expect(MapContent(session: session).biomeColors?.sourceKey == colors.sourceKey)
+            let finished = try #require(try await complete.tile(for: region))
+            // Water has a numeric color, so adding grass/foliage artwork cannot recolor it.
+            #expect(try ItemPictureFixture.pixels(interim.full.image).bytes
+                == ItemPictureFixture.pixels(finished.full.image).bytes)
+            #expect(interim.key != finished.key)
+
+            map.setStyle(.height)
+            #expect(try requiredRenderer(map).colorSourceKey == nil)
+        } catch {
+            failure = error
+        }
+        await gate.releaseAllAndFuture(with: ())
+        session.close(); resources.close()
+        await resources.waitUntilClosed(); await resources.names.minecraft.waitUntilIdle()
+        if let failure { throw failure }
+    }
+
     @Test func artworkOffReadsDataAndRendersWithoutReadingAnyTexture() async throws {
         let assetReads = TestGameAssets()
         let fixture = try artworkFixture()
