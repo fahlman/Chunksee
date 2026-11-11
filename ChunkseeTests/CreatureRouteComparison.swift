@@ -137,7 +137,7 @@ import Testing
             await resources.waitForRefresh()
             await session.search.waitForIndex()
             await resources.backgroundWork.waitUntilFinished()
-            try #require(resources.gameData != nil && resources.gameArtwork != nil)
+            try #require(resources.mapGameResources.data != nil && resources.mapGameResources.artwork != nil)
             try #require(resources.biomeColors != nil)
             try #require(session.selectedDimensionID == "minecraft:overworld")
             try #require(map.style == .normal && map.depth.isSurface && map.lightingMode == .daylight)
