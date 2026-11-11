@@ -79,35 +79,35 @@ import Testing
             let viewport = map.viewport
             session.selection.inspector = .world
             session.annotations.planPortal()
-            let plan = try #require(session.annotations.portalDraft)
+            let plan = try #require(session.sheet?.portalDraft)
             await map.waitForCoordinateReads()
             #expect(plan.entrance == .init(x: -9, y: 2, z: 0))
             #expect(session.selection.sidebarSelection == .worldInfo && session.selection.inspector == .world)
             #expect(map.viewport == viewport && session.savedPlaces.all.isEmpty)
 
             session.annotations.planPortal()
-            let replaced = try #require(session.annotations.portalDraft)
+            let replaced = try #require(session.sheet?.portalDraft)
             session.annotations.planPortal(at: CGPoint(x: 12.8, y: -4.1), y: 48.9)
-            let replacement = try #require(session.annotations.portalDraft)
+            let replacement = try #require(session.sheet?.portalDraft)
             await map.waitForCoordinateReads()
             #expect(replaced.entrance == nil)
-            #expect(session.annotations.portalDraft === replacement && replacement.entrance == .init(x: 12, y: 48, z: -5))
+            #expect(session.sheet?.portalDraft === replacement && replacement.entrance == .init(x: 12, y: 48, z: -5))
 
             session.annotations.planPortal()
-            let dismissed = try #require(session.annotations.portalDraft)
-            session.annotations.portalDraft = nil
+            let dismissed = try #require(session.sheet?.portalDraft)
+            session.sheet = nil
             await map.waitForCoordinateReads()
-            #expect(dismissed.entrance == nil && session.annotations.portalDraft == nil)
+            #expect(dismissed.entrance == nil && session.sheet?.portalDraft == nil)
 
             session.annotations.planPortal()
-            let closing = try #require(session.annotations.portalDraft)
+            let closing = try #require(session.sheet?.portalDraft)
             session.close()
             await session.waitUntilClosed()
             #expect(closing.entrance == nil && map.unfinishedCoordinateReads == 0)
             #expect(!session.annotations.canPlanPortal(at: .zero, in: NetherPortal.overworld))
-            session.annotations.portalDraft = nil
+            session.sheet = nil
             session.annotations.planPortal(at: .zero, in: NetherPortal.overworld, y: 64)
-            #expect(session.annotations.portalDraft == nil)
+            #expect(session.sheet?.portalDraft == nil)
         } catch {
             session.close()
             await session.waitUntilClosed()

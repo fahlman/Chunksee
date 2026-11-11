@@ -36,7 +36,7 @@ struct SavedPlacesGroup: View {
     }
 }
 
-/// The annotations model owns the draft; name editing cannot move or alter the world.
+/// The window's sheet owns the draft; name editing cannot move or alter the world.
 struct SavedPlaceEditor: View {
     let session: WorldSession
     let draft: SavedPlaceDraft

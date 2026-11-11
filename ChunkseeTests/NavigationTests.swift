@@ -294,12 +294,12 @@ import Testing
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         defer { continuation.finish() }
         var iterator = updates.makeAsyncIterator()
-        let initialDraft = withObservationTracking { session?.annotations.draft } onChange: { continuation.yield(true) }
+        let initialDraft = withObservationTracking { session?.sheet } onChange: { continuation.yield(true) }
         #expect(initialDraft == nil)
         annotations.savePlace(at: CGPoint(x: -8.7, y: 14.2))
         let draftChanged = await iterator.next(isolation: #isolation)
-        #expect(draftChanged == true && annotations.draft?.position == CGPoint(x: -9, y: 14))
-        annotations.draft = nil
+        #expect(draftChanged == true && session?.sheet?.savedPlaceDraft?.position == CGPoint(x: -9, y: 14))
+        session?.sheet = nil
         let initialRuler = withObservationTracking { session.map(MapContent.init(session:))?.ruler } onChange: { continuation.yield(true) }
         #expect(initialRuler?.isEnabled == false)
         annotations.beginMeasurement(at: CGPoint(x: -8.7, y: 14.2), in: "minecraft:overworld")
@@ -308,12 +308,12 @@ import Testing
         session?.close()
         await session?.waitUntilClosed()
         annotations.savePlace(at: .zero)
-        #expect(annotations.draft == nil)
+        #expect(session?.sheet == nil)
         weak let released = session
         session = nil
         #expect(released == nil)
         annotations.savePlace(at: .zero)
-        #expect(annotations.draft == nil && annotations.listedPlaces.isEmpty)
+        #expect(annotations.listedPlaces.isEmpty)
     }
 
     @Test func measurementUsesWholeBlocksAndTheThirdClickStartsAgain() {

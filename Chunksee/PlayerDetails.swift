@@ -71,7 +71,6 @@ struct PlayerDetailView: View {
     private var records: PlayerRecords? {
         session.selection.playerRecords?.uuid == player.uuid ? session.selection.playerRecords?.records : nil
     }
-    @State private var showsAllStatistics = false
 
     var body: some View {
         Form {
@@ -132,12 +131,9 @@ struct PlayerDetailView: View {
             Section("Ender Chest") {
                 SlotGrid(slots: player.inventorySlots(in: .enderChest))
             }
-            PlayerRecordsSections(records: records, showsAllStatistics: $showsAllStatistics)
+            PlayerRecordsSections(records: records) { session.showStatistics(for: player.uuid) }
         }
         .formStyle(.grouped)
-        .sheet(isPresented: $showsAllStatistics) {
-            StatisticsTable(rows: records?.rows ?? [])
-        }
     }
 
     private var gameMode: String { gameNames.gameMode(player.gameMode) }

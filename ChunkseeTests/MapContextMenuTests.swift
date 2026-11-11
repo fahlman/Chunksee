@@ -103,9 +103,9 @@ import Testing
             #expect(pinMenu.items.map(\.title) == sidebarMenu.items.map(\.title))
             #expect(map.viewport == original && session.selection.sidebarSelection == nil)
             try perform("Rename…", in: pinMenu)
-            #expect(session.annotations.draft?.existingID == place.id && session.annotations.draft?.name == place.name)
-            #expect(session.annotations.draft?.position == place.position)
-            session.annotations.draft = nil
+            #expect(session.sheet?.savedPlaceDraft?.existingID == place.id && session.sheet?.savedPlaceDraft?.name == place.name)
+            #expect(session.sheet?.savedPlaceDraft?.position == place.position)
+            session.sheet = nil
 
             for source in [pinMenu, sidebarMenu] {
                 board.setString("previous", forType: .string)
@@ -143,14 +143,14 @@ import Testing
             #expect(board.string(forType: .string) == "-9 63 -9")
             #expect(map.unfinishedCoordinateReads == 0)
             try perform("Save Place…", in: markerMenu)
-            #expect(session.annotations.draft?.position == CGPoint(x: -9, y: -9))
-            session.annotations.draft = nil
+            #expect(session.sheet?.savedPlaceDraft?.position == CGPoint(x: -9, y: -9))
+            session.sheet = nil
             try perform("Measure Distance from Here", in: markerMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -9, y: -9))
             try perform("Plan Portal Here…", in: markerMenu)
-            #expect(session.annotations.portalDraft?.entrance == .init(x: -9, y: 63, z: -9))
+            #expect(session.sheet?.portalDraft?.entrance == .init(x: -9, y: 63, z: -9))
             #expect(map.unfinishedCoordinateReads == 0)
-            session.annotations.portalDraft = nil
+            session.sheet = nil
 
             // The same off-center pointer click while measuring uses the marker, not the block
             // behind its badge. Both entry paths keep whole-block endpoints at negative positions.
@@ -172,14 +172,14 @@ import Testing
             await map.waitForCoordinateReads()
             #expect(board.string(forType: .string) == "-5 2 -9")
             try perform("Save Place…", in: emptyMenu)
-            #expect(session.annotations.draft?.position == CGPoint(x: -5, y: -9))
-            session.annotations.draft = nil
+            #expect(session.sheet?.savedPlaceDraft?.position == CGPoint(x: -5, y: -9))
+            session.sheet = nil
             try perform("Measure Distance from Here", in: emptyMenu)
             #expect(session.annotations.ruler.start?.position == CGPoint(x: -5, y: -9))
             try perform("Plan Portal Here…", in: emptyMenu)
             await map.waitForCoordinateReads()
-            #expect(session.annotations.portalDraft?.entrance == .init(x: -5, y: 2, z: -9))
-            session.annotations.portalDraft = nil
+            #expect(session.sheet?.portalDraft?.entrance == .init(x: -5, y: 2, z: -9))
+            session.sheet = nil
             tappedRuler.clear()
             let emptyLocation = try #require(MapContent(gameNames: .unavailable).location(at: click, viewport: map.viewport, size: size))
             tappedRuler.mark(emptyLocation.position)
@@ -217,9 +217,9 @@ import Testing
                     await map.waitForCoordinateReads()
                     #expect(board.string(forType: .string) == copied)
                     try perform("Save Place…", in: source)
-                    #expect(session.annotations.draft?.position == block)
-                    #expect(session.annotations.draft?.dimension == map.dimension.id)
-                    session.annotations.draft = nil
+                    #expect(session.sheet?.savedPlaceDraft?.position == block)
+                    #expect(session.sheet?.savedPlaceDraft?.dimension == map.dimension.id)
+                    session.sheet = nil
                     session.annotations.ruler.clear()
                     try perform("Measure Distance from Here", in: source)
                     #expect(session.annotations.ruler.start?.position == block)
@@ -270,9 +270,9 @@ import Testing
                 #expect(board.string(forType: .string) == "-9 -2 -9")
                 #expect(map.unfinishedCoordinateReads == 0)
                 try perform("Save Place…", in: saved)
-                #expect(session.annotations.draft?.dimension == dimension)
-                #expect(session.annotations.draft?.position == CGPoint(x: -9, y: -9))
-                session.annotations.draft = nil
+                #expect(session.sheet?.savedPlaceDraft?.dimension == dimension)
+                #expect(session.sheet?.savedPlaceDraft?.position == CGPoint(x: -9, y: -9))
+                session.sheet = nil
                 try perform("Measure Distance from Here", in: saved)
                 #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
 
@@ -315,7 +315,7 @@ import Testing
             try perform("Save Place…", in: saved)
             try perform("Measure Distance from Here", in: saved)
             #expect(board.string(forType: .string) == "after close")
-            #expect(unmapped.annotations.draft == nil && !unmapped.annotations.ruler.isEnabled)
+            #expect(unmapped.sheet == nil && !unmapped.annotations.ruler.isEnabled)
         }
     }
 
@@ -354,7 +354,7 @@ import Testing
                 for item in source.items where !item.isSeparatorItem { #expect(!item.isEnabled) }
             }
             try perform("Plan Portal Here…", in: rowMenu)
-            #expect(session.annotations.portalDraft == nil)
+            #expect(session.sheet?.portalDraft == nil)
             try perform("Remove", in: savedMenu)
             try perform("Rename…", in: savedMenu)
             try perform("Copy Coordinates", in: mapMenu)
@@ -362,7 +362,7 @@ import Testing
             try perform("Copy Coordinates", in: rowMenu)
             try perform("Save Place…", in: rowMenu)
             try perform("Measure Distance from Here", in: rowMenu)
-            #expect(session.savedPlaces.all == [place] && session.annotations.draft == nil)
+            #expect(session.savedPlaces.all == [place] && session.sheet?.savedPlaceDraft == nil)
             #expect(!session.annotations.ruler.isEnabled && session.annotations.ruler.start == nil)
             #expect(board.string(forType: .string) == "unchanged")
             #expect(MapContextMenuContent(at: .zero, session: session, map: map, content: MapContent(gameNames: .unavailable), size: size) == nil)
