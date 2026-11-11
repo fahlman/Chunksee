@@ -11,6 +11,28 @@ import Testing
     @Observable final class Seed {
         var value: Int64? = 42
     }
+    final class SeedReads { var count = 0 }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func closingTheLayerOrWorldStopsReadingSeedChanges(closeWorld: Bool) async throws {
+        let seed = Seed(), reads = SeedReads(), work = BackgroundWork()
+        let region = RegionPosition(x: 0, z: 0)
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: {
+            reads.count += 1
+            return seed.value
+        }, isShown: { true }, regions: [region], work: work)
+        await layer.waitForImages()
+        _ = try #require(layer.visibleImages[region])
+        if closeWorld { work.close() } else { layer.cancel() }
+        await layer.waitForImages()
+        let before = reads.count
+        #expect(before > 0)
+        seed.value = 43
+        seed.value = nil
+        seed.value = 44
+        #expect(reads.count == before)
+        layer.cancel(); work.close(); await work.waitUntilFinished()
+    }
 
     @Test(.timeLimit(.minutes(1))) func changingTheSavedSeedRejectsOldMasksAndRestoresAfterRemoval() async throws {
         let region = RegionPosition(x: 0, z: 0), work = BackgroundWork(), seed = Seed()

@@ -3,6 +3,12 @@ import ChunkseeKit
 import Foundation
 
 extension GameNames {
+    nonisolated func layerGroups<Group: MapLayerGroup>(_ groups: Set<Group>) -> [Group] {
+        groups.map { (group: $0, name: $0.name(in: self)) }
+            .sorted { Self.namePrecedes($0.name, id: $0.group.id, $1.name, id: $1.group.id) }
+            .map(\.group)
+    }
+
     nonisolated func biome(_ id: String) -> String { name(id, in: "biome") }
 
     /// Structures have no game-supplied display names; preserve the saved ID's word order.

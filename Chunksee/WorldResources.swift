@@ -55,7 +55,7 @@ final class WorldResources {
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
     @ObservationIgnored private var gameResourceObservation: ModelObservation?
-    @ObservationIgnored private lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
+    @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
             return try await read(source, previous)

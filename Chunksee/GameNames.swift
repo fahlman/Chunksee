@@ -60,12 +60,53 @@ nonisolated struct GameNames: Sendable {
     }
 
     func translation(_ id: String, in registry: String) -> String? {
+        guard let key = Self.translationKey(id, in: registry) else { return nil }
+        return language?[key]
+    }
+
+    private static func translationKey(_ id: String, in registry: String) -> String? {
         guard let id = Identifier(id) else { return nil }
-        return language?["\(registry).\(id.namespace).\(id.path.replacingOccurrences(of: "/", with: "."))"]
+        return "\(registry).\(id.namespace).\(id.path.replacingOccurrences(of: "/", with: "."))"
+    }
+
+    /// Displayed names follow the Mac's collation; saved identity makes equal names stable.
+    static func namePrecedes(_ lhs: String, id lhsID: String, _ rhs: String, id rhsID: String) -> Bool {
+        let comparison = lhs.localizedStandardCompare(rhs)
+        return comparison == .orderedSame ? lhsID < rhsID : comparison == .orderedAscending
     }
 
     func item(_ id: String) -> String {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
+    }
+
+    func gameRule(_ id: String) -> String {
+        // Older saves keep literal rule names. Modern rules use the same description-key
+        // format as other registries; only the game's metadata can connect the two.
+        var keys: [String] = []
+        if !id.contains(":") { keys.append("gamerule." + id) }
+        if let key = Self.translationKey(id, in: "gamerule") { keys.append(key) }
+        for key in keys {
+            if let name = language?[key] { return name }
+            if let replacement = language?.replacementKey(for: key), let name = language?[replacement] { return name }
+        }
+        return Self.readableRule(id)
+    }
+
+    func gameRules(_ rules: [String: GameRuleValue]) -> [(id: String, name: String, value: GameRuleValue)] {
+        rules.map { (id: $0.key, name: gameRule($0.key), value: $0.value) }
+            .sorted { Self.namePrecedes($0.name, id: $0.id, $1.name, id: $1.id) }
+    }
+
+    /// Preserve the saved words when no language key is known, including older camel-case IDs.
+    private static func readableRule(_ id: String) -> String {
+        let base = ReadableName.identifierPath(id)
+        if base.contains("_") { return ReadableName.from(base) }
+        var words: [String] = []
+        for character in base {
+            if character.isUppercase || words.isEmpty { words.append(String(character)) }
+            else { words[words.count - 1].append(character) }
+        }
+        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
     func equipmentSlot(_ slot: String, locale: Locale = .current) -> String {
@@ -190,7 +231,7 @@ nonisolated struct GameNames: Sendable {
     func mobKinds(in catalog: MobTypes, locale: Locale = .current) -> [MobKind] {
         let named = catalog.kinds.map { MobKind(kind: $0, name: entity($0.id)) }
         let counts = Dictionary(grouping: named, by: \.name).mapValues(\.count)
-        return named.sorted { ($0.name, $0.id) < ($1.name, $1.id) }.map { row in
+        return named.sorted { Self.namePrecedes($0.name, id: $0.id, $1.name, id: $1.id) }.map { row in
             let name = mobName(row.name, id: row.id, isAmbiguous: counts[row.name] != 1, locale: locale)
             return MobKind(kind: row.kind, name: name)
         }
@@ -313,7 +354,7 @@ nonisolated struct GameNames: Sendable {
 
     /// Only facts used by an item label. Search summaries do not retain nested inventories,
     /// book pages or equipment components merely to display a matching stack's name.
-    nonisolated struct ItemName: Equatable, Sendable {
+    nonisolated struct ItemName: Hashable, Sendable {
         let id: String
         let customName: String?
         let bookTitle: String?
@@ -325,6 +366,30 @@ nonisolated struct GameNames: Sendable {
             let book = item.customName == nil ? item.book : nil
             bookTitle = book?.title
             bookAuthor = book?.author
+        }
+    }
+
+    /// One search reuses labels across repeated stacks. Keeping the cache local to that search
+    /// bounds its lifetime and prevents reuse with another language or naming snapshot.
+    nonisolated struct ItemLabels: Sendable {
+        private let names: GameNames
+        private let locale: Locale
+        private var labels: [ItemName: String] = [:]
+
+        init(_ names: GameNames, locale: Locale = .current) {
+            self.names = names
+            self.locale = locale
+        }
+
+        mutating func label(of item: ItemStack) -> String {
+            label(ItemName(item))
+        }
+
+        mutating func label(_ item: ItemName) -> String {
+            if let existing = labels[item] { return existing }
+            let label = names.itemLabel(item, locale: locale)
+            labels[item] = label
+            return label
         }
     }
 
@@ -400,7 +465,7 @@ nonisolated struct GameNames: Sendable {
         totals.map {
             StoredItem(id: $0.id, name: itemLabel(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
         }
-        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
+        .sorted { $0.count != $1.count ? $0.count > $1.count : Self.namePrecedes($0.name, id: $0.id, $1.name, id: $1.id) }
     }
 }
 
