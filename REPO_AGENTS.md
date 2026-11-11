@@ -1562,7 +1562,9 @@ MapLegend owns the shared material container and keys for the visible map and Ma
 MapView lays that trailing key above its live status bar in one bottom stack, so wrapped
 coordinates and lighting details cannot overlap it. An absent status bar reserves no space.
 MapLegendOverlay places the key at the bottom trailing corner of exported images, which have
-no live status bar. MapContent supplies the active map style and height scale, shown Time Spent scale,
+no live status bar. If the complete key cannot fit at its natural size, the image omits it rather
+than clipping or shrinking its text; the requested image dimensions and terrain remain intact.
+MapContent supplies the active map style and height scale, shown Time Spent scale,
 Slime Chunks key and World Border key;
 no separate legend visibility is stored. SlimeChunks.pixel supplies the mask and legend color,
 and WorldBorderStyle supplies the edge and key's line treatment. HeatMapLegend keeps its scale

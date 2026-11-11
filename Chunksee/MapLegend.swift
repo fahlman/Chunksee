@@ -6,7 +6,11 @@ struct MapLegendOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottomTrailing) {
-            MapLegend(layers: layers)
+            ViewThatFits {
+                MapLegend(layers: layers).fixedSize()
+                // A tiny image keeps its terrain instead of a clipped or unreadably scaled key.
+                Color.clear.frame(width: 0, height: 0)
+            }
         }
     }
 }
