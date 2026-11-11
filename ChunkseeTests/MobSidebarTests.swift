@@ -158,7 +158,8 @@ import Testing
                 let priorViewport = session.map?.viewport, priorVisibility = session.visibility
                 var ancestors = SidebarDisclosure()
                 ancestors.collapsedSections = [.creatures, .mobs]
-                #expect(ancestors.selectOnMap(hit.target, y: hit.y, in: session))
+                let selectedOnMap = ancestors.selectOnMap(hit.target, y: hit.y, in: session)
+                #expect(selectedOnMap)
                 #expect(session.selection.sidebarSelection == route.row && session.map?.viewport == priorViewport && session.visibility == priorVisibility)
                 #expect(ancestors.creatures == (inMobs ? [] : [.named]))
                 #expect(ancestors.mobTypes == (inMobs ? [kind.id] : []))
