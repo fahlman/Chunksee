@@ -171,8 +171,10 @@ import Testing
             #expect(readout.id == (id == "minecraft:barrier" ? "test:ground" : id))
             if id == "minecraft:chest" || id == "test:ground" { #expect(readout.y == 15) }
             let fallback = RegionTileRenderer(dimension: dimension)
-            #expect(try await fallback.topBlocks(in: file, localX: 0, localZ: 0)
-                == RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+            let fallbackBlocks = try #require(try await fallback.topBlocks(in: file, localX: 0, localZ: 0))
+            let expected = RegionTileRenderer.TopBlock(id: id == "minecraft:barrier" ? "test:ground" : id,
+                                                       y: id == "minecraft:barrier" ? 12 : 15, waterDepth: 0)
+            #expect(fallbackBlocks == [RegionTileRenderer.TopBlock?](repeating: expected, count: 256))
             let fallbackTile = try #require(try await fallback.tile(for: .init(x: 0, z: 0)))
             #expect(fallbackTile.detail == nil)
         }

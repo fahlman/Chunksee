@@ -29,7 +29,7 @@ import Testing
     }
 
     @Test(arguments: ["minecraft:", "", ":"])
-    func renderedWaterAndHoverUseTheSamePaletteMeaning(prefix: String) throws {
+    func renderedWaterAndHoverUseTheSamePaletteMeaning(prefix: String) async throws {
         let spec = TestWorld.chunk(x: 0, z: 0, palette: [prefix + "air", prefix + "stone", prefix + "water"]) { _, y, _ in
             y == 0 ? 1 : y <= 3 ? 2 : 0
         }
@@ -37,7 +37,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let file = try RegionFile(contentsOf: dimension.regionURL(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0))
         #expect(blocks.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })
         #expect(columns.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })

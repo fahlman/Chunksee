@@ -42,9 +42,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     var gameSource: GameResourceSource { GameResourceSource(data: materials.data, artwork: materials.artwork) }
 
     private var currentBiomeColors: MapBiomeColors? {
-        guard style.inputs.materialColors, let biomeColors, biomeColors.source.data == gameSource.data,
-              biomeColors.source.artwork == .unavailable || biomeColors.source.artwork == gameSource.artwork else { return nil }
-        return biomeColors
+        style.inputs.materialColors ? biomeColors?.available(for: gameSource) : nil
     }
     enum ColorSource: Hashable, Sendable, Encodable {
         case game(String)
@@ -758,11 +756,6 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// The block the map shows in each of a chunk's 256 columns (index `z * 16 + x`), for the hover
     /// readout: the same scan the map is drawn with, naming what it found.
-    static func topBlocks(in file: RegionFile, localX: Int, localZ: Int, context: MapSurfaceContext = .unknown, cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(), darkSpots: DarkSpots? = nil) -> [TopBlock?]? {
-        guard let (sections, columns) = scan(file, localX: localX, localZ: localZ, context: context, cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots) else { return nil }
-        return topBlocks(sections: sections, columns: columns)
-    }
-
     @concurrent
     func topBlocks(in file: RegionFile, localX: Int, localZ: Int) async throws -> [TopBlock?]? {
         let coverage = try await materials.artwork?.mapCoverageReader()

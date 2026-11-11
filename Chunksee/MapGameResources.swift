@@ -9,10 +9,10 @@ nonisolated struct MapGameResources: Sendable {
     init(data: GameDataLibrary?, artwork: GameArtworkLibrary?, biomeColors: MapBiomeColors?) {
         self.data = data
         self.artwork = artwork
-        // Independent publications can change in either order. Colors are usable only with
-        // the game source that produced them; game data need not wait for a color read.
+        // Independent publications can change in either order. The color value owns whether
+        // it remains useful with the current data and artwork capabilities.
         let source = GameResourceSource(data: data, artwork: artwork)
-        self.biomeColors = biomeColors.flatMap { $0.source == source ? $0 : nil }
+        self.biomeColors = biomeColors?.available(for: source)
     }
 
     static let unavailable = Self(data: nil, artwork: nil, biomeColors: nil)

@@ -573,11 +573,12 @@ import Testing
         return try TestWorld.make(chunks: [chunk])
     }
 
-    @Test func theReadoutNamesTheBlockTheMapDrew() throws {
+    @Test func theReadoutNamesTheBlockTheMapDrew() async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
-        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0))
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         let columns = try #require(RegionTileRenderer.columns(in: file, localX: 0, localZ: 0))
         #expect(blocks[0] == .init(id: "minecraft:sand", y: 1, waterDepth: 0))
         #expect(blocks[1] == .init(id: "minecraft:water", y: 3, waterDepth: 3))   // the water's surface, as drawn
@@ -591,7 +592,7 @@ import Testing
         #expect(!MapView.namesBlocks(at: 0.5) && MapView.namesBlocks(at: 1))
     }
 
-    @Test func waterDeeperThanTheCountingLimitIsNotGivenAnExactDepth() throws {
+    @Test func waterDeeperThanTheCountingLimitIsNotGivenAnExactDepth() async throws {
         // Stone at Y 0 and water up to Y 63: three more sections of water above the test chunk's one.
         var spec = TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone", "minecraft:water"]) { _, y, _ in y == 0 ? 0 : 1 }
         guard case .compound(var root) = spec.nbt, case .list(let type, var sections)? = root["sections"] else {
@@ -604,8 +605,9 @@ import Testing
         spec.nbt = .compound(root)
         let url = try TestWorld.make(chunks: [spec])
         defer { try? FileManager.default.removeItem(at: url) }
-        let file = try RegionFile(contentsOf: url.appendingPathComponent("dimensions/minecraft/overworld/region/r.0.0.mca"))
-        let block = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0])
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let block = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0)?[0])
         #expect(block.id == "minecraft:water" && block.y == 63 && block.waterDepth == RegionTileRenderer.maximumWaterDepth)
         #expect(GameNames.unavailable.blockDescription(block) == "Water, at least 32 deep")   // 63 deep, counted to the limit
     }

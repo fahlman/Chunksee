@@ -72,6 +72,14 @@ nonisolated struct MapBiomeColors: Sendable {
              enabledPacks: enabledPacks, definitions: definitions, colorMaps: [:], waterBiomes: waterBiomes)
     }
 
+    /// Numeric definitions remain useful while artwork colors load. Available artwork colors
+    /// belong only to their matching source; neither form may cross a game-data replacement.
+    func available(for source: GameResourceSource) -> Self? {
+        guard self.source.data == source.data,
+              self.source.artwork == .unavailable || self.source.artwork == source.artwork else { return nil }
+        return self
+    }
+
     /// A map area uses one representative color, sampled at its saved representative point.
     /// Water tags affect the live outline only, never the cached terrain color source key.
     func outlineColor(for name: String, at position: CGPoint) -> MapColor? {

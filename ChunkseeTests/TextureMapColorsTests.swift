@@ -117,7 +117,7 @@ import Testing
         #expect(try await baseline.detail(for: position) == nil)
         #expect(try ItemPictureFixture.pixels(original.full.image).bytes != pixels.bytes)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
+        #expect(try await colored.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
         let fallback = try #require(baseline.cacheKey(for: position))
         let source = try #require(colored.cacheKey(for: position))
         #expect(fallback.fileName != source.fileName && cache.load(source) != nil)
@@ -130,6 +130,7 @@ import Testing
         }
         await library.close()
         await #expect(throws: CancellationError.self) { try await colored.tile(for: position) }
+        await #expect(throws: CancellationError.self) { try await colored.topBlocks(in: file, localX: 0, localZ: 0) }
     }
 
     @Test func replacingTheLibraryCancelsOldMapResultsAndKeepsTheViewport() async throws {

@@ -200,7 +200,7 @@ final class WorldResources {
     }
     var biomeColors: MapBiomeColors? {
         guard !isClosed, biomeLoader.source == biomeSource else { return nil }
-        return biomeLoader.value
+        return biomeLoader.value?.available(for: GameResourceSource(data: gameData, artwork: gameArtwork))
     }
     @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
         work: backgroundWork, priority: nil, whenInactive: .finish, source: biomeSource,

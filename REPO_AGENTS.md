@@ -464,7 +464,10 @@ the app resolves each reached palette entry once for color and accumulates conti
 depth during that same walk. Uniform sections arrive as spans, and columns stop independently.
 Empty or unreadable surface columns remain unavailable; MOTION_BLOCKING no longer hides plants
 above solid ground. Transparent display blocks, water shading and roof-view policy remain in the
-app; map pixels and hover names use the same scan.
+app; map pixels and hover names use the same scan. Readout tests call the same asynchronous
+RegionTileRenderer instance method as MapModel, including its game-artwork coverage and source
+availability checks. The unused static file-readout entry point was removed in #498; the private
+formatting helper and shared column scan remain.
 Normal-view shallow water blends the immediately underlying visible block's colour into the
 existing water shade, fading the floor out by sixteen blocks. With available game artwork,
 GameArtworkLibrary reads the first water-texture frame's average opacity once per library. That
@@ -824,9 +827,10 @@ them. This also works for hidden and newly attached dimensions. Render jobs keep
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
-replacement clears old values before publishing the new token. MapGameResources admits colors
-only from the matching game source. Game data remains available while colors load. Maps keep no
-separately editable resource triple, and WorldResources sends no manual resource updates. Map
+replacement clears old values before publishing the new token. MapBiomeColors owns compatibility:
+numeric colors from the same data source remain usable while artwork colors load, and available
+artwork colors require their matching artwork source. Game data remains available while colors load.
+Maps keep no separately editable resource triple, and WorldResources sends no manual resource updates. Map
 observation retains only live identities, not retired libraries; persistent cache keys still use
 the complete stable inputs. Artwork changes preserve data and synchronously retire affected
 readouts, details and tiles through the existing invalidation path.
@@ -2122,7 +2126,10 @@ colors and preserves forced-read demand for the next request without a retry loo
 empty definitions clear removed colors. Artwork replacement under the same data/generation
 synchronously projects the publication to numeric colors without reading images. Any other
 source replacement clears it and rejects retired work. The computed accessor guards the live
-source, and MapGameResources independently admits only matching drawing colors. There is no
+world/loader source; it, MapGameResources and direct renderer callers all use MapBiomeColors'
+compatibility result. Metadata reuse still requires exact artwork equality so retained numeric
+colors cannot suppress the new artwork read. Terrain keys include the accepted color snapshot,
+so the numeric interim and completed artwork values keep distinct cache identities. There is no
 separate biome task, generation counter, reload flag or mutable publication in WorldResources.
 Live and exported maps share MapScene's outline drawing. These overlays
 never enter terrain tiles, so outline tags do not change the terrain source key or cache version.
