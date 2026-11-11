@@ -219,7 +219,7 @@ nonisolated struct GameNames: Sendable {
     func statistic(_ row: StatisticRow) -> String {
         switch row.categoryID {
         case "minecraft:custom": name(row.statisticID, in: "stat")
-        case "minecraft:mined": name(row.statisticID, in: "block")
+        case "minecraft:mined": block(row.statisticID)
         case "minecraft:killed", "minecraft:killed_by": name(row.statisticID, in: "entity")
         case "minecraft:used", "minecraft:broken", "minecraft:crafted", "minecraft:picked_up", "minecraft:dropped":
             item(row.statisticID)

@@ -42,7 +42,7 @@ import Testing
         #expect(blocks.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })
         #expect(columns.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })
         let first = try #require(blocks.first.flatMap { $0 })
-        #expect(MapView.describe(first) == "Water, 3 deep")
+        #expect(GameNames.unavailable.blockDescription(first) == "Water, 3 deep")
         #expect(BlockColors.isWater(prefix + "bubble_column"))
     }
 

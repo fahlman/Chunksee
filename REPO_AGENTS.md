@@ -589,6 +589,7 @@ older scan envelopes.
 | `HelpView.swift` | On-demand native Help window with opening/navigation instructions and the User Guide link |
 | `PlayerMarkers.swift` | Saved player locations, coordinate validation, outdated state and which markers each dimension shows (data from ChunkseeKit's `PlayerInfo`); retained names are typed GameNames inputs |
 | `GamePlayerNames.swift` | Shared player name, UUID fallback, personal/named marker and inventory phrases, location headings and absent-owner labels; literal account names remain distinct from the personal pronoun |
+| `GameBlockNames.swift` | Block names, translated filter matching/order and bounded water-depth descriptions, using the current GameNames snapshot; saved palette IDs and choices remain the input |
 | `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
@@ -2288,9 +2289,15 @@ of keeping a formatted fallback. Player markers and search results retain those 
 and accessibility resolve them through the current naming snapshot. DimensionPresentation supplies
 the live singleplayer identity and known name without formatting it. PlayerPresentation retains
 location validation, ordering, outdated state and dimension membership. Player lookup consent,
-query publication, saved counts, coordinates and picking remain unchanged. Block readout/filter,
-equipment-slot and game-rule consumers still need audit before foundation step 5e and #438 are
-complete. These source changes retain the map-caption timing requirement.
+query publication, saved counts, coordinates and picking remain unchanged.
+Block filter rows, accessibility labels, matching/order and the map's block/water-depth readout
+use GameNames too. Block keys retain the service's per-key English and readable-ID fallbacks;
+an item-only key does not name a block. Filter queries accept current labels and raw saved IDs,
+with ID tie-breaking for equal names. The catalog still comes from saved palettes plus retained
+choices; language changes do not change membership, choices, coordinates or terrain reads.
+MapView.readout requires an explicit naming snapshot, and its former describe policy is removed.
+Equipment-slot and game-rule consumers still need audit before foundation step 5e and #438 are
+complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

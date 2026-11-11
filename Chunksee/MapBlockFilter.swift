@@ -1,7 +1,7 @@
 import ChunkseeKit
 import Foundation
 
-/// One dimension's presentation choices. Names come from saved palettes; this does not infer
+/// One dimension's presentation choices. IDs come from saved palettes; this does not infer
 /// block occupancy or change the world's data. Rendering, hover and export share this value.
 nonisolated struct MapBlockFilter: Equatable, Sendable {
     enum Choice: CaseIterable { case show, hide, highlight }
