@@ -390,7 +390,7 @@ ItemAppearance uses one filled tree for plant items across every item surface; B
 its leaf, following Ryan’s 2026-10-20 choice to distinguish those concepts. Shared symbols do not
 need globally unique strings when their meaning is clear in context.
 
-TradeText owns each complete villager offer for both the inspector and search results, including
+GameNames.tradeOffer owns each complete villager offer for both the inspector and search results, including
 the received item, both possible costs, enchantments and the saved sold-out status. Matching still
 uses the separate searchable item names and identifiers, without presentation wording.
 StructureGroup and PlaceGroup own the symbols shared by their sidebar rows and map markers.
@@ -414,8 +414,9 @@ to distinguish those categories. Time Spent uses a clock rather than the item fl
 and the World rows use filled variants; native shapes without one keep their own symbol.
 Ryan's requested Zoom magnifier remains.
 ChunkseeIndex.StoredItemTotal owns storage quantities and outer-container counts, including nested
-items. StoredItem projects its results into app display names and count/name order; it does not
-repeat the aggregation. The app and isolated test host link both published products.
+items. DimensionContent keeps those raw totals; GameNames.storedItems projects them into current
+display names and count/name order without repeating aggregation. A language change needs no index
+reread merely to rename Storage rows. The app and isolated test host link both published products.
 
 WorldDetails keeps game rules by saved ID and derives sorted display rows. Wandering-trader
 status uses Kit’s GameRule lookup; readable or translated labels never decide whether a rule
@@ -1175,9 +1176,10 @@ empty stacks are omitted, and material tint applies to symbols while text uses s
 CountedText is the shared Foundation FormatStyle for fractional heart/block units, used directly by
 SwiftUI Text and by string consumers. Its locale modifier follows the native formatting contract;
 rounding and grammatical agreement remain owned by that one style.
-ItemAppearance.LabelStyle supplies native equipment Text and the name adapter used by trades and
-tooltips. Its existing item/count helpers own kind, custom name, book title/author and optional one;
-the style passes its locale through those helpers. Durability wording is shared too.
+GameNames supplies item labels for equipment, trades, tooltips, inventory accessibility and search.
+It keeps kind, literal custom name, book title/author and optional one; native views pass their
+environment locale for count and phrase formatting. ItemAppearance retains shared count and
+durability formatting, symbols, colors and enchantment styling.
 Format parsing and applicability stay in Kit.
 The RegionFacts cache rereads earlier entries with Kit 0.29's versioned pet health, equipped modifiers,
 shared UUID interpretation and cleaned display text. Earlier corrections remain: stable creature UUIDs,
@@ -1190,7 +1192,12 @@ Each activation requests SwiftUI ancestor expansion and scrolling, including a r
 or a jump received before the destination view appears; disclosure stays owned by that view.
 Player health shows the actual saved maximum when available; active effects show saved duration,
 not a live countdown. Effect views get their names from the world’s GameNames snapshot;
-there is no effect-name exception list. Effects and enchantments share level numeral presentation.
+there is no effect-name exception list. GameNames gives effects and enchantments one level-text
+owner using the game's `enchantment.level.N` keys, with LevelText only for an unavailable key.
+Effect names follow EffectsInInventory.getEffectName's suffix range: amplifiers one through nine
+(levels two through ten). Higher saved amplifiers remain in Kit's facts; their names omit the suffix
+as Minecraft does. The inspected method is retained in
+Chunksee-runs/item-name-owner-evidence/effect-level-source-1/EffectsInInventory.javap.
 Visible effect rows and their accessibility representation use the same resolved name.
 Saved effect durations use native localized clocks
 and explicit localized units for accessibility, rounding partial seconds up in both readouts.
@@ -1202,9 +1209,11 @@ keep rounding partial seconds up. Time Spent legend labels use those same native
 trader estimate keeps its within-a-minute threshold and completed-minute approximation, using
 the same formatter restricted to minutes. The world's day-cycle clock remains a separate concept.
 Equipment includes the selected main hand, durability and named enchantments.
-TradeText.EnchantmentStyle owns the enchantment name/level phrase for native Text and the string
-adapter used by trades and tooltips. Its verified single-level exceptions remain distinct from
-effect rules; both use the same LevelText numerals.
+GameNames.enchantmentName owns the enchantment name/level phrase for equipment, trades and tooltips.
+It renders the actual definition's description through GameText and hides the level only when both
+the saved level and the definition's maximum are one. Missing definitions cannot establish that
+condition. The game's level key supplies the numeral, with LevelText as the unavailable-key fallback.
+No enchantment-ID exception list or guessed description key remains.
 Empty or unavailable optional sections/values stay absent.
 
 An unnamed account uses PlayerPresentation's shared Player/short-ID label; an unknown pet owner
@@ -1915,11 +1924,12 @@ light validity and dimension spawn-light limits; #86's app overlay is still sepa
 ItemIcon and ItemLabel share item pictures, fallback symbol/material color and known-enchantment
 styling across equipment, trades, inventory slots, Storage and matching search-item details.
 Real stacks supply saved tints; aggregates use their kind's default picture, without inventing one
-stack's color. ItemAppearance remains the owner of names, symbols, colors and detail text.
+stack's color. GameNames owns names and detail text; ItemAppearance owns symbols, colors and
+shared count/durability formatting.
 WorldSearch retains typed aggregate items alongside its existing summary, so search details never
 parse display text to recover an identifier. Inventory keeps its slot grid/count badges and Storage its
 sortable table (Ryan, 2026-10-20, #298). A trade's icon represents the received item; its complete
-wording still comes from TradeText.offer. Storage aggregates by kind, so it does not invent a
+wording comes from GameNames.tradeOffer. Storage aggregates by kind, so it does not invent a
 stack's custom name or enchantment. Native labels and slot accessibility retain the item details.
 EquipmentSection omits empty equipment for both players and pets, matching the other optional
 inspector sections. The pet-only “Equipment: None” row is removed; Kit's equipment applicability
@@ -2213,7 +2223,21 @@ Advancement consumers call `GameNames.advancement` directly; the old PlayerRecor
 forwarders are removed. These APIs preserve the existing text, source identity and read policy.
 Dimension labels, collision suffixes and map titles come from GameNames.dimensionStyle(for:).
 DimensionPresentation supplies live context and holds no naming policy or separate catalog.
-The remaining item, enchantment, creature/profession, biome, structure and marker/search
+Item labels, literal custom/book names, enchantment descriptions and trade offers now share
+GameNames too. Kit 0.81.0 supplies interpreted enchantment description components alongside maximum
+levels. WorldDefinitionLoader publishes an immutable naming context with its completed definitions;
+equal contents reuse its identity. WorldResources combines that context with the current language
+only when it belongs to the selected game source. Same-source refreshes retain coherent names,
+while replacement and close discard incompatible contexts. The shared query key holds compact
+language and enchantment identities, rejecting results made with retired names. It does not carry
+or compare a definition dictionary on every query. No extra resource reader or mutable name catalog
+is added. Trade and item searches match translated labels and saved identifiers, preserving counts
+and identities across naming updates.
+Minecraft's Enchantment.getFullname is the source for description and suffix behavior; the verified
+disassembly is retained in ChunkseeKit-runs/enchantment-descriptions-evidence/codec-source-1/Enchantment.javap.
+Kit's complete scan-option identity includes the description, so changing it can invalidate a
+parameterized scan cache; this adoption does not change region/chunk traversal or renderer code.
+The remaining creature/profession, biome, structure and marker/search
 naming consumers remain part of foundation step 5e and #438.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use

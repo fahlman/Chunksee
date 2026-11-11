@@ -6,7 +6,7 @@ import Testing
 @Suite(.isolatedStores) struct PlayerEffectPresentationTests {
     private let english = Locale(identifier: "en_US")
 
-    @Test func decodedEffectsUseTheirOwnNamesAndPreserveCommandLevels() async throws {
+    @Test func decodedEffectsUseTheirOwnNamesAndTheGamesSuffixRange() async throws {
         let names = try await GameNameFixture.names()
         let entries: [(String, String)] = [
             ("minecraft:unluck", "Bad Luck"), ("minecraft:dolphins_grace", "Dolphin’s Grace"),
@@ -20,16 +20,29 @@ import Testing
             } + [.compound(["id": .string("minecraft:resistance"), "amplifier": .byte(-1), "duration": .int(-1)])]),
         ]))
         #expect(player.activeEffects.map { names.effect($0, locale: english) }
-                == entries.map(\.1) + ["Resistance 256"])
+                == entries.map(\.1) + ["Resistance"])
         for locale in ["en_US", "fr_FR", "ar_EG"].map(Locale.init(identifier:)) {
-            #expect(player.activeEffects.map { names.effect($0, locale: locale) } == entries.map(\.1) + ["Resistance 256"])
+            #expect(player.activeEffects.map { names.effect($0, locale: locale) } == entries.map(\.1) + ["Resistance"])
         }
+        #expect(player.activeEffects.last?.amplifier == 255 && player.activeEffects.last?.level == 256)
         let legacy = PlayerInfo(uuid: UUID(), nbt: .compound([
             "ActiveEffects": .list([.compound(["Id": .byte(27), "Amplifier": .byte(1), "Duration": .int(1680)])]),
         ]))
         #expect(names.effect(try #require(legacy.activeEffects.first), locale: english) == "Bad Luck II")
-        #expect(TradeText.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
-        #expect(TradeText.enchantmentName("minecraft:mending", level: 1) == "Mending")
+        #expect(GameNames.unavailable.enchantmentName("minecraft:sharpness", level: 5) == "Sharpness V")
+        #expect(GameNames.unavailable.enchantmentName("minecraft:mending", level: 1) == "Mending I")
+    }
+
+    @Test func savedAmplifiersUseTheGamesSuffixBoundsWithoutChangingTheirValues() {
+        let amplifiers = [0, 1, 9, 10, 255]
+        let player = PlayerInfo(uuid: UUID(), nbt: .compound([
+            "active_effects": .list(amplifiers.map { amplifier in
+                .compound(["id": .string("minecraft:strength"), "amplifier": .int(Int32(amplifier)), "duration": .int(20)])
+            }),
+        ]))
+        #expect(player.activeEffects.map(\.amplifier) == amplifiers)
+        #expect(player.activeEffects.map { GameNames.unavailable.effect($0, locale: english) }
+                == ["Strength", "Strength II", "Strength X", "Strength", "Strength"])
     }
 
     @Test func savedClocksRoundAcrossSecondMinuteAndHourBoundaries() throws {

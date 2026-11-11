@@ -7,7 +7,7 @@ nonisolated struct SearchSources: Equatable, Sendable {
     let names: [UUID: PlayerPresentation.Name]
     let playerSnapshot: PlayerSnapshot
     let indexRevision: Int
-    let gameNamesID: UUID?
+    let gameNamesID: GameNames.Identity?
     let singleplayerUUID: UUID?
 
     static func == (lhs: Self, rhs: Self) -> Bool {

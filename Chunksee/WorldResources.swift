@@ -461,9 +461,18 @@ final class WorldResources {
     }
 
     var gameNames: GameNames {
-        guard !isClosed, assetLoader.source.generation == names.minecraft.generation,
-              languageLoader.source == languageSource else { return .unavailable }
-        return languageLoader.value ?? .unavailable
+        guard !isClosed else { return .unavailable }
+        let names: GameNames
+        if assetLoader.source.generation == self.names.minecraft.generation,
+           languageLoader.source == languageSource {
+            names = languageLoader.value ?? .unavailable
+        } else {
+            names = .unavailable
+        }
+        let source = gameSource
+        guard source.selection.isLoaded, let facts = definitionLoader.value,
+              facts.source == source.identity else { return names }
+        return names.withEnchantments(facts.enchantmentNames)
     }
 
     func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {

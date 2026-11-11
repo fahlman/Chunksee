@@ -45,58 +45,9 @@ nonisolated enum ItemAppearance {
         return materials.first { name.contains($0.0) }?.1 ?? .secondary
     }
 
-    /// "64 Diamond", "Diamond Sword “Excalibur”, enchanted".
-    static func description(of item: ItemStack) -> String {
-        var text = name(of: item)
-        if isEnchanted(item) { text = String(localized: "\(text), enchanted") }
-        return text
-    }
-
-    /// The kind is always retained, even when an item or container has a custom name.
-    static func label(kind: String, customName: String?, locale: Locale = .current) -> String {
-        let kind = ReadableName.from(kind)
-        return customName.map { String(localized: "\(kind) “\($0)”", locale: locale) } ?? kind
-    }
-
-    static func label(of item: ItemStack, locale: Locale = .current) -> String {
-        let base = label(kind: item.id, customName: item.customName, locale: locale)
-        guard item.customName == nil, let book = item.book, let title = book.title else { return base }
-        let titled = label(kind: item.id, customName: title, locale: locale)
-        return book.author.map { String(localized: "\(titled) by \($0)", locale: locale) } ?? titled
-    }
-
-    static func name(of item: ItemStack, includingOne: Bool = false, locale: Locale = .current) -> String {
-        LabelStyle(includingOne: includingOne).locale(locale).format(item)
-    }
-
-    nonisolated struct LabelStyle: FormatStyle, Sendable {
-        private var includingOne: Bool
-        private var locale = Locale.autoupdatingCurrent
-
-        init(includingOne: Bool = false) { self.includingOne = includingOne }
-
-        func locale(_ locale: Locale) -> Self {
-            var copy = self
-            copy.locale = locale
-            return copy
-        }
-
-        func format(_ item: ItemStack) -> String {
-            ItemAppearance.counted(ItemAppearance.label(of: item, locale: locale), count: item.count,
-                                   includingOne: includingOne, locale: locale)
-        }
-    }
-
     static func counted(_ label: String, count: Int, includingOne: Bool = false, locale: Locale = .current) -> String {
         guard includingOne || count != 1 else { return label }
         return String(localized: "\(count, format: .number.locale(locale)) \(label)", locale: locale)
-    }
-
-    static func details(of item: ItemStack) -> String {
-        var lines = [description(of: item)]
-        lines += item.enchantments.sorted { $0.key < $1.key }.map { TradeText.enchantmentName($0.key, level: $0.value) }
-        if let wear = item.durability { lines.append(durability(wear)) }
-        return lines.joined(separator: "\n")
     }
 
     static func durability(_ wear: ItemDurability, includingLabel: Bool = true, locale: Locale = .current) -> String {
@@ -223,6 +174,8 @@ private struct SlotGrid: View {
 private struct SlotView: View {
     let item: ItemStack?
     let isSelected: Bool
+    @Environment(\.gameNames) private var gameNames
+    @Environment(\.locale) private var locale
 
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
@@ -248,8 +201,8 @@ private struct SlotView: View {
                         .padding(.trailing, 2)
                 }
             }
-            .help(item.map(ItemAppearance.details(of:)) ?? "")
+            .help(item.map { gameNames.itemDetails(of: $0, locale: locale) } ?? "")
             .accessibilityElement()
-            .accessibilityLabel(item.map(ItemAppearance.details(of:)) ?? String(localized: "Empty"))
+            .accessibilityLabel(item.map { gameNames.itemDetails(of: $0, locale: locale) } ?? String(localized: "Empty"))
     }
 }

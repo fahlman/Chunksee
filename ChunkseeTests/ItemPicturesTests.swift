@@ -304,7 +304,7 @@ import UniformTypeIdentifiers
             #expect(try await library.picture(for: stacks[index]) === images[index])
         }
         #expect(red.id == ordinary.id && red.count == 12 && red.customName == "Keeps its name")
-        #expect(ItemAppearance.name(of: red, locale: Locale(identifier: "en_US")) == "12 Flat “Keeps its name”")
+        #expect(GameNames.unavailable.itemName(of: red, locale: Locale(identifier: "en_US")) == "12 Flat “Keeps its name”")
     }
 
     @Test func picturesKeepSavedComponentSelectionsAndOriginalTintsSeparate() async throws {
@@ -579,7 +579,7 @@ import UniformTypeIdentifiers
     @Test func searchSummariesKeepTypedItemsWithTheSameCountsAndNames() throws {
         let found = try #require(WorldSearch.summary(of: [ItemStack(id: "minecraft:stone", count: 2),
                                                           ItemStack(id: "minecraft:stone", count: 3),
-                                                          ItemStack(id: "minecraft:redstone", count: 1)], query: SearchQuery("stone")))
+                                                          ItemStack(id: "minecraft:redstone", count: 1)], query: SearchQuery("stone"), gameNames: .unavailable))
         #expect(found.count == 6)
         #expect(found.items.map(\.id) == ["minecraft:stone", "minecraft:redstone"])
         #expect(found.items.map(\.count) == [5, 1])

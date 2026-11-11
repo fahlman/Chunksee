@@ -4,6 +4,8 @@ import SwiftUI
 /// Native equipment rows shared by player and creature inspectors.
 struct EquipmentSection: View {
     let items: [String: ItemStack]
+    @Environment(\.gameNames) private var gameNames
+    @Environment(\.locale) private var locale
 
     var body: some View {
         let rows = EquipmentPresentation.rows(items)
@@ -13,11 +15,11 @@ struct EquipmentSection: View {
                     VStack(alignment: .leading) {
                         LabeledContent(EquipmentPresentation.slot(row.slot)) {
                             VStack(alignment: .trailing) {
-                                ItemLabel(item: row.item, title: Text(row.item, format: ItemAppearance.LabelStyle()))
+                                ItemLabel(item: row.item, title: Text(gameNames.itemName(of: row.item, locale: locale)))
                                 .foregroundStyle(.primary)
-                                .help(ItemAppearance.details(of: row.item))
+                                .help(gameNames.itemDetails(of: row.item, locale: locale))
                                 ForEach(row.item.enchantments.keys.sorted(), id: \.self) { id in
-                                    Text(id, format: TradeText.EnchantmentStyle(level: row.item.enchantments[id] ?? 1))
+                                    Text(gameNames.enchantmentName(id, level: row.item.enchantments[id] ?? 1, locale: locale))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
