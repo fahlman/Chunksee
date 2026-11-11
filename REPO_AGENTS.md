@@ -98,11 +98,24 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.86.0`, resolved to `0.86.0` (`a286b4f123196cf1da2b9c7470785031d5734ab5`).
+  minor" from `0.88.0`, resolved to `0.88.0` (`4b8e4b9795e0e71a785a4f25b58786af23d0b2fc`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.88.0 supplies Minecraft-derived villager defaults and retains the original
+    VillagerData through `Villager.savedData`. Names, search and map labels consume that
+    interpretation directly; the app adds no fallback parsing or default table. A missing
+    whole record on a zombie villager leaves its randomly chosen profession unavailable.
+    RegionFacts revision 34 and asset-reader revision 2 invalidate affected cached values
+    through the existing shared identities. Terrain and lighting identities stay unchanged.
+  - Kit 0.87.1 selects tied notable-block deposits in a stable order before applying the
+    search limit. The app keeps its display ordering and consumes that membership directly,
+    so unchanged searches retain their listed chunks and map pins. GameNames uses Kit's
+    `PlayerInfo.shortIdentifier(for:)` for unnamed-player UUID fragments; the app owns the
+    surrounding localized wording. Full UUID identities remain unchanged. That release
+    changes no terrain, region-fact, artwork or light interpretation version and needs no
+    cache invalidation.
   - Kit 0.86.0 owns the game archive's file-validity identity. The app uses its public
     SourceIdentity, captured source identity and validity check instead of copying stat fields.
     Its existing game-source cache text and interpretation versions remain unchanged.

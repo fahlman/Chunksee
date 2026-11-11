@@ -1,3 +1,4 @@
+import ChunkseeKit
 import Foundation
 
 extension GameNames {
@@ -20,7 +21,7 @@ extension GameNames {
         case .you: String(localized: "You", locale: locale)
         case .named(let name): name
         case .unnamed(let uuid):
-            String(localized: "Player \(String(uuid.uuidString.lowercased().prefix(8)))", locale: locale)
+            String(localized: "Player \(PlayerInfo.shortIdentifier(for: uuid))", locale: locale)
         }
     }
 
