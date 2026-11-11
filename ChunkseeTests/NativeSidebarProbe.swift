@@ -232,7 +232,8 @@ private final class SidebarNativeDriver {
     }
 
     func mapNode() throws -> AnyObject {
-        try #require(try Self.nodes(in: try #require(window.contentView), budget: 2_000).first {
+        let content = try #require(window.contentView)
+        return try #require(try Self.nodes(in: content, budget: 2_000).first {
             $0.accessibilityIdentifier?() == "world-map"
         })
     }
