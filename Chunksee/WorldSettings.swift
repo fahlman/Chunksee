@@ -68,22 +68,28 @@ final class WorldSettings {
     nonisolated private struct MapRecord: Codable {
         var viewport: MapViewport?
         var presentation: MapPresentation
+        let needsMigration: Bool
 
         init(viewport: MapViewport?, presentation: MapPresentation) {
             self.viewport = viewport
             self.presentation = presentation
+            needsMigration = false
         }
 
-        private enum CodingKeys: String, CodingKey { case viewport, presentation }
+        private enum CodingKeys: String, CodingKey { case version, viewport, presentation }
 
         init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             presentation = (try? values.decode(MapPresentation.self, forKey: .presentation)) ?? MapPresentation()
             viewport = Self.viewport(from: try? values.decode([Double].self, forKey: .viewport))
+            // The original record used shown-only place/creature lists. Rewrite only this
+            // dimension once, leaving unopened dimensions and unrelated settings untouched.
+            needsMigration = !values.contains(.version)
         }
 
         func encode(to encoder: any Encoder) throws {
             var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(1, forKey: .version)
             try values.encode(presentation, forKey: .presentation)
             if let viewport {
                 try values.encode([viewport.center.x, viewport.center.y, viewport.scale], forKey: .viewport)
@@ -123,7 +129,10 @@ final class WorldSettings {
     private func record(for dimension: String?) -> MapRecord {
         let saved = stored
         if let dimension, let data = (saved["mapPresentations"] as? [String: Any])?[dimension] as? Data,
-           let record = try? JSONDecoder().decode(MapRecord.self, from: data) { return record }
+           let record = try? JSONDecoder().decode(MapRecord.self, from: data) {
+            if record.needsMigration { write(record, for: dimension, in: saved) }
+            return record
+        }
         let record = legacyRecord(for: dimension, in: saved)
         if let dimension { write(record, for: dimension, in: saved) }
         return record
@@ -169,17 +178,16 @@ final class WorldSettings {
         })
         var overlays = presentation.overlays
         if let choices = values[Layer.structureVisibility.rawValue] as? [String: Bool] {
-            overlays.structures = Set(StructureGroup.allCases.filter { choices[$0.rawValue] ?? $0.isShownByDefault })
+            overlays.structures = SavedGroupVisibility<StructureGroup>(choices: choices).shown
         } else if let shown = values[Layer.structures.rawValue] as? [String] {
-            // This is the fixed historical schema, not a catalog of current game content.
-            let original: Set<StructureGroup> = [.village, .stronghold, .ancientCity, .trialChambers,
-                .monument, .mansion, .temple, .ruins, .ruinedPortal, .shipwreck, .buriedTreasure,
-                .outpost, .mineshaft, .fortress, .bastion, .netherFossil, .endCity, .other]
-            overlays.structures = Set(shown.compactMap(StructureGroup.init(rawValue:)))
-                .union(StructureGroup.allCases.filter { !original.contains($0) && $0.isShownByDefault })
+            overlays.structures = SavedGroupVisibility<StructureGroup>(legacyShown: shown).shown
         }
-        if let names = values[Layer.places.rawValue] as? [String] { overlays.places = Set(names.compactMap(PlaceGroup.init(rawValue:))) }
-        if let names = values[Layer.creatures.rawValue] as? [String] { overlays.creatures = Set(names.compactMap(CreatureGroup.init(rawValue:))) }
+        if let shown = values[Layer.places.rawValue] as? [String] {
+            overlays.places = SavedGroupVisibility<PlaceGroup>(legacyShown: shown).shown
+        }
+        if let shown = values[Layer.creatures.rawValue] as? [String] {
+            overlays.creatures = SavedGroupVisibility<CreatureGroup>(legacyShown: shown).shown
+        }
         if let names = values[Layer.mobTypes.rawValue] as? [String] { overlays.mobTypes = Set(names) }
         if let names = values[Layer.biomes.rawValue] as? [String] { overlays.biomes = Set(names.map(BiomeGroup.init(id:))) }
         if let names = values[Layer.hiddenPlayers.rawValue] as? [String] { overlays.hiddenPlayers = Set(names.compactMap(UUID.init(uuidString:))) }

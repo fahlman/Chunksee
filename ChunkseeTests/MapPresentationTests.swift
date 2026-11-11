@@ -6,6 +6,75 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct MapPresentationTests {
+    @Test(arguments: [false, true])
+    func shownOnlyMapRecordsMigrateOnceWithoutChangingOtherDimensions(empty: Bool) throws {
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld", other = "test:other"
+        let key = "worldSettings." + id.uuidString, annotations = Data("opaque annotations".utf8)
+        let oldRecord = try JSONSerialization.data(withJSONObject: [
+            "viewport": [12.0, -9, 2], "presentation": [
+                "style": "height", "depth": ["y": 40, "isSurface": false], "castsShadows": false,
+                "overlays": [
+                    "structures": ["village": false, "mineshaft": true, "abandonedCamp": false],
+                    "places": empty ? [] : ["spawner", "unfamiliar"],
+                    "creatures": empty ? [] : ["pet", "unfamiliar"], "showsGrid": true
+                ]
+            ]
+        ])
+        defaults.set(["dimension": other, "places": annotations,
+                      "mapPresentations": [dimension: oldRecord, other: oldRecord]], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults)
+        let choices = settings.mapPresentation(for: dimension)
+        #expect(choices.style == .height && choices.depth == MapDepth(y: 40, isSurface: false))
+        #expect(!choices.castsShadows && choices.overlays.showsGrid)
+        #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
+        #expect(!choices.overlays.structures.contains(.abandonedCamp))
+        #expect(choices.overlays.places == (empty ? [] : [.spawner]))
+        #expect(choices.overlays.creatures == (empty ? [] : [.pet]))
+        #expect(settings.viewport(for: dimension) == MapViewport(center: CGPoint(x: 12, y: -9), scale: 2))
+        let stored = try #require(defaults.dictionary(forKey: key))
+        let records = try #require(stored["mapPresentations"] as? [String: Data])
+        let migrated = try #require(records[dimension])
+        let record = try #require(JSONSerialization.jsonObject(with: migrated) as? [String: Any])
+        let presentation = try #require(record["presentation"] as? [String: Any])
+        let overlays = try #require(presentation["overlays"] as? [String: Any])
+        #expect(record["version"] as? Int == 1)
+        #expect((overlays["places"] as? [String: Bool])?["spawner"] == !empty)
+        #expect((overlays["places"] as? [String: Bool])?["portal"] == false)
+        #expect((overlays["creatures"] as? [String: Bool])?["pet"] == !empty)
+        #expect((overlays["creatures"] as? [String: Bool])?["named"] == false)
+        #expect(records[other] == oldRecord && stored["places"] as? Data == annotations)
+        #expect(settings.lastDimension == other)
+
+        let reopened = WorldSettings(id: id, defaults: defaults)
+        #expect(reopened.mapPresentation(for: dimension) == choices)
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Data])?[dimension] == migrated)
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Data])?[other] == oldRecord)
+    }
+
+    @Test func explicitGroupChoicesUseDefaultsOnlyForMissingGroups() throws {
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
+        let key = "worldSettings." + id.uuidString
+        let data = try JSONSerialization.data(withJSONObject: [
+            "version": 1, "presentation": ["overlays": [
+                "structures": ["village": false, "mineshaft": true],
+                "places": ["portal": false, "spawner": true],
+                "creatures": ["named": false, "mob": true]
+            ]]
+        ])
+        defaults.set(["mapPresentations": [dimension: data]], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults)
+        var choices = settings.mapPresentation(for: dimension)
+        #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
+        #expect(choices.overlays.structures.contains(.abandonedCamp) && !choices.overlays.structures.contains(.netherFossil))
+        #expect(choices.overlays.places == [.bell, .lodestone, .spawner])
+        #expect(choices.overlays.creatures == [.pet, .mob])
+        choices.overlays.structures = []
+        choices.overlays.places = []
+        choices.overlays.creatures = []
+        settings.save(choices, for: dimension)
+        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: dimension) == choices)
+    }
+
     @Test func migrationCollectsEveryChoiceAndRetiresOnlyThatDimensionsOldFields() throws {
         let defaults = TestDefaults.make(), id = UUID(), player = UUID()
         let key = "worldSettings." + id.uuidString, dimension = "minecraft:overworld", other = "minecraft:the_nether"
@@ -106,6 +175,9 @@ import Testing
         session.setDarkSpots(true)
         session.visibility.showsSavedPlaces = false
         session.visibility.showsWorldBorder = false
+        session.visibility.structures = [.mineshaft]
+        session.visibility.places = [.spawner]
+        session.visibility.creatures = [.villager]
         session.visibility.mobTypes = ["minecraft:sheep"]
         session.visibility.mobAppearances["minecraft:sheep"] = MobAppearance(nil)
         var expected = map.presentation

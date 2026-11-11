@@ -416,9 +416,13 @@ tags still apply independently. Unmatched structures remain visible under Other 
 WorldDefinitions owns the catalog and immutable readers carry it into cached region projections.
 Pack or selected-game changes replace those projections through the existing definition refresh;
 the region facts cache and terrain tiles do not contain these presentation groups.
-LayerVisibility records explicit structure-group visibility, giving groups missing from an older
-settings schema their defaults. The legacy shown-only list migrates using its fixed historical
-group schema, preserving previous choices while making the new Abandoned Camps group visible.
+LayerVisibility uses SavedGroupVisibility for structure, place and creature group persistence.
+It records both shown and hidden choices, giving absent groups their declared defaults. The one
+migration policy interprets each shown-only list against its fixed historical preference schema;
+those schemas never grow with new groups or Minecraft content. WorldSettings upgrades only the
+opened dimension's unversioned map record, retaining its viewport and other choices. Subsequent
+reads use the explicit record. Mob-type and biome IDs remain opt-in sets with no default-shown
+members; their runtime catalogs and the live map's set-based visibility inputs are unchanged.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
 than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
 Find Player Names uses a settings gear because it opens Settings. Storage uses an archive box,
