@@ -182,7 +182,6 @@ struct WorldView: View {
                         try? await Task.sleep(for: .seconds(1))
                         if !Task.isCancelled { session.saveView() }
                     }
-                    .modifier(MapLegendOverlay(layers: content))
                     .toolbar {
                         ToolbarItem {
                             Menu {
