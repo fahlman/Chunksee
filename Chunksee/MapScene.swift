@@ -21,29 +21,35 @@ struct MapScene {
     /// picking never needs their formatted names or prefixed accessibility IDs.
     enum Label {
         case structure(StructureMarker), place(PlaceMarker), creature(CreatureMarker)
-        case pin(id: String, name: String, detail: String? = nil)
+        case search(SearchHit)
+        case player(MapMarker)
+        case pin(id: String, name: String)
 
         var id: String {
             switch self {
             case .structure(let marker): "structure-" + marker.id
             case .place(let marker): "place-" + marker.id
             case .creature(let marker): "creature-" + marker.id
-            case .pin(let id, _, _): id
+            case .search(let hit): "search-" + hit.id
+            case .player(let marker): "player-" + marker.id
+            case .pin(let id, _): id
             }
         }
 
-        var name: String {
+        func name(in gameNames: GameNames) -> String {
             switch self {
-            case .structure(let marker): marker.name
-            case .place(let marker): marker.name
-            case .creature(let marker): marker.name
-            case .pin(_, let name, _): name
+            case .structure(let marker): gameNames.structure(marker.structureID)
+            case .place(let marker): gameNames.place(marker)
+            case .creature(let marker): gameNames.creature(marker.creature)
+            case .search(let hit): hit.title(in: gameNames)
+            case .player(let marker): gameNames.playerMarker(marker)
+            case .pin(_, let name): name
             }
         }
 
-        var accessibleName: String {
-            if case .pin(_, let name, let detail?) = self { return name + ", " + detail }
-            return name
+        func accessibleName(in gameNames: GameNames) -> String {
+            if case .search(let hit) = self { return hit.title(in: gameNames) + ", " + hit.detail(in: gameNames) }
+            return name(in: gameNames)
         }
     }
 
@@ -64,12 +70,12 @@ struct MapScene {
         var id: String { label.id }
         var frame: CGRect { MarkerGeometry.frame(at: point, scale: scale) }
 
-        var accessibleLocation: AccessibleMapLocation {
-            AccessibleMapLocation(id: id, name: label.accessibleName, position: position, y: y,
+        func accessibleLocation(in gameNames: GameNames) -> AccessibleMapLocation {
+            AccessibleMapLocation(id: id, name: label.accessibleName(in: gameNames), position: position, y: y,
                                   target: target, anchor: anchor, frame: frame)
         }
 
-        func draw(in context: GraphicsContext,
+        func draw(in context: GraphicsContext, gameNames: GameNames,
                   portalStatus: (NetherPortal) -> PortalLinkStatus?,
                   symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
             style.drawBody(at: point, scale: scale, selected: labelPriority == .selected, dimmed: isDimmed,
@@ -77,7 +83,7 @@ struct MapScene {
             if case .place(let marker) = label, let portal = marker.portal {
                 drawPortalState(status: portalStatus(portal), in: context)
             }
-            return style.label(label.name, id: id, priority: labelPriority, at: point, scale: scale, dimmed: isDimmed, in: context)
+            return style.label(label.name(in: gameNames), id: id, priority: labelPriority, at: point, scale: scale, dimmed: isDimmed, in: context)
         }
 
         /// Decorations don't enlarge the shared body or its pointer/accessibility target.
@@ -98,14 +104,14 @@ struct MapScene {
         let outline: CGRect
         let portalRoom: CGPoint?
 
-        func draw(in context: GraphicsContext,
+        func draw(in context: GraphicsContext, gameNames: GameNames,
                   symbol: (MarkerStyle.Symbol) -> GraphicsContext.ResolvedImage) -> MarkerLabel? {
             let scale = item.scale
             if scale >= 0.25 {
                 let path = Path(outline)
                 MapScene.drawArea(fill: path, outline: path, color: item.style.fill, in: context)
             }
-            let label = item.draw(in: context, portalStatus: { _ in nil }, symbol: symbol)
+            let label = item.draw(in: context, gameNames: gameNames, portalStatus: { _ in nil }, symbol: symbol)
             if scale >= 0.25, let point = portalRoom {
                 let ring = Path(ellipseIn: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14))
                 context.fill(ring, with: .color(.black.opacity(0.7)))
@@ -123,8 +129,8 @@ struct MapScene {
         let frame: CGRect
         let color: MapColor
 
-        var accessibleLocation: AccessibleMapLocation {
-            AccessibleMapLocation(id: "biome-" + area.id, name: area.group.name,
+        func accessibleLocation(in gameNames: GameNames) -> AccessibleMapLocation {
+            AccessibleMapLocation(id: "biome-" + area.id, name: gameNames.biome(area.group.id),
                 position: area.position, y: nil, target: .row(.biome(area.id)), frame: frame)
         }
 
@@ -138,12 +144,14 @@ struct MapScene {
     let biomeAreas: [BiomeItem]
     let structures: [StructureItem]
     let items: [Item]
+    private let gameNames: GameNames
     private let bounds: CGRect
     private let accessibilityBounds: CGRect
     private let firstPinIndex: Int
     private let biomeTransform: CGAffineTransform
 
     init(content: MapContent, viewport: MapViewport, size: CGSize, pickingAt pointer: CGPoint? = nil) {
+        gameNames = content.gameNames
         let bounds = CGRect(origin: .zero, size: size)
         self.bounds = bounds
         let accessibilityBounds = bounds.insetBy(dx: -20, dy: -20)
@@ -171,7 +179,7 @@ struct MapScene {
             return StructureItem(item: Item(label: .structure(marker), layer: .structure,
                 target: .row(.structure(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .structure(marker.group),
-                labelPriority: content.selectedItem == .structure(marker.id) ? .selected : .other),
+                labelPriority: content.highlighted.contains(.row(.structure(marker.id))) ? .selected : .other),
                 outline: outline, portalRoom: marker.portalRoom.map { viewport.viewPoint(for: $0, in: size) })
         }
         let candidateBounds = pointer.map { point in
@@ -184,8 +192,7 @@ struct MapScene {
             // Picking applies each body's exact radius below, including the boundary. Drawing
             // clips the broad bucket candidates before preparing styles or names.
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = content.selectedItem == .place(marker.id)
-                || marker.portal.map { content.selection == .portal($0) } == true
+            let selected = content.highlighted.contains(.row(.place(marker.id)))
             items.append(Item(label: .place(marker), layer: marker.portal == nil ? .place : .portal,
                 target: .row(.place(marker.id)), position: marker.position, y: marker.yCoordinate,
                 anchor: marker.position, point: point, scale: viewport.scale, style: .place(marker.group),
@@ -195,8 +202,8 @@ struct MapScene {
         for marker in content.nearbyCreatures(viewport: viewport, size: size, bounds: candidateBounds) {
             let point = viewport.viewPoint(for: marker.position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = content.selection == .creature(marker)
-            let priority: MarkerLabelLayout.Priority = selected || content.selectedItem == .creature(marker.id) ? .selected
+            let selected = content.highlighted.contains(.row(.creature(marker.id)))
+            let priority: MarkerLabelLayout.Priority = selected ? .selected
                 : marker.group == .pet && marker.creature.customName != nil ? .namedPet : .other
             let row: SidebarItem = marker.group == .mob || content.selectedItem == .mobCreature(marker.id)
                 ? .mobCreature(marker.id) : .creature(marker.id)
@@ -210,8 +217,8 @@ struct MapScene {
             guard let position = hit.position else { continue }
             let point = viewport.viewPoint(for: position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
-            let selected = hit.id == content.selectedHitID
-            items.append(Item(label: .pin(id: "search-" + hit.id, name: hit.title, detail: hit.detail), layer: .search,
+            let selected = content.highlighted.contains(.searchHit(hit.id))
+            items.append(Item(label: .search(hit), layer: .search,
                 target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
                 anchor: position, point: point, scale: viewport.scale, style: .search,
                 labelPriority: selected ? .selected : .other))
@@ -222,12 +229,12 @@ struct MapScene {
         for marker in content.players {
             let point = viewport.viewPoint(for: marker.anchor, in: size)
             guard playerBounds.contains(point) else { continue }
-            let selected = marker.playerID == content.selectedPlayerID
-            items.append(Item(label: .pin(id: "player-" + marker.id, name: marker.label), layer: .player,
+            let selected = content.highlighted.contains(.row(.player(marker.playerID)))
+            items.append(Item(label: .player(marker), layer: .player,
                 target: .row(.player(marker.playerID)), position: marker.position, y: marker.y,
                 anchor: marker.anchor, point: point, scale: viewport.scale,
                 style: .player(marker.kind),
-                labelPriority: selected || content.selectedItem == .player(marker.playerID) ? .selected : .player,
+                labelPriority: selected ? .selected : .player,
                 isDimmed: marker.isOutdated))
         }
         for place in content.savedPlaces {
@@ -236,7 +243,7 @@ struct MapScene {
             items.append(Item(label: .pin(id: "saved-" + place.id.uuidString, name: place.name), layer: .savedPlace,
                 target: .row(.savedPlace(place.id)), position: place.position, y: nil,
                 anchor: place.mapPosition, point: point, scale: viewport.scale, style: .savedPlace,
-                labelPriority: content.selectedItem == .savedPlace(place.id) ? .selected : .other))
+                labelPriority: content.highlighted.contains(.row(.savedPlace(place.id))) ? .selected : .other))
         }
         self.items = items
     }
@@ -249,10 +256,10 @@ struct MapScene {
 
     var accessibleLocations: [AccessibleMapLocation] {
         // Preserve traversal order: structures, Places, creatures, biome areas, then pin layers.
-        var locations = structures.filter { accessibilityBounds.contains($0.item.point) }.map(\.item.accessibleLocation)
-        locations += items[..<firstPinIndex].map(\.accessibleLocation)
-        locations += biomeAreas.filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
-        locations += items[firstPinIndex...].filter { accessibilityBounds.contains($0.point) }.map(\.accessibleLocation)
+        var locations = structures.filter { accessibilityBounds.contains($0.item.point) }.map { $0.item.accessibleLocation(in: gameNames) }
+        locations += items[..<firstPinIndex].map { $0.accessibleLocation(in: gameNames) }
+        locations += biomeAreas.filter { accessibilityBounds.contains($0.point) }.map { $0.accessibleLocation(in: gameNames) }
+        locations += items[firstPinIndex...].filter { accessibilityBounds.contains($0.point) }.map { $0.accessibleLocation(in: gameNames) }
         return locations
     }
 

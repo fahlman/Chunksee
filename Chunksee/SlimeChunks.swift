@@ -43,64 +43,74 @@ nonisolated enum SlimeChunks {
 /// The Overworld rule is independent of terrain contents: compute each saved region once,
 /// reuse it through pan/zoom/export, and add masks only when new regions appear.
 @Observable final class SlimeChunkLayer {
-    var isShown = false {
-        didSet {
-            guard !isClosed, isShown != oldValue else { return }
-            visibility?.rememberSlimeChunks(isShown)
-            if isShown { load() } else { task?.cancel() }
-        }
-    }
-    let seed: Int64?
+    private let readIsShown: @MainActor () -> Bool
+    var isShown: Bool { readIsShown() }
+    private let readSeed: @MainActor () -> Int64?
+    var seed: Int64? { readSeed() }
     var isAvailable: Bool { seed != nil }
-    var isLoading: Bool { isAvailable && isShown && !regions.isSubset(of: completed) }
-    var visibleImages: [RegionPosition: CGImage] { isShown && isAvailable ? images : [:] }
+    var isLoading: Bool { !isClosed && isAvailable && isShown && !regions.isSubset(of: loader.value?.completed ?? []) }
+    var visibleImages: [RegionPosition: CGImage] {
+        guard !isClosed, isShown, isAvailable else { return [:] }
+        return loader.value?.images.filter { regions.contains($0.key) } ?? [:]
+    }
     var visibleSeed: Int64? { isShown ? seed : nil }
 
     private var regions: Set<RegionPosition>
-    private var completed: Set<RegionPosition> = []
-    private var images: [RegionPosition: CGImage] = [:]
-    @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var visibility: LayerVisibility?
-    private var isClosed = false
-    private let work: BackgroundWork
-    private let readImages: @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage]
+    private let loader: RefreshLoader<Int64?, Set<RegionPosition>, Masks>
+    @ObservationIgnored private var inputObservation: ModelObservation?
+    private var isClosed: Bool { loader.isClosed || loader.work.isClosed }
 
-    init(dimensionID: String?, seed: Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
-         readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
-        self.seed = dimensionID == "minecraft:overworld" ? seed : nil
-        self.regions = regions
-        self.work = work
-        self.readImages = readImages
+    nonisolated private struct Masks: Sendable {
+        var completed: Set<RegionPosition> = []
+        var images: [RegionPosition: CGImage] = [:]
     }
 
-    func restoreVisibility(from visibility: LayerVisibility) {
-        self.visibility = visibility
-        isShown = visibility.rememberedSlimeChunks
+    init(dimensionID: String?, seed: @escaping @MainActor () -> Int64?, isShown: @escaping @MainActor () -> Bool, regions: Set<RegionPosition>, work: BackgroundWork,
+         readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
+        readSeed = { dimensionID == "minecraft:overworld" ? seed() : nil }
+        readIsShown = isShown
+        self.regions = regions
+        loader = RefreshLoader(work: work, priority: nil, whenInactive: .cancel,
+            source: dimensionID == "minecraft:overworld" ? seed() : nil,
+            firstRequest: regions, merge: { _, current in current }) { seed, regions, previous in
+                guard let seed else { return Masks() }
+                var next = previous ?? Masks()
+                next.completed.formIntersection(regions)
+                next.images = next.images.filter { regions.contains($0.key) }
+                let missing = regions.subtracting(next.completed)
+                guard !missing.isEmpty else { return next }
+                let images = await readImages(missing, seed)
+                try Task.checkCancellation()
+                next.images.merge(images.filter { regions.contains($0.key) }) { _, new in new }
+                next.completed.formUnion(missing)
+                return next
+            }
+        observeInputs()
+        update(reread: isShown())
+    }
+
+    /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
+    /// so neither a drawn mask nor a late read can describe the previous seed.
+    private func observeInputs() {
+        inputObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (seed: $0.seed, shown: $0.isShown)
+        }) { layer, previous in
+            guard layer.seed != previous.seed || layer.isShown != previous.shown else { return }
+            layer.update(reread: layer.seed != previous.seed || layer.isShown)
+        }
     }
 
     func regionsChanged(_ regions: Set<RegionPosition>) {
         guard !isClosed else { return }
         self.regions = regions
-        completed.formIntersection(regions)
-        images = images.filter { regions.contains($0.key) }
-        load()
+        update(reread: true)
     }
 
-    private func load() {
-        guard !isClosed, !work.isClosed, isShown, let seed, task == nil else { return }
-        let missing = regions.subtracting(completed)
-        guard !missing.isEmpty else { return }
-        let readImages = readImages, work = work
-        task = work.start(priority: Task.currentPriority) { [weak self] in
-            defer { self?.task = nil; self?.load() }
-            guard !Task.isCancelled, !work.isClosed else { return }
-            let images = await readImages(missing, seed)
-            guard let self, !Task.isCancelled, !self.isClosed, !work.isClosed else { return }
-            self.images.merge(images.filter { self.regions.contains($0.key) }) { _, new in new }
-            self.completed.formUnion(missing.intersection(self.regions))
-        }
+    private func update(reread: Bool) {
+        guard !isClosed else { return }
+        loader.request(source: seed, isEnabled: isShown && isAvailable, refresh: reread ? regions : nil)
     }
 
-    func cancel() { isClosed = true; task?.cancel() }
-    func waitForImages() async { while let task { await task.value } }
+    func cancel() { inputObservation?.cancel(); loader.close() }
+    func waitForImages() async { await loader.waitUntilFinished() }
 }

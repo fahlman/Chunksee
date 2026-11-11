@@ -19,14 +19,14 @@ import Testing
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension("minecraft:overworld"))
         let border = try #require(try world.worldBorder(of: dimension))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
                            regionConcurrency: 1, chunkConcurrency: 1)
         let size = CGSize(width: 480, height: 320)
         map.requestTiles(visibleIn: size, displayScale: 1)
         await map.waitUntilIdle()
         for appearance in [ColorScheme.light, .dark] {
             for (slime, boundary) in [(false, false), (true, false), (false, true), (true, true)] {
-                var content = MapContent()
+                var content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
                 content.slimeSeed = slime ? 42 : nil
                 content.border = boundary ? border : nil
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },

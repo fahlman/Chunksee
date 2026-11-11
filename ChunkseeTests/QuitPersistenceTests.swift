@@ -36,7 +36,7 @@ import Testing
             let saved = WorldSettings(id: world.settings.worldID, defaults: defaults)
             #expect(saved.viewport(for: "minecraft:overworld") == sessions[i * 2].map?.viewport)
             #expect(saved.viewport(for: "minecraft:the_nether") == sessions[i * 2 + 1].map?.viewport)
-            #expect(saved.depth(for: "minecraft:the_nether") == MapDepth(y: 48, isSurface: false))
+            #expect(saved.mapPresentation(for: "minecraft:the_nether").depth == MapDepth(y: 48, isSurface: false))
             let front = i == 0 ? "minecraft:the_nether" : "minecraft:overworld"
             #expect(saved.lastDimension == front)
             sessions[i * 2 + (i == 0 ? 0 : 1)].becameActive(isTerminating: menus.isTerminating)

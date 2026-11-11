@@ -81,7 +81,7 @@ import Testing
     // These tests drive notifications explicitly. A real watcher would deliver them again after
     // its coalescing delay, making exact read counts depend on the test's speed.
     private func resources(_ url: URL, reads: Reads,
-                           watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
+                           watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = { _, _ in nil }) async throws -> WorldResources {
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
                                        savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: watchWorld,
@@ -103,7 +103,7 @@ import Testing
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
         let definitions = resources.details.definitions
         let reader = RegionReader(dimension: dimension, cache: .off,
-            options: RegionReader.options(context: MapSurfaceContext(settings: definitions.dimensionSettings[dimension.id], water: nil), definitions: definitions), notableBlocks: definitions.notableBlocks)
+            inputs: .init(dimensionID: dimension.id, definitions: definitions))
         let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
         let incremental = try #require(resources.index.index.dimensions[dimension.id])
@@ -218,7 +218,7 @@ import Testing
         let entityFile = try write([entities(31, name: "Updated")], in: dimension, folder: .entities, region: 0)
         await changed([entityFile], in: resources)
         #expect(await reads.requested == ["\(overworld)@0,0"])
-        #expect(resources.index.index.dimensions[overworld]?.creatures.contains { $0.name == "Updated" } == true)
+        #expect(resources.index.index.dimensions[overworld]?.creatures.contains { $0.name(in: resources.gameNames) == "Updated" } == true)
         try await matchesCompleteRead(resources, dimension: dimension)
         await reads.reset()
         let poiFile = try write([poi(512, type: "minecraft:home")], in: dimension, folder: .pointsOfInterest, region: 1)
@@ -279,7 +279,7 @@ import Testing
         map.viewport.center = CGPoint(x: 512, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
         await map.waitUntilIdle()
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         await session.heatMap.waitForReads()
         let regions = [RegionPosition(x: 0, z: 0), RegionPosition(x: 1, z: 0)]
         let tiles = try regions.map { try #require(map.tiles[$0]) }
@@ -338,7 +338,7 @@ import Testing
         map.viewport.center = CGPoint(x: 512, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
         await map.waitUntilIdle()
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         await session.heatMap.waitForReads()
         let region = RegionPosition(x: 0, z: 0)
         let tile = try #require(map.tiles[region]), heat = try #require(session.heatMap.visibleImages?[region])

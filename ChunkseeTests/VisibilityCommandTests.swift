@@ -14,49 +14,60 @@ import Testing
         menu.performActionForItem(at: 0)
     }
 
-    @Test func nativeVisibilityCommandsChangeOnlyTheirOwnDimensionGroupAndPersist() throws {
-        let world = UUID()
+    private func openWorld() async throws -> (URL, WorldResources) {
+        let root = try TestWorld.make(chunks: [])
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/the_nether/region"),
+                                                withIntermediateDirectories: true)
         let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        return (root, resources)
+    }
 
-        let first = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld")
-        let other = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:the_nether")
-        func exercise<Group: Hashable>(_ group: Group, _ keyPath: ReferenceWritableKeyPath<LayerVisibility, Set<Group>>) throws {
-            first[keyPath: keyPath] = [group]
-            other[keyPath: keyPath] = [group]
-            let binding = Binding { first[keyPath: keyPath].contains(group) } set: { shown in
-                if shown { first[keyPath: keyPath].insert(group) } else { first[keyPath: keyPath].remove(group) }
+    @Test func nativeVisibilityCommandsChangeOnlyTheirOwnDimensionGroupAndPersist() async throws {
+        let (root, resources) = try await openWorld()
+        defer { resources.close(); try? FileManager.default.removeItem(at: root) }
+        let first = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let other = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
+        func exercise<Group: Hashable>(_ group: Group, _ keyPath: WritableKeyPath<LayerVisibility, Set<Group>>) throws {
+            first.visibility[keyPath: keyPath] = [group]
+            other.visibility[keyPath: keyPath] = [group]
+            let binding = Binding { first.visibility[keyPath: keyPath].contains(group) } set: { shown in
+                if shown { first.visibility[keyPath: keyPath].insert(group) } else { first.visibility[keyPath: keyPath].remove(group) }
             }
             try perform(binding, title: "Hide on Map")
-            #expect(first[keyPath: keyPath].isEmpty && other[keyPath: keyPath] == [group])
-            let restored = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld")
+            #expect(first.visibility[keyPath: keyPath].isEmpty && other.visibility[keyPath: keyPath] == [group])
+            let restored = resources.settings.mapPresentation(for: "minecraft:overworld").overlays
             #expect(restored[keyPath: keyPath].isEmpty)
             try perform(binding, title: "Show on Map")
-            #expect(first[keyPath: keyPath] == [group] && other[keyPath: keyPath] == [group])
+            #expect(first.visibility[keyPath: keyPath] == [group] && other.visibility[keyPath: keyPath] == [group])
         }
         try exercise(.mineshaft, \.structures)
         try exercise(.spawner, \.places)
         try exercise(.pet, \.creatures)
         try exercise(BiomeGroup(id: "minecraft:plains"), \.biomes)
-        #expect(defaults.object(forKey: "shownStructureGroups") == nil)
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
-    @Test func playerCommandKeepsOtherPlayersAndDimensionSettings() throws {
-        let world = UUID()
-        let defaults = TestDefaults.make()
-
-        let first = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld")
-        let other = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:the_nether")
+    @Test func playerCommandKeepsOtherPlayersAndDimensionSettings() async throws {
+        let (root, resources) = try await openWorld()
+        defer { resources.close(); try? FileManager.default.removeItem(at: root) }
+        let first = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
+        let other = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         let player = UUID(), alreadyHidden = UUID()
-        first.hiddenPlayers = [alreadyHidden]
-        other.hiddenPlayers = []
-        let binding = Binding { !first.hiddenPlayers.contains(player) } set: { shown in
-            if shown { first.hiddenPlayers.remove(player) } else { first.hiddenPlayers.insert(player) }
+        first.visibility.hiddenPlayers = [alreadyHidden]
+        other.visibility.hiddenPlayers = []
+        let binding = Binding { !first.visibility.hiddenPlayers.contains(player) } set: { shown in
+            if shown { first.visibility.hiddenPlayers.remove(player) } else { first.visibility.hiddenPlayers.insert(player) }
         }
         try perform(binding, title: "Hide on Map")
-        #expect(first.hiddenPlayers == [alreadyHidden, player] && other.hiddenPlayers.isEmpty)
-        #expect(LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld").hiddenPlayers == [alreadyHidden, player])
+        #expect(first.visibility.hiddenPlayers == [alreadyHidden, player] && other.visibility.hiddenPlayers.isEmpty)
+        #expect(resources.settings.mapPresentation(for: "minecraft:overworld").overlays.hiddenPlayers == [alreadyHidden, player])
         try perform(binding, title: "Show on Map")
-        #expect(first.hiddenPlayers == [alreadyHidden] && other.hiddenPlayers.isEmpty)
+        #expect(first.visibility.hiddenPlayers == [alreadyHidden] && other.visibility.hiddenPlayers.isEmpty)
+        resources.close()
+        await resources.waitUntilClosed()
     }
 
     @Test func savedQueryCommandUsesTheLiveBindingAndDoesNotRecreateARemovedQuery() throws {

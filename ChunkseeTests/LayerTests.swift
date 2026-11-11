@@ -5,7 +5,13 @@ import Foundation
 import ChunkseeKit
 import SwiftUI
 import Testing
+import Observation
 @testable import ChunkseeTestHost
+
+@Observable private final class HeatReaderSource {
+    var reader: RegionReader?
+    init(_ reader: RegionReader?) { self.reader = reader }
+}
 
 @Suite(.isolatedStores) struct StructureTests {
     /// A structure start built the way chunks store it, read through ChunkseeKit's public API.
@@ -27,7 +33,7 @@ import Testing
         #expect(StructureGroup.stronghold.isShownByDefault)
         let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
-            StructureMarker(start($0, chunk: (0, 0))).name
+            StructureMarker(start($0, chunk: (0, 0))).name(in: .unavailable)
         }
         #expect(names == ["Village Plains", "Ocean Ruin Cold", "Ruined Portal Ocean", "Shipwreck Beached", "Ancient City"])
     }
@@ -130,9 +136,9 @@ enum StructureTestWorld {
         #expect(PlaceGroup.group(for: "minecraft:meeting") == .bell)
         #expect(PlaceGroup.group(for: "minecraft:beehive") == .beeNest)
         #expect(PlaceGroup.portal.isShownByDefault && !PlaceGroup.bed.isShownByDefault)
-        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name == "Librarian’s Workstation")
+        #expect(PlaceMarker(poi("minecraft:librarian", 0, 64, 0)).name(in: .unavailable) == "Librarian’s Workstation")
         let claimedBed = PlaceMarker(poi("minecraft:home", 0, 64, 0, tickets: 0))
-        #expect(claimedBed.isClaimed && claimedBed.name == "Villager’s Bed")
+        #expect(claimedBed.isClaimed && claimedBed.name(in: .unavailable) == "Villager’s Bed")
         #expect(!PlaceMarker(poi("minecraft:meeting", 0, 64, 0, tickets: 0)).isClaimed)  // only beds and workstations
     }
 
@@ -210,10 +216,10 @@ enum StructureTestWorld {
         let villager = try #require(Creature(entity("minecraft:villager", x: 0, z: 0, extra: [
             "VillagerData": .compound(["profession": .string("minecraft:librarian"), "level": .int(5)])])))
         let marker = try #require(CreatureMarker(villager, dimension: "minecraft:overworld"))
-        #expect(marker.group == .villager && marker.name == "Librarian")
-        #expect(VillagerText.levelName(5, gameNames: .unavailable) == "Level 5")
+        #expect(marker.group == .villager && marker.name(in: .unavailable) == "Librarian")
+        #expect(GameNames.unavailable.merchantLevel(5) == "Level 5")
         let pet = Creature(id: "minecraft:cat", x: 1, y: 64, z: 2, customName: "Mittens", owner: owner)
-        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name == "Mittens")
+        #expect(CreatureGroup.group(for: pet) == .pet && CreatureMarker(pet, dimension: "d")?.name(in: .unavailable) == "Mittens")
         #expect(CreatureGroup.group(for: Creature(id: "minecraft:sheep", x: 0, y: 0, z: 0)) == .mob)
     }
 
@@ -257,7 +263,7 @@ enum StructureTestWorld {
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))
-        #expect(session.selection.mapSelection == .creature(pet))
+        #expect(session.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         try save(health: 4)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: dimension.id)
@@ -267,15 +273,24 @@ enum StructureTestWorld {
         #expect(refreshed.creature.sittingOrder == false && refreshed.creature.collarColor == "blue")
         #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
         #expect(refreshed.creature.equipment?["body"]?.id == "minecraft:wolf_armor")
-        #expect(session.selection.mapSelection == .creature(refreshed) && MapContent(session: session).selection == .creature(refreshed))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing refreshed creature details"); return }
+        #expect(detail == refreshed)
+        #expect(session.selection.highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))] && MapContent(session: session).highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))])
         #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
         session.map?.viewport.scale = 0.125
         let map = MapContent(session: session)
         let visible = map.accessibleLocations(viewport: try #require(session.map).viewport, size: CGSize(width: 400, height: 300))
         let location = try #require(visible.first { $0.target == .row(.creature(refreshed.id)) })
+        session.selection.isInspectorShown = false
+        let hidden = MapContent(session: session)
+        let viewport = try #require(session.map).viewport
+        let hiddenLocation = try #require(hidden.accessibleLocations(viewport: viewport,
+            size: CGSize(width: 400, height: 300)).first { $0.target == .row(.creature(refreshed.id)) })
+        #expect(hiddenLocation.position == location.position && hiddenLocation.frame == location.frame)
+        #expect(hidden.highlighted == map.highlighted)
         var disclosure = SidebarDisclosure()
         disclosure.selectOnMap(location.target, y: nil, in: session)
-        #expect(session.selection.sidebarSelection == .creature(refreshed.id) && session.selection.mapSelection == .creature(refreshed))
+        #expect(session.selection.sidebarSelection == .creature(refreshed.id) && session.selection.highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))])
         session.close()
         await session.waitUntilClosed()
     }
@@ -300,27 +315,27 @@ enum StructureTestWorld {
         // Once read, the sidebar can list every Overworld biome, found or not.
         #expect(session.presentation.possibleBiomes.count == 4 && session.presentation.possibleBiomes.contains(BiomeGroup(id: "minecraft:mushroom_fields")))
         session.visibility.creatures = [.pet]
-        #expect(MapContent(session: session).creatures.map(\.name) == ["Summer"])
+        #expect(MapContent(session: session).creatures.map { $0.name(in: session.resources.gameNames) } == ["Summer"])
         let summer = try #require(MapContent(session: session).creatures.first)
         session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
-        #expect(MapContent(session: session).selection == .creature(summer))
+        #expect(MapContent(session: session).highlighted == [.row(.creature(summer.id)), .row(.mobCreature(summer.id))])
         #expect(session.selection.sidebarSelection == .creature(summer.id))
         #expect(session.selection.inspector == .selection)   // its details show in the inspector
         session.selection.mapClicked(nil, y: nil)
-        #expect(session.selection.mapSelection == nil && session.selection.inspector == nil && session.selection.sidebarSelection == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.inspector == nil && session.selection.sidebarSelection == nil)
         session.selection.mapClicked(.row(.creature(summer.id)), y: nil)
         session.selection.inspector = .world                 // showing something else lets go of it
-        #expect(session.selection.mapSelection == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         // Choosing the creature in the sidebar shows its layer, centers on it and selects it.
         session.visibility.creatures = []
         session.map?.viewport = MapViewport(center: .zero, scale: 0.25)
         session.selection.choose(.creature(summer.id))
-        #expect(session.visibility.creatures == [.pet] && session.selection.mapSelection == .creature(summer))
+        #expect(session.visibility.creatures == [.pet] && session.selection.highlighted == [.row(.creature(summer.id)), .row(.mobCreature(summer.id))])
         // The map centers on it but keeps the zoom the user chose.
         #expect(session.map?.viewport == MapViewport(center: summer.position, scale: 0.25))
-        // World Info stays selected in the sidebar only while the inspector shows it.
+        // Choosing World Info replaces the creature selection.
         session.selection.choose(.worldInfo)
-        #expect(session.selection.inspector == .world && session.selection.mapSelection == nil)
+        #expect(session.selection.inspector == .world && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil)
         session.selection.inspector = .storage
         #expect(session.selection.sidebarSelection == .storage)
         #expect(session.presentation.name(ofPlayerWith: UUID(uuidString: "00000001-0000-0002-0000-000300000004")!) == "Player 00000001 (not in this world)")
@@ -330,8 +345,8 @@ enum StructureTestWorld {
         session.search.text = "summer"
         await session.search.waitForIndex()
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == [summer.name])
-        #expect(session.search.results.first?.detail == "Wolf")
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == [summer.name(in: session.resources.gameNames)])
+        #expect(session.search.results.first?.detail(in: session.resources.gameNames) == "Wolf")
         #expect(session.search.results.first?.source == .layer(.creature(.pet), markerID: summer.id))
     }
 }
@@ -353,12 +368,12 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         let spawners = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
-        #expect(spawners.map(\.name).sorted() == ["Empty Spawner", "Zombie Spawner"])
+        #expect(spawners.map { $0.name(in: session.resources.gameNames) }.sorted() == ["Empty Spawner", "Zombie Spawner"])
         #expect(spawners.first { $0.mob == "minecraft:zombie" }?.position == CGPoint(x: 3.5, y: 5.5))
         #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
         session.search.text = "place:zombie spawner"
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == ["Zombie Spawner"])
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Zombie Spawner"])
     }
 }
 
@@ -370,9 +385,9 @@ enum StructureTestWorld {
         for z in 5..<9 { biomes[ChunkPosition(x: 0, z: z)] = "minecraft:plains" }                       // separate 4-chunk area
         let areas = BiomePresentation.areas(from: biomes).sorted { $0.chunkCount > $1.chunkCount }
         #expect(areas.map(\.chunkCount) == [6, 4, 1])
-        #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name == "Plains")
+        #expect(areas.map(\.group.id) == ["minecraft:plains", "minecraft:plains", "minecraft:river"] && areas[0].group.name(in: .unavailable) == "Plains")
         #expect(areas[0].position == CGPoint(x: 24, y: 8) || areas[0].position == CGPoint(x: 24, y: 24))   // a middle chunk
-        #expect(areas[0].name == "6 chunks")
+        #expect(areas[0].name(in: .unavailable) == "6 chunks")
         // The outline runs around the 3×2 chunks, not between them.
         #expect(areas[0].bounds == CGRect(x: 0, y: 0, width: 48, height: 32))
         #expect(areas[0].outline.boundingRect == CGRect(x: 0, y: 0, width: 48, height: 32))
@@ -405,7 +420,7 @@ enum StructureTestWorld {
         defer { session.close() }
         await session.search.waitForIndex()
         #expect(session.presentation.selectedIndex.biomeAreas.map(\.chunkCount) == [4])
-        #expect(session.presentation.selectedIndex.biomeAreas.first?.group.name == "Plains")
+        #expect(session.presentation.selectedIndex.biomeAreas.first?.group.name(in: session.resources.gameNames) == "Plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: 20.5, y: 3)) == "minecraft:plains")
         #expect(MapContent(session: session).biome(at: CGPoint(x: -1, y: 0)) == nil)
         // Biomes start without outlines.
@@ -445,7 +460,7 @@ enum StructureTestWorld {
         #expect(MapContent(session: session).biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
         session.search.text = "biome:deep dark"
         await session.search.waitForSearch()
-        #expect(session.search.results.map(\.title) == ["Deep Dark"])
+        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Deep Dark"])
     }
 
     @Test func unfinishedChunksPlaceholderBiomesAreIgnored() async throws {
@@ -476,6 +491,8 @@ enum StructureTestWorld {
 }
 
 @Suite(.isolatedStores) struct HeatMapTests {
+    @Observable final class Visibility { var isShown = false }
+
     @Test func logarithmicScaleAndColors() throws {
         #expect(HeatMap.level(ofTicks: 1_199) == nil)
         #expect(HeatMap.level(ofTicks: HeatMap.minimumTicks) == 0)
@@ -504,13 +521,13 @@ enum StructureTestWorld {
         defer { session.close() }
         #expect(session.heatMap.visibleImages == nil && !session.heatMap.isLoading)
         #expect(!MapContent(session: session).showsHeatMap)
-        session.heatMap.isShown = true
+        session.visibility.showsTimeSpent = true
         #expect(session.heatMap.isLoading)
         #expect(MapContent(session: session).showsHeatMap)
         await session.heatMap.waitForReads()
         #expect(session.heatMap.visibleImages?.keys.sorted { $0.x < $1.x } == [RegionPosition(x: 0, z: 0)])
         #expect(MapContent(session: session).showsHeatMap)
-        session.heatMap.isShown = false
+        session.visibility.showsTimeSpent = false
         #expect(session.heatMap.visibleImages == nil)
         #expect(!MapContent(session: session).showsHeatMap)
     }
@@ -540,20 +557,20 @@ enum StructureTestWorld {
             let bytes = try #require(CFDataGetBytePtr(data))
             return Array(UnsafeBufferPointer(start: bytes, count: 4))
         }
-        overworld.heatMap.isShown = true
+        overworld.visibility.showsTimeSpent = true
         await overworld.heatMap.waitForReads()
         #expect(nether.heatMap.visibleImages == nil && !nether.heatMap.isLoading)
         let red = try pixel(overworld)
         #expect(red[0] > red[2] && red[3] > 0)
-        nether.heatMap.isShown = true
+        nether.visibility.showsTimeSpent = true
         await nether.heatMap.waitForReads()
         let blue = try pixel(nether)
         #expect(blue[2] > blue[0] && blue[3] > 0)
-        overworld.heatMap.isShown = false
+        overworld.visibility.showsTimeSpent = false
         overworld.heatMap.load(reread: true)
         #expect(overworld.heatMap.visibleImages == nil)
         #expect(try pixel(nether) == blue)
-        overworld.heatMap.isShown = true
+        overworld.visibility.showsTimeSpent = true
         await overworld.heatMap.waitForReads()
         #expect(try pixel(overworld) == red)
         #expect(try pixel(nether) == blue)
@@ -568,8 +585,9 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
+        visibility.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
         layer.load(reread: true)
@@ -583,10 +601,10 @@ enum StructureTestWorld {
         #expect(layer.visibleImages?.isEmpty == true)
         #expect(await gate.requested == ["region", "region"])
 
-        layer.isShown = false
+        visibility.isShown = false
         layer.load(reread: true)
         #expect(await gate.requested.count == 2)
-        layer.isShown = true
+        visibility.isShown = true
         await gate.waitForRequest("region", count: 3)
         await gate.finish("region", with: inhabited)
         await layer.waitForReads()
@@ -602,10 +620,12 @@ enum StructureTestWorld {
         let gate = AsyncReadGate<RegionFacts>(), work = BackgroundWork()
         let older = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
         let newer = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
-        let layer = HeatMapLayer(reader: older, work: work)
-        layer.isShown = true
+        let source = HeatReaderSource(older)
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { source.reader }, isShown: { visibility.isShown }, work: work)
+        visibility.isShown = true
         await gate.waitForRequest("older")
-        layer.replaceReader(newer)
+        source.reader = newer
         await gate.waitForRequest("newer")
         await gate.finish("newer", with: try TestWorld.facts())
         // Replacement publishes while the retired read is still held. The loader's drain
@@ -633,8 +653,9 @@ enum StructureTestWorld {
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
         let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
-        let layer = HeatMapLayer(reader: reader, work: BackgroundWork())
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
+        visibility.isShown = true
         await gate.waitForRequest("region")
         layer.load(reread: true)
         layer.cancel()
@@ -715,7 +736,7 @@ enum StructureTestWorld {
                                             in: nether.dimension) == .missingDimension)
         let before = session.map?.viewport
         session.selection.show(nether)
-        #expect(!session.presentation.canShow(nether) && session.selection.mapSelection == nil && session.map?.viewport == before)
+        #expect(!session.presentation.canShow(nether) && session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.map?.viewport == before)
         session.selection.show(try #require(session.presentation.inGameMaps.first { $0.id == 3 }))
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
         #expect(session.map?.viewport.center == CGPoint(x: 256, y: -2432) && session.map?.viewport.scale == before?.scale)
@@ -723,9 +744,13 @@ enum StructureTestWorld {
         // Clicking the map elsewhere leaves an in-game map laid over the terrain.
         session.selection.mapClicked(nil, y: nil)
         #expect(MapContent(session: session).inGameMap?.map.id == 3)
-        // Closing the inspector takes it away.
+        // Hiding details keeps the chosen overlay and reopening shows the same map.
         session.selection.inspector = nil
-        #expect(session.selection.mapSelection == nil && MapContent(session: session).inGameMap == nil)
+        #expect(session.selection.inspector == nil && session.selection.sidebarSelection == .inGameMap(3))
+        #expect(session.selection.inGameMapOverlay?.id == 3 && MapContent(session: session).inGameMap?.map.id == 3)
+        session.selection.isInspectorShown = true
+        guard case .inGameMap(let selected)? = session.selection.inspectorItem else { Issue.record("Missing retained map details"); return }
+        #expect(selected.id == 3)
         session.close()
         await session.waitUntilClosed()
         #expect(!session.presentation.canShow(nether))

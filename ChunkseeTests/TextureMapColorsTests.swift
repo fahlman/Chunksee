@@ -118,12 +118,16 @@ import Testing
         #expect(try ItemPictureFixture.pixels(original.full.image).bytes != pixels.bytes)
         let file = try #require(try dimension.region(x: 0, z: 0))
         #expect(try await colored.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
-        let regionFile = dimension.regionURL(.terrain, x: 0, z: 0)
-        let fallback = try #require(TileCache.key(for: position, regionFile: regionFile))
-        let source = try #require(TileCache.key(for: position, regionFile: regionFile, colorSource: .game(library.sourceKey), gameSource: .init(data: library.data, artwork: library)))
+        let fallback = try #require(baseline.cacheKey(for: position))
+        let source = try #require(colored.cacheKey(for: position))
         #expect(fallback.fileName != source.fileName && cache.load(source) != nil)
-        #expect(TileCache.key(for: position, regionFile: regionFile, style: .height, colorSource: .game(library.sourceKey), gameSource: .init(data: library.data, artwork: library))
-            == TileCache.key(for: position, regionFile: regionFile, style: .height))
+        for style in MapStyle.allCases {
+            var plain = baseline, supplied = colored
+            plain.style = style; supplied.style = style
+            let plainKey = try #require(plain.cacheKey(for: position))
+            let suppliedKey = try #require(supplied.cacheKey(for: position))
+            #expect((plainKey == suppliedKey) == (style == .height))
+        }
         await library.close()
         await #expect(throws: CancellationError.self) { try await colored.tile(for: position) }
         await #expect(throws: CancellationError.self) { try await colored.topBlocks(in: file, localX: 0, localZ: 0) }
@@ -137,17 +141,17 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let gameResources = TestGameResources()
-        let map = MapModel(gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.gameArtwork == nil ? "fallback" : "assets")
         })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
         await gate.waitForRequest("fallback")
-        let previousRenderer = map.currentRenderer
+        let previousRenderer = (try requiredRenderer(map))
         let artwork = try fixture.library()
         gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
         await gate.waitForRequest("assets")
         let good = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
-        await gate.finish("assets", with: try map.currentRenderer.fixtureTile(good, for: .init(x: 0, z: 0)))
+        await gate.finish("assets", with: try (try requiredRenderer(map)).fixtureTile(good, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let old = try #require(CGImage.rgba([0, 255, 0, 255], width: 1, height: 1))
         await gate.finish("fallback", with: try previousRenderer.fixtureTile(old, for: .init(x: 0, z: 0)))

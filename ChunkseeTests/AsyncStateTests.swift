@@ -169,30 +169,10 @@ import Testing
     }
 }
 
-@Suite(.isolatedStores) struct InspectorReadLifetimeTests {
-    @Test func thePreviousPlayerCannotReplaceTheCurrentPlayersRecords() async throws {
-        let first = UUID(), second = UUID()
-        let gate = AsyncReadGate<PlayerRecords>()
-        let model = PlayerRecordsModel(work: BackgroundWork(), read: { uuid, _ in await gate.read(uuid.uuidString) })
-        let oldRead = Task { await model.load(first, name: nil) }
-        await gate.waitForRequest(first.uuidString)
-        let currentRead = Task { await model.load(second, name: nil) }
-        await gate.waitForRequest(second.uuidString)
-        await gate.finish(second.uuidString, with: .init(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 2]])))
-        await currentRead.value
-        await gate.finish(first.uuidString, with: .init(statistics: PlayerStatistics(values: ["minecraft:custom": ["minecraft:deaths": 1]])))
-        await oldRead.value
-        #expect(model.uuid == second && model.records?.statistics?.value("minecraft:deaths") == 2)
-        model.close()
-        await model.load(first, name: nil)
-        #expect(model.records == nil && model.uuid == nil)
-    }
-}
-
 @Suite(.isolatedStores) struct SearchRequestLifetimeTests {
     func hit(_ name: String) -> SearchHit {
-        SearchHit(id: name, source: .sign, dimension: "minecraft:overworld", position: .zero, y: 64,
-                  title: name, detail: name, count: 1)
+        SearchHit(id: name, dimension: "minecraft:overworld", position: .zero, y: 64,
+                  content: .sign(kind: "minecraft:sign", lines: [name]))
     }
 
     @Test func editingKeepsTheDisplayedResultsAndReusesCompletedSavedSearches() async {
@@ -200,7 +180,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         await gate.finish("saved", with: ["saved": [hit("Saved")]])
@@ -213,20 +193,19 @@ import Testing
         search.text = "second"
         await gate.waitForRequest("second")
         #expect(search.isSearching)
-        #expect(search.results.map(\.title) == ["First"])
-        #expect(search.results(for: "second").map(\.title) == ["First"])
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
+        #expect(search.results.map(\.id) == ["First"])
+        #expect(search.results(for: "second").map(\.id) == ["First"])
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
         await gate.finish("second", with: ["second": [hit("Second")]])
         await search.waitForSearch()
-        #expect(search.results.map(\.title) == ["Second"])
+        #expect(search.results.map(\.id) == ["Second"])
         #expect(search.results(for: "first").isEmpty)
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
 
         search.text = ""
         #expect(search.results.isEmpty && search.results(for: "").isEmpty)
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
-        search.cancel()
-        await search.waitForTasks()
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
+        await search.closeTestWorld()
     }
 
     @Test func editingDoesNotCancelOrRepeatAPendingSavedSearch() async {
@@ -234,7 +213,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
         search.text = "first"
@@ -246,10 +225,10 @@ import Testing
         await search.waitForSearch()
         await gate.finish("first", with: ["first": [hit("Obsolete")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Second"])
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
+        #expect(search.results.map(\.id) == ["Second"])
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
-        search.cancel()
+        await search.closeTestWorld()
     }
 
     @Test func sourceChangesKeepSnapshotsUntilTheirReplacementsArrive() async {
@@ -257,7 +236,8 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let players = PlayerRoster([])
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved,
                                  execute: { await gate.read("\($0.queries[0])-\($0.players.count)") }, gameNames: { .unavailable })
         search.text = "query"
@@ -266,24 +246,23 @@ import Testing
             await gate.finish("\(query)-0", with: [query: [hit("Previous \(query)")]])
         }
         await search.waitForSearch()
-        search.playerRoster.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
+        players.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
         for query in ["saved", "query"] { await gate.waitForRequest("\(query)-1") }
-        #expect(search.results.map(\.title) == ["Previous query"])
-        #expect(search.results(for: "saved").map(\.title) == ["Previous saved"])
+        #expect(search.results.map(\.id) == ["Previous query"])
+        #expect(search.results(for: "saved").map(\.id) == ["Previous saved"])
         for query in ["saved", "query"] {
             await gate.finish("\(query)-1", with: [query: [hit("Updated \(query)")]])
         }
         await search.waitForSearch()
-        #expect(search.results.map(\.title) == ["Updated query"])
-        #expect(search.results(for: "saved").map(\.title) == ["Updated saved"])
-        search.cancel()
-        await search.waitForTasks()
+        #expect(search.results.map(\.id) == ["Updated query"])
+        #expect(search.results(for: "saved").map(\.id) == ["Updated saved"])
+        await search.closeTestWorld()
     }
 
     @Test func anOldQueryCannotPublishOverTheNewQuery() async {
         let defaults = TestDefaults.make()
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: nil,
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         search.text = "old"
@@ -294,9 +273,9 @@ import Testing
         await search.waitForSearch()
         await gate.finish("old", with: ["old": [hit("Obsolete")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Current"])
+        #expect(search.results.map(\.id) == ["Current"])
         #expect(search.results(for: "old").isEmpty)
-        search.cancel()
+        await search.closeTestWorld()
     }
 
     @Test func sharedNameChangesReplaceTheQuerySnapshot() async {
@@ -304,11 +283,11 @@ import Testing
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"Known"}"#.utf8), 200) }))
         names.looksUpOnline = true
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
-        let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
+        let unknown = GameNames.unavailable.player(.unnamed(uuid))
         let gate = AsyncReadGate<[String: [SearchHit]]>()
-        let search = SearchModel(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: nil, firstDimension: nil,
+        let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { nil }, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
-                                 execute: { await gate.read($0.playerNames[uuid]!.text) }, gameNames: { .unavailable })
+                                 execute: { await gate.read($0.gameNames.player($0.playerNames[uuid]!)) }, gameNames: { .unavailable })
         search.text = "diamond"
         await gate.waitForRequest(unknown)
         await names.lookUp([uuid])
@@ -317,7 +296,7 @@ import Testing
         await search.waitForSearch()
         await gate.finish(unknown, with: ["diamond": [hit("Unknown")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Known"])
-        search.cancel()
+        #expect(search.results.map(\.id) == ["Known"])
+        await search.closeTestWorld()
     }
 }

@@ -7,10 +7,14 @@ struct MobGroups: View {
     let catalog: MobTypes
     @Binding var expanded: Set<String>
     let rowsReady: () -> Void
+    @Environment(\.gameNames) private var gameNames
+    @Environment(\.locale) private var locale
 
     var body: some View {
-        ForEach(catalog.kinds.map { (id: SidebarItem.mobType($0.id), kind: $0) }, id: \.id) { row in
-            MobTypeGroup(session: session, catalog: catalog, kind: row.kind, isExpanded: Binding {
+        ForEach(gameNames.mobKinds(in: catalog, locale: locale).map {
+            (id: SidebarItem.mobType($0.id), kind: $0.kind, name: $0.name)
+        }, id: \.id) { row in
+            MobTypeGroup(session: session, catalog: catalog, kind: row.kind, name: row.name, isExpanded: Binding {
                 expanded.contains(row.kind.id)
             } set: {
                 if $0 { expanded.insert(row.kind.id) } else { expanded.remove(row.kind.id) }
@@ -23,6 +27,7 @@ private struct MobTypeGroup: View {
     let session: WorldSession
     let catalog: MobTypes
     let kind: MobTypes.Kind
+    let name: String
     @Binding var isExpanded: Bool
     let rowsReady: () -> Void
     @State private var loaded: (request: Request, rows: [Row])?
@@ -57,7 +62,7 @@ private struct MobTypeGroup: View {
                 if $0 { session.visibility.mobTypes.insert(kind.id) }
                 else { session.visibility.mobTypes.remove(kind.id) }
             }) {
-                Label(kind.name, systemImage: CreatureGroup.mob.symbol)
+                Label(name, systemImage: CreatureGroup.mob.symbol)
             }
         }
         .tag(SidebarItem.mobType(kind.id))
@@ -74,6 +79,7 @@ struct MobTypeDetails: View {
     let session: WorldSession
     let kind: MobTypes.Kind
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         Form {
@@ -82,7 +88,7 @@ struct MobTypeDetails: View {
                 Text("These positions come from the last save. Mobs may move or disappear when the world is played.")
                     .foregroundStyle(.secondary)
             } header: {
-                InspectorHeading(title: Text(kind.name), symbol: CreatureGroup.mob.symbol,
+                InspectorHeading(title: Text(gameNames.mobName(kind.id, in: session.presentation.selectedIndex.mobTypes, locale: locale)), symbol: CreatureGroup.mob.symbol,
                                  picture: .mob(kind.id))
             }
             Section("Appearances") {
@@ -94,11 +100,11 @@ struct MobTypeDetails: View {
                 }) {
                     Text("All Appearances").tag(Optional<MobAppearance>.none)
                     ForEach(kind.variants) { variant in
-                        Text(variant.appearance.name(for: kind.id)).tag(Optional(variant.appearance))
+                        Text(gameNames.creatureAppearance(variant.appearance.saved, for: kind.id, locale: locale)).tag(Optional(variant.appearance))
                     }
                 }
                 ForEach(kind.variants) { variant in
-                    LabeledContent(variant.appearance.name(for: kind.id), value: variant.count.formatted(.number.locale(locale)))
+                    LabeledContent(gameNames.creatureAppearance(variant.appearance.saved, for: kind.id, locale: locale), value: variant.count.formatted(.number.locale(locale)))
                 }
             }
         }

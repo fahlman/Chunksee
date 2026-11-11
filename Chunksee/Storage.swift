@@ -17,13 +17,6 @@ nonisolated struct StoredItem: Identifiable, Equatable, Sendable {
     var name: String
     var count: Int
     var containers: Int
-
-    static func presenting(_ totals: [StoredItemTotal]) -> [StoredItem] {
-        totals.map {
-            StoredItem(id: $0.id, name: ItemAppearance.label(kind: $0.id, customName: nil), count: $0.count, containers: $0.containers)
-        }
-        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
-    }
 }
 
 /// The inspector's storage summary for the selected dimension. Choosing an item searches for it,
@@ -32,11 +25,12 @@ struct StorageView: View {
     static let symbol = "archivebox.fill"
     let session: WorldSession
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
     @State private var sortOrder = [KeyPathComparator(\StoredItem.count, order: .reverse)]
     @State private var selection: StoredItem.ID?
 
     var body: some View {
-        let items = session.presentation.selectedIndex.storage
+        let items = gameNames.storedItems(session.presentation.selectedIndex.storage)
         VStack(alignment: .leading, spacing: 8) {
             InspectorHeading(title: Text("Storage"), symbol: Self.symbol)
             if session.search.isIndexing && items.isEmpty {

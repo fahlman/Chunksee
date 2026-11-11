@@ -7,6 +7,7 @@ struct MapBlockFilterView: View {
     let session: WorldSession
     let map: MapModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.gameNames) private var gameNames
     @State private var draft: MapBlockFilter
     @State private var search = ""
 
@@ -23,12 +24,7 @@ struct MapBlockFilterView: View {
     }
 
     private var displayed: [String] {
-        catalog.filter { search.isEmpty || ReadableName.from($0).localizedStandardContains(search)
-            || $0.localizedStandardContains(search) }
-            .sorted { left, right in
-                let comparison = ReadableName.from(left).localizedStandardCompare(ReadableName.from(right))
-                return comparison == .orderedSame ? left < right : comparison == .orderedAscending
-            }
+        gameNames.blockIDs(in: catalog, matching: search)
     }
 
     var body: some View {
@@ -44,7 +40,7 @@ struct MapBlockFilterView: View {
             List(displayed, id: \.self) { id in
                 HStack {
                     VStack(alignment: .leading) {
-                        Text(ReadableName.from(id))
+                        Text(gameNames.block(id))
                         Text(id).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -55,7 +51,7 @@ struct MapBlockFilterView: View {
                     }
                     .labelsHidden()
                     .frame(width: 110)
-                    .accessibilityLabel(Text("Appearance of \(ReadableName.from(id))"))
+                    .accessibilityLabel(Text("Appearance of \(gameNames.block(id))"))
                     .accessibilityIdentifier("block-filter-" + id)
                 }
             }
@@ -67,7 +63,7 @@ struct MapBlockFilterView: View {
                     ContentUnavailableView.search(text: search)
                 }
             }
-            Text("Names come from this dimension’s saved palettes. Some may not currently appear on the map.")
+            Text("Blocks come from this dimension’s saved palettes. Some may not currently appear on the map.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Hide Leaves", isOn: Binding {
                 leaves.map { !$0.isEmpty && $0.isSubset(of: draft.hiddenIDs) } ?? false

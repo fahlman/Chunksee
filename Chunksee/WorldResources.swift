@@ -27,25 +27,80 @@ final class WorldOpening {
 /// its presentation. Closing the last of them closes the world.
 @Observable
 final class WorldResources {
-    let access: WorldReadAccess
+    @ObservationIgnored private(set) var access: WorldReadAccess
+    private(set) var readSource: WorldReadSource
     let backgroundWork: BackgroundWork
-    let world: World
-    private(set) var savedVersion: SavedMinecraftVersion
+    var world: World { infoSnapshot.world }
+    var savedVersion: SavedMinecraftVersion { SavedMinecraftVersion(world.level) }
     private var visibleNewerWorldNoticeID: String?
     var dimensions: [ChunkseeKit.Dimension] { index.readers.map(\.dimension) }
     private(set) var dimensionDocuments: [String: String]
-    private(set) var details: WorldDetails
+    private let openingInfo: WorldInfoSnapshot
+    private let openingMaps: WorldMapSnapshot
+    var infoSnapshot: WorldInfoSnapshot { infoLoader.value ?? WorldInfoSnapshot(world: readSource.world) }
+    var details: WorldDetails {
+        WorldDetails(definitions: definitionLoader.value?.definitions ?? WorldDefinitions(),
+                     info: infoSnapshot, mapSnapshot: mapLoader.value ?? WorldMapSnapshot(sources: []))
+    }
     let names: PlayerNames
     let savedSearches: SavedSearches
     let savedPlaces: SavedPlaces
     var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
+    @ObservationIgnored private(set) lazy var queryStore = WorldQueryStore(
+        index: index, work: backgroundWork, names: names, savedSearches: savedSearches,
+        singleplayerUUID: { [weak self] in self?.world.level.singleplayerUUID },
+        gameNames: { [weak self] in self?.gameNames ?? .unavailable })
     let settings: WorldSettings
     let cacheRoot: URL?
-    let playerRoster: PlayerRoster
+    private let definitionLoader: WorldDefinitionLoader
+    @ObservationIgnored private var gameResourceObservation: ModelObservation?
+    @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
+        partialRead: { [weak self] source, _, previous in
+            guard let read = await self?.readInfo else { throw CancellationError() }
+            return try await read(source, previous)
+        }, work: backgroundWork, priority: .utility, whenInactive: .finish, source: infoSource,
+        initialValue: openingInfo, firstRequest: .refresh, merge: { _, newer in newer },
+        retainingValue: { value, previous, current in
+            guard previous.worldSource == current.worldSource else { return nil }
+            let old = Dictionary(uniqueKeysWithValues: previous.dimensions.map { ($0.id, $0.url) })
+            let unchanged = Set(current.dimensions.filter { old[$0.id] == $0.url }.map(\.id))
+            var retained = value
+            retained.borders = retained.borders.filter { unchanged.contains($0.key) }
+            return retained
+        }
+    )
+    @ObservationIgnored var readInfo: @Sendable (WorldInfoSource, WorldInfoSnapshot?) async throws -> RefreshRead<WorldInfoSnapshot> = {
+        try await $0.read(retaining: $1)
+    }
+    private var infoSource: WorldInfoSource {
+        .init(worldSource: readSource, dimensions: dimensions.sorted { $0.id < $1.id })
+    }
+    private func refreshInfo() {
+        guard !isClosed else { return }
+        infoLoader.request(source: infoSource, isEnabled: true, refresh: .refresh)
+    }
+    @ObservationIgnored private lazy var mapLoader = RefreshLoader<WorldMapSource, RefreshInvalidation, WorldMapSnapshot>(
+        partialRead: { [weak self] source, _, previous in
+            guard let read = await self?.readMaps else { throw CancellationError() }
+            return try await read(source, previous)
+        }, work: backgroundWork, priority: .utility, whenInactive: .finish,
+        source: WorldMapSource(worldSource: readSource), initialValue: openingMaps,
+        firstRequest: .refresh, merge: { _, newer in newer }
+    )
+    @ObservationIgnored var readMaps: @Sendable (WorldMapSource, WorldMapSnapshot?) async throws -> RefreshRead<WorldMapSnapshot> = {
+        try await $0.read(retaining: $1)
+    }
+    private func refreshMaps() {
+        guard !isClosed else { return }
+        mapLoader.request(source: WorldMapSource(worldSource: readSource), isEnabled: true, refresh: .refresh)
+    }
+    var playerRoster: any PlayerSnapshotSource { definitionLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
-    private let readRegion: RegionReader.Read
+    private let makeReader: (WorldReadSource, ChunkseeKit.Dimension, WorldDefinitions) -> RegionReader
+    private let watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher?
+    private let maintainCache: @Sendable (URL, URL) async -> Void
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -57,12 +112,12 @@ final class WorldResources {
     @ObservationIgnored private var pendingIndex: [String: RegionChange] = [:]
     /// Entity/POI saves change the index without invalidating terrain images or inhabited times.
     @ObservationIgnored private var pendingTerrain: [String: RegionChange] = [:]
+    @ObservationIgnored private var pendingWorldData = false
     @ObservationIgnored private var pendingPlayers = false
     @ObservationIgnored private var pendingLighting = false
     @ObservationIgnored private var pendingBiomeMetadata = false
     @ObservationIgnored private var pendingBiomePacks = false
     private let refreshWork: BackgroundWork.Scope
-    private let definitionsWork: BackgroundWork.Scope
     private let assetLoader: RefreshLoader<WorldGameAssetSource, RefreshInvalidation, GameAssetSelection>
     private var languagePreference = GameLanguageChoice.preferredLanguage
     @ObservationIgnored private lazy var languageLoader = RefreshLoader<LanguageSource, RefreshInvalidation, GameNames>(
@@ -93,38 +148,38 @@ final class WorldResources {
         LanguageSource(generation: names.minecraft.generation, library: gameData,
                        preference: languagePreference, folder: names.minecraft.folder)
     }
-    @ObservationIgnored private var assetObserver: UUID?
-    private(set) var definitionReadGeneration = 0
-    @ObservationIgnored private var isDefinitionReadPending = false
-    @ObservationIgnored var readDefinitions: @Sendable (World, GameDataLibrary?) async throws -> DefinitionSnapshot = {
-        try await WorldResources.readDefinitions($0, library: $1)
+    var readDefinitions: WorldDefinitionLoader.ReadDefinitions {
+        get { definitionLoader.readDefinitions }
+        set { definitionLoader.readDefinitions = newValue }
     }
-    @ObservationIgnored var readPlayerRecords: @Sendable (World, UUID, String?, GameDataLibrary?) async -> PlayerRecords = {
-        await PlayerRecords.load(from: $0, uuid: $1, name: $2, library: $3)
+    @ObservationIgnored private(set) lazy var playerRecords = PlayerRecordStore(world: readSource, work: backgroundWork, names: names) { [weak self] in
+        guard let self, !self.isClosed else { return nil }
+        return self.gameSource
     }
     @ObservationIgnored private lazy var nightLightingLoader = RefreshLoader(
         work: backgroundWork, priority: nil, whenInactive: .cancel,
-        source: LightingSource(generation: names.minecraft.generation, library: gameData)
-    ) { [weak self, world] source, _ in
+        source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
+    ) { [weak self] source, _ in
         guard let read = await self?.readNightLighting else { throw CancellationError() }
-        return try await read(world, source.library)
+        return try await read(source.world.world, source.library)
     }
     @ObservationIgnored var readNightLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
     }
     nonisolated private struct LightingSource: Equatable, Sendable {
+        let world: WorldReadSource
         let generation: UUID
         let library: GameDataLibrary?
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.generation == rhs.generation && lhs.library === rhs.library
+            lhs.world == rhs.world && lhs.generation == rhs.generation && lhs.library === rhs.library
         }
     }
     @ObservationIgnored private lazy var lightingLoader = RefreshLoader(
         work: backgroundWork, priority: nil, whenInactive: .finish,
-        source: LightingSource(generation: names.minecraft.generation, library: gameData)
-    ) { [weak self, world] source, _ in
+        source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
+    ) { [weak self] source, _ in
         guard let read = await self?.readLighting else { throw CancellationError() }
-        return try await read(world, source.library)
+        return try await read(source.world.world, source.library)
     }
     @ObservationIgnored var readLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
@@ -150,35 +205,38 @@ final class WorldResources {
     @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
         work: backgroundWork, priority: nil, whenInactive: .finish, source: biomeSource,
         firstRequest: .metadata, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
-            guard previous.generation == current.generation, previous.data === current.data else { return nil }
+            guard previous.world == current.world, previous.generation == current.generation, previous.data === current.data else { return nil }
             return value.removingArtwork()
         }
-    ) { [weak self, world] source, request, previous in
+    ) { [weak self] source, request, previous in
         guard let read = await self?.readBiomeColors else { throw CancellationError() }
-        return try await read(world, source.data, source.artwork, previous, request == .contents)
+        return try await read(source.world.world, source.data, source.artwork, previous, request == .contents)
     }
     nonisolated private enum BiomeRequest: Equatable, Sendable {
         case metadata, contents
         func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
     }
     nonisolated private struct BiomeSource: Equatable, Sendable {
+        let world: WorldReadSource
         let generation: UUID
         let data: GameDataLibrary?
         let artwork: GameArtworkLibrary?
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.generation == rhs.generation && lhs.data === rhs.data && lhs.artwork === rhs.artwork
+            lhs.world == rhs.world && lhs.generation == rhs.generation && lhs.data === rhs.data && lhs.artwork === rhs.artwork
         }
     }
     private var biomeSource: BiomeSource {
-        BiomeSource(generation: names.minecraft.generation, data: gameData, artwork: gameArtwork)
+        BiomeSource(world: readSource, generation: names.minecraft.generation, data: gameData, artwork: gameArtwork)
     }
     @ObservationIgnored var refreshDelay: Duration = .seconds(2)
     /// Tests can hold this boundary without making refresh correctness depend on scheduler speed.
     @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     @ObservationIgnored private var isRefreshScheduled = false
-    @ObservationIgnored private var playerReadGeneration = 0
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
-    @ObservationIgnored var readPlayers: @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]? = { await WorldResources.readPlayers($0, enchantments: $1) }
+    var readPlayers: WorldDefinitionLoader.ReadPlayers {
+        get { definitionLoader.readPlayers }
+        set { definitionLoader.readPlayers = newValue }
+    }
     @ObservationIgnored var readHeadingBlock: @Sendable (ChunkseeKit.Dimension, BlockPosition) async throws -> BlockState? = {
         try await WorldResources.readBlock($0, at: $1)
     }
@@ -191,7 +249,7 @@ final class WorldResources {
         init(_ value: WorldSession) { self.value = value }
     }
 
-    var url: URL { access.url }
+    var url: URL { readSource.world.url }
     var defaultDimensionID: String? {
         settings.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
     }
@@ -200,15 +258,23 @@ final class WorldResources {
     /// their controlled events. Documents use the normal FSEvents source and own its lifetime here.
     init(prepared: WorldPreparation, names: PlayerNames, savedSearches: SavedSearches,
          settings: WorldSettings, cacheRoot: URL?,
-         watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
+         watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         let snapshot = prepared.snapshot
+        let readSource = WorldReadSource(snapshot.world)
+        self.readSource = readSource
+        self.watchWorld = watchWorld
+        self.maintainCache = maintainCache
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
         refreshWork = backgroundWork.makeScope()
-        definitionsWork = backgroundWork.makeScope()
+        let definitionLoader = WorldDefinitionLoader(world: readSource, work: backgroundWork,
+            gameSource: .init(generation: prepared.source.generation, selection: .loaded(prepared.library?.data)),
+            dimensions: snapshot.dimensions,
+            definitions: snapshot.details.definitions, players: snapshot.players)
+        self.definitionLoader = definitionLoader
         assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
             source: prepared.source, initialValue: GameAssetSelection(library: prepared.library)
         ) { [minecraft = names.minecraft] source, _ in
@@ -218,57 +284,115 @@ final class WorldResources {
             return GameAssetSelection(library: library)
         }
         access = snapshot.access
-        world = snapshot.world
-        savedVersion = SavedMinecraftVersion(snapshot.world.level)
         dimensionDocuments = snapshot.dimensionDocuments
-        details = snapshot.details
-        playerRoster = PlayerRoster(snapshot.players)
+        openingInfo = snapshot.details.info
+        openingMaps = snapshot.details.mapSnapshot
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
-        self.readRegion = readRegion
+        let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions) in
+            RegionReader(dimension: dimension,
+                cache: ScanCache(forWorldAt: source.world.url, dimensionID: dimension.id, root: cacheRoot),
+                inputs: .init(dimensionID: dimension.id, definitions: definitions), read: readRegion)
+        }
+        self.makeReader = makeReader
         self.settings = settings
         savedPlaces = SavedPlaces(settings: settings)
-        let readers = snapshot.dimensions.map { dimension in
-            RegionReader(dimension: dimension,
-                         cache: ScanCache(forWorldAt: snapshot.access.url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: snapshot.details.dimensionSettings[dimension.id], water: snapshot.details.definitions.water), definitions: snapshot.details.definitions),
-                         notableBlocks: snapshot.details.definitions.notableBlocks,
-                         structureGroups: snapshot.details.definitions.structureGroups,
-                         read: readRegion)
-        }
+        let readers = snapshot.dimensions.map { makeReader(readSource, $0, snapshot.details.definitions) }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerRoster)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: definitionLoader)
+        definitionLoader.published = { [weak self] current in
+            self?.adoptDefinitions(current)
+        }
         assetLoader.published = { [weak self] previous, current in
             guard let self, !self.isClosed else { return }
-            if previous.source != current.source || previous.value?.library?.identity != current.value?.library?.identity {
+            let sourceChanged = previous.source != current.source ||
+                previous.value?.library?.identity != current.value?.library?.identity
+            if sourceChanged {
                 self.refreshGameLanguage()
                 self.refreshBiomeColors(reload: true)
                 self.refreshNightLighting(reread: true)
                 self.refreshLighting()
-                self.refreshDefinitions()
             } else if current.value != nil {
                 // A newly installed language object need not change the selected jar.
                 self.refreshGameLanguage(reload: true)
             }
-        }
-        watcher = watchWorld(snapshot.access.url) { [weak self] in self?.worldChanged($0) }
-        assetObserver = names.minecraft.observeChanges { [weak self] change in
-            switch change {
-            case .source: self?.refreshGameAssets()
-            case .artwork: self?.refreshGameArtwork()
+            if sourceChanged || (previous.value == nil && current.value != nil) {
+                self.refreshDefinitions()
             }
         }
+        watchCurrentSource()
+        observeGameResources()
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
-        if let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: snapshot.access.url, root: root) {
-            backgroundWork.start(priority: .background) {
-                await Self.runCacheMaintenance(maintainCache, root: root, folder: folder)
-            }
+        maintainCurrentCache()
+        _ = queryStore
+    }
+
+    private func watchCurrentSource() {
+        let source = readSource
+        watcher = watchWorld(url) { [weak self] files in
+            guard let self, self.readSource == source else { return }
+            self.worldChanged(files)
         }
+    }
+
+    private func maintainCurrentCache() {
+        guard let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: url, root: root) else { return }
+        let maintain = maintainCache
+        backgroundWork.start(priority: .background) {
+            await Self.runCacheMaintenance(maintain, root: root, folder: folder)
+        }
+    }
+
+    /// Native rereads and moves replace inputs for this same world and every attached window.
+    /// Register old access retirement before publishing anything an observer could close.
+    func replaceSource(with prepared: WorldPreparation) throws {
+        guard !isClosed else { throw CancellationError() }
+        let snapshot = prepared.snapshot, oldAccess = access, retired = index.readers
+        let nextSource = WorldReadSource(snapshot.world)
+        let readers = snapshot.dimensions.map { makeReader(nextSource, $0, snapshot.details.definitions) }
+        watcher?.stop()
+        refreshWork.cancel()
+        isRefreshScheduled = false
+        pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
+        pendingWorldData = false; pendingLighting = false
+        pendingBiomeMetadata = false; pendingBiomePacks = false
+        for session in sessions.values.compactMap(\.value) { session.prepareWorldSourceReplacement() }
+        guard !isClosed else { throw CancellationError() }
+        backgroundWork.start(priority: .utility) {
+            for reader in retired { await reader.close() }
+        }
+        backgroundWork.afterCurrentWork { oldAccess.release() }
+        // From here this owner must release the incoming access, even if a synchronous
+        // observer closes it. Throwing would make the caller release it before work drains.
+        access = snapshot.access
+        readSource = nextSource
+        guard !isClosed else { return }
+        // Install the prepared catalog before definition callbacks can replace its readers.
+        // Completed compatible facts remain available while the new files are checked.
+        index.replaceWorldSource(readers: readers, firstDimension: activeDimensionID)
+        guard !isClosed else { return }
+        dimensionDocuments = snapshot.dimensionDocuments
+        infoLoader.replace(source: WorldInfoSource(worldSource: readSource, dimensions: snapshot.dimensions.sorted { $0.id < $1.id }),
+                           value: snapshot.details.info)
+        mapLoader.replace(source: WorldMapSource(worldSource: readSource), value: snapshot.details.mapSnapshot)
+        playerRecords.replaceWorld(readSource)
+        definitionLoader.replaceWorld(readSource,
+            gameSource: .init(generation: prepared.source.generation, selection: .loaded(prepared.library?.data)),
+            dimensions: snapshot.dimensions, definitions: snapshot.details.definitions, players: snapshot.players)
+        assetLoader.replace(source: prepared.source, value: GameAssetSelection(library: prepared.library))
+        guard !isClosed else { return }
+        for session in sessions.values.compactMap(\.value) { session.replaceWorldSource() }
+        guard !isClosed else { return }
+        refreshBiomeColors(reload: true)
+        refreshNightLighting(reread: true)
+        refreshLighting()
+        watchCurrentSource()
+        maintainCurrentCache()
     }
 
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
@@ -280,19 +404,13 @@ final class WorldResources {
         let added = snapshot.dimensions.filter { !known.contains($0.id) }
         guard !added.isEmpty else { return }
         let newIDs = Set(added.map(\.id))
-        for id in newIDs { details.definitions.dimensionSettings[id] = snapshot.details.dimensionSettings[id] }
+        definitionLoader.include(added, settings: snapshot.details.dimensionSettings)
+        guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
-        index.include(added.map { dimension in
-            RegionReader(dimension: dimension,
-                         cache: ScanCache(forWorldAt: url, dimensionID: dimension.id, root: cacheRoot),
-                         options: RegionReader.options(context: MapSurfaceContext(settings: details.dimensionSettings[dimension.id], water: details.definitions.water), definitions: details.definitions),
-                         notableBlocks: details.definitions.notableBlocks,
-                         structureGroups: details.definitions.structureGroups,
-                         read: readRegion)
-        }, firstDimension: activeDimensionID)
+        index.include(added.map { makeReader(readSource, $0, details.definitions) }, firstDimension: activeDimensionID)
+        refreshInfo()
         refreshNightLighting(reread: true)
         refreshLighting()
-        refreshDefinitions()
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
@@ -317,6 +435,18 @@ final class WorldResources {
 
     /// All dimension views share one source request. Permission changes also reach hidden tabs,
     /// whose SwiftUI tasks may not run until they become visible again.
+    private func observeGameResources() {
+        gameResourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (generation: $0.names.minecraft.generation, artwork: $0.names.minecraft.usesGameArtwork)
+        }) { resources, previous in
+            if resources.names.minecraft.generation != previous.generation {
+                resources.refreshGameAssets()
+            } else if resources.names.minecraft.usesGameArtwork != previous.artwork {
+                resources.refreshGameArtwork()
+            }
+        }
+    }
+
     func refreshGameAssets() {
         guard !isClosed else { return }
         let source = WorldGameAssetSource(generation: names.minecraft.generation)
@@ -338,9 +468,18 @@ final class WorldResources {
     }
 
     var gameNames: GameNames {
-        guard !isClosed, assetLoader.source.generation == names.minecraft.generation,
-              languageLoader.source == languageSource else { return .unavailable }
-        return languageLoader.value ?? .unavailable
+        guard !isClosed else { return .unavailable }
+        let names: GameNames
+        if assetLoader.source.generation == self.names.minecraft.generation,
+           languageLoader.source == languageSource {
+            names = languageLoader.value ?? .unavailable
+        } else {
+            names = .unavailable
+        }
+        let source = gameSource
+        guard source.selection.isLoaded, let facts = definitionLoader.value,
+              facts.source == source.identity else { return names }
+        return names.withEnchantments(facts.enchantmentNames)
     }
 
     func refreshGameLanguage(preferredLanguage: String? = nil, reload: Bool = false) {
@@ -373,84 +512,45 @@ final class WorldResources {
         visibleNewerWorldNoticeID = nil
     }
 
-    nonisolated struct DefinitionSnapshot: Sendable {
-        let definitions: WorldDefinitions
-        let borders: [String: WorldBorder]
-        let savedVersion: SavedMinecraftVersion
-    }
-
-    func playerRecords(for uuid: UUID, name: String?) async -> PlayerRecords? {
-        guard !isClosed, !Task.isCancelled else { return nil }
-        let generation = definitionReadGeneration, library = gameData, source = names.minecraft.generation
-        var records = await readPlayerRecords(world, uuid, name, library)
-        guard !Task.isCancelled, !isClosed, generation == definitionReadGeneration,
-              source == names.minecraft.generation, gameData?.identity == library?.identity else { return nil }
-        records.definitionGeneration = generation
-        return records
+    private var gameSource: WorldGameDataSource {
+        let selection: WorldGameDataSource.Selection
+        if assetLoader.source.generation == names.minecraft.generation, let loaded = assetLoader.value {
+            selection = .loaded(loaded.library?.data)
+        } else {
+            selection = .loading
+        }
+        return WorldGameDataSource(generation: names.minecraft.generation, selection: selection)
     }
 
     private func refreshDefinitions() {
         guard !isClosed else { return }
-        definitionReadGeneration += 1
-        playerReadGeneration += 1
-        let generation = definitionReadGeneration, library = gameData, read = readDefinitions, world = world
-        let readPlayers = readPlayers
-        definitionsWork.cancel()
-        isDefinitionReadPending = true
-        definitionsWork.start(priority: .utility) { [weak self] in
-            let updated = try? await read(world, library)
-            guard !Task.isCancelled, let updated else {
-                if self?.definitionReadGeneration == generation { self?.isDefinitionReadPending = false }
-                return
-            }
-            let players = await readPlayers(world, updated.definitions.enchantments)
-            guard !Task.isCancelled, let self, !self.isClosed,
-                  self.definitionReadGeneration == generation,
-                  self.gameData?.identity == library?.identity else { return }
-            self.isDefinitionReadPending = false
-            self.savedVersion = updated.savedVersion
-            // Keep the last coherent snapshot during a transient unreadable save. Never pair
-            // new region definitions with players whose maximum used the previous definitions.
-            guard let players else { return }
-            var previous = self.details.definitions
-            self.details.definitions = updated.definitions
-            self.details.borders = updated.borders
-            self.playerRoster.publish(players)
-            // Leaf membership only supplies a sheet shortcut. Publishing it must not replace
-            // readers or rescan regions; existing explicit block choices remain unchanged.
-            previous.leafTag = updated.definitions.leafTag
-            guard previous != updated.definitions else { return }
-            let retired = self.index.readers
-            let readers = retired.map { reader in
-                let dimension = reader.dimension
-                return RegionReader(dimension: dimension,
-                    cache: ScanCache(forWorldAt: self.url, dimensionID: dimension.id, root: self.cacheRoot),
-                    options: RegionReader.options(context: MapSurfaceContext(settings: updated.definitions.dimensionSettings[dimension.id], water: updated.definitions.water), definitions: updated.definitions),
-                    notableBlocks: updated.definitions.notableBlocks,
-                    structureGroups: updated.definitions.structureGroups, read: self.readRegion)
-            }
-            self.index.replace(readers: readers, firstDimension: self.activeDimensionID)
-            for session in self.sessions.values.compactMap(\.value) {
-                guard let id = session.selectedDimensionID else { continue }
-                session.map?.setDimensionSettings(updated.definitions.dimensionSettings[id], water: updated.definitions.water)
-                session.heatMap.replaceReader(self.readers[id])
-            }
-            self.backgroundWork.start(priority: .utility) {
-                for reader in retired { await reader.close() }
-            }
-        }
+        definitionLoader.refreshDefinitions(gameSource: gameSource)
     }
 
-    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> DefinitionSnapshot {
+    private func adoptDefinitions(_ current: WorldDefinitionLoader.Facts?) {
+        guard !isClosed else { return }
+        let definitions = current?.definitions ?? WorldDefinitions()
+        let retired = index.readers
+        guard retired.contains(where: {
+            $0.inputs != RegionReader.Inputs(dimensionID: $0.dimension.id, definitions: definitions)
+        }) else { return }
+        let readers = retired.map { makeReader(readSource, $0.dimension, definitions) }
+        // Register retirement before publishing the replacement catalog: an observer may close
+        // the world synchronously, and that close must drain the retired readers too.
+        backgroundWork.start(priority: .utility) {
+            for reader in retired { await reader.close() }
+        }
+        index.replace(readers: readers, firstDimension: activeDimensionID)
+    }
+
+    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> WorldDefinitions {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         let definitions: WorldDefinitions
         if let library { definitions = try await library.definitions(in: current) }
         else { definitions = try WorldDefinitions.read(current, assets: nil) }
-        var borders: [String: WorldBorder] = [:]
-        for dimension in current.dimensions() { borders[dimension.id] = try? current.worldBorder(of: dimension) }
         try Task.checkCancellation()
-        return DefinitionSnapshot(definitions: definitions, borders: borders, savedVersion: SavedMinecraftVersion(current.level))
+        return definitions
     }
 
     private func refreshBiomeColors(reload: Bool) {
@@ -481,7 +581,7 @@ final class WorldResources {
 
     private func refreshNightLighting(reread: Bool) {
         guard !isClosed else { return }
-        nightLightingLoader.request(source: LightingSource(generation: names.minecraft.generation, library: gameData),
+        nightLightingLoader.request(source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData),
                                     isEnabled: sessions.values.contains { $0.value?.map?.showsDarkSpots == true },
                                     reread: reread)
     }
@@ -492,7 +592,7 @@ final class WorldResources {
 
     private func refreshLighting() {
         guard !isClosed else { return }
-        lightingLoader.request(source: LightingSource(generation: names.minecraft.generation, library: gameData),
+        lightingLoader.request(source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData),
                                isEnabled: true, reread: true)
     }
 
@@ -520,7 +620,9 @@ final class WorldResources {
         guard !isClosed else { return }
         let documents = sessions.values.compactMap(\.value).filter { !$0.isClosed && $0.selectedDimensionID == dimension }
         if documents.isEmpty {
-            LayerVisibility(settings: settings, dimension: dimension).showsSavedPlaces = true
+            var presentation = settings.mapPresentation(for: dimension)
+            presentation.overlays.showsSavedPlaces = true
+            settings.save(presentation, for: dimension)
         } else {
             for document in documents { document.visibility.showsSavedPlaces = true }
         }
@@ -574,13 +676,13 @@ final class WorldResources {
 
     func close() {
         guard !isClosed else { return }
+        gameResourceObservation?.cancel()
         isClosed = true
-        if let assetObserver { names.minecraft.stopObserving(assetObserver) }
-        assetObserver = nil
         openings = []
         pendingActions = [:]
         watcher?.stop()
         backgroundWork.close()
+        queryStore.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         assetLoader.close()
@@ -588,6 +690,10 @@ final class WorldResources {
         biomeLoader.close()
         nightLightingLoader.close()
         lightingLoader.close()
+        infoLoader.close()
+        mapLoader.close()
+        definitionLoader.close()
+        playerRecords.close()
         let readers = Array(readers.values), index = index
         let access = access
         let backgroundWork = backgroundWork
@@ -607,7 +713,7 @@ final class WorldResources {
     func headingBlock(at position: BlockPosition, in dimensionID: String) async -> BlockState? {
         guard !isClosed, !Task.isCancelled,
               let dimension = dimensions.first(where: { $0.id == dimensionID }) else { return nil }
-        let read = readHeadingBlock
+        let read = readHeadingBlock, source = readSource
         var block: BlockState?
         guard let task = backgroundWork.start(priority: .utility, operation: {
             guard !Task.isCancelled else { return }
@@ -618,7 +724,7 @@ final class WorldResources {
         } onCancel: {
             task.cancel()
         }
-        guard !isClosed, !Task.isCancelled else { return nil }
+        guard !isClosed, !Task.isCancelled, readSource == source else { return nil }
         return block
     }
 
@@ -631,6 +737,7 @@ final class WorldResources {
     func worldChanged(_ files: [URL]) {
         guard !isClosed, !refreshWork.isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
+            var mayChangeSavedData = true
             let path = file.path
             if path == url.standardizedFileURL.path {
                 // A broad notification can cover several dimension folders under this world.
@@ -665,6 +772,7 @@ final class WorldResources {
                 let parent = file.deletingLastPathComponent().path
                 if ChunkseeKit.Dimension.Folder.allCases.contains(where: { parent == dimension.directory($0).standardizedFileURL.path }),
                    let parsed = RegionFile.parseCoordinates(file.lastPathComponent) {
+                    mayChangeSavedData = false
                     let change = RegionChange.regions([RegionPosition(x: parsed.x, z: parsed.z)])
                     if pendingIndex[dimension.id] != nil { pendingIndex[dimension.id]?.merge(change) }
                     else { pendingIndex[dimension.id] = change }
@@ -676,12 +784,17 @@ final class WorldResources {
                             ChunkseeKit.Dimension.Folder.allCases.contains(where: { path == dimension.directory($0).standardizedFileURL.path }) {
                     // Only broad region/dimension events need reconciliation. Saved data such as
                     // raids.dat and chunk_tickets.dat does not feed the index, terrain or heat map.
+                    mayChangeSavedData = path == dimension.url.standardizedFileURL.path
                     pendingIndex[dimension.id] = .all
                     pendingTerrain[dimension.id] = .all
                 }
             }
+            // Kit owns saved-data discovery, including older layouts and missing files.
+            // Non-region changes invalidate world facts and requested player records without
+            // copying those discovery tables here. Ordinary region writes do not reread them.
+            pendingWorldData = pendingWorldData || mayChangeSavedData
         }
-        guard !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks || pendingLighting else { return }
+        guard pendingWorldData || !pendingIndex.isEmpty || pendingPlayers || pendingBiomeMetadata || pendingBiomePacks || pendingLighting else { return }
         // While a player explores, the game saves region files every second or so. Changes join
         // the refresh already scheduled rather than postponing it, so the map catches up every
         // `refreshDelay` during play instead of only once the game goes quiet.
@@ -698,17 +811,19 @@ final class WorldResources {
         }
     }
 
-    /// Waits for every refresh under way, including one still reading players behind a newer one.
+    /// Waits for active and coalesced refresh passes, without waiting for unrelated world work.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionsWork, assetLoader.work, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, infoLoader.work, mapLoader.work, assetLoader.work, languageLoader.work])
+        await playerRecords.waitUntilFinished()
         await index.waitForProjection()
     }
 
     private func refresh() async {
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
         let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
-        let lightingChanged = pendingLighting
+        let lightingChanged = pendingLighting, worldDataChanged = pendingWorldData
         pendingLighting = false
+        pendingWorldData = false
         pendingIndex = [:]; pendingTerrain = [:]; pendingPlayers = false
         pendingBiomeMetadata = false; pendingBiomePacks = false
         for session in sessions.values.compactMap(\.value) {
@@ -724,16 +839,11 @@ final class WorldResources {
             refreshNightLighting(reread: true)
         }
         if lightingChanged { refreshLighting() }
-        if biomesChanged || (playersChanged && isDefinitionReadPending) {
+        if worldDataChanged { refreshInfo(); refreshMaps(); playerRecords.refresh() }
+        if biomesChanged {
             refreshDefinitions()
         } else if playersChanged {
-            // Refreshes can overlap while one reads players, so only the newest read is published:
-            // an older, slower read finishing later must not put old positions back.
-            playerReadGeneration += 1
-            let generation = playerReadGeneration
-            let updated = await readPlayers(world, details.definitions.enchantments)
-            guard !Task.isCancelled, !isClosed, generation == playerReadGeneration, let updated else { return }
-            playerRoster.publish(updated)
+            definitionLoader.refreshPlayers()
         }
     }
 

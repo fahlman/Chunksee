@@ -111,7 +111,7 @@ import Testing
         let after = try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).tile(for: region)
         let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
             await gate.read(renderer.darkSpots == nil ? "off" : "on")
         })
         nightLighting.value = overlay.rule
@@ -142,7 +142,7 @@ import Testing
         let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, renderer, _ in
             // Center reads start with the layer; this gate holds only the original copy.
             renderer.darkSpots == nil ? await gate.read("coordinate") : nil
@@ -185,7 +185,7 @@ import Testing
         await resources.waitForRefresh()
         #expect(second.map?.nightLighting == rules["minecraft:the_nether"])
         #expect(second.map?.nightLighting?.hasSkylight == false)
-        #expect(first.map?.currentRenderer.darkSpots == nil)
+        #expect(try requiredRenderer(first.map).darkSpots == nil)
         resources.refreshDelay = .zero
         resources.readNightLighting = { _, _ in await gate.read("late") }
         resources.worldChanged([root.appendingPathComponent("datapacks")])
@@ -204,9 +204,9 @@ import Testing
         await gate.finish("close", with: rules)
         await resources.waitUntilClosed()
         #expect(first.map?.nightLighting == nil && second.map?.nightLighting == nil)
-        let saved = LayerVisibility(settings: resources.settings, dimension: "minecraft:overworld")
-        let another = LayerVisibility(settings: resources.settings, dimension: "minecraft:the_nether")
-        #expect(saved.rememberedDarkSpots && !another.rememberedDarkSpots)
+        let saved = resources.settings.mapPresentation(for: "minecraft:overworld").overlays
+        let another = resources.settings.mapPresentation(for: "minecraft:the_nether").overlays
+        #expect(saved.showsDarkSpots && !another.showsDarkSpots)
     }
 
     @Test(.timeLimit(.minutes(1))) func resumingDarkSpotsWhileAReadRetiresKeepsWorldDrainage() async throws {
@@ -419,7 +419,7 @@ import Testing
         let (dimension, overlay) = try inputs(root)
         let savedLighting = TestSavedLighting()
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
         map.viewport = plan.viewport
@@ -437,17 +437,15 @@ import Testing
         #expect((tile.normals != nil) == savedTime)
         let color = try ItemPictureFixture.pixels(tile.image).color(0, 0)
         #expect(color[0] > color[1]) // The dark-column tint survives preparation of lighting inputs.
-        var content = MapContent()
-        content.showsDarkSpots = true
-        content.lighting = map.lighting
+        let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
         for scheme in [ColorScheme.light, .dark] {
-            let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+            let exported = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                 content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: Locale(identifier: "en_US"), progress: { _, _ in })
             let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(exported) == pngPixels(view))
-            let bare = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: plan.size,
-                scale: 1, colorScheme: scheme, locale: Locale(identifier: "en_US")))
+            let bare = try #require(MapImage.renderWithoutLegend(map, content: content, size: plan.size,
+                colorScheme: scheme, locale: Locale(identifier: "en_US")))
             #expect(try pngPixels(view) != pngPixels(bare))
         }
         await map.waitForRenders()
@@ -461,9 +459,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let (dimension, overlay) = try inputs(root)
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
-        func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent()) }
+        func readout() -> String { MapView.accessibilityReadout(map: map, content: MapContent(gameNames: .unavailable)) }
         nightLighting.value = overlay.rule
         map.viewport.center = CGPoint(x: 0.5, y: 0.5)
         #expect(map.unfinishedTopBlockReads == 0 && map.topBlocks.isEmpty)
@@ -493,7 +491,7 @@ import Testing
         let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>()
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { chunk, _, _ in await gate.read(String(chunk.x)) })
         nightLighting.value = overlay.rule
         map.setDarkSpots(true)
@@ -532,7 +530,7 @@ import Testing
         let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let gate = AsyncReadGate<MapModel.TopBlockRead?>(), numbers = ReadNumbers()
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in await gate.read(String(await numbers.next())) })
         nightLighting.value = overlay.rule
         map.setDarkSpots(true)
@@ -563,7 +561,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let blocks = try #require(try await RegionTileRenderer(dimension: dimension, darkSpots: overlay).topBlocks(in: file, localX: 0, localZ: 0))
         let nightLighting = TestNightLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nightLighting.value }, work: BackgroundWork(), dimension: dimension, center: .zero,
                            readTopBlocks: { _, _, _ in (file, blocks) })
         defer { map.close() }
         nightLighting.value = overlay.rule

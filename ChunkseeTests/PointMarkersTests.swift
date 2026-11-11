@@ -32,9 +32,9 @@ import SwiftUI
 
     @Test func elevenThousandOffscreenMarkersUseNearbyCandidatesAndKeepFullScanLocations() {
         let places = places(), creatures = creatures()
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.places = places; content.creatures = creatures
-        content.selection = .creature(creatures[3])
+        content.highlighted = [.row(.creature(creatures[3].id))]
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
         for center in [-512.0, 0, 512] {
             for scale in [0.0625, 0.125, 0.249, 0.25, 2, 32] {
@@ -45,12 +45,13 @@ import SwiftUI
                         shown.contains($0.group) && (scale >= 0.125 || $0.group == .portal) && bounds.contains(viewport.viewPoint(for: $0.position, in: size))
                     }
                     let expectedCreatures = creatures.filter {
-                        (scale >= 0.25 || content.selection == .creature($0)) && bounds.contains(viewport.viewPoint(for: $0.position, in: size))
+                        (scale >= 0.25 || $0.id == creatures[3].id) && bounds.contains(viewport.viewPoint(for: $0.position, in: size))
                     }
                     let locations = content.accessibleLocations(viewport: viewport, size: size)
                     #expect(locations.map(\.id) == expectedPlaces.map { "place-" + $0.id } + expectedCreatures.map { "creature-" + $0.id })
                     #expect(content.scene(viewport: viewport, size: size).items.map(\.id) == locations.map(\.id))
-                    #expect(locations.map(\.name) == expectedPlaces.map(\.name) + expectedCreatures.map(\.name))
+                    #expect(locations.map(\.name) == expectedPlaces.map { $0.name(in: content.gameNames) }
+                            + expectedCreatures.map { $0.name(in: content.gameNames) })
                     #expect(locations.map(\.position) == expectedPlaces.map(\.position) + expectedCreatures.map(\.position))
                     #expect(locations.map(\.target) == expectedPlaces.map { MapTarget.row(.place($0.id)) } + expectedCreatures.map { MapTarget.row(.creature($0.id)) })
                     if scale == 2 && shown.contains(.spawner) {
@@ -68,10 +69,10 @@ import SwiftUI
     }
 
     @Test func hitDistancesPortalPriorityAndLaterItemTiesMatchTheFullVisibleList() {
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         let places = places(), creatures = creatures()
         content.places = places; content.creatures = creatures
-        content.selection = .creature(creatures[3])
+        content.highlighted = [.row(.creature(creatures[3].id))]
         func nearest<Marker>(_ values: [Marker], viewport: MapViewport, point: CGPoint, reach: (Marker) -> CGFloat, position: (Marker) -> CGPoint) -> Marker? {
             var best: Marker?, distance = CGFloat.infinity
             let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
@@ -92,7 +93,7 @@ import SwiftUI
                     var expected: MapTarget?
                     if let portal = nearest(places.filter { $0.portal != nil }, viewport: viewport, point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
                         expected = .row(.place(portal.id))
-                    } else if let pet = nearest(creatures.filter { scale >= 0.25 || content.selection == .creature($0) }, viewport: viewport,
+                    } else if let pet = nearest(creatures.filter { scale >= 0.25 || $0.id == creatures[3].id }, viewport: viewport,
                                                 point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
                         expected = .row(.creature(pet.id))
                     } else if scale >= 0.125, let place = nearest(places, viewport: viewport, point: point, reach: { _ in scale == 32 ? 22 : 15 }, position: \.position) {
@@ -108,17 +109,17 @@ import SwiftUI
         let world = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(World(contentsOf: world).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         let places = places(), creatures = creatures()
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20)
         for scale in [0.125, 2.0] {
             map.viewport = MapViewport(center: .zero, scale: scale)
-            var content = MapContent(), reference = MapContent()
-            content.places = places; content.creatures = creatures; content.selection = .creature(creatures[3])
-            reference.selection = content.selection
+            var content = MapContent(gameNames: .unavailable), reference = MapContent(gameNames: .unavailable)
+            content.places = places; content.creatures = creatures; content.highlighted = [.row(.creature(creatures[3].id))]
+            reference.highlighted = content.highlighted
             reference.places = places.filter { (scale >= 0.125 || $0.group == .portal) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }
-            reference.creatures = creatures.filter { (scale >= 0.25 || content.selection == .creature($0)) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }
+            reference.creatures = creatures.filter { (scale >= 0.25 || $0.id == creatures[3].id) && bounds.contains(map.viewport.viewPoint(for: $0.position, in: size)) }
             // Identity, order, position and label inputs must agree exactly, regardless of how
             // SwiftUI rasterizes their edges. Check the actual drawing candidates, too.
             #expect(content.nearbyPlaces(viewport: map.viewport, size: size).filter {
@@ -151,7 +152,7 @@ import SwiftUI
                 creature.customName = "Different name"
                 return try #require(CreatureMarker(creature, dimension: marker.dimension))
             }
-            renamed.selection = renamed.creatures.first { $0.id == creatures[3].id }.map(MapSelection.creature)
+            // Renaming keeps the saved identity and therefore its existing highlight.
             #expect(largestDifference(rendered, try exportPixels(map, content: renamed)) > 1)
         }
     }

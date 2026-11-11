@@ -178,7 +178,7 @@ import Testing
         #expect(map.viewport == lastView)
     }
 
-    @Test func aReplacedDocumentSessionKeepsNavigationAndAnotherWorldHasNone() async throws {
+    @Test func replacingWorldInputsKeepsWindowNavigationAndAnotherWorldHasNone() async throws {
         let (url, session) = try await openWorld()
         defer { session.close(); try? FileManager.default.removeItem(at: url) }
         let original = MapViewport(center: CGPoint(x: -100, y: 200), scale: 0.5)
@@ -188,34 +188,29 @@ import Testing
         session.annotations.ruler.isEnabled = true
         session.annotations.ruler.mark(.zero)
         session.annotations.ruler.mark(CGPoint(x: 3, y: 4))
-        session.close()
-        await session.waitUntilClosed()
-        let defaults = TestDefaults.make()
-        let replacement = try await WorldSession.open(url, names: PlayerNames(defaults: defaults), defaults: defaults, cacheRoot: nil)
-        defer { replacement.close() }
-        replacement.restoreView(from: session)
-        #expect(replacement.annotations.ruler == session.annotations.ruler && replacement.annotations.ruler.distance == 5)
-        #expect(replacement.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
-        #expect(replacement.map?.depth == MapDepth(y: 12, isSurface: false))
-        replacement.navigation.goBack()
-        #expect(replacement.map?.viewport == original)
+        let map = session.map, ruler = session.annotations.ruler
+        try await session.resources.replaceSource(from: WorldSnapshot.read(url))
+        #expect(session.map === map)
+        #expect(session.annotations.ruler == ruler && session.annotations.ruler.distance == 5)
         #expect(session.map?.viewport.center == CGPoint(x: 10.5, y: -19.5))
+        #expect(session.map?.depth == MapDepth(y: 12, isSurface: false))
+        session.navigation.goBack()
+        #expect(session.map?.viewport == original)
         let (otherURL, other) = try await openWorld()
         defer { other.close(); try? FileManager.default.removeItem(at: otherURL) }
         #expect(!other.navigation.canGoBack && !other.navigation.canGoForward)
-        replacement.close(); other.close()
-        await replacement.waitUntilClosed(); await other.waitUntilClosed()
+        session.close(); other.close()
+        await session.waitUntilClosed(); await other.waitUntilClosed()
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func localNavigationStopsWithItsMapAndAReplacementCanRestoreTheClosedSource() async throws {
+    func localNavigationStopsWithItsMap() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let work = BackgroundWork()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
         let navigation = MapNavigation(map: map)
-        let original = map.viewport
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         var updatesIterator = updates.makeAsyncIterator()
         let couldGoBack = withObservationTracking { navigation.canGoBack } onChange: { continuation.yield(true) }
@@ -233,14 +228,6 @@ import Testing
         navigation.fitWorld()
         #expect(map.viewport == lastView && !navigation.canGoBack && !navigation.canGoForward)
 
-        let replacement = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
-        let restored = MapNavigation(map: replacement)
-        restored.restore(from: navigation)
-        #expect(replacement.viewport == lastView && replacement.depth == map.depth)
-        #expect(restored.canGoBack)
-        restored.goBack()
-        #expect(replacement.viewport == original && map.viewport == lastView)
-        replacement.close()
         work.close()
         await work.waitUntilFinished()
     }
@@ -307,12 +294,12 @@ import Testing
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         defer { continuation.finish() }
         var iterator = updates.makeAsyncIterator()
-        let initialDraft = withObservationTracking { session?.annotations.draft } onChange: { continuation.yield(true) }
+        let initialDraft = withObservationTracking { session?.sheet } onChange: { continuation.yield(true) }
         #expect(initialDraft == nil)
         annotations.savePlace(at: CGPoint(x: -8.7, y: 14.2))
         let draftChanged = await iterator.next(isolation: #isolation)
-        #expect(draftChanged == true && annotations.draft?.position == CGPoint(x: -9, y: 14))
-        annotations.draft = nil
+        #expect(draftChanged == true && session?.sheet?.savedPlaceDraft?.position == CGPoint(x: -9, y: 14))
+        session?.sheet = nil
         let initialRuler = withObservationTracking { session.map(MapContent.init(session:))?.ruler } onChange: { continuation.yield(true) }
         #expect(initialRuler?.isEnabled == false)
         annotations.beginMeasurement(at: CGPoint(x: -8.7, y: 14.2), in: "minecraft:overworld")
@@ -321,12 +308,12 @@ import Testing
         session?.close()
         await session?.waitUntilClosed()
         annotations.savePlace(at: .zero)
-        #expect(annotations.draft == nil)
+        #expect(session?.sheet == nil)
         weak let released = session
         session = nil
         #expect(released == nil)
         annotations.savePlace(at: .zero)
-        #expect(annotations.draft == nil && annotations.listedPlaces.isEmpty)
+        #expect(annotations.listedPlaces.isEmpty)
     }
 
     @Test func measurementUsesWholeBlocksAndTheThirdClickStartsAgain() {

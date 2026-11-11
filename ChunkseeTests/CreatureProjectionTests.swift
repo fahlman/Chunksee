@@ -92,14 +92,16 @@ import Testing
                 return await base.including(pets)
             }, readDimension: { _, _, _ in part })
         await gate.waitForRequest("held")
+        let published = index.snapshot
         index.cancel()
+        #expect(index.snapshot === published)
         await gate.waitForCancellation("held")
         var drained = false
         let closing = Task.immediate { await index.waitForTasks(); drained = true }
         #expect(!drained)
         await gate.finish("held", with: true)
         await closing.value
-        #expect(drained && index.index.creatures.isEmpty)
+        #expect(drained && index.index.creatures.isEmpty && index.snapshot === published)
         await reader.close()
     }
 }

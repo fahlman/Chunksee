@@ -74,7 +74,7 @@ final class MapExportModel {
 
     var canCreate: Bool {
         guard !isRunning, !work.isClosed, source?.isClosed == false, !isReadingContent,
-              case .success(let plan) = plan, let map = source?.map else { return false }
+              case .success(let plan) = plan, let map = source?.map, map.currentRenderer != nil else { return false }
         return !plan.viewport.visibleRegions(in: plan.size, among: map.availableRegions).isEmpty
     }
 
@@ -86,7 +86,8 @@ final class MapExportModel {
     }
 
     func create(colorScheme: ColorScheme, locale: Locale, contrast: ColorSchemeContrast = .standard) {
-        guard canCreate, let source, let map = source.map, case .success(let plan) = plan else { return }
+        guard canCreate, let source, let map = source.map, let renderer = map.currentRenderer,
+              case .success(let plan) = plan else { return }
         cancel()
         let id = UUID()
         request = id
@@ -96,7 +97,7 @@ final class MapExportModel {
         var content = MapContent(session: source)
         content.showsGrid = options.includesGrid
         if !options.includesMarkers { content.removeMarkers() }
-        let contentSnapshot = content, renderer = map.currentRenderer, regions = map.availableRegions, readTile = map.renderTile
+        let contentSnapshot = content, regions = map.availableRegions, readTile = map.renderTile
         let portals = source.presentation.portalsByDimension
         let types = source.details.dimensionSettings.compactMapValues(\.type), borders = source.details.borders
         let task = work.start(priority: .userInitiated) { [weak self] in
@@ -157,10 +158,8 @@ extension MapContent {
         hits = []
         players = []
         savedPlaces = []
-        selection = nil
+        highlighted = []
         selectedItem = nil
-        selectedHitID = nil
-        selectedPlayerID = nil
         ruler = MapRuler()
     }
 }

@@ -133,8 +133,8 @@ import Testing
         #expect(other.lighting == nil)
         map.setLightingMode(.daylight); first.saveView()
         #expect(map.lighting == nil && map.savedLighting == updated)
-        #expect(resources.settings.lightingMode(for: "minecraft:overworld") == .daylight)
-        #expect(resources.settings.lightingMode(for: "test:fixed_sky") == .savedTime)
+        #expect(resources.settings.mapPresentation(for: "minecraft:overworld").lightingMode == .daylight)
+        #expect(resources.settings.mapPresentation(for: "test:fixed_sky").lightingMode == .savedTime)
         resources.close(); await resources.waitUntilClosed()
     }
 
@@ -150,9 +150,11 @@ import Testing
         let file = url.appendingPathComponent("data/world_clocks.dat")
         resources.worldChanged([file]); await gate.waitForRequest("0")
         // Player entry is after refreshLighting in the actual file-change pass, proving each
-        // request reached the loader while its first read was held, without scheduler sleeps.
+        // request reached the lighting loader while its first read was held. Release each
+        // player read so the definition loader can start the next sequential pass.
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players")
+        await playerGate.finish("players", with: nil)
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players", count: 2)
         await playerGate.finishAll(with: nil)
@@ -249,8 +251,8 @@ import Testing
             .write(to: dimension.regionURL(at: neighbor))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let savedLighting = TestSavedLighting()
-        let work = BackgroundWork(), map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
-            maxTiles: 3, maxPreviews: 3, heightScale: scale)
+        let work = BackgroundWork(), map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+            maxTiles: 3, maxPreviews: 3)
         savedLighting.value = try lighting()
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(map.tiles[region]?.storageUnits == 2 && map.previews[region]?.storageUnits == 2)
@@ -258,7 +260,7 @@ import Testing
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8)); await map.waitUntilIdle()
         #expect(Set(map.tiles.keys) == [neighbor] && Set(map.previews.keys) == [neighbor])
         map.setStyle(.height); await map.waitUntilIdle()
-        #expect(map.lighting == nil && !map.currentRenderer.usesSavedLighting)
+        #expect(try map.lighting == nil && !requiredRenderer(map).usesSavedLighting)
         #expect(map.tiles[neighbor]?.normals == nil && map.tiles[neighbor]?.storageUnits == 1)
         map.setStyle(.normal); await map.waitUntilIdle()
         #expect(map.lighting != nil && map.tiles[neighbor]?.normals != nil)
@@ -270,8 +272,11 @@ import Testing
         let tile = try testTile()
         func draw(_ light: MapLighting, water: Bool = false, contrast: ColorSchemeContrast = .standard) throws -> [UInt8] {
             let context = try #require(MapImage.imageContext(width: 64, height: 32))
+            var choices = MapPresentation()
+            choices.style = water ? .waterDepth : .normal
+            let input = MapDrawingInput(presentation: choices, heightScale: nil, savedLighting: light)
             #expect(MapImage.drawTerrainLayer(tile, region: region, viewport: viewport, size: size, scale: 1,
-                                              lighting: light, protectsWater: water, contrast: contrast, into: context))
+                                              input: input, contrast: contrast, into: context))
             return try rgba(#require(context.makeImage()))
         }
         let morning = try draw(lighting(sun: 300)), evening = try draw(lighting(sun: 60))
@@ -287,20 +292,22 @@ import Testing
     @Test(arguments: [1.0, 2.0]) func croppedShaderExportMatchesNativeCanvasAcrossRasterPieces(scale: Double) throws {
         let size = CGSize(width: 1301, height: 129), viewport = MapViewport(center: CGPoint(x: -140, y: 8), scale: 4)
         let tile = try testTile(), region = RegionPosition(x: -1, z: 0), light = try lighting(sun: 300)
+        let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: light)
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, actualSize in
-            MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, lighting: light,
+            MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
                                 increasedContrast: true, in: context, size: actualSize)
         }.frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: canvas); renderer.scale = scale
         let expected = try rgba(#require(renderer.cgImage))
         let destination = try #require(MapImage.imageContext(width: Int(size.width * scale), height: Int(size.height * scale)))
         #expect(MapImage.drawTerrainLayer(tile, region: region, viewport: viewport, size: size, scale: scale,
-                                          lighting: light, protectsWater: false, contrast: .increased, into: destination))
+                                          input: input, contrast: .increased, into: destination))
         let actual = try rgba(#require(destination.makeImage()))
         #expect(actual == expected)
     }
 
-    @Test func exportedAreaAndCopiedViewShareLightingAndUnlitOverlays() async throws {
+    @Test(arguments: MapStyle.allCases)
+    func exportedAreaAndCopiedViewShareLightingAndUnlitOverlays(_ style: MapStyle) async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let resources = try await resources(url, defaults: TestDefaults.make()), session = WorldSession(resources: resources)
@@ -310,14 +317,18 @@ import Testing
         resources.readLighting = { _, _ in ["minecraft:overworld": light] }
         resources.worldChanged([url.appendingPathComponent("data/world_clocks.dat")])
         await resources.waitForRefresh()
+        map.setStyle(style)
+        #expect(map.style == style)
         for downsample in [1, 2] {
             let plan = try MapExportPlan(bounds: CGRect(x: -8, y: -8, width: 32, height: 32), blocksPerPixel: downsample)
             map.viewport = plan.viewport; map.requestTiles(visibleIn: plan.size, displayScale: 1); await map.waitUntilIdle()
             var content = MapContent(session: session); content.showsGrid = true
+            #expect(content.terrain.style == style)
+            #expect((content.terrain.lighting == nil) == (style == .height))
             for scheme in [ColorScheme.light, .dark] {
                 let copy = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                     scale: 1, colorScheme: scheme, locale: .current, contrast: .increased))
-                let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+                let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                     content: content, portalStatus: { _ in nil }, colorScheme: scheme, locale: .current,
                     contrast: .increased, progress: { _, _ in })
                 #expect(try pngPixels(copy) == pngPixels(export))

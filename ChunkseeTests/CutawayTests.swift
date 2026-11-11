@@ -47,7 +47,7 @@ import SwiftUI
     @Test(arguments: [-1, 1], [true, false])
     func heightCommandsStepOneLevelAndEnterCutaway(step: Int, isSurface: Bool) async throws {
         try await withFixture { f in
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             map.setDepth(MapDepth(y: 64, isSurface: isSurface))
             let viewport = map.viewport
@@ -61,7 +61,7 @@ import SwiftUI
 
     @Test func heightCommandsKeepCustomHeightsAndGuardIntegerEndpointsAndClosure() async throws {
         try await withFixture { f in
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
             f.maps.append(map)
             for (height, step) in [(-900, -1), (900, 1), (Int.min, -1), (Int.max, 1)] {
                 map.setDepth(MapDepth(y: height, isSurface: true))
@@ -129,7 +129,7 @@ import SwiftUI
             let surface = try await RegionTileRenderer(dimension: dimension).tile(for: region)
             let cutaway = try await RegionTileRenderer(dimension: dimension, cutawayY: 7).tile(for: region)
             let gate = f.tiles
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
                 guard !Task.isCancelled else { return nil }
                 return await gate.read(renderer.cutawayY.map(String.init) ?? "surface")
             })
@@ -156,7 +156,7 @@ import SwiftUI
     @Test func changingHeightCancelsPendingCopiesAndRereadsAStillPointer() async throws {
         try await withFixture { f in
             let dimension = try f.dimension(), gate = f.blocks
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
                 guard !Task.isCancelled else { return nil }
                 if renderer.cutawayY == nil { return await gate.read("surface") }
                 return await MapModel.readTopBlocks(of: chunk, using: renderer, cached: cached)
@@ -186,19 +186,19 @@ import SwiftUI
 
     @Test func exportedTerrainFollowsTheCutawayAndSurface() async throws {
         try await withFixture { f in
-            let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             let size = CGSize(width: 16, height: 16)
             map.requestTiles(visibleIn: size, displayScale: 1)
             await map.waitUntilIdle()
-            let surface = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let surface = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             map.setDepth(MapDepth(y: 7, isSurface: false))
             await map.waitUntilIdle()
-            let cutaway = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let cutaway = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             #expect(cutaway.data != surface.data)
             map.setDepth(MapDepth(y: 7, isSurface: true))
             await map.waitUntilIdle()
-            let restored = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let restored = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             #expect(restored.data == surface.data && map.depth.y == 7)
         }
     }
@@ -221,15 +221,15 @@ import SwiftUI
             let reopened = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
             #expect(reopened.map?.depth == MapDepth(y: -20, isSurface: false))
             #expect(nether.map?.depth == MapDepth(y: 31, isSurface: true))
-            reopened.restoreView(from: nether)
+            try await resources.replaceSource(from: WorldSnapshot.read(f.url))
             #expect(reopened.map?.depth.cutawayY == -20)
             nether.close()
             await nether.waitUntilClosed()
             let again = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
             #expect(again.map?.depth == MapDepth(y: 31, isSurface: true))
-            let reread = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
-            reread.restoreView(from: reopened)
-            #expect(reread.map?.depth == reopened.map?.depth)
+            try await resources.replaceSource(from: WorldSnapshot.read(f.url))
+            #expect(reopened.map?.depth == MapDepth(y: -20, isSurface: false))
+            #expect(again.map?.depth == MapDepth(y: 31, isSurface: true))
         }
     }
 
@@ -238,13 +238,16 @@ import SwiftUI
         let defaults = TestDefaults.make()
 
         let source = WorldSettings(id: id, defaults: defaults), target = WorldSettings(id: id, defaults: defaults)
-        #expect(source.depth(for: "minecraft:overworld") == MapDepth())
-        source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil)
-        #expect(source.depth(for: "minecraft:overworld") == MapDepth())
-        source.save(MapViewport(center: .zero, scale: 1), for: "minecraft:overworld", selected: nil, depth: MapDepth(y: -23, isSurface: false))
-        target.save(MapViewport(center: .zero, scale: 1), for: "minecraft:the_nether", selected: nil, depth: MapDepth(y: 40, isSurface: true))
-        #expect(target.depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
-        #expect(target.depth(for: "minecraft:the_nether") == MapDepth(y: 40, isSurface: true))
-        #expect(WorldSettings(id: id, defaults: defaults).depth(for: "minecraft:overworld") == MapDepth(y: -23, isSurface: false))
+        #expect(source.mapPresentation(for: "minecraft:overworld").depth == MapDepth())
+        source.save(MapViewport(), presentation: MapPresentation(), for: "minecraft:overworld", selected: nil)
+        #expect(source.mapPresentation(for: "minecraft:overworld").depth == MapDepth())
+        var choices = MapPresentation()
+        choices.depth = MapDepth(y: -23, isSurface: false)
+        source.save(MapViewport(), presentation: choices, for: "minecraft:overworld", selected: nil)
+        choices.depth = MapDepth(y: 40, isSurface: true)
+        target.save(MapViewport(), presentation: choices, for: "minecraft:the_nether", selected: nil)
+        #expect(target.mapPresentation(for: "minecraft:overworld").depth == MapDepth(y: -23, isSurface: false))
+        #expect(target.mapPresentation(for: "minecraft:the_nether").depth == MapDepth(y: 40, isSurface: true))
+        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:overworld").depth == MapDepth(y: -23, isSurface: false))
     }
 }

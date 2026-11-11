@@ -5,6 +5,7 @@ import SwiftUI
 struct WorldInspector: View {
     let session: WorldSession
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         switch session.selection.inspectorItem {
@@ -21,7 +22,7 @@ struct WorldInspector: View {
                 PlaceDetailView(session: session, marker: marker)
             }
         case .structure(let marker)?:
-            LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
+            LocationDetails(session: session, title: Text(gameNames.structure(marker.structureID)), symbol: marker.group.symbol,
                             destination: destination(marker.position, y: marker.yCoordinate)) {
                 LabeledContent("Width", value: CountedText.blocks.locale(locale).format(Double(marker.bounds.width)))
                 LabeledContent("Depth", value: CountedText.blocks.locale(locale).format(Double(marker.bounds.height)))
@@ -30,15 +31,15 @@ struct WorldInspector: View {
                 }
             }
         case .biome(let area)?:
-            LocationDetails(session: session, title: Text(area.group.name), symbol: area.group.symbol,
+            LocationDetails(session: session, title: Text(gameNames.biome(area.group.id)), symbol: area.group.symbol,
                             destination: destination(area.position)) {
-                LabeledContent("Area", value: area.name)
+                LabeledContent("Area", value: gameNames.biomeArea(area))
             }
         case .savedPlace(let place)?:
             LocationDetails(session: session, title: Text(place.name), symbol: MarkerStyle.savedPlaceSymbol,
                             destination: MapDestination(coordinates: Coordinates(place.position), dimension: place.dimension)) {}
         case .hit(let hit)?:
-            LocationDetails(session: session, title: Text(hit.title), symbol: MarkerStyle.search.symbol.name,
+            LocationDetails(session: session, title: Text(hit.title(in: gameNames)), symbol: MarkerStyle.search.symbol.name,
                             destination: hit.position.map {
                                 MapDestination(coordinates: Coordinates($0, y: hit.y.map(Double.init)), dimension: hit.dimension)
                             }) {}
@@ -55,6 +56,7 @@ private struct PlaceDetailView: View {
     let session: WorldSession
     let marker: PlaceMarker
     @Environment(\.gameArtworkLibrary) private var pictures
+    @Environment(\.gameNames) private var gameNames
     @State private var loaded: (request: Request, item: ItemStack?)?
 
     private struct Request: Equatable {
@@ -70,17 +72,17 @@ private struct PlaceDetailView: View {
                               dimension: session.selectedDimensionID, position: marker.blockPosition,
                               library: pictures?.identity)
         let item = loaded?.request == request ? loaded?.item : nil
-        LocationDetails(session: session, title: Text(marker.name), symbol: marker.group.symbol,
+        LocationDetails(session: session, title: Text(gameNames.place(marker)), symbol: marker.group.symbol,
                         destination: MapDestination(coordinates: Coordinates(marker.position, y: marker.yCoordinate),
                                                     dimension: session.selectedDimensionID),
                         picture: item.map(InspectorHeading.Picture.item)) {
             switch marker.group {
             case .spawner:
-                LabeledContent("Spawns", value: marker.mob.map { ReadableName.from($0) } ?? String(localized: "Nothing"))
+                LabeledContent("Spawns", value: marker.mob.map(gameNames.entity) ?? String(localized: "Nothing"))
             case .bed, .workstation:
                 LabeledContent("Claimed by a Villager", value: marker.isClaimed ? String(localized: "Yes") : String(localized: "No"))
             case .unopenedLoot:
-                LabeledContent("Container", value: ReadableName.from(marker.type))
+                LabeledContent("Container", value: gameNames.lootContainer(marker))
                 Text("The contents have not been generated yet.").foregroundStyle(.secondary)
             default: EmptyView()
             }
@@ -126,19 +128,20 @@ private struct LocationDetails<Details: View>: View {
 /// A search keeps its source and matching contents even when it opens a player's or pet's details.
 struct SelectedSearchSection: View {
     let session: WorldSession
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         if let hit = session.selection.selectedSearchHit {
             Section("Search Result") {
                 switch hit.source {
-                case .inventory, .enderChest: LabeledContent("Found In", value: hit.title)
+                case .inventory, .enderChest: LabeledContent("Found In", value: hit.title(in: gameNames))
                 default: EmptyView()
                 }
                 if hit.items.isEmpty {
-                    Text(hit.detail).textSelection(.enabled)
+                    Text(hit.detail(in: gameNames)).textSelection(.enabled)
                 } else {
                     ForEach(Array(hit.items.enumerated()), id: \.offset) { _, item in
-                        ItemLabel(id: item.id, title: Text(item.text))
+                        ItemLabel(id: item.id, title: Text(item.text(in: gameNames)))
                             .textSelection(.enabled)
                     }
                 }

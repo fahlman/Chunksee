@@ -4,31 +4,59 @@ import Observation
 import SwiftUI
 
 /// A player's statistics and advancements, read from their JSON files.
-nonisolated struct PlayerRecords: Sendable {
+nonisolated struct PlayerRecords: Equatable, Sendable {
     var statistics: PlayerStatistics?
+    /// Only a legacy name-keyed result depends on the resolved player name.
+    var statisticsName: String?
     var advancements: [AdvancementProgress] = []
     var advancementDefinitions: [String: AdvancementDefinition] = [:]
-    var definitionGeneration: Int?
 
     /// Reads both files off the main actor. Statistics from before 1.7.6 are stored under the
     /// player's name, so `name` is tried when there's no file for the UUID.
     @concurrent
-    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary?) async -> PlayerRecords {
-        var records = PlayerRecords()
-        guard !Task.isCancelled else { return records }
-        records.statistics = (try? world.statistics(for: uuid)) ?? name.flatMap { try? world.statistics(forName: $0) }
-        guard !Task.isCancelled else { return records }
-        records.advancements = ((try? world.advancements(for: uuid)) ?? nil) ?? []
-        // Only displayed titles need definitions. Progress/counts remain independent
-        // of missing game files, malformed titles or unavailable live game context.
+    static func load(from world: World, uuid: UUID, name: String?, library: GameDataLibrary?,
+                     previous: PlayerRecords? = nil) async throws -> RefreshRead<PlayerRecords> {
+        var records = previous ?? PlayerRecords(), complete = true
+        try Task.checkCancellation()
+        do {
+            (records.statistics, records.statisticsName) = try readStatistics(from: world, uuid: uuid, name: name)
+        } catch { complete = false }
+        try Task.checkCancellation()
+        do { records.advancements = try world.advancements(for: uuid) ?? [] }
+        catch { complete = false }
+        try Task.checkCancellation()
+        // Titles belong to this completed progress snapshot. A failed read retains the prior
+        // content; a successful empty definition set removes titles that no longer exist.
         let identifiers = Set(records.displayedAdvancements.map(\.id))
-        guard !Task.isCancelled, !identifiers.isEmpty, let current = try? World(contentsOf: world.url) else { return records }
-        if let library {
-            records.advancementDefinitions = (try? await library.advancementDefinitions(in: current, for: identifiers)) ?? [:]
+        records.advancementDefinitions = records.advancementDefinitions.filter { identifiers.contains($0.key) }
+        if identifiers.isEmpty {
+            records.advancementDefinitions = [:]
         } else {
-            records.advancementDefinitions = (try? current.advancementDefinitions(for: identifiers, assets: nil)) ?? [:]
+            do {
+                let current = try World(contentsOf: world.url)
+                if let library {
+                    records.advancementDefinitions = try await library.advancementDefinitions(in: current, for: identifiers)
+                } else {
+                    records.advancementDefinitions = try current.advancementDefinitions(for: identifiers, assets: nil)
+                }
+            } catch { complete = false }
         }
-        return records
+        try Task.checkCancellation()
+        return complete ? .complete(records) : .partial(records)
+    }
+
+    private static func readStatistics(from world: World, uuid: UUID, name: String?) throws -> (PlayerStatistics?, String?) {
+        let primary: PlayerStatistics?
+        do { primary = try world.statistics(for: uuid) }
+        catch {
+            // Preserve the existing readable legacy fallback even when the UUID file is bad.
+            // If neither can be read, this is failure rather than a successful removal.
+            if let name, let legacy = try? world.statistics(forName: name) { return (legacy, name) }
+            throw error
+        }
+        if let primary { return (primary, nil) }
+        guard let name, let legacy = try world.statistics(forName: name) else { return (nil, nil) }
+        return (legacy, name)
     }
 
     /// Completed advancements, newest first; recipe unlocks aren't advancements in the game.
@@ -66,16 +94,8 @@ nonisolated struct PlayerRecords: Sendable {
         return primary + distances
     }
 
-    static func travelName(_ id: String, gameNames: GameNames) -> String {
-        gameNames.name(id, in: "stat")
-    }
-
-    static func advancementName(_ id: String, title: TextComponent.Content?, gameNames: GameNames) -> String {
-        gameNames.advancement(id, title: title)
-    }
-
-    func title(for id: String, generation: Int) -> TextComponent.Content? {
-        guard definitionGeneration == generation, let identifier = Identifier(id) else { return nil }
+    func title(for id: String) -> TextComponent.Content? {
+        guard let identifier = Identifier(id) else { return nil }
         return advancementDefinitions[identifier.description]?.title
     }
 
@@ -91,54 +111,6 @@ nonisolated struct PlayerRecords: Sendable {
     }
 }
 
-/// The inspector's current read. A result must still belong to the selected player and request.
-@Observable
-final class PlayerRecordsModel {
-    private(set) var uuid: UUID?
-    private(set) var records: PlayerRecords?
-    @ObservationIgnored private var generation = UUID()
-    private let work: BackgroundWork.Scope
-    private let read: @Sendable (UUID, String?) async -> PlayerRecords?
-
-    init(work: BackgroundWork, read: @escaping @Sendable (UUID, String?) async -> PlayerRecords?) {
-        self.work = work.makeScope()
-        self.read = read
-    }
-
-    func load(_ uuid: UUID, name: String?) async {
-        guard !work.isClosed, !Task.isCancelled else { return }
-        let previous = self.uuid == uuid ? records : nil
-        cancel()
-        self.uuid = uuid
-        records = previous
-        let id = generation, read = read
-        guard let task = work.start(priority: nil, operation: { [weak self] in
-            guard let records = await read(uuid, name) else { return }
-            guard !Task.isCancelled, let self, self.generation == id, self.uuid == uuid else { return }
-            self.records = records
-        }) else { return }
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: { task.cancel() }
-    }
-
-    func cancel() {
-        generation = UUID()
-        work.cancel()
-        uuid = nil
-        records = nil
-    }
-
-    func waitForReads() async {
-        await work.waitUntilFinished()
-    }
-
-    func close() {
-        cancel()
-        work.close()
-    }
-}
-
 nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     struct ID: Hashable, Sendable {
         let category: String
@@ -150,21 +122,6 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     var statisticID: String
     var value: Int
     var unit: PlayerStatistics.Unit?
-
-    var category: String {
-        categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
-    }
-
-    func name(in gameNames: GameNames) -> String {
-        switch categoryID {
-        case "minecraft:custom": gameNames.name(statisticID, in: "stat")
-        case "minecraft:mined": gameNames.name(statisticID, in: "block")
-        case "minecraft:killed", "minecraft:killed_by": gameNames.name(statisticID, in: "entity")
-        case "minecraft:used", "minecraft:broken", "minecraft:crafted", "minecraft:picked_up", "minecraft:dropped":
-            gameNames.item(statisticID)
-        default: ReadableName.from(statisticID)
-        }
-    }
 
     /// Both surfaces format the same saved value; the reader owns its unit, not its label.
     struct ValueStyle: FormatStyle, Sendable {
@@ -206,18 +163,17 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
 /// Statistics and advancements sections of the player inspector.
 struct PlayerRecordsSections: View {
     let records: PlayerRecords?
-    let definitionGeneration: Int
     @Environment(\.gameNames) private var gameNames
-    @Binding var showsAllStatistics: Bool
+    let showAllStatistics: () -> Void
 
     var body: some View {
         if let records {
             if records.statistics != nil {
                 Section("Statistics") {
                     ForEach(records.summaryStatistics) { row in
-                        LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                        LabeledContent(gameNames.statistic(row)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                     }
-                    Button("All Statistics…") { showsAllStatistics = true }
+                    Button("All Statistics…", action: showAllStatistics)
                 }
                 ranking("Most Mined", records.top("minecraft:mined"))
                 ranking("Most Killed", records.top("minecraft:killed"))
@@ -226,8 +182,7 @@ struct PlayerRecordsSections: View {
             if !completed.isEmpty {
                 Section {
                     ForEach(records.displayedAdvancements, id: \.id) { advancement in
-                        LabeledContent(PlayerRecords.advancementName(advancement.id,
-                            title: records.title(for: advancement.id, generation: definitionGeneration), gameNames: gameNames)) {
+                        LabeledContent(gameNames.advancement(advancement.id, title: records.title(for: advancement.id))) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }
@@ -250,7 +205,7 @@ struct PlayerRecordsSections: View {
         if !entries.isEmpty {
             Section(title) {
                 ForEach(entries) { row in
-                    LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                    LabeledContent(gameNames.statistic(row)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                 }
             }
         }
@@ -266,8 +221,8 @@ struct StatisticsTable: View {
     nonisolated private struct NamedRow: Identifiable, Sendable {
         let row: StatisticRow
         let name: String
+        let category: String
         var id: StatisticRow.ID { row.id }
-        var category: String { row.category }
         var value: Int { row.value }
     }
     @Environment(\.dismiss) private var dismiss
@@ -275,7 +230,8 @@ struct StatisticsTable: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("All Statistics").font(.headline).accessibilityAddTraits(.isHeader)
-            Table(rows.map { NamedRow(row: $0, name: $0.name(in: gameNames)) }.sorted(using: sortOrder), sortOrder: $sortOrder) {
+            Table(rows.map { NamedRow(row: $0, name: gameNames.statistic($0), category: gameNames.statisticCategory($0.categoryID)) }
+                .sorted(using: sortOrder), sortOrder: $sortOrder) {
                 TableColumn("Category", value: \.category)
                 TableColumn("Statistic", value: \.name)
                 TableColumn("Value", value: \.value) { Text($0.row, format: StatisticRow.ValueStyle()).monospacedDigit() }

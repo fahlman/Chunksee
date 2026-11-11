@@ -54,41 +54,14 @@ final class DimensionPresentation {
 
     /// Shared images and accessibility identify both the dimension and the world it belongs to.
     func mapTitle(in dimensionID: String, locale: Locale) -> String {
-        let dimension = dimensionNameStyle.locale(locale).format(dimensionID)
-        return String(localized: "Map of \(dimension) in \(displayName)", locale: locale)
+        dimensionNameStyle.locale(locale).mapTitle(in: dimensionID, world: displayName)
     }
 
-    var dimensionNameStyle: NameStyle {
-        NameStyle(dimensionIDs: source?.dimensions.map(\.id) ?? [])
-    }
-
-    /// Immutable naming context derived from the live catalog, without retaining the document.
-    nonisolated struct NameStyle: FormatStyle, Sendable {
-        private let dimensionIDs: [String]
-        private var locale = Locale.autoupdatingCurrent
-
-        init(dimensionIDs: [String]) { self.dimensionIDs = dimensionIDs }
-
-        func locale(_ locale: Locale) -> Self {
-            var copy = self
-            copy.locale = locale
-            return copy
+    var dimensionNameStyle: GameNames.DimensionStyle {
+        guard let source else {
+            return GameNames.unavailable.dimensionStyle(for: [])
         }
-
-        func format(_ id: String) -> String {
-            let name = name(id)
-            let isAmbiguous = dimensionIDs.contains { $0 != id && self.name($0) == name }
-            return isAmbiguous ? String(localized: "\(name) (\(id))", locale: locale) : name
-        }
-
-        private func name(_ id: String) -> String {
-            switch id {
-            case "minecraft:overworld": String(localized: "Overworld", locale: locale)
-            case "minecraft:the_nether": String(localized: "The Nether", locale: locale)
-            case "minecraft:the_end": String(localized: "The End", locale: locale)
-            default: ReadableName.from(id)
-            }
-        }
+        return source.resources.gameNames.dimensionStyle(for: source.dimensions.map(\.id))
     }
 
     var spawnPoint: CGPoint {
@@ -151,13 +124,15 @@ final class DimensionPresentation {
     }
 
     func name(of player: PlayerInfo) -> String {
-        PlayerPresentation.name(of: player, singleplayerUUID: source?.world.level.singleplayerUUID,
-                                knownName: source?.names.name(for: player.uuid))
+        let names = source?.resources.gameNames ?? .unavailable
+        return names.player(GameNames.PlayerName(playerID: player.uuid, singleplayerUUID: source?.world.level.singleplayerUUID,
+                                                knownName: source?.names.name(for: player.uuid)))
     }
 
     func name(ofPlayerWith uuid: UUID) -> String {
         if let player = source?.players.first(where: { $0.uuid == uuid }) { return name(of: player) }
-        return PlayerPresentation.absentPlayerName(uuid, knownName: source?.names.name(for: uuid))
+        let names = source?.resources.gameNames ?? .unavailable
+        return names.absentPlayer(uuid, knownName: source?.names.name(for: uuid))
     }
 
     /// Each dimension lists its own records; missing/unavailable dimensions use the first dimension.
@@ -174,8 +149,13 @@ final class DimensionPresentation {
     /// Owned pets elsewhere need links; pets on this player's shoulders already show full details.
     func linkedPets(to playerID: UUID) -> [CreatureMarker] {
         guard let source else { return [] }
+        let gameNames = source.resources.gameNames
         return source.search.index.creatures.map(\.value).filter { $0.creature.owner == playerID && $0.carrier != playerID }
-            .sorted { ($0.dimension, $0.name, $0.id) < ($1.dimension, $1.name, $1.id) }
+            .sorted {
+                if $0.dimension != $1.dimension { return $0.dimension < $1.dimension }
+                return GameNames.namePrecedes(gameNames.creature($0.creature), id: $0.id,
+                                             gameNames.creature($1.creature), id: $1.id)
+            }
     }
 
     var hasUnnamedPlayers: Bool {

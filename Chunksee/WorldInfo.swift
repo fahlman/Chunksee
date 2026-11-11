@@ -7,26 +7,22 @@ nonisolated struct WorldDetails: Sendable {
     /// Independently available type and generation metadata, keyed by the saved dimension ID.
     var definitions = WorldDefinitions()
     var dimensionSettings: [String: DimensionSettings] { definitions.dimensionSettings }
-    var seed: Int64?
+    let info: WorldInfoSnapshot
+    var seed: Int64? { info.seed }
     /// Saved identifiers remain the identity; readable names are presentation only.
-    var gameRules: [String: GameRuleValue] = [:]
-    var weather: Weather?
-    var dayTime: Int?
+    var gameRules: [String: GameRuleValue] { info.gameRules }
+    var weather: Weather? { info.weather }
+    var dayTime: Int? { info.dayTime }
     /// World borders by dimension id.
-    var borders: [String: WorldBorder] = [:]
-    var dragonFight: EnderDragonFight?
-    var wanderingTrader: WanderingTraderTimer?
+    var borders: [String: WorldBorder] { info.borders }
+    var dragonFight: EnderDragonFight? { info.dragonFight }
+    var wanderingTrader: WanderingTraderTimer? { info.wanderingTrader }
     /// Every readable saved map, including blank pictures and unavailable dimensions.
-    var maps: [MapItem] { mapSources.map(\.map) }
-    private var mapSources: [InGameMapImage.Source] = []
+    var maps: [MapItem] { mapSnapshot.sources.map(\.map) }
+    let mapSnapshot: WorldMapSnapshot
 
     func mapImageSource(for id: Int) -> InGameMapImage.Source? {
-        mapSources.first { $0.map.id == id }
-    }
-
-    var gameRuleRows: [(id: String, name: String, value: GameRuleValue)] {
-        gameRules.map { (id: $0.key, name: Self.readableRule($0.key), value: $0.value) }
-            .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+        mapSnapshot.sources.first { $0.map.id == id }
     }
 
     var wanderingTradersAreOff: Bool {
@@ -42,30 +38,9 @@ nonisolated struct WorldDetails: Sendable {
 
     /// Reads every file it can; one that's missing or unreadable leaves its field empty.
     static func read(_ world: World) -> WorldDetails {
-        var details = WorldDetails()
-        details.definitions = (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions()
-        details.seed = try? world.seed()
-        details.gameRules = (try? world.gameRules()) ?? [:]
-        details.weather = try? world.weather()
-        details.dayTime = try? world.dayTime()
-        for dimension in world.dimensions() {
-            if let border = try? world.worldBorder(of: dimension) { details.borders[dimension.id] = border }
-        }
-        details.dragonFight = try? world.enderDragonFight()
-        details.wanderingTrader = try? world.wanderingTrader()
-        details.mapSources = world.mapItems().map(InGameMapImage.Source.init)
-        return details
-    }
-
-    /// `minecraft:keep_inventory` and the older `keepInventory` both become "Keep Inventory".
-    static func readableRule(_ id: String) -> String {
-        let base = ReadableName.identifierPath(id)
-        if base.contains("_") { return ReadableName.from(base) }
-        var words: [String] = []
-        for character in base {
-            if character.isUppercase || words.isEmpty { words.append(String(character)) } else { words[words.count - 1].append(character) }
-        }
-        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        WorldDetails(definitions: (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions(),
+                     info: WorldInfoSnapshot.read(world, dimensions: world.dimensions()).value,
+                     mapSnapshot: WorldMapSnapshot.read(world).value)
     }
 
     /// Minecraft's clock starts each day at 6:00 in the morning; 1,000 ticks make an hour.
@@ -92,7 +67,8 @@ struct WorldInfoView: View {
             Section {
                 if let version = session.resources.savedVersion.name { LabeledContent("Minecraft Version", value: version) }
                 if let notice = session.resources.newerWorldNotice { WorldVersionNoticeText(notice: notice) }
-                LabeledContent("Difficulty", value: difficulty)
+                LabeledContent("Difficulty", value: gameNames.difficulty(level.difficulty,
+                    isHardcore: level.isHardcore == true, isLocked: level.difficultyLocked == true))
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = session.presentation.worldSpawn {
                     LocationRow(title: Text("World Spawn"), session: session, destination: spawn)
@@ -167,7 +143,7 @@ struct WorldInfoView: View {
             }
             if !details.gameRules.isEmpty {
                 Section("Game Rules") {
-                    ForEach(details.gameRuleRows, id: \.id) { rule in
+                    ForEach(gameNames.gameRules(details.gameRules), id: \.id) { rule in
                         switch rule.value {
                         case .bool(let on): LabeledContent(rule.name, value: on ? String(localized: "On") : String(localized: "Off"))
                         case .int(let number): LabeledContent(rule.name, value: number.formatted())
@@ -177,16 +153,6 @@ struct WorldInfoView: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    private var difficulty: String {
-        var text = level.difficulty.map { gameNames.name(key: "options.difficulty.\($0)", fallback: ReadableName.from($0)) } ?? String(localized: "Unknown")
-        if level.isHardcore == true {
-            let hardcore = gameNames.name(key: "options.difficulty.hardcore", fallback: ReadableName.from("hardcore"))
-            text = String(localized: "\(text), \(hardcore)")
-        }
-        if level.difficultyLocked == true { text = String(localized: "\(text), locked") }
-        return text
     }
 
     private func clockTime(_ ticks: Int) -> String {

@@ -13,19 +13,12 @@ struct WorldView: View {
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
-    @State private var showsCoordinateSheet = false
-    @State private var showsImageExport = false
-    @State private var showsBlockFilter = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isSidebarFocused: Bool
     @State private var sidebarModifiers: EventModifiers = []
 
     var body: some View {
-        @Bindable var visibility = session.visibility
         @Bindable var search = session.search
-        @Bindable var annotations = session.annotations
-        @Bindable var heatMap = session.heatMap
-        @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
             ScrollViewReader { proxy in
@@ -36,18 +29,20 @@ struct WorldView: View {
                     Section("World", isExpanded: sectionExpanded(.world)) {
                         Label("World Info", systemImage: WorldInfoView.symbol)
                             .tag(SidebarItem.worldInfo)
+                            .repeatSidebarSelection(.worldInfo, in: session.selection)
                             .help("Show the world’s settings, time, weather and game rules")
                         Label("Storage", systemImage: StorageView.symbol)
                             .tag(SidebarItem.storage)
+                            .repeatSidebarSelection(.storage, in: session.selection)
                             .help("Show totals of the items stored in this dimension’s containers")
-                        MapVisibilityRow(isShown: $heatMap.isShown) {
+                        MapVisibilityRow(isShown: $session.visibility.showsTimeSpent) {
                             Label("Time Spent", systemImage: "clock.fill")
                         }
                         .help("Color the map by how long players spent near each chunk")
-                        MapVisibilityRow(isShown: $slimeChunks.isShown) {
+                        MapVisibilityRow(isShown: $session.visibility.showsSlimeChunks) {
                             Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
                         }
-                        .disabled(!slimeChunks.isAvailable)
+                        .disabled(!session.slimeChunks.isAvailable)
                         .help("Mark Overworld chunks where slimes can spawn below Y 40")
                         MapVisibilityRow(isShown: Binding {
                             session.map?.showsDarkSpots ?? false
@@ -56,11 +51,11 @@ struct WorldView: View {
                         }
                         .disabled(session.map == nil)
                         .help(DarkSpots.explanation)
-                        MapVisibilityRow(isShown: $visibility.showsGrid) {
+                        MapVisibilityRow(isShown: $session.visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }
                         .help("Show block, chunk and region lines; block lines appear from \(ZoomPercentage.text(MapGrid.minimumBlockSpacing)) zoom")
-                        MapVisibilityRow(isShown: session.presentation.limitedWorldBorder == nil ? .constant(false) : $visibility.showsWorldBorder) {
+                        MapVisibilityRow(isShown: session.presentation.limitedWorldBorder == nil ? .constant(false) : $session.visibility.showsWorldBorder) {
                             Label("World Border", systemImage: "square.dashed")
                         }
                         .disabled(session.presentation.limitedWorldBorder == nil)
@@ -74,20 +69,20 @@ struct WorldView: View {
                     if !index.structures.isEmpty {
                         Section("Structures", isExpanded: sectionExpanded(.structures)) {
                             LayerGroups(session: session, markers: index.structures, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
+                                        shown: $session.visibility.structures, item: { SidebarItem.structure($0.id) },
                                         expandedGroups: $sidebarDisclosure.structures)
                         }
                     }
                     Section("Places", isExpanded: sectionExpanded(.places)) {
                         SavedPlacesGroup(session: session, isExpanded: $sidebarDisclosure.showsSavedPlaces)
                         LayerGroups(session: session, markers: index.places, origin: session.presentation.spawnPoint,
-                                    shown: $visibility.places, item: { SidebarItem.place($0.id) },
+                                    shown: $session.visibility.places, item: { SidebarItem.place($0.id) },
                                     expandedGroups: $sidebarDisclosure.places)
                     }
                     if index.mobTypes.hasSpecialCreatures {
                         Section("Creatures", isExpanded: sectionExpanded(.creatures)) {
                             LayerGroups(session: session, markers: index.mobTypes.specialCreatures, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
+                                        shown: $session.visibility.creatures, item: { SidebarItem.creature($0.id) },
                                         expandedGroups: $sidebarDisclosure.creatures)
                         }
                     }
@@ -103,7 +98,7 @@ struct WorldView: View {
                     if !index.biomeAreas.isEmpty || !session.presentation.possibleBiomes.isEmpty {
                         Section("Biomes", isExpanded: sectionExpanded(.biomes)) {
                             LayerGroups(session: session, markers: index.biomeAreas, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes,
+                                        shown: $session.visibility.biomes, allGroups: session.presentation.possibleBiomes,
                                         item: { SidebarItem.biome($0.id) }, expandedGroups: $sidebarDisclosure.biomes)
                         }
                     }
@@ -180,12 +175,6 @@ struct WorldView: View {
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
                     .safeAreaInset(edge: .top, spacing: 0) { WorldVersionBanner(resources: session.resources) }
-                    .onChange(of: map.depth) { session.saveView() }
-                    .onChange(of: map.chosenStyle) { session.saveView() }
-                    .onChange(of: map.blendsBiomeColors) { session.saveView() }
-                    .onChange(of: map.lightingMode) { session.saveView() }
-                    .onChange(of: map.castsShadows) { session.saveView() }
-                    .onChange(of: map.blockFilter) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session, colorScheme, locale, contrast] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale, contrast: contrast) }])
                     // Remember the position a second after the map stops moving.
@@ -201,7 +190,7 @@ struct WorldView: View {
                                           preview: SharePreview(session.presentation.mapTitle(in: map.dimension.id, locale: locale), image: Image(systemName: ItemAppearance.mapSymbol))) {
                                     Text("Share Current View")
                                 }
-                                Button("Create Map Image…") { showsImageExport = true }
+                                Button("Create Map Image…") { session.presentSheet(.imageExport) }
                             } label: {
                                 Label("Share Map Image", systemImage: "square.and.arrow.up")
                             }
@@ -230,20 +219,8 @@ struct WorldView: View {
                 }
             }
         }
-        .sheet(isPresented: $showsCoordinateSheet) {
-            GoToCoordinatesView(session: session)
-        }
-        .sheet(isPresented: $showsImageExport) {
-            MapExportView(session: session)
-        }
-        .sheet(isPresented: $showsBlockFilter) {
-            if let map = session.map { MapBlockFilterView(session: session, map: map) }
-        }
-        .sheet(item: $annotations.draft) { draft in
-            SavedPlaceEditor(session: session, draft: draft)
-        }
-        .sheet(item: $annotations.portalDraft) { draft in
-            PortalPlanView(session: session, draft: draft)
+        .sheet(item: $session.sheet) { sheet in
+            WorldSheetView(session: session, sheet: sheet)
         }
         // The inspector adds its width to the navigation columns' minimum. The document scene
         // must forward that combined size instead of masking it with another outer frame.
@@ -254,11 +231,8 @@ struct WorldView: View {
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .frame(minHeight: Self.minimumContentSize.height)
-        .focusedSceneValue(\.worldSession, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : session)
-        .focusedSceneValue(\.focusSearch, showsCoordinateSheet || showsImageExport || showsBlockFilter || annotations.draft != nil || annotations.portalDraft != nil ? nil : SearchFocusAction { isSearchFocused = true })
-        .focusedSceneValue(\.coordinateSheet, $showsCoordinateSheet)
-        .focusedSceneValue(\.mapImageSheet, $showsImageExport)
-        .focusedSceneValue(\.mapBlockFilterSheet, $showsBlockFilter)
+        .focusedSceneValue(\.worldSession, session.commandTarget)
+        .focusedSceneValue(\.focusSearch, session.commandTarget == nil ? nil : SearchFocusAction { isSearchFocused = true })
         .background { WorldKeyboardShortcuts(session: session) }
         .modifier(WorldGameAssets(world: session.resources))
     }
@@ -300,10 +274,9 @@ struct WorldView: View {
         }
     }
 
-    private var inspectorShown: Binding<Bool> {
-        Binding { session.selection.inspector != nil } set: {
-            if !$0 { session.selection.inspector = nil }
-            else if session.selection.inspector == nil { session.selection.inspector = .world }
+    var inspectorShown: Binding<Bool> {
+        Binding { session.selection.isInspectorShown } set: {
+            session.commandTarget?.selection.isInspectorShown = $0
         }
     }
 
@@ -414,6 +387,7 @@ private struct SavedSearchesSection: View {
 private struct HitList: View {
     let session: WorldSession
     let query: String
+    @Environment(\.gameNames) private var gameNames
     var body: some View {
         let search = session.search
         let hits = session.search.listedHits(for: query, where: session.presentation.lists)
@@ -427,7 +401,7 @@ private struct HitList: View {
             ForEach(hits.rows) { hit in
                 let availability = session.routing.availability(of: hit.position.map { Coordinates($0, y: hit.y.map(Double.init)) },
                                                                 in: hit.dimension)
-                LocationLabel(title: Text(hit.title), isDimmed: !availability.canNavigate) {
+                LocationLabel(title: Text(hit.title(in: gameNames)), isDimmed: !availability.canNavigate) {
                     Image(systemName: MarkerStyle.search.symbol.name)
                 }
                 .tag(SidebarItem.hit(query: query, id: hit.id))

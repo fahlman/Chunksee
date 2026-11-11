@@ -31,11 +31,11 @@ import Testing
         let markers = PlayerPresentation.markers(for: players, in: "minecraft:overworld", singleplayerUUID: you, worldDataVersion: 5023)
         // You (position + respawn), the friend and a legacy numeric-dimension player; death is in the Nether.
         #expect(markers.count == 4)
-        let mine = markers.first { $0.kind == .player && $0.label == "You" }
+        let mine = markers.first { $0.kind == .player && GameNames.unavailable.playerMarker($0) == "You" }
         #expect(mine?.position == CGPoint(x: -2806.6, y: -3895.2))
         #expect(mine?.isOutdated == false)
-        #expect(markers.contains { $0.kind == .respawn && $0.label == "Your respawn point" })
-        let theirs = markers.first { $0.label == "Player 06d119da" }
+        #expect(markers.contains { $0.kind == .respawn && GameNames.unavailable.playerMarker($0) == "Your respawn point" })
+        let theirs = markers.first { GameNames.unavailable.playerMarker($0) == "Player 06d119da" }
         #expect(theirs?.isOutdated == true)  // file predates the world's version
         #expect(markers.contains { $0.position == CGPoint(x: -12, y: 241) })
     }
@@ -80,7 +80,7 @@ import Testing
     @Test func inspectorAndMarkersShareValidLocationsWithoutLosingMissingDimensionDetails() {
         let locations = PlayerPresentation.locations(of: players[0])
         #expect(locations.map(\.kind) == [.player, .death, .respawn])
-        #expect(locations.map(\.title) == ["Last Location", "Last Death", "Respawn Point"])
+        #expect(locations.map { GameNames.unavailable.playerLocation($0.kind) } == ["Last Location", "Last Death", "Respawn Point"])
         #expect(locations.map(\.isBlockPosition) == [false, true, true])
         #expect(PlayerPresentation.locations(of: players[2]).map(\.kind) == [.player])
         let invalid = PlayerInfo(uuid: UUID(), nbt: .compound([
@@ -91,18 +91,18 @@ import Testing
         #expect(valid.map(\.kind) == [.death])
         #expect(valid.first?.position.dimension == "example:missing")
         #expect(PlayerPresentation.position(of: invalid) == nil)
-        #expect(PlayerPresentation.absentPlayerName(friend, knownName: nil) == "Player 06d119da (not in this world)")
-        #expect(PlayerPresentation.absentPlayerName(friend, knownName: "Friend") == "Friend")
+        #expect(GameNames.unavailable.absentPlayer(friend, knownName: nil) == "Player 06d119da (not in this world)")
+        #expect(GameNames.unavailable.absentPlayer(friend, knownName: "Friend") == "Friend")
     }
 
     @Test func deathMarkerAppearsInItsOwnDimension() {
         let nether = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you, worldDataVersion: 5023)
         #expect(nether.map(\.kind) == [.death])
         #expect(nether.first?.position == CGPoint(x: 10, y: 20))
-        #expect(nether.first?.label == "Where you last died")
+        #expect(nether.first.map { GameNames.unavailable.playerMarker($0) } == "Where you last died")
         let named = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you,
                                                worldDataVersion: 5023, knownName: { _ in "You" })
-        #expect(named.first?.label == "Where You last died")
+        #expect(named.first.map { GameNames.unavailable.playerMarker($0) } == "Where You last died")
     }
 }
 
@@ -183,8 +183,8 @@ import Testing
         await names.lookUp([you])
         #expect(names.name(for: you) == "fahlman")
         #expect(fake.requests.isEmpty)  // known locally, so not sent online
-        let player = PlayerInfo(uuid: you, nbt: .compound([:]))
-        #expect(PlayerPresentation.name(of: player, singleplayerUUID: you, knownName: names.name(for: you)) == "fahlman")
+        let name = GameNames.PlayerName(playerID: you, singleplayerUUID: you, knownName: names.name(for: you))
+        #expect(GameNames.unavailable.player(name) == "fahlman")
         names.forgetMinecraftFolder()
         #expect(names.name(for: you) == nil)
     }
@@ -232,8 +232,8 @@ import Testing
         ]))
         let hotbar = player.inventorySlots(in: .hotbar), storage = player.inventorySlots(in: .storage)
         let sword = try #require(storage[1]), torches = try #require(hotbar[0])
-        #expect(ItemAppearance.description(of: sword) == "Diamond Sword “Excalibur”, enchanted")
-        #expect(ItemAppearance.description(of: torches) == "64 Torch")
+        #expect(GameNames.unavailable.itemDescription(of: sword) == "Diamond Sword “Excalibur”, enchanted")
+        #expect(GameNames.unavailable.itemDescription(of: torches) == "64 Torch")
         #expect(hotbar.count == 9 && hotbar[0]?.id == "minecraft:torch" && hotbar.compactMap(\.self).count == 1)
         #expect(storage.count == 27 && storage[1]?.id == "minecraft:diamond_sword")
         #expect(player.inventorySlots(in: .enderChest).count == 27 && player.inventorySlots(in: .enderChest).allSatisfy { $0 == nil })
@@ -243,17 +243,17 @@ import Testing
 
 @Suite(.isolatedStores) struct PlayerRecordsTests {
     @Test func namesRankingsAndDistances() {
-        #expect(PlayerRecords.travelName("minecraft:aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
-        #expect(PlayerRecords.travelName("minecraft:boat_one_cm", gameNames: .unavailable) == "Boat One Cm")
-        #expect(PlayerRecords.advancementName("minecraft:story/mine_diamond", title: nil, gameNames: .unavailable) == "Story Mine Diamond")
+        #expect(GameNames.unavailable.name("minecraft:aviate_one_cm", in: "stat") == "Aviate One Cm")
+        #expect(GameNames.unavailable.name("minecraft:boat_one_cm", in: "stat") == "Boat One Cm")
+        #expect(GameNames.unavailable.advancement("minecraft:story/mine_diamond", title: nil) == "Story Mine Diamond")
         let records = PlayerRecords(statistics: PlayerStatistics(values: [
             "minecraft:custom": ["minecraft:walk_one_cm": 250_000, "minecraft:boat_one_cm": 2_087_548_000, "minecraft:crouch_one_cm": 5_000],
             "minecraft:mined": ["minecraft:stone": 900, "minecraft:dirt": 1200, "minecraft:sand": 5],
         ]))
-        #expect(records.distances.map { $0.name(in: .unavailable) } == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
+        #expect(records.distances.map { GameNames.unavailable.statistic($0) } == ["Boat One Cm", "Walk One Cm"])   // crouching, under 100 m, is left out
         #expect(records.distances.first?.value == 2_087_548_000)
-        #expect(records.top("minecraft:mined", count: 2).map { $0.name(in: .unavailable) } == ["Dirt", "Stone"])
-        #expect(records.rows.count == 6 && records.rows.contains { $0.category == "General" && $0.name(in: .unavailable) == "Walk One Cm" })
+        #expect(records.top("minecraft:mined", count: 2).map { GameNames.unavailable.statistic($0) } == ["Dirt", "Stone"])
+        #expect(records.rows.count == 6 && records.rows.contains { GameNames.unavailable.statisticCategory($0.categoryID) == "General" && GameNames.unavailable.statistic($0) == "Walk One Cm" })
     }
 
     @Test func summaryAndTableShareReadableStatistics() throws {
@@ -263,10 +263,10 @@ import Testing
                                  "minecraft:damage_taken": 155, "mod:walk_one_cm": 999],
         ]))
         let english = StatisticRow.ValueStyle().locale(Locale(identifier: "en_US"))
-        #expect(records.summaryStatistics.map { $0.name(in: .unavailable) } == ["Play Time", "Mob Kills", "Deaths", "Walk One Cm"])
+        #expect(records.summaryStatistics.map { GameNames.unavailable.statistic($0) } == ["Play Time", "Mob Kills", "Deaths", "Walk One Cm"])
         for summary in records.summaryStatistics {
             let table = try #require(records.rows.first { $0.id == summary.id })
-            #expect(summary.name(in: .unavailable) == table.name(in: .unavailable)
+            #expect(GameNames.unavailable.statistic(summary) == GameNames.unavailable.statistic(table)
                     && summary.value == table.value && summary.unit == table.unit)
             #expect(english.format(summary) == english.format(table))
         }
@@ -292,9 +292,9 @@ import Testing
         let rows = records.rows
         #expect(Set(rows.map(\.id)).count == 4)
         let stones = records.top("minecraft:mined")
-        #expect(stones.map { $0.name(in: .unavailable) } == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
+        #expect(stones.map { GameNames.unavailable.statistic($0) } == ["Stone", "Stone"] && stones.map(\.value) == [10, 2])
         #expect(stones[0].id != stones[1].id)
-        #expect(records.summaryStatistics.first?.name(in: .unavailable) == "Play Time")
+        #expect(records.summaryStatistics.first.map { GameNames.unavailable.statistic($0) } == "Play Time")
         #expect(records.summaryStatistics.first?.unit == .ticks)
         let legacyTime = try #require(rows.first { $0.statisticID == "minecraft:play_one_minute" })
         let summaryTime = try #require(records.summaryStatistics.first)
@@ -326,9 +326,13 @@ import Testing
         try Data(#"{"minecraft:story/mine_stone":{"criteria":{"get_stone":"2012-01-01 10:00:00 +0000"},"done":true},"minecraft:recipes/misc/x":{"criteria":{},"done":true},"DataVersion":5023}"#.utf8)
             .write(to: advancements.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
         let world = try World(contentsOf: worldURL)
-        let records = await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil)
+        let records = try await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil).value
         #expect(records.statistics?.playTime == 144_000)
         #expect(records.completedAdvancements.map(\.id) == ["minecraft:story/mine_stone"])
-        #expect(await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).statistics == nil)
+        try Data("{".utf8).write(to: stats.appendingPathComponent(uuid.uuidString.lowercased() + ".json"))
+        let fallback = try await PlayerRecords.load(from: world, uuid: uuid, name: "PlayerTwo", library: nil)
+        #expect(fallback.value.statistics == records.statistics)
+        #expect(fallback.isComplete)
+        #expect(try await PlayerRecords.load(from: world, uuid: UUID(), name: nil, library: nil).value.statistics == nil)
     }
 }

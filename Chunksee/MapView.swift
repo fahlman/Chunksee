@@ -23,7 +23,7 @@ struct AccessibleMapLocation: Identifiable {
 struct MapView: View {
     let session: WorldSession
     @Bindable var map: MapModel
-    var content = MapContent()
+    var content: MapContent
     /// Link status per portal, for warning badges; `nil` while unknown.
     var portalStatus: (NetherPortal) -> PortalLinkStatus? = { _ in nil }
     /// Called with the clicked marker’s identity and saved height, or nil for empty map.
@@ -171,24 +171,24 @@ struct MapView: View {
         .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
     }
 
-    /// Draws the map: terrain tiles, then every overlay, bottom to top. The map view and image
-    /// export both draw through this, so an exported image matches the screen.
+    /// Draws visible tiles, then overlays. Image creation uses the same resolved terrain input
+    /// and drawing primitives, with its bounded shader rasterizer for Copy and area export.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
                         displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
-                    image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain,
                     shadow: { map.shadowImages[$0] }, detail: map.detailImages.mapValues(\.picture),
-                    protectsWater: map.style == .waterDepth, in: context, size: size)
+                    in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
-                            lighting: MapLighting? = nil, shadow: (RegionPosition) -> CGImage? = { _ in nil },
-                            detail: [ChunkPosition: MapTileImage] = [:], protectsWater: Bool = false,
+                            input: MapDrawingInput, shadow: (RegionPosition) -> CGImage? = { _ in nil },
+                            detail: [ChunkPosition: MapTileImage] = [:],
                             increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
@@ -196,13 +196,15 @@ struct MapView: View {
             guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't expose seams.
             let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
-            drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: lighting,
-                             protectsWater: protectsWater, increasedContrast: increasedContrast, in: context)
-            drawDetail(viewport: viewport, region: region, images: detail, lighting: lighting,
-                       increasedContrast: increasedContrast, in: context, size: size)
+            drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: input.lighting,
+                             protectsWater: input.protectsWater, increasedContrast: increasedContrast, in: context)
+            if input.includesDetail {
+                drawDetail(viewport: viewport, region: region, images: detail, lighting: input.lighting,
+                           increasedContrast: increasedContrast, in: context, size: size)
+            }
             // Finish each region before drawing the next overlapping edge. This keeps the
             // screen and streamed area export identical, without double-shading transparent detail.
-            if let mask = shadow(region) {
+            if input.shadowLight != nil, let mask = shadow(region) {
                 drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
             }
         }
@@ -288,10 +290,10 @@ struct MapView: View {
             return image
         }
         for structure in scene.structures {
-            add(structure.draw(in: context, symbol: symbol))
+            add(structure.draw(in: context, gameNames: content.gameNames, symbol: symbol))
         }
         for item in scene.items {
-            add(item.draw(in: context, portalStatus: portalStatus, symbol: symbol))
+            add(item.draw(in: context, gameNames: content.gameNames, portalStatus: portalStatus, symbol: symbol))
         }
         MarkerLabel.draw(labels, in: context)
         content.ruler.draw(in: context, viewport: viewport, size: size)
@@ -344,7 +346,8 @@ struct MapView: View {
             if let hoverPoint {
                 let hoverBlock = map.viewport.blockPoint(at: hoverPoint, in: size)
                 let block = Self.namesBlocks(at: map.viewport.scale) || map.showsDarkSpots ? map.topBlock(at: hoverBlock) : nil
-                CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock))))
+                CoordinateText(Text(Self.readout(at: hoverBlock, block: block, biomes: content.biomeDescription(at: hoverBlock),
+                                                gameNames: content.gameNames, locale: locale)))
                 if let notice = map.blockDefinitionNotice(for: block) {
                     Label(notice.label(locale: locale), systemImage: "questionmark.square.dashed")
                         .help(notice.help(locale: locale))
@@ -380,19 +383,11 @@ struct MapView: View {
 
     /// "X 3307  Y 64  Z 938 · Sand · Desert": X, Y and Z together as Minecraft shows them, then the
     /// block and biome (Ryan, 2026-10-13). Without a block, only X and Z are known.
-    static func readout(at point: CGPoint, block: RegionTileRenderer.TopBlock?, biomes: String?) -> String {
+    static func readout(at point: CGPoint, block: RegionTileRenderer.TopBlock?, biomes: String?,
+                        gameNames: GameNames, locale: Locale = .current) -> String {
         let coordinates = block.map { Coordinates.text(point, y: $0.y) } ?? Coordinates.text(point)
-        return ([coordinates] + [block.map(describe), biomes].compactMap { $0 }).joined(separator: " · ")
-    }
-
-    /// "Sand", or for water "Water, 5 deep". Water is counted only to the renderer's limit, so
-    /// deeper water reads "at least 32 deep" rather than a wrong exact depth.
-    static func describe(_ block: RegionTileRenderer.TopBlock) -> String {
-        let name = ReadableName.from(block.id)
-        guard block.waterDepth > 0 else { return name }
-        return block.waterDepth >= RegionTileRenderer.maximumWaterDepth
-            ? String(localized: "\(name), at least \(block.waterDepth) deep")
-            : String(localized: "\(name), \(block.waterDepth) deep")
+        let block = block.map { gameNames.blockDescription($0, locale: locale) }
+        return ([coordinates] + [block, biomes].compactMap { $0 }).joined(separator: " · ")
     }
 
     /// Reads the block under the pointer, also when the map moves beneath a still pointer.

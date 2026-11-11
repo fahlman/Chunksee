@@ -43,24 +43,29 @@ import Testing
     @Test func theGridSettingIsRemembered() {
         let defaults = TestDefaults.make()
         let worldID = UUID()
-        #expect(!LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
-        LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid = true
-        #expect(LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
+        #expect(!WorldSettings(id: worldID, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.showsGrid)
+        let settings = WorldSettings(id: worldID, defaults: defaults)
+        var choices = settings.mapPresentation(for: "minecraft:overworld")
+        choices.overlays.showsGrid = true
+        settings.save(choices, for: "minecraft:overworld")
+        #expect(WorldSettings(id: worldID, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.showsGrid)
     }
 }
 
 @Suite(.isolatedStores) struct MapAccessibilityTests {
     @Test func visiblePlayerDeathRespawnAndSearchLocationsKeepTheirNamesAndCoordinates() throws {
         let playerID = UUID()
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.players = [
-            .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, label: "Friend", isOutdated: false),
-            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, label: "Where Friend last died", isOutdated: false),
-            .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), label: "Friend’s respawn point", isOutdated: false),
-            .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), label: "Outside", isOutdated: false)
+            .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, name: .named("Friend"), isOutdated: false),
+            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, name: .named("Friend"), isOutdated: false),
+            .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), name: .named("Friend"), isOutdated: false),
+            .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), name: .named("Outside"), isOutdated: false)
         ]
-        content.hits = [.init(id: "chest", source: .container(kind: "minecraft:chest"), dimension: "minecraft:overworld",
-                             position: CGPoint(x: 5, y: 6), y: 64, title: "Chest", detail: "3 Diamond", count: 3)]
+        content.hits = [.init(id: "chest", dimension: "minecraft:overworld",
+                             position: CGPoint(x: 5, y: 6), y: 64,
+                             content: .container(kind: "minecraft:chest", customName: nil,
+                                 items: [.init(name: GameNames.ItemName(ItemStack(id: "minecraft:diamond")), count: 3)]))]
         let locations = content.accessibleLocations(viewport: .init(center: .zero, scale: 1), size: .init(width: 400, height: 300))
         #expect(Set(locations.map(\.name)) == ["Friend", "Where Friend last died", "Friend’s respawn point", "Chest, 3 Diamond"])
         let death = try #require(locations.first { $0.name == "Where Friend last died" })
@@ -314,7 +319,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 2, chunkConcurrency: 2)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 2, chunkConcurrency: 2)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
         #expect(map.isLoading)
         await map.waitUntilIdle()
@@ -338,11 +343,11 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         // The one chunk fills blocks 0–15; centered on it at 1×, it covers the view's middle.
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
         let size = CGSize(width: 200, height: 100)
         map.requestTiles(visibleIn: size, displayScale: 2)
         await map.waitUntilIdle()
-        let image = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
+        let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         let source = try #require(CGImageSourceCreateWithData(image.data as CFData, nil))
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         #expect(decoded.width == 400 && decoded.height == 200)
@@ -362,13 +367,13 @@ import Testing
         let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
         let size = CGSize(width: 480, height: 320)
         map.requestTiles(visibleIn: size, displayScale: 1)
         await map.waitUntilIdle()
         for appearance in [ColorScheme.light, .dark] {
             for shown in [false, true] {
-                var content = MapContent()
+                var content = MapContent(gameNames: .unavailable)
                 content.showsHeatMap = shown
                 let image = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
                     size: size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
@@ -400,7 +405,7 @@ import Testing
     @Test func fullResolutionOnlyWhenRegionsAreLargeOnScreen() throws {
         let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
         map.viewport.scale = 0.25   // a region is 128 points: 256 pixels at 2×, the preview's size
         #expect(!map.needsFullResolution(displayScale: 2))
         map.viewport.scale = 0.5
@@ -412,7 +417,7 @@ import Testing
         let regions = [RegionPosition(x: -1, z: -1), RegionPosition(x: 0, z: -1), RegionPosition(x: -1, z: 0), RegionPosition(x: 0, z: 0)]
         let world = try stoneWorld(regions: regions)
         defer { try? FileManager.default.removeItem(at: world) }
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero,
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero,
                            maxTiles: 1, maxPreviews: 1)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
         await map.waitUntilIdle()
@@ -425,7 +430,7 @@ import Testing
     @Test func zoomedOutRequestsNeedOnlyPreviews() async throws {
         let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: .zero)
         map.viewport.scale = 1.0 / 16
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600), displayScale: 2)
         await map.waitUntilIdle()
@@ -439,7 +444,7 @@ import Testing
     @Test func panningWithinLoadedRegionsRequestsNothingButNewRegionsLoad() async throws {
         let world = try stoneWorld(regions: [RegionPosition(x: 0, z: 0), RegionPosition(x: 3, z: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: CGPoint(x: 256, y: 256))
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try #require(try World(contentsOf: world).dimension("overworld")), center: CGPoint(x: 256, y: 256))
         let size = CGSize(width: 400, height: 300)
         map.requestTiles(visibleIn: size, displayScale: 2)
         await map.waitUntilIdle()
@@ -494,7 +499,7 @@ import Testing
         let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1, chunkConcurrency: 1)
         map.requestTiles(visibleIn: CGSize(width: 800, height: 600))
         await map.waitUntilIdle()
         let before = try #require(map.tiles[RegionPosition(x: 0, z: 0)])
@@ -580,10 +585,10 @@ import Testing
         #expect(blocks[2] == .init(id: "minecraft:stone", y: 0, waterDepth: 0))
         // Same scan as the map: every column's height and water depth match what was drawn.
         #expect(zip(blocks, columns).allSatisfy { block, column in block?.y == column?.y && block?.waterDepth == column?.waterDepth })
-        #expect(MapView.describe(blocks[0]!) == "Sand" && MapView.describe(blocks[1]!) == "Water, 3 deep")
+        #expect(GameNames.unavailable.blockDescription(blocks[0]!) == "Sand" && GameNames.unavailable.blockDescription(blocks[1]!) == "Water, 3 deep")
         // X, Y and Z together, then the block and biome.
-        #expect(MapView.readout(at: CGPoint(x: 0.5, y: 0.5), block: blocks[0], biomes: "Plains") == "X 0  Y 1  Z 0 · Sand · Plains")
-        #expect(MapView.readout(at: CGPoint(x: -3.2, y: 7), block: nil, biomes: nil) == "X -4  Z 7")
+        #expect(MapView.readout(at: CGPoint(x: 0.5, y: 0.5), block: blocks[0], biomes: "Plains", gameNames: .unavailable) == "X 0  Y 1  Z 0 · Sand · Plains")
+        #expect(MapView.readout(at: CGPoint(x: -3.2, y: 7), block: nil, biomes: nil, gameNames: .unavailable) == "X -4  Z 7")
         #expect(!MapView.namesBlocks(at: 0.5) && MapView.namesBlocks(at: 1))
     }
 
@@ -604,14 +609,14 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let block = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: 0, localZ: 0)?[0])
         #expect(block.id == "minecraft:water" && block.y == 63 && block.waterDepth == RegionTileRenderer.maximumWaterDepth)
-        #expect(MapView.describe(block) == "Water, at least 32 deep")   // 63 deep, counted to the limit
+        #expect(GameNames.unavailable.blockDescription(block) == "Water, at least 32 deep")   // 63 deep, counted to the limit
     }
 
     @Test func theMapReadsTheHoveredChunkAndForgetsItWhenSaved() async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
         defer { map.close() }
         #expect(map.topBlock(at: CGPoint(x: 0.5, y: 0.5)) == nil)   // not read until hovered
         map.loadTopBlocks(at: CGPoint(x: 0.5, y: 0.5))
@@ -630,8 +635,8 @@ import Testing
 
     private func map(_ url: URL, read: MapModel.TopBlockReader? = nil) throws -> MapModel {
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
-        if let read { return MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
-        return MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
+        if let read { return MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, readTopBlocks: read) }
+        return MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
     }
 
     @Test func aSaveElsewhereKeepsTheHoveredRead() async throws {

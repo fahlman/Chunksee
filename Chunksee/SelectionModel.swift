@@ -9,7 +9,9 @@ import Observation
 @Observable
 final class SelectionModel {
     @ObservationIgnored private weak var source: WorldSession?
-    let playerRecords: PlayerRecordsModel
+    private(set) var playerRecords: PlayerRecordStore.Handle?
+    private var isClosed = false
+    @ObservationIgnored private var selectionObservation: ModelObservation?
     private var selectedItem: SidebarItem?
     private var inspectorIsShown = false
     /// A map can remain under a selected location while its inspector shows that location.
@@ -21,8 +23,21 @@ final class SelectionModel {
 
     init(source: WorldSession) {
         self.source = source
-        playerRecords = PlayerRecordsModel(work: source.resources.backgroundWork,
-            read: { [weak resources = source.resources] uuid, name in await resources?.playerRecords(for: uuid, name: name) })
+        observeSelection()
+    }
+
+    /// Showing details again keeps the chosen identity and never navigates the map.
+    var isInspectorShown: Bool {
+        get { inspector != nil }
+        set {
+            guard let source, !source.isClosed else { return }
+            if newValue, selectedItem.flatMap(resolve) == nil, inGameMapOverlay == nil {
+                select(.worldInfo)
+            } else {
+                inspectorIsShown = newValue
+            }
+            if newValue { revealSelectedRow() }
+        }
     }
 
     var inspector: Inspector? {
@@ -37,19 +52,15 @@ final class SelectionModel {
             }
         }
         set {
+            guard source?.isClosed == false else { return }
             switch newValue {
             case .world?: select(.worldInfo)
             case .storage?: select(.storage)
             case .player(let id)?: select(.player(id))
-            case .selection?: inspectorIsShown = true
-            case nil:
-                let previous = inspector
-                inspectorIsShown = false
-                overlayID = nil
-                if selectedItem == .worldInfo || selectedItem == .storage { selectedItem = nil }
-                if inspector != previous { playerRecords.cancel() }
+            case .selection?: isInspectorShown = true; return
+            case nil: isInspectorShown = false; return
             }
-            if newValue != nil { revealSelectedRow() }
+            revealSelectedRow()
         }
     }
 
@@ -59,16 +70,11 @@ final class SelectionModel {
         return item
     }
 
-    var selectedHitID: SearchHit.ID? {
-        if case .hit(_, let id)? = sidebarSelection { return id }
-        return nil
-    }
-
     /// The inspector and overlay resolve independently from the same selected identity.
     var inspectorItem: ResolvedSidebarItem? {
         guard inspectorIsShown else { return nil }
         if let resolved = selectedItem.flatMap(resolve) { return detailItem(resolved) ?? resolved }
-        if case .inGameMap(let map)? = mapSelection { return .inGameMap(map) }
+        if let map = inGameMapOverlay { return .inGameMap(map) }
         return nil
     }
 
@@ -77,16 +83,31 @@ final class SelectionModel {
         return hit
     }
 
-    var mapSelection: MapSelection? {
-        guard inspectorIsShown, let source else { return nil }
-        switch detailItem(selectedItem.flatMap(resolve)) {
-        case .creature(let marker)?: return .creature(marker)
-        case .place(let marker)?:
-            if let portal = marker.portal { return .portal(portal) }
-        default: break
-        }
+    var inGameMapOverlay: MapItem? {
+        guard let source else { return nil }
         guard let overlayID, let map = source.presentation.inGameMaps.first(where: { $0.id == overlayID }), source.presentation.canShow(map) else { return nil }
-        return .inGameMap(map)
+        return map
+    }
+
+    /// Map drawing receives identities, independent of whether the inspector is visible.
+    /// A search pin and the live item it resolves to share the selected treatment.
+    var highlighted: Set<MapTarget> {
+        guard let resolved = selectedItem.flatMap(resolve) else { return [] }
+        var targets: Set<MapTarget> = []
+        if case .hit(let hit) = resolved { targets.insert(.searchHit(hit.id)) }
+        switch detailItem(resolved) {
+        case .savedPlace(let place)?: targets.insert(.row(.savedPlace(place.id)))
+        case .structure(let marker)?: targets.insert(.row(.structure(marker.id)))
+        case .place(let marker)?: targets.insert(.row(.place(marker.id)))
+        case .creature(let marker)?:
+            // Both sidebar rows identify the same drawn creature; picking keeps its row route.
+            targets.insert(.row(.creature(marker.id)))
+            targets.insert(.row(.mobCreature(marker.id)))
+        case .biome(let area)?: targets.insert(.row(.biome(area.id)))
+        case .player(let player)?: targets.insert(.row(.player(player.uuid)))
+        case .worldInfo?, .storage?, .mobType?, .inGameMap?, .hit?, nil: break
+        }
+        return targets
     }
 
     /// Resolves every selectable identity without retaining the world or a data snapshot.
@@ -134,7 +155,6 @@ final class SelectionModel {
             if selectedItem == .worldInfo || selectedItem == .storage { return }
             if case .inGameMap(let id)? = selectedItem, overlayID == id { return }
         }
-        let previous = inspector
         let resolved = item.flatMap(resolve)
         selectedItem = resolved == nil ? nil : item
         switch detailItem(resolved) {
@@ -144,9 +164,11 @@ final class SelectionModel {
         case .inGameMap(let map)?: overlayID = map.id
         case .savedPlace?, .structure?, .biome?, .hit?, nil: break
         }
-        inspectorIsShown = true
-        if resolved != nil { followHeight(height) }
-        if inspector != previous { playerRecords.cancel() }
+        // Clearing a selection must not reopen hidden details for a retained map.
+        if resolved != nil {
+            inspectorIsShown = true
+            followHeight(height)
+        }
     }
 
     /// Only sidebar input navigates and reveals a hidden layer; map input keeps focus/viewport.
@@ -285,6 +307,43 @@ final class SelectionModel {
         select(.inGameMap(map.id))
     }
 
-    func close() { playerRecords.close() }
-    func waitForReads() async { await playerRecords.waitForReads() }
+    /// A removed identity must not return as a selected row after its inspector was dismissed.
+    /// Hiding an inspector deliberately still preserves a selection that remains available.
+    private func discardMissingSelection() {
+        if let selectedItem, resolve(selectedItem) == nil {
+            self.selectedItem = nil
+            inspector = nil
+            overlayID = nil
+        }
+        if let overlayID, resolve(.inGameMap(overlayID)) == nil {
+            self.overlayID = nil
+        }
+    }
+
+    /// Selection, including its live resolution, owns record demand even for hidden windows.
+    private func observeSelection() {
+        selectionObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.selectedItem.flatMap($0.resolve)
+            if let overlayID = $0.overlayID { _ = $0.resolve(.inGameMap(overlayID)) }
+            _ = $0.inspector
+        }) { selection, _ in
+            selection.discardMissingSelection()
+            selection.updatePlayerRecords()
+        }
+    }
+
+    private func updatePlayerRecords() {
+        let uuid: UUID?
+        if case .player(let selected) = inspector { uuid = selected } else { uuid = nil }
+        guard uuid != playerRecords?.uuid else { return }
+        playerRecords?.close()
+        playerRecords = uuid.flatMap { source?.resources.playerRecords.acquire($0) }
+    }
+
+    func close() {
+        selectionObservation?.cancel()
+        isClosed = true
+        playerRecords?.close()
+        playerRecords = nil
+    }
 }

@@ -49,11 +49,11 @@ import Testing
         try savePets([pet("Other World", owner: owner, x: 4)], in: secondURL)
         let first = try await open(firstURL), second = try await open(secondURL)
         defer { first.close(); second.close() }
-        #expect(Set(first.presentation.linkedPets(to: owner).map(\.name)) == ["Summer", "Nether Wolf"])
-        #expect(first.presentation.linkedPets(to: otherOwner).map(\.name) == ["Summer"])
+        #expect(Set(first.presentation.linkedPets(to: owner).map { $0.name(in: first.resources.gameNames) }) == ["Summer", "Nether Wolf"])
+        #expect(first.presentation.linkedPets(to: otherOwner).map { $0.name(in: first.resources.gameNames) } == ["Summer"])
         #expect(first.presentation.linkedPets(to: UUID()).isEmpty)
-        #expect(second.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })
-        #expect(!first.presentation.linkedPets(to: owner).contains { $0.name == "Other World" })
+        #expect(second.presentation.linkedPets(to: owner).contains { $0.name(in: second.resources.gameNames) == "Other World" })
+        #expect(!first.presentation.linkedPets(to: owner).contains { $0.name(in: first.resources.gameNames) == "Other World" })
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed()
     }
@@ -89,7 +89,7 @@ import Testing
         #expect(source.selectedDimensionID == "minecraft:overworld" && source.map?.viewport == initial)
         #expect(source.selection.inspector == .player(owner))
         #expect(source.selection.sidebarRevealRequest == nil && target.selection.sidebarRevealRequest != nil)
-        #expect(target.selection.mapSelection == .creature(pet) && target.selection.sidebarSelection == .creature(pet.id))
+        #expect(target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))] && target.selection.sidebarSelection == .creature(pet.id))
         #expect(target.map?.viewport.center == pet.position && target.map?.viewport.scale == 4)
         #expect(source.map?.depth.cutawayY == 99)
         #expect(target.map?.depth.cutawayY == BlockPosition.coordinate(containing: pet.creature.y))
@@ -121,10 +121,10 @@ import Testing
         let target = WorldSession(resources: source.resources, dimensionID: pet.dimension)
         defer { target.close() }
         let firstReveal = try #require(target.selection.sidebarRevealRequest)
-        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.mapSelection == .creature(pet))
+        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         target.selection.showLinkedPet(pet, ownedBy: owner)
         #expect(target.selection.sidebarRevealRequest != firstReveal)
-        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.mapSelection == .creature(pet))
+        #expect(target.selection.sidebarSelection == .creature(pet.id) && target.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         source.close(); target.close()
         await source.waitUntilClosed(); await target.waitUntilClosed()
     }
@@ -142,10 +142,10 @@ import Testing
         await session.search.waitForIndex()
         #expect(!session.presentation.linkedPets(to: owner).contains { $0.dimension == "minecraft:overworld" })
         session.selection.showLinkedPet(old, ownedBy: owner)
-        #expect(session.selection.mapSelection == nil && session.map?.viewport == initial && session.selection.sidebarRevealRequest == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.map?.viewport == initial && session.selection.sidebarRevealRequest == nil)
         session.close()
         session.selection.showLinkedPet(old, ownedBy: otherOwner)
-        #expect(session.selection.mapSelection == nil && session.selection.sidebarRevealRequest == nil)
+        #expect(session.selection.highlighted.isEmpty && session.selection.inGameMapOverlay == nil && session.selection.sidebarRevealRequest == nil)
         await session.waitUntilClosed()
     }
 
@@ -153,11 +153,11 @@ import Testing
         let item = try #require(ItemStack(.compound(["id": .string("minecraft:diamond_sword"), "components": .compound([
             "minecraft:damage": .int(61), "minecraft:enchantments": .compound(["minecraft:sharpness": .int(5), "minecraft:mending": .int(1)]),
         ])])))
-        let text = ItemAppearance.details(of: item)
+        let text = GameNames.unavailable.itemDetails(of: item)
         // The user's locale can group durability counts (for example, 1,500).
         let expectedWear = String(localized: "Durability: \(1500) of \(1561)")
         #expect(text.contains("Sharpness V") && text.contains("Mending") && text.contains(expectedWear))
-        #expect(!ItemAppearance.details(of: ItemStack(id: "minecraft:apple")).contains("Durability"))
+        #expect(!GameNames.unavailable.itemDetails(of: ItemStack(id: "minecraft:apple")).contains("Durability"))
         #expect(PlayerEffectText.duration(.init(id: "minecraft:strength", amplifier: 1, durationTicks: 1680)) == "1:24")
         #expect(PlayerEffectText.duration(.init(id: "minecraft:strength", amplifier: 0, durationTicks: 1)) == "0:01")
         #expect(PlayerEffectText.duration(.init(id: "minecraft:strength", amplifier: 0, durationTicks: 72000)) == "1:00:00")
@@ -174,17 +174,19 @@ import Testing
         let second = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == secondID })
         #expect(first.id != second.id && first.position == second.position)
         session.selection.showLinkedPet(second, ownedBy: owner)
-        #expect(session.selection.mapSelection == .creature(second))
+        #expect(session.selection.highlighted == [.row(.creature(second.id)), .row(.mobCreature(second.id))])
         session.selection.showLinkedPet(first, ownedBy: owner)
         let file = try savePets([pet("Renamed", owner: owner, x: 12, entityID: firstID), pet("Luna", owner: owner, x: 4, entityID: secondID)], in: url)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: file.path)
         session.search.rebuild(firstDimension: session.selectedDimensionID)
         await session.search.waitForIndex()
         let moved = try #require(session.presentation.linkedPets(to: owner).first { $0.creature.uuid == firstID })
-        #expect(moved.id == first.id && moved.position != first.position && moved.name == "Renamed")
-        #expect(session.selection.mapSelection == .creature(moved))
+        #expect(moved.id == first.id && moved.position != first.position && moved.name(in: session.resources.gameNames) == "Renamed")
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing moved pet details"); return }
+        #expect(detail == moved)
+        #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
         session.selection.showLinkedPet(first, ownedBy: owner)
-        #expect(session.map?.viewport.center == moved.position && session.selection.mapSelection == .creature(moved))
+        #expect(session.map?.viewport.center == moved.position && session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
         session.close()
         await session.waitUntilClosed()
     }

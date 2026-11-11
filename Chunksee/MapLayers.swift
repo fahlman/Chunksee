@@ -4,7 +4,8 @@ import SwiftUI
 
 /// A kind of map marker that the sidebar lists, and can show or hide.
 nonisolated protocol MapLayerGroup: Hashable {
-    var name: String { get }
+    var id: String { get }
+    func name(in gameNames: GameNames) -> String
     var symbol: String { get }
 }
 
@@ -12,33 +13,49 @@ nonisolated protocol MapLayerGroup: Hashable {
 nonisolated protocol MapLayerMarker: Identifiable where ID == String {
     associatedtype Group: MapLayerGroup
     var group: Group { get }
-    var name: String { get }
+    func name(in gameNames: GameNames) -> String
     var position: CGPoint { get }
     /// Saved Y for map and sidebar coordinate commands; nil uses the map's terrain.
     var yCoordinate: Double? { get }
     /// What a search filter such as `structure:` matches: the name and kind, plus anything else
     /// that identifies the marker.
-    var searchText: String { get }
+    func searchText(in gameNames: GameNames) -> String
 }
 
 extension MapLayerMarker {
-    var searchText: String { name + " " + group.name }
+    nonisolated func searchText(in gameNames: GameNames) -> String { name(in: gameNames) + " " + group.name(in: gameNames) }
 }
 
-extension StructureGroup: MapLayerGroup {}
-extension PlaceGroup: MapLayerGroup {}
-extension CreatureGroup: MapLayerGroup {}
+extension StructureGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
+extension PlaceGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
+extension CreatureGroup: MapLayerGroup {
+    nonisolated var id: String { rawValue }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
 extension StructureMarker: MapLayerMarker {
     var yCoordinate: Double? { y.map(Double.init) }
-    var searchText: String { name + " " + group.name + " " + structureID }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.structure(structureID) }
+    nonisolated func searchText(in gameNames: GameNames) -> String {
+        name(in: gameNames) + " " + group.name(in: gameNames) + " " + structureID
+    }
 }
 extension PlaceMarker: MapLayerMarker {
     var yCoordinate: Double? { Double(y) }
-    var searchText: String { [name, group.name, type, mob ?? "", lootTable ?? ""].joined(separator: " ") }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.place(self) }
+    nonisolated func searchText(in gameNames: GameNames) -> String {
+        [name(in: gameNames), group.name(in: gameNames), type, mob ?? "", lootTable ?? ""].joined(separator: " ")
+    }
 }
 extension CreatureMarker: MapLayerMarker {
     var yCoordinate: Double? { creature.y }
-    nonisolated var searchText: String { name + " " + group.name + " " + ReadableName.from(creature.id) + " " + creature.id }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.creature(creature) }
+    nonisolated func searchText(in gameNames: GameNames) -> String { gameNames.creatureSearchText(self) }
 }
 
 /// Sidebar groups for one layer (structures, places, creatures or biomes). Groups are listed
@@ -54,10 +71,11 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
     let item: (Marker) -> SidebarItem
     @Binding var expandedGroups: Set<Marker.Group>
     @Environment(\.locale) private var locale
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
-        let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name < $1.name }
+        let groups = gameNames.layerGroups(Set(byGroup.keys).union(allGroups))
         ForEach(groups, id: \.self) { group in
             if byGroup[group] == nil {
                 row(group, count: 0)
@@ -74,7 +92,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                             if let creature = row.marker as? CreatureMarker {
                                 MobLocationLabel(marker: creature)
                             } else {
-                                LocationLabel(title: Text(row.marker.name)) {
+                                LocationLabel(title: Text(row.marker.name(in: gameNames))) {
                                     Image(systemName: row.marker.group.symbol)
                                 }
                             }
@@ -101,7 +119,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
             }
         }
         return MapVisibilityRow(isShown: visibility) {
-            Label(CountedText.label(group.name, count: count, locale: locale), systemImage: group.symbol)
+            Label(CountedText.label(group.name(in: gameNames), count: count, locale: locale), systemImage: group.symbol)
         }
     }
 
@@ -168,106 +186,4 @@ struct VisibilityButton: View {
             .buttonStyle(.plain)
             .foregroundStyle(isShown ? .primary : .tertiary)
     }
-}
-
-/// One world dimension's layer controls, remembered between launches in `defaults`.
-@Observable
-final class LayerVisibility {
-    var structures: Set<StructureGroup> { didSet { saveValue(structureChoices, .structureVisibility) } }
-    var places: Set<PlaceGroup> { didSet { save(places.map(\.rawValue), Keys.places) } }
-    var creatures: Set<CreatureGroup> { didSet { save(creatures.map(\.rawValue), Keys.creatures) } }
-    var mobTypes: Set<String> { didSet { save(Array(mobTypes), Keys.mobTypes) } }
-    /// Appearance filters belong to this open dimension, not the saved world's content.
-    var mobAppearances: [String: MobAppearance] = [:]
-    /// None at first: outlining every biome would cover the map.
-    var biomes: Set<BiomeGroup> { didSet { save(biomes.map(\.id), Keys.biomes) } }
-    var hiddenPlayers: Set<UUID> { didSet { save(hiddenPlayers.map(\.uuidString), Keys.hiddenPlayers) } }
-    /// Chunk and region lines; off at first.
-    var showsGrid: Bool { didSet { saveValue(showsGrid, Keys.showsGrid) } }
-    var showsSavedPlaces: Bool { didSet { saveValue(showsSavedPlaces, Keys.showsSavedPlaces) } }
-    var showsWorldBorder: Bool { didSet { saveValue(showsWorldBorder, Keys.showsWorldBorder) } }
-
-    private let settings: WorldSettings
-    private let dimension: String?
-    private typealias Keys = WorldSettings.Layer
-
-    init(settings: WorldSettings, dimension: String?) {
-        self.settings = settings
-        self.dimension = dimension
-        let previous = settings.layers(for: dimension)
-        let values = previous ?? settings.legacyLayers
-        func saved<Group: RawRepresentable & CaseIterable & Sendable>(_ key: Keys, default isShown: (Group) -> Bool) -> Set<Group> where Group.RawValue == String {
-            guard let names = values[key] as? [String] else { return Set(Group.allCases.filter(isShown)) }
-            return Set(names.compactMap(Group.init(rawValue:)))
-        }
-        if let choices = values[Keys.structureVisibility] as? [String: Bool] {
-            structures = Set(StructureGroup.allCases.filter { choices[$0.rawValue] ?? $0.isShownByDefault })
-        } else if let shown = values[Keys.structures] as? [String] {
-            // The old format stored only shown groups. This fixed historical schema lets
-            // newly introduced groups use their defaults without undoing existing choices.
-            let original: Set<StructureGroup> = [.village, .stronghold, .ancientCity, .trialChambers,
-                .monument, .mansion, .temple, .ruins, .ruinedPortal, .shipwreck, .buriedTreasure,
-                .outpost, .mineshaft, .fortress, .bastion, .netherFossil, .endCity, .other]
-            structures = Set(shown.compactMap(StructureGroup.init(rawValue:)))
-                .union(StructureGroup.allCases.filter { !original.contains($0) && $0.isShownByDefault })
-        } else {
-            structures = Set(StructureGroup.allCases.filter(\.isShownByDefault))
-        }
-        places = saved(Keys.places, default: \.isShownByDefault)
-        creatures = saved(Keys.creatures, default: \.isShownByDefault)
-        mobTypes = Set(values[Keys.mobTypes] as? [String] ?? [])
-        biomes = Set((values[Keys.biomes] as? [String] ?? []).map(BiomeGroup.init(id:)))
-        hiddenPlayers = Set((values[Keys.hiddenPlayers] as? [String] ?? []).compactMap(UUID.init(uuidString:)))
-        showsGrid = values[Keys.showsGrid] as? Bool ?? false
-        showsSavedPlaces = values[Keys.showsSavedPlaces] as? Bool ?? true
-        showsWorldBorder = values[Keys.showsWorldBorder] as? Bool ?? true
-        if previous == nil {
-            write([
-                Keys.structureVisibility: structureChoices, Keys.places: places.map(\.rawValue).sorted(),
-                Keys.creatures: creatures.map(\.rawValue).sorted(), Keys.biomes: biomes.map(\.id).sorted(),
-                Keys.mobTypes: mobTypes.sorted(),
-                Keys.hiddenPlayers: hiddenPlayers.map(\.uuidString).sorted(), Keys.showsGrid: showsGrid,
-                Keys.timeSpent: false, Keys.showsSavedPlaces: showsSavedPlaces,
-                Keys.showsWorldBorder: showsWorldBorder,
-            ])
-        } else if values[Keys.structureVisibility] == nil {
-            saveValue(structureChoices, .structureVisibility)
-        }
-    }
-
-    func appearance(for kind: MobTypes.Kind) -> MobAppearance? {
-        guard let appearance = mobAppearances[kind.id], kind.contains(appearance) else { return nil }
-        return appearance
-    }
-
-    func reveal(_ marker: CreatureMarker, inMobList: Bool = false) {
-        if inMobList || marker.group == .mob {
-            mobTypes.insert(marker.creature.id)
-            if let filter = mobAppearances[marker.creature.id], filter != MobAppearance(marker.creature.appearance) {
-                mobAppearances[marker.creature.id] = nil
-            }
-        } else {
-            creatures.insert(marker.group)
-        }
-    }
-
-    private var structureChoices: [String: Bool] {
-        Dictionary(uniqueKeysWithValues: StructureGroup.allCases.map { ($0.rawValue, structures.contains($0)) })
-    }
-
-    /// HeatMapLayer owns the live flag; these accessors only restore and persist its value.
-    var rememberedTimeSpent: Bool { settings.layers(for: dimension)?[.timeSpent] as? Bool ?? false }
-    func rememberTimeSpent(_ shown: Bool) { saveValue(shown, .timeSpent) }
-
-    /// SlimeChunkLayer owns the live flag, just as HeatMapLayer owns Time Spent.
-    var rememberedSlimeChunks: Bool { settings.layers(for: dimension)?[.slimeChunks] as? Bool ?? false }
-    func rememberSlimeChunks(_ shown: Bool) { saveValue(shown, .slimeChunks) }
-
-    /// MapModel owns the live flag and its optional terrain read; this is its persisted value.
-    var rememberedDarkSpots: Bool { settings.layers(for: dimension)?[.darkSpots] as? Bool ?? false }
-    func rememberDarkSpots(_ shown: Bool) { saveValue(shown, .darkSpots) }
-
-    private func save(_ names: [String], _ key: Keys) { saveValue(names.sorted(), key) }
-    private func saveValue(_ value: Any, _ key: Keys) { write([key: value]) }
-    private func write(_ values: [Keys: Any]) { settings.saveLayers(values, for: dimension) }
 }

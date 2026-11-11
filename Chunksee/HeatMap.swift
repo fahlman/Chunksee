@@ -1,5 +1,6 @@
 import CoreGraphics
 import ChunkseeKit
+import Observation
 import SwiftUI
 
 /// The time-spent heat map: each chunk colored by how long players spent near it
@@ -70,38 +71,36 @@ nonisolated enum HeatMap {
 /// One dimension document's heat map, read when first shown and again after the game saves.
 @Observable
 final class HeatMapLayer {
-    var isShown = false {
-        didSet {
-            guard !loader.isClosed, isShown != oldValue else { return }
-            rememberedVisibility?.rememberTimeSpent(isShown)
-            load()
-        }
-    }
+    private let readIsShown: @MainActor () -> Bool
+    var isShown: Bool { readIsShown() }
     private let loader: RefreshLoader<Source, RefreshInvalidation, [RegionPosition: CGImage]>
+    private let readReader: @MainActor () -> RegionReader?
+    @ObservationIgnored private var inputObservation: ModelObservation?
     private var hasReader: Bool { loader.source.reader != nil }
     nonisolated private struct Source: Equatable, Sendable {
         let reader: RegionReader?
         static func == (lhs: Self, rhs: Self) -> Bool { lhs.reader === rhs.reader }
     }
-    @ObservationIgnored private var rememberedVisibility: LayerVisibility?
-    init(reader: RegionReader?, work: BackgroundWork) {
+    init(reader: @escaping @MainActor () -> RegionReader?, isShown: @escaping @MainActor () -> Bool, work: BackgroundWork) {
+        readReader = reader
+        readIsShown = isShown
         loader = RefreshLoader(work: work, priority: .userInitiated, whenInactive: .finish,
-                               source: Source(reader: reader)) { source, previous in
+                               source: Source(reader: reader())) { source, previous in
             guard let reader = source.reader else { return [:] }
             return await HeatMap.images(reader, previous: previous ?? [:])
         }
+        observeInputs()
+        load()
     }
 
-    func replaceReader(_ reader: RegionReader?) {
-        guard !loader.isClosed else { return }
-        loader.request(source: Source(reader: reader), isEnabled: isShown && reader != nil, reread: false)
-    }
-
-    /// Restores this tab's flag without making a second live copy in LayerVisibility.
-    func restoreVisibility(from visibility: LayerVisibility) {
-        guard !loader.isClosed else { return }
-        rememberedVisibility = visibility
-        isShown = visibility.rememberedTimeSpent
+    private func observeInputs() {
+        inputObservation = ModelObservation(self, isActive: { !$0.loader.isClosed }, read: {
+            (reader: $0.readReader(), shown: $0.isShown)
+        }) { layer, previous in
+            let reader = layer.readReader()
+            guard reader !== previous.reader || layer.isShown != previous.shown else { return }
+            layer.loader.request(source: Source(reader: reader), isEnabled: layer.isShown && reader != nil, reread: false)
+        }
     }
 
     /// This document's images, when the layer is on and they've been read.
@@ -122,6 +121,7 @@ final class HeatMapLayer {
     }
 
     func cancel() {
+        inputObservation?.cancel()
         loader.close()
     }
 }

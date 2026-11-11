@@ -1,10 +1,68 @@
 import ChunkseeKit
 import CoreGraphics
 import Foundation
+import Observation
 import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct SlimeChunkTests {
+    @Observable final class Visibility { var isShown = false }
+
+    @Observable final class Seed {
+        var value: Int64? = 42
+    }
+    final class SeedReads { var count = 0 }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func closingTheLayerOrWorldStopsReadingSeedChanges(closeWorld: Bool) async throws {
+        let seed = Seed(), reads = SeedReads(), work = BackgroundWork()
+        let region = RegionPosition(x: 0, z: 0)
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: {
+            reads.count += 1
+            return seed.value
+        }, isShown: { true }, regions: [region], work: work)
+        await layer.waitForImages()
+        _ = try #require(layer.visibleImages[region])
+        if closeWorld { work.close() } else { layer.cancel() }
+        await layer.waitForImages()
+        let before = reads.count
+        #expect(before > 0)
+        seed.value = 43
+        seed.value = nil
+        seed.value = 44
+        #expect(reads.count == before)
+        layer.cancel(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func changingTheSavedSeedRejectsOldMasksAndRestoresAfterRemoval() async throws {
+        let region = RegionPosition(x: 0, z: 0), work = BackgroundWork(), seed = Seed()
+        let gate = AsyncReadGate<[RegionPosition: CGImage]>()
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { seed.value }, isShown: { visibility.isShown }, regions: [region], work: work,
+                                   readImages: { _, seed in await gate.read(String(seed)) })
+        visibility.isShown = true
+        await gate.waitForRequest("42")
+        seed.value = 43
+        await gate.waitForCancellation("42")
+        let old = try #require(SlimeChunks.image(region: region, seed: 42))
+        await gate.finish("42", with: [region: old])
+        await gate.waitForRequest("43")
+        #expect(layer.visibleImages.isEmpty && layer.visibleSeed == 43)
+        let current = try #require(SlimeChunks.image(region: region, seed: 43))
+        await gate.finish("43", with: [region: current])
+        await layer.waitForImages()
+        #expect(layer.visibleImages[region] === current)
+        seed.value = nil
+        #expect(!layer.isAvailable && layer.visibleImages.isEmpty)
+        seed.value = 43
+        await gate.waitForRequest("43", count: 2)
+        await gate.finish("43", with: [region: current])
+        await layer.waitForImages()
+        #expect(layer.visibleImages[region] === current)
+        #expect(await gate.requested == ["42", "43", "43"])
+        layer.cancel(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(arguments: [RegionPosition(x: 0, z: 0), .init(x: -2, z: -1), .init(x: 3, z: -4)])
     func masksMatchThePublishedRuleAtEveryChunk(_ region: RegionPosition) throws {
         let seed: Int64 = -4399779792530681128
@@ -26,29 +84,23 @@ import Testing
         #expect(SlimeChunks.description(at: CGPoint(x: CGFloat.nan, y: 0), seed: seed) == nil)
     }
 
-    @Test func imagesAreReusedNewRegionsAreAddedAndVisibilityIsRememberedPerDimension() async throws {
-        let defaults = TestDefaults.make(), world = UUID()
-        let visibility = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld")
+    @Test func imagesAreReusedAndNewRegionsAreAddedWhenShownAgain() async throws {
         let region = RegionPosition(x: 0, z: 0), added = RegionPosition(x: -1, z: 0)
-        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region], work: BackgroundWork())
-        layer.restoreVisibility(from: visibility)
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { visibility.isShown }, regions: [region], work: BackgroundWork())
         #expect(!layer.isShown && layer.visibleImages.isEmpty)
-        layer.isShown = true
+        visibility.isShown = true
         await layer.waitForImages()
         let image = try #require(layer.visibleImages[region])
         layer.regionsChanged([region, added])
         await layer.waitForImages()
         #expect(layer.visibleImages[region] === image)
         #expect(layer.visibleImages[added] != nil)
-        layer.isShown = false
+        visibility.isShown = false
         #expect(layer.visibleImages.isEmpty)
-        layer.isShown = true
+        visibility.isShown = true
         await layer.waitForImages()
         #expect(layer.visibleImages[region] === image)
-        let restored = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:overworld")
-        #expect(restored.rememberedSlimeChunks)
-        let nether = LayerVisibility(settings: WorldSettings(id: world, defaults: defaults), dimension: "minecraft:the_nether")
-        #expect(!nether.rememberedSlimeChunks)
         layer.regionsChanged([added])
         #expect(layer.visibleImages[region] == nil)
         layer.cancel(); await layer.waitForImages()
@@ -56,15 +108,17 @@ import Testing
 
     @Test func unavailableSeedAndOtherDimensionsHaveNoOverlayAndClosingStopsPendingWork() async {
         for (id, seed) in [("minecraft:overworld", nil), ("minecraft:the_nether", Int64(42)), ("minecraft:the_end", Int64(42))] {
-            let layer = SlimeChunkLayer(dimensionID: id, seed: seed, regions: [.init(x: 0, z: 0)], work: BackgroundWork())
-            layer.isShown = true
+            let visibility = Visibility()
+            let layer = SlimeChunkLayer(dimensionID: id, seed: { seed }, isShown: { visibility.isShown }, regions: [.init(x: 0, z: 0)], work: BackgroundWork())
+            visibility.isShown = true
             await layer.waitForImages()
             #expect(!layer.isAvailable && layer.visibleImages.isEmpty && !layer.isLoading)
             layer.cancel()
         }
-        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42,
-                                   regions: Set((0..<100).map { .init(x: $0, z: 0) }), work: BackgroundWork())
-        layer.isShown = true
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 },
+                                   isShown: { visibility.isShown }, regions: Set((0..<100).map { .init(x: $0, z: 0) }), work: BackgroundWork())
+        visibility.isShown = true
         layer.cancel()
         await layer.waitForImages()
         #expect(layer.visibleImages.isEmpty)
@@ -73,9 +127,10 @@ import Testing
     @Test(.timeLimit(.minutes(1))) func worldCloseRejectsLateMasksAndNewWork() async throws {
         let region = RegionPosition(x: 0, z: 0), work = BackgroundWork()
         let gate = AsyncReadGate<[RegionPosition: CGImage]>()
-        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region], work: work,
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { visibility.isShown }, regions: [region], work: work,
                                    readImages: { _, _ in await gate.read("pending") })
-        layer.isShown = true
+        visibility.isShown = true
         await gate.waitForRequest("pending")
         work.close()
         await gate.waitForCancellation("pending")
@@ -84,8 +139,8 @@ import Testing
         await work.waitUntilFinished()
         #expect(layer.visibleImages.isEmpty)
         layer.regionsChanged([region, .init(x: 1, z: 0)])
-        layer.isShown = false
-        layer.isShown = true
+        visibility.isShown = false
+        visibility.isShown = true
         await layer.waitForImages()
         #expect(await gate.requested == ["pending"])
     }
@@ -93,14 +148,15 @@ import Testing
     @Test(.timeLimit(.minutes(1))) func hidingThenShowingRestartsCanceledWorkWithTheCurrentRegions() async throws {
         let first = RegionPosition(x: 0, z: 0), added = RegionPosition(x: 1, z: 0), work = BackgroundWork()
         let gate = AsyncReadGate<[RegionPosition: CGImage]>()
-        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [first], work: work,
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { visibility.isShown }, regions: [first], work: work,
                                    readImages: { regions, _ in await gate.read("\(regions.count)") })
-        layer.isShown = true
+        visibility.isShown = true
         await gate.waitForRequest("1")
-        layer.isShown = false
+        visibility.isShown = false
         await gate.waitForCancellation("1")
         layer.regionsChanged([first, added])
-        layer.isShown = true
+        visibility.isShown = true
         let firstImage = try #require(SlimeChunks.image(region: first, seed: 42))
         let addedImage = try #require(SlimeChunks.image(region: added, seed: 42))
         await gate.finish("1", with: [first: firstImage])
@@ -116,15 +172,42 @@ import Testing
         await work.waitUntilFinished()
     }
 
+    @Test(.timeLimit(.minutes(1))) func regionChangesDuringAReadKeepProgressAndComputeOnlyMissingMasks() async throws {
+        let first = RegionPosition(x: 0, z: 0), removed = RegionPosition(x: 1, z: 0), last = RegionPosition(x: 2, z: 0)
+        let firstImage = try #require(SlimeChunks.image(region: first, seed: 42))
+        let removedImage = try #require(SlimeChunks.image(region: removed, seed: 42))
+        let lastImage = try #require(SlimeChunks.image(region: last, seed: 42))
+        let work = BackgroundWork(), gate = AsyncReadGate<[RegionPosition: CGImage]>()
+        let visibility = Visibility()
+        let layer = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { visibility.isShown }, regions: [first], work: work,
+            readImages: { regions, _ in await gate.read(regions.map { String($0.x) }.sorted().joined(separator: ",")) })
+        visibility.isShown = true
+        await gate.waitForRequest("0")
+        layer.regionsChanged([first, removed])
+        layer.regionsChanged([first, removed, last])
+        await gate.finish("0", with: [first: firstImage])
+        await gate.waitForRequest("1,2")
+        #expect(layer.visibleImages[first] === firstImage && layer.isLoading)
+        layer.regionsChanged([first, last])
+        await gate.releaseAllAndFuture(with: [removed: removedImage, last: lastImage])
+        await layer.waitForImages()
+        #expect(await gate.requested == ["0", "1,2"])
+        #expect(layer.visibleImages[first] === firstImage && layer.visibleImages[last] === lastImage)
+        #expect(layer.visibleImages[removed] == nil && !layer.isLoading)
+        layer.cancel(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1))) func closingOneLayerLeavesItsSiblingRunning() async throws {
         let region = RegionPosition(x: 0, z: 0), work = BackgroundWork()
         let gate = AsyncReadGate<[RegionPosition: CGImage]>()
-        let first = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region], work: work,
+        let firstVisibility = Visibility()
+        let first = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { firstVisibility.isShown }, regions: [region], work: work,
                                    readImages: { _, _ in await gate.read("first") })
-        let second = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: 42, regions: [region], work: work,
+        let secondVisibility = Visibility()
+        let second = SlimeChunkLayer(dimensionID: "minecraft:overworld", seed: { 42 }, isShown: { secondVisibility.isShown }, regions: [region], work: work,
                                     readImages: { _, _ in await gate.read("second") })
-        first.isShown = true
-        second.isShown = true
+        firstVisibility.isShown = true
+        secondVisibility.isShown = true
         await gate.waitForRequest("first")
         await gate.waitForRequest("second")
         first.cancel()

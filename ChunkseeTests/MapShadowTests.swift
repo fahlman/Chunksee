@@ -84,12 +84,14 @@ import Testing
     @Test func eachDimensionRemembersItsOwnShadowChoice() throws {
         let defaults = TestDefaults.make(), id = UUID(), view = MapViewport(center: .zero, scale: 1)
         let settings = WorldSettings(id: id, defaults: defaults)
-        #expect(settings.castsShadows(for: "minecraft:overworld"))
-        settings.save(view, for: "minecraft:overworld", selected: nil, castsShadows: false)
-        settings.save(view, for: "minecraft:the_nether", selected: nil, castsShadows: true)
+        #expect(settings.mapPresentation(for: "minecraft:overworld").castsShadows)
+        var choices = MapPresentation()
+        choices.castsShadows = false
+        settings.save(view, presentation: choices, for: "minecraft:overworld", selected: nil)
+        settings.save(view, presentation: MapPresentation(), for: "minecraft:the_nether", selected: nil)
         let restored = WorldSettings(id: id, defaults: defaults)
-        #expect(!restored.castsShadows(for: "minecraft:overworld"))
-        #expect(restored.castsShadows(for: "minecraft:the_nether"))
+        #expect(!restored.mapPresentation(for: "minecraft:overworld").castsShadows)
+        #expect(restored.mapPresentation(for: "minecraft:the_nether").castsShadows)
     }
 
     @Test func waterAndLandUseTheSameMaskWhileIncreasedContrastStaysLighter() async throws {
@@ -100,9 +102,12 @@ import Testing
                                              width: side, height: side))
         let tile = MapTileImage(image), viewport = MapViewport(center: CGPoint(x: 8.5, y: 8.5), scale: 16)
         func draw(contrast: Bool, water: Bool) throws -> [UInt8] {
+            var choices = MapPresentation()
+            choices.style = water ? .waterDepth : .normal
+            let input = MapDrawingInput(presentation: choices, heightScale: nil, savedLighting: nil)
             let view = Canvas { context, size in
-                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, shadow: { _ in shadow },
-                                    protectsWater: water, increasedContrast: contrast, in: context, size: size)
+                MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
+                                    shadow: { _ in shadow }, increasedContrast: contrast, in: context, size: size)
             }.frame(width: 16, height: 16)
             let renderer = ImageRenderer(content: view)
             let output = try #require(renderer.cgImage)
@@ -120,7 +125,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld")), reads = ReadNumbers()
         let work = BackgroundWork()
         let savedLighting = TestSavedLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 4, y: 8),
                            maxTiles: 1, maxPreviews: 1,
                            renderTile: { renderer, region in
                                _ = await reads.next()
@@ -162,7 +167,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
         savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
@@ -185,7 +190,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
         savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
@@ -211,7 +216,7 @@ import Testing
         neighborRenderer.usesSavedLighting = true
         let neighbor = try #require(try await neighborRenderer.tile(for: west))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
                            renderTile: { renderer, region in
                                if region == west { return await gate.read("neighbor") }
                                return try await renderer.tile(for: region)
@@ -255,7 +260,7 @@ import Testing
                     for contrast in [ColorSchemeContrast.standard, .increased] {
                         let copy = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: plan.size,
                             scale: 1, colorScheme: appearance, locale: .current, contrast: contrast))
-                        let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: map.currentRenderer,
+                        let export = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                             content: content, portalStatus: { _ in nil }, colorScheme: appearance, locale: .current,
                             contrast: contrast, progress: { _, _ in })
                         #expect(try pixels(copy) == pixels(export))
@@ -269,10 +274,11 @@ import Testing
     @Test func drawingAdjacentShadowTilesDoesNotAddADarkerJoin() throws {
         let image = try #require(CGImage.rgba([200, 200, 200, 255], width: 1, height: 1))
         let mask = try #require(CGImage.rgba([0, 0, 0, 255], width: 1, height: 1))
+        let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil)
         for scale in [0.125, 0.5, 1, 4] {
             let view = Canvas { context, size in
                 MapView.drawTerrain(viewport: MapViewport(center: CGPoint(x: 0, y: 8), scale: scale),
-                    regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) },
+                    regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) }, input: input,
                     shadow: { _ in mask }, in: context, size: size)
             }.frame(width: 16, height: 8)
             let renderer = ImageRenderer(content: view); renderer.scale = 2

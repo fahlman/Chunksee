@@ -65,23 +65,23 @@ import Testing
         let session = WorldSession(resources: resources), map = try #require(session.map)
         resources.refreshGameAssets()
         await resources.waitForRefresh()
-        let region = RegionPosition(x: 0, z: 0), context = map.currentRenderer.surfaceContext
-        let data = try #require(map.currentRenderer.gameData), reader = resources.readers["minecraft:overworld"]
+        let region = RegionPosition(x: 0, z: 0), context = (try requiredRenderer(map)).surfaceContext
+        let data = try #require((try requiredRenderer(map)).gameData), reader = resources.readers["minecraft:overworld"]
         #expect(context.water != nil && context.waterKey != nil)
-        let original = try #require(try await map.currentRenderer.pixels(for: region))
+        let original = try #require(try await (try requiredRenderer(map)).pixels(for: region))
         #expect(pixel(original, x: 5, z: 5) == [104, 144, 217, 255])
 
         names.minecraft.usesGameArtwork = false
         await resources.waitForRefresh()
-        #expect(map.currentRenderer.gameData === data && map.currentRenderer.gameArtwork == nil)
-        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
-        let fallback = try #require(try await map.currentRenderer.pixels(for: region))
+        #expect(try requiredRenderer(map).gameData === data && requiredRenderer(map).gameArtwork == nil)
+        #expect(try requiredRenderer(map).surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        let fallback = try #require(try await (try requiredRenderer(map)).pixels(for: region))
         #expect(pixel(fallback, x: 5, z: 5) == [150, 171, 193, 255])
 
         names.minecraft.usesGameArtwork = true
         await resources.waitForRefresh()
-        #expect(try await map.currentRenderer.pixels(for: region) == original)
-        #expect(map.currentRenderer.surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
+        #expect(try await requiredRenderer(map).pixels(for: region) == original)
+        #expect(try requiredRenderer(map).surfaceContext == context && resources.readers["minecraft:overworld"] === reader)
         session.close()
         await session.waitUntilClosed()
         names.minecraft.forget()
@@ -152,24 +152,24 @@ import Testing
         resources.refreshDelay = .zero
         let session = WorldSession(resources: resources), map = try #require(session.map)
         let dimension = try #require(resources.world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
-        let original = map.currentRenderer.surfaceContext
+        let original = (try requiredRenderer(map)).surfaceContext
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: original))
         #expect(original.water != nil && original.waterKey != nil)
         try write([])
         resources.worldChanged([tagURL])
         await resources.waitForRefresh()
-        let empty = map.currentRenderer.surfaceContext
+        let emptyRenderer = try requiredRenderer(map), empty = emptyRenderer.surfaceContext
         #expect(empty.water?.members.isEmpty == true && empty.waterKey != original.waterKey)
         let changed = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: empty))
         #expect(changed != key && changed.fileName != key.fileName)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        #expect(try await map.currentRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 0 } == true)
+        #expect(try await emptyRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 0 } == true)
         try FileManager.default.removeItem(at: tagURL)
         resources.worldChanged([tagURL])
         await resources.waitForRefresh()
-        let absent = map.currentRenderer.surfaceContext
+        let absentRenderer = try requiredRenderer(map), absent = absentRenderer.surfaceContext
         #expect(absent.water == nil && absent.waterKey == nil)
-        #expect(try await map.currentRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 5 } == true)
+        #expect(try await absentRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 5 } == true)
         session.close()
         await session.waitUntilClosed()
     }

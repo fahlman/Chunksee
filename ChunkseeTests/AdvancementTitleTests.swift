@@ -1,6 +1,7 @@
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Observation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -66,6 +67,13 @@ import Testing
         return resources
     }
 
+    private func read(_ world: WorldResources, player: UUID) async throws -> PlayerRecords {
+        let handle = try #require(world.playerRecords.acquire(player))
+        defer { handle.close() }
+        await world.playerRecords.waitUntilFinished()
+        return try #require(handle.records)
+    }
+
     @Test func titlesComeFromDefinitionsAndNeverFilterSavedProgress() async throws {
         let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
@@ -73,23 +81,19 @@ import Testing
         defer { world.close() }
         world.refreshGameLanguage(preferredLanguage: "fr_FR")
         await world.waitForRefresh()
-        let records = try #require(await world.playerRecords(for: player, name: nil))
-        let names = world.gameNames, generation = world.definitionReadGeneration
+        let records = try await read(world, player: player)
+        let names = world.gameNames
         #expect(records.advancements.count == 7 && records.completedAdvancements.count == 5)
         #expect(records.statistics?.value("minecraft:deaths") == 4)
-        #expect(names.advancement(diamond, title: records.title(for: diamond, generation: generation)) == "Vrais diamonds")
-        #expect(records.title(for: "story/mine_diamond", generation: generation) == records.title(for: diamond, generation: generation))
-        #expect(names.advancement("test:literal", title: records.title(for: "test:literal", generation: generation)) == "Literal title!")
+        #expect(names.advancement(diamond, title: records.title(for: diamond)) == "Vrais diamonds")
+        #expect(records.title(for: "story/mine_diamond") == records.title(for: diamond))
+        #expect(names.advancement("test:literal", title: records.title(for: "test:literal")) == "Literal title!")
         for id in ["test:dynamic", "test:missing_title", "test:unknown"] {
-            #expect(records.title(for: id, generation: generation) == nil)
+            #expect(records.title(for: id) == nil)
             #expect(records.completedAdvancements.contains { $0.id == id })
         }
         #expect(names.advancement(diamond, title: nil) == "Story Mine Diamond") // No invented key lookup.
-        var unowned = records
-        unowned.definitionGeneration = nil
-        #expect(unowned.title(for: diamond, generation: generation) == nil)
-        #expect(records.title(for: diamond, generation: generation + 1) == nil)
-        let unavailable = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: nil)
+        let unavailable = try await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: nil).value
         #expect(unavailable.advancements == records.advancements && unavailable.statistics == records.statistics)
         #expect(unavailable.advancementDefinitions.isEmpty)
         for (url, before) in files { #expect(try Data(contentsOf: url) == before) }
@@ -104,12 +108,12 @@ import Testing
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let files = try progress(at: root, player: player), world = try World(contentsOf: root), library = try game.library().data
         _ = try pack(at: root, enabled: true)
-        let packed = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
+        let packed = try await PlayerRecords.load(from: world, uuid: player, name: nil, library: library).value
         #expect(packed.advancementDefinitions[diamond]?.title == .literal("Pack title"))
-        let withoutGame = await PlayerRecords.load(from: world, uuid: player, name: nil, library: nil)
+        let withoutGame = try await PlayerRecords.load(from: world, uuid: player, name: nil, library: nil).value
         #expect(withoutGame.advancementDefinitions[diamond]?.title == .literal("Pack title"))
         _ = try pack(at: root, enabled: false)
-        let restored = await PlayerRecords.load(from: world, uuid: player, name: nil, library: library)
+        let restored = try await PlayerRecords.load(from: world, uuid: player, name: nil, library: library).value
         let names = GameNames(await library.language("en_US", minecraftDirectory: game.root))
         #expect(names.advancement(diamond, title: restored.advancementDefinitions[diamond]?.title) == "Actual diamonds")
         #expect(restored.advancements == packed.advancements && packed.advancements == withoutGame.advancements)
@@ -124,7 +128,7 @@ import Testing
         for index in 0..<4096 { entries["test:extra_\(index)"] = ["done": true, "criteria": [:]] }
         try write(ItemPictureFixture.json(entries), to: root.appendingPathComponent("advancements/\(player.uuidString.lowercased()).json"))
         let library = try game.library().data
-        let records = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library)
+        let records = try await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library).value
         #expect(records.completedAdvancements.count == 4097)
         #expect(records.completedAdvancements.first?.id == diamond)
         #expect(records.advancementDefinitions[diamond]?.title != nil)
@@ -143,7 +147,7 @@ import Testing
         let game = try ItemPictureFixture(extraFiles: files), library = try game.library().data
         defer { game.remove() }
         try write(ItemPictureFixture.json(saved), to: root.appendingPathComponent("players/advancements/\(player.uuidString.lowercased()).json"))
-        let records = await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library)
+        let records = try await PlayerRecords.load(from: try World(contentsOf: root), uuid: player, name: nil, library: library).value
         let expected = ["test:newest", "test:fifth", "test:fourth", "test:third", "test:second"]
         #expect(records.completedAdvancements.count == 6)
         #expect(records.displayedAdvancements.map(\.id) == expected)
@@ -160,75 +164,146 @@ import Testing
         defer { world.close() }
         world.refreshGameLanguage(preferredLanguage: "en_US")
         await world.waitForRefresh()
-        let original = try #require(await world.playerRecords(for: player, name: nil))
-        let generation = world.definitionReadGeneration, namesIdentity = world.gameNames.identity
+        let readRecords = world.playerRecords.read, calls = ReadNumbers()
+        world.playerRecords.read = { source, uuid, name, library, previous in
+            _ = await calls.next()
+            return try await readRecords(source, uuid, name, library, previous)
+        }
+        let handle = try #require(world.playerRecords.acquire(player))
+        await world.playerRecords.waitUntilFinished()
+        let original = try #require(handle.records)
+        let namesIdentity = world.gameNames.identity
         for usesArtwork in [false, true, false] {
             world.names.minecraft.usesGameArtwork = usesArtwork
             await world.waitForRefresh()
-            let records = try #require(await world.playerRecords(for: player, name: nil))
-            #expect(world.definitionReadGeneration == generation && world.gameNames.identity == namesIdentity)
+            let records = try #require(handle.records)
+            #expect(world.gameNames.identity == namesIdentity)
             #expect(records.advancements == original.advancements && records.statistics == original.statistics)
-            #expect(PlayerRecords.advancementName(diamond, title: records.title(for: diamond, generation: generation),
-                                                 gameNames: world.gameNames) == "Actual diamonds")
+            #expect(world.gameNames.advancement(diamond, title: records.title(for: diamond)) == "Actual diamonds")
         }
+        #expect(await calls.next() == 1)
         world.close()
         await world.waitUntilClosed()
         await world.names.minecraft.waitUntilIdle()
     }
 
-    @Test func obsoleteReadsCannotPublishAfterSourcePackOrWorldChanges() async throws {
+    @Test func autosaveAndTitleOnlyPackEditsRetainTitlesUntilCompletedContentArrives() async throws {
+        let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        _ = try progress(at: root, player: player)
+        let world = try await resources(root, game: game)
+        defer { world.close() }
+        world.refreshDelay = .zero
+        let handle = try #require(world.playerRecords.acquire(player))
+        await world.waitForRefresh()
+        let original = try #require(handle.records), originalDefinitions = world.details.definitions
+        let gate = AsyncReadGate<Result<Void, CocoaError>>(), numbers = ReadNumbers()
+        world.playerRecords.read = { source, uuid, name, library, previous in
+            try await gate.read(String(await numbers.next())).get()
+            return try await PlayerRecords.load(from: source, uuid: uuid, name: name, library: library, previous: previous)
+        }
+        world.worldChanged([root.appendingPathComponent("level.dat")])
+        await gate.waitForRequest("0")
+        #expect(handle.records == original)
+        #expect(handle.records?.title(for: diamond) == original.title(for: diamond))
+        await gate.finish("0", with: .failure(CocoaError(.fileReadUnknown)))
+        await world.waitForRefresh()
+        #expect(handle.records == original)
+        world.worldChanged([root.appendingPathComponent("level.dat")])
+        await gate.waitForRequest("1")
+        #expect(handle.records == original)
+        await gate.finish("1", with: .success(()))
+        await world.waitForRefresh()
+        #expect(handle.records == original)
+
+        let metadata = try pack(at: root, enabled: true)
+        world.worldChanged([metadata])
+        await gate.waitForRequest("2")
+        #expect(handle.records == original)
+        await gate.finish("2", with: .success(()))
+        await world.waitForRefresh()
+        #expect(handle.records?.title(for: diamond) == .literal("Pack title"))
+        let packed = try #require(handle.records)
+        _ = try pack(at: root, enabled: true, title: "Changed pack title")
+        world.worldChanged([root.appendingPathComponent("datapacks/titles/data/minecraft/advancement/story/mine_diamond.json")])
+        await gate.waitForRequest("3")
+        #expect(handle.records == packed)
+        await gate.finish("3", with: .success(()))
+        await world.waitForRefresh()
+        #expect(world.details.definitions == originalDefinitions)
+        #expect(handle.records?.title(for: diamond) == .literal("Changed pack title"))
+        #expect(handle.records?.advancements == original.advancements)
+        #expect(handle.records?.statistics == original.statistics)
+        world.close(); await world.waitUntilClosed()
+    }
+
+    @Test func sourceReplacementAndWorldClosureRejectLateReadsAndRetireIncompatibleTitles() async throws {
         let root = try TestWorld.make(chunks: []), first = try game(), second = try game(title: "Replacement %s"), player = UUID()
         defer { first.remove(); second.remove(); try? FileManager.default.removeItem(at: root) }
         _ = try progress(at: root, player: player)
         let world = try await resources(root, game: first), gate = AsyncReadGate<Void>(), numbers = ReadNumbers()
         defer { world.close() }
-        world.readPlayerRecords = { source, uuid, name, library in
-            let records = await PlayerRecords.load(from: source, uuid: uuid, name: name, library: library)
+        world.refreshDelay = .zero
+        world.playerRecords.read = { source, uuid, name, library, previous in
+            let records = try await PlayerRecords.load(from: source, uuid: uuid, name: name, library: library, previous: previous)
             await gate.read(String(await numbers.next()))
             return records
         }
-        let original = Task { await world.playerRecords(for: player, name: nil) }
+        let handle = try #require(world.playerRecords.acquire(player))
         await gate.waitForRequest("0")
-        let initialGeneration = world.definitionReadGeneration
         world.names.minecraft.choose(second.root)
-        await world.waitForRefresh()
-        #expect(world.definitionReadGeneration != initialGeneration)
-        await gate.finish("0", with: ())
-        #expect(await original.value == nil)
-
-        let replacement = Task { await world.playerRecords(for: player, name: nil) }
+        await gate.waitForCancellation("0")
         await gate.waitForRequest("1")
-        world.names.minecraft.forget()
-        await world.waitForRefresh()
         await gate.finish("1", with: ())
-        #expect(await replacement.value == nil)
-
-        let removed = Task { await world.playerRecords(for: player, name: nil) }
+        for await records in Observations({ handle.records }) where records != nil { break }
+        let current = try #require(handle.records)
+        await gate.finish("0", with: ())
+        await world.waitForRefresh()
+        #expect(handle.records == current)
+        world.names.minecraft.forget()
+        #expect(handle.records?.advancementDefinitions.isEmpty == true)
+        #expect(handle.records?.advancements == current.advancements)
         await gate.waitForRequest("2")
-        let metadata = try pack(at: root, enabled: true)
-        world.worldChanged([metadata])
-        await world.waitForRefresh()
         await gate.finish("2", with: ())
-        #expect(await removed.value == nil)
-
-        let packed = Task { await world.playerRecords(for: player, name: nil) }
-        await gate.waitForRequest("3")
-        await gate.finish("3", with: ())
-        let current = try #require(await packed.value)
-        #expect(current.title(for: diamond, generation: world.definitionReadGeneration) == .literal("Pack title"))
-        _ = try pack(at: root, enabled: true, title: "Changed pack title")
-        world.worldChanged([root.appendingPathComponent("datapacks/titles/data/minecraft/advancement/story/mine_diamond.json")])
         await world.waitForRefresh()
-        #expect(current.title(for: diamond, generation: world.definitionReadGeneration) == nil)
-        #expect(current.completedAdvancements.count == 5 && current.statistics?.value("minecraft:deaths") == 4)
+        #expect(handle.records?.advancementDefinitions.isEmpty == true)
+        #expect(handle.records?.statistics == current.statistics)
 
-        let closing = Task { await world.playerRecords(for: player, name: nil) }
+        world.worldChanged([try pack(at: root, enabled: true)])
+        await gate.waitForRequest("3"); await gate.finish("3", with: ())
+        await world.waitForRefresh()
+        #expect(handle.records?.title(for: diamond) == .literal("Pack title"))
+        world.worldChanged([root.appendingPathComponent("level.dat")])
         await gate.waitForRequest("4")
         world.close()
-        await gate.finish("4", with: ())
-        #expect(await closing.value == nil)
-        #expect(await world.playerRecords(for: player, name: nil) == nil)
+        await gate.waitForCancellation("4"); await gate.finish("4", with: ())
         await world.waitUntilClosed()
+        #expect(handle.records == nil && world.playerRecords.acquire(player) == nil)
         await world.names.minecraft.waitUntilIdle()
+    }
+
+    @Test func failedFilesKeepTheirFactsWhileSuccessfulEmptyReadsRemoveThem() async throws {
+        let root = try TestWorld.make(chunks: []), game = try game(), player = UUID()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let files = try progress(at: root, player: player), world = try await resources(root, game: game)
+        defer { world.close() }
+        world.refreshDelay = .zero
+        let handle = try #require(world.playerRecords.acquire(player))
+        await world.waitForRefresh()
+        let original = try #require(handle.records)
+        let stats = try #require(files.keys.first { $0.path.contains("/stats/") })
+        let advancements = try #require(files.keys.first { $0.path.contains("/advancements/") })
+        try write(ItemPictureFixture.json(["stats": ["minecraft:custom": ["minecraft:deaths": 9]]]), to: stats)
+        try write(Data("{".utf8), to: advancements)
+        world.worldChanged([stats, advancements]); await world.waitForRefresh()
+        #expect(handle.records?.statistics?.value("minecraft:deaths") == 9)
+        #expect(handle.records?.advancements == original.advancements)
+        #expect(handle.records?.title(for: diamond) == original.title(for: diamond))
+        try FileManager.default.removeItem(at: stats)
+        try FileManager.default.removeItem(at: advancements)
+        world.worldChanged([stats, advancements]); await world.waitForRefresh()
+        #expect(handle.records?.statistics == nil && handle.records?.advancements.isEmpty == true)
+        #expect(handle.records?.advancementDefinitions.isEmpty == true)
+        world.close(); await world.waitUntilClosed()
     }
 }

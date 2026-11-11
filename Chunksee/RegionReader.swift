@@ -9,25 +9,44 @@ typealias ChunkFormats = ChunkseeIndex.DimensionIndex.Formats
 actor RegionReader {
     typealias Read = @Sendable (ChunkseeKit.Dimension, RegionPosition, RegionScanOptions) async throws -> RegionFacts
 
+    /// Exactly the immutable facts consumed by a scan and its index projection.
+    nonisolated struct Inputs: Equatable, Sendable {
+        let options: RegionScanOptions
+        let notableBlocks: NotableBlock.Catalog
+        let structureGroups: StructureGroup.Catalog
+
+        init(options: RegionScanOptions = RegionReader.options(),
+             notableBlocks: NotableBlock.Catalog = .init(tags: [:]),
+             structureGroups: StructureGroup.Catalog = .init(tags: [:])) {
+            self.options = options
+            self.notableBlocks = notableBlocks
+            self.structureGroups = structureGroups
+        }
+
+        init(dimensionID: String, definitions: WorldDefinitions) {
+            let context = MapDefinitions(dimensionID: dimensionID, definitions: definitions).context
+            self.init(options: RegionReader.options(context: context, definitions: definitions),
+                      notableBlocks: definitions.notableBlocks, structureGroups: definitions.structureGroups)
+        }
+    }
+
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
-    nonisolated var scanOptions: RegionScanOptions { cacheOptions.value }
+    nonisolated let inputs: Inputs
+    nonisolated var scanOptions: RegionScanOptions { inputs.options }
     private nonisolated let cacheOptions: ScanCache.Options
-    nonisolated let notableBlocks: NotableBlock.Catalog
-    nonisolated let structureGroups: StructureGroup.Catalog
+    nonisolated var notableBlocks: NotableBlock.Catalog { inputs.notableBlocks }
+    nonisolated var structureGroups: StructureGroup.Catalog { inputs.structureGroups }
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
 
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
-         options: RegionScanOptions = RegionReader.options(),
-         notableBlocks: NotableBlock.Catalog = .init(tags: [:]),
-         structureGroups: StructureGroup.Catalog = .init(tags: [:]), read: @escaping Read = RegionReader.scan) {
+         inputs: Inputs = .init(), read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
-        cacheOptions = ScanCache.Options(options)
-        self.notableBlocks = notableBlocks
-        self.structureGroups = structureGroups
+        self.inputs = inputs
+        cacheOptions = ScanCache.Options(inputs.options)
         self.read = read
     }
 

@@ -8,7 +8,7 @@ nonisolated struct BiomeGroup: MapLayerGroup, Sendable {
     static let symbol = "leaf.fill"
 
     var id: String
-    var name: String { ReadableName.from(id) }
+    func name(in gameNames: GameNames) -> String { gameNames.group(self) }
     var symbol: String { Self.symbol }
 }
 
@@ -25,9 +25,9 @@ nonisolated struct BiomeArea: MapLayerMarker, Sendable {
     /// The area's chunks, and the chunk edges around it, in world X/Z.
     var chunks: Path
     var outline: Path
-    var name: String { String(localized: "\(chunkCount) chunks") }
+    func name(in gameNames: GameNames) -> String { gameNames.biomeArea(self) }
     var yCoordinate: Double? { nil }
-    var searchText: String { group.name + " " + group.id }
+    func searchText(in gameNames: GameNames) -> String { group.name(in: gameNames) + " " + group.id }
 }
 
 /// Native paths and labels for shared biome areas, with the app's existing cave-membership policy.

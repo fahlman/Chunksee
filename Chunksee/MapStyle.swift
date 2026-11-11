@@ -4,8 +4,35 @@ import Foundation
 import SwiftUI
 
 /// A dimension's terrain presentation. The scan and its selected column stay the same.
-nonisolated enum MapStyle: String, CaseIterable, Sendable, Encodable {
+nonisolated enum MapStyle: String, CaseIterable, Sendable, Codable {
     case normal, height, waterDepth
+
+    /// These are style rules, not saved choices. Consumers use this declaration instead of
+    /// deciding independently whether Height participates in a drawing operation.
+    struct Inputs: Sendable {
+        let materialColors: Bool
+        let lighting: Bool
+        let shadows: Bool
+        let detail: Bool
+        let requiresHeightScale: Bool
+    }
+
+    var inputs: Inputs {
+        switch self {
+        case .normal, .waterDepth:
+            Inputs(materialColors: true, lighting: true, shadows: true, detail: true, requiresHeightScale: false)
+        case .height:
+            Inputs(materialColors: false, lighting: false, shadows: false, detail: false, requiresHeightScale: true)
+        }
+    }
+
+    func isAvailable(heightScale: MapHeightScale?) -> Bool {
+        !inputs.requiresHeightScale || heightScale != nil
+    }
+
+    func resolved(heightScale: MapHeightScale?) -> Self {
+        isAvailable(heightScale: heightScale) ? self : .normal
+    }
 
     var title: LocalizedStringResource {
         switch self {

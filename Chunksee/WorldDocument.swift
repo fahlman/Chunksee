@@ -140,15 +140,25 @@ nonisolated struct DimensionSnapshot: Sendable {
 
     /// Attach before finishing the opening, so closing the previous last view cannot end access.
     @MainActor
-    func makeSession(in model: AppModel) async throws -> WorldSession {
+    func makeSession(in model: AppModel, reusing previous: WorldSession? = nil) async throws -> WorldSession {
+        func attach(_ resources: WorldResources) -> WorldSession {
+            if let previous, !previous.isClosed, previous.resources === resources,
+               previous.selectedDimensionID == dimensionID { return previous }
+            return WorldSession(resources: resources, dimensionID: dimensionID)
+        }
         switch source {
         case .snapshot(let world):
-            return WorldSession(resources: try await model.resources(for: world, folder: folder), dimensionID: dimensionID)
+            let resources: WorldResources
+            if previous?.resources.settings.worldID == folder.id {
+                resources = try await model.rereadResources(for: world, folder: folder)
+            } else {
+                resources = try await model.resources(for: world, folder: folder)
+            }
+            return attach(resources)
         case .opening(let opening):
+            defer { opening.finish() }
             guard let resources = opening.resources, !resources.isClosed else { throw CancellationError() }
-            let session = WorldSession(resources: resources, dimensionID: dimensionID)
-            opening.finish()
-            return session
+            return attach(resources)
         }
     }
 }
@@ -205,13 +215,17 @@ final class WorldDocument: ReadableDocument {
                 return .world(dimensions: dimensions)
             } catch WorldError.missingLevelDat {
                 do {
-                    if let model, await reuseOpenWorld() {
+                    if let model {
                         guard let folder = folders.world(containing: source) else { throw WorldOpenError.needsWorldFolder }
-                        if let snapshot = try await model.initialDimension(at: source.resolvingSymlinksInPath(), in: folder) {
-                            do { try Task.checkCancellation() }
-                            catch { await snapshot.discardUnused(); throw error }
-                            return .dimension(snapshot)
+                        let snapshot: DimensionSnapshot
+                        if await reuseOpenWorld() {
+                            snapshot = try await model.initialDimension(at: source, in: folder)
+                        } else {
+                            snapshot = try await model.rereadDimension(at: source, in: folder)
                         }
+                        do { try Task.checkCancellation() }
+                        catch { await snapshot.discardUnused(); throw error }
+                        return .dimension(snapshot)
                     }
                     return .dimension(try await DimensionSnapshot.read(source, folders: folders))
                 } catch WorldOpenError.needsWorldFolder {
@@ -277,26 +291,32 @@ final class WorldDocument: ReadableDocument {
               url.resolvingSymlinksInPath() != current.documentURL.resolvingSymlinksInPath() {
             // A move was reported while the snapshot was being read.
             current.discardUnused()
-            current = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
+            guard let folder = model.worldFolders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
+            current = try await model.rereadDimension(at: url, in: folder) { [configuration] worldURL in
+                try await WorldSnapshot.read(worldURL, coordinator: configuration.makeFileCoordinator())
+            }
             try Task.checkCancellation()
             guard generation == applyGeneration else { return }
         }
         guard generation == applyGeneration else { return }
         let oldSession = session
-        oldSession?.close()
-        await oldSession?.waitUntilClosed()
-        try Task.checkCancellation()
-        guard generation == applyGeneration else { return }
-        let opened = try await current.makeSession(in: model)
+        let opened = try await current.makeSession(in: model, reusing: oldSession)
         adopted = true
         guard !Task.isCancelled, generation == applyGeneration else {
-            opened.close()
-            await opened.waitUntilClosed()
+            if opened !== oldSession { opened.close(); await opened.waitUntilClosed() }
             try Task.checkCancellation()
             return
         }
-        if let oldSession { opened.restoreView(from: oldSession) }
-        session = opened
+        if opened !== oldSession {
+            oldSession?.close()
+            await oldSession?.waitUntilClosed()
+            guard !Task.isCancelled, generation == applyGeneration else {
+                opened.close(); await opened.waitUntilClosed()
+                try Task.checkCancellation()
+                return
+            }
+            session = opened
+        }
     }
 
     /// macOS updates the document URL after a Finder move; lazy region readers need the new paths.
@@ -305,7 +325,10 @@ final class WorldDocument: ReadableDocument {
               url.resolvingSymlinksInPath() != dimension.documentURL(inWorldAt: session.url).resolvingSymlinksInPath() else { return }
         let generation = UUID()
         applyGeneration = generation
-        let snapshot = try await DimensionSnapshot.read(url, folders: model.worldFolders, coordinator: configuration.makeFileCoordinator())
+        guard let folder = model.worldFolders.world(containing: url) else { throw WorldOpenError.needsWorldFolder }
+        let snapshot = try await model.rereadDimension(at: url, in: folder) { [configuration] worldURL in
+            try await WorldSnapshot.read(worldURL, coordinator: configuration.makeFileCoordinator())
+        }
         try Task.checkCancellation()
         guard generation == applyGeneration else { snapshot.discardUnused(); return }
         try await replaceSession(snapshot, generation: generation)

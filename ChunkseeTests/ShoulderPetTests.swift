@@ -2,6 +2,8 @@ import ChunkseeIndex
 import AppKit
 import CoreGraphics
 import Foundation
+import Observation
+import Synchronization
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Testing
@@ -65,7 +67,7 @@ import Testing
         #expect(second.resources.playerSnapshot.shoulderPets.filter { $0.carrier == carrier }.map(\.creature.uuid) == [bird, otherBird])
 
         second.selection.choose(.creature(gray.id))
-        #expect(second.selection.mapSelection == .creature(gray))
+        #expect(second.selection.highlighted == [.row(.creature(gray.id)), .row(.mobCreature(gray.id))])
         #expect(second.map?.depth.y == 70 && second.map?.viewport.center == gray.position)
         let content = MapContent(session: second)
         let viewport = MapViewport(center: gray.position, scale: 16), size = CGSize(width: 800, height: 600)
@@ -96,11 +98,19 @@ import Testing
         let oldPosition = PlayerPresentation.position(of: prior)
         let updated = PlayerInfo(uuid: carrier, nbt: playerData(pets: [parrot(bird)],
             dimension: .string(overworld), position: [42, 75, -12]))
-        session.resources.playerRoster.publish([updated])
-        // No actor suspension: the roster is newer while its carried-mob merge is pending.
-        let pendingPlayer = try #require(session.players.first { $0.uuid == carrier })
-        #expect(PlayerPresentation.position(of: pendingPlayer) == oldPosition)
-        await session.resources.index.waitForProjection()
+        let pendingPosition = Mutex<PlayerInfo.Location?>(nil)
+        withObservationTracking(options: [.didSet]) { _ = session.resources.playerSnapshot } onChange: { _ in
+            MainActor.assumeIsolated {
+                let position = session.players.first { $0.uuid == carrier }.flatMap(PlayerPresentation.position(of:))
+                pendingPosition.withLock { $0 = position }
+            }
+        }
+        session.resources.readPlayers = { _, _ in [updated] }
+        session.resources.refreshDelay = .zero
+        session.resources.worldChanged([session.world.playerDataDirectory.appendingPathComponent("\(carrier.uuidString).dat")])
+        await session.resources.waitForRefresh()
+        // The world publication arrives before the coherent carried-mob/player projection.
+        #expect(pendingPosition.withLock { $0 } == oldPosition)
         let shownPlayer = try #require(session.players.first { $0.uuid == carrier })
         let shownPet = try #require(session.presentation.selectedIndex.creatures.first { $0.carrier == carrier })
         #expect(PlayerPresentation.position(of: shownPlayer)?.x == 42)
@@ -127,7 +137,7 @@ import Testing
         #expect(session.presentation.linkedPets(to: carrier).isEmpty)
         #expect(session.search.results.first?.dimension == overworld && session.search.results.first?.y == 48)
         session.selection.showLinkedPet(moved, ownedBy: owner)
-        #expect(session.selection.mapSelection == .creature(moved))
+        #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
 
         var landed = try #require(parrot(bird).compound)
         landed["Pos"] = .list([.double(13.5), .double(49), .double(-4.5)])
@@ -139,7 +149,9 @@ import Testing
         await session.search.waitForIndex()
         let current = try #require(session.presentation.linkedPets(to: owner).first)
         #expect(current.id == moved.id && current.carrier == nil && current.position.x == 13.5)
-        #expect(session.selection.mapSelection == .creature(current))
+        guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing landed pet details"); return }
+        #expect(detail == current)
+        #expect(session.selection.highlighted == [.row(.creature(current.id)), .row(.mobCreature(current.id))])
         #expect(session.resources.playerSnapshot.shoulderPets.isEmpty)
         session.close()
         await session.waitUntilClosed()
@@ -181,7 +193,7 @@ import Testing
             let player = PlayerInfo(uuid: carrier, nbt: input)
             let snapshot = PlayerSnapshot([player])
             let carried = try #require(snapshot.shoulderPets.first)
-            #expect(snapshot.shoulderPets.count == 1 && carried.name == "Gray" && carried.creature.owner == owner)
+            #expect(snapshot.shoulderPets.count == 1 && GameNames.unavailable.creature(carried.creature) == "Gray" && carried.creature.owner == owner)
             var part = DimensionContent()
             let regionCreature = try #require(Creature(parrot(bird)))
             part.creatures = [try #require(CreatureMarker(regionCreature, dimension: overworld))]
@@ -200,12 +212,12 @@ import Testing
                      (villager, "Farmer"),
                      (Creature(id: "minecraft:parrot", x: 0, y: 64, z: 0, owner: owner), "Parrot")]
         for (creature, expected) in cases {
-            #expect(ShoulderPet(creature: creature, carrier: carrier, index: 0).name == expected)
-            #expect(CreatureMarker(creature, dimension: overworld)?.name == expected)
+            #expect(GameNames.unavailable.creature(ShoulderPet(creature: creature, carrier: carrier, index: 0).creature) == expected)
+            #expect(CreatureMarker(creature, dimension: overworld)?.name(in: .unavailable) == expected)
         }
         villager.customName = "Bob"
-        #expect(ShoulderPet(creature: villager, carrier: carrier, index: 0).name == "Bob")
-        #expect(CreatureMarker(villager, dimension: overworld)?.name == "Bob")
+        #expect(GameNames.unavailable.creature(ShoulderPet(creature: villager, carrier: carrier, index: 0).creature) == "Bob")
+        #expect(CreatureMarker(villager, dimension: overworld)?.name(in: .unavailable) == "Bob")
     }
 
 }

@@ -30,7 +30,7 @@ extension MapImage {
             if let write = tile.cacheWrite { await write.store(); tile.cacheWrite = nil }
             retained[region] = tile
             order.append(region)
-            while order.count > (content.shadowLight == nil ? 1 : 9) { retained[order.removeFirst()] = nil }
+            while order.count > (content.terrain.shadowLight == nil ? 1 : 9) { retained[order.removeFirst()] = nil }
             return tile
         }
         progress(0, visible.count)
@@ -39,7 +39,7 @@ extension MapImage {
             if let tile = try await read(region) {
                 try Task.checkCancellation()
                 var shadow: CGImage?
-                if let light = content.shadowLight {
+                if let light = content.terrain.shadowLight {
                     let sources = MapShadow.sources(for: region, light: light).intersection(regions)
                     for neighbor in sources where neighbor != region {
                         try Task.checkCancellation()
@@ -50,7 +50,7 @@ extension MapImage {
                 let image = plan.viewport.scale * CGFloat(RegionTileRenderer.side) > CGFloat(RegionTileRenderer.previewSide)
                     ? tile.full : tile.preview
                 guard drawTerrainLayer(image, region: region, viewport: plan.viewport, size: plan.size, scale: 1,
-                                       lighting: content.lighting, protectsWater: content.mapStyle == .waterDepth,
+                                       input: content.terrain,
                                        contrast: contrast, shadow: shadow, into: destination) else { throw ExportFailure.cannotRender }
             }
             try Task.checkCancellation()

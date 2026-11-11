@@ -6,7 +6,7 @@ import Observation
 /// Tiles and viewport for one dimension's top-down map.
 @Observable
 final class MapModel {
-    let dimension: ChunkseeKit.Dimension
+    private(set) var dimension: ChunkseeKit.Dimension
     var viewport: MapViewport {
         didSet {
             if Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
@@ -14,33 +14,30 @@ final class MapModel {
             }
         }
     }
-    private(set) var depth = MapDepth()
-    private(set) var chosenStyle = MapStyle.normal
+    private(set) var presentation: MapPresentation
+    var depth: MapDepth { presentation.depth }
+    var chosenStyle: MapStyle { presentation.style }
     /// Missing game definitions can change the picture without replacing the saved choice.
-    var style: MapStyle { canShowStyle(chosenStyle) ? chosenStyle : .normal }
-    private(set) var blendsBiomeColors = false
-    private(set) var lightingMode = MapLightingMode.savedTime
+    var style: MapStyle { chosenStyle.resolved(heightScale: heightScale) }
+    var blendsBiomeColors: Bool { presentation.blendsBiomeColors }
+    var lightingMode: MapLightingMode { presentation.lightingMode }
     @ObservationIgnored private let readSavedLighting: @MainActor () -> MapLighting?
     var savedLighting: MapLighting? { readSavedLighting() }
-    var lighting: MapLighting? { lighting(using: savedLighting) }
-    private(set) var castsShadows = true
-    var shadowLight: MapShadow.Light? { shadowLight(using: savedLighting) }
-    private func lighting(using saved: MapLighting?) -> MapLighting? {
-        style != .height && lightingMode == .savedTime ? saved : nil
+    var drawingInput: MapDrawingInput { drawingInput(using: savedLighting) }
+    private func drawingInput(using saved: MapLighting?) -> MapDrawingInput {
+        MapDrawingInput(presentation: presentation, heightScale: heightScale, savedLighting: saved)
     }
-    private func shadowLight(using saved: MapLighting?) -> MapShadow.Light? {
-        guard castsShadows, style != .height else { return nil }
-        if let lighting = lighting(using: saved) { return MapShadow.Light.saved(lighting.direction) }
-        return .daylight
-    }
+    var lighting: MapLighting? { drawingInput.lighting }
+    var castsShadows: Bool { presentation.castsShadows }
+    var shadowLight: MapShadow.Light? { drawingInput.shadowLight }
     private(set) var shadowImages: [RegionPosition: CGImage] = [:]
     @ObservationIgnored private var shadowHeights: [RegionPosition: [Int32]] = [:]
     private var shadowSources: Set<RegionPosition> = []
     private var shadowJob: Task<Void, Never>?
     private var shadowRevision = 0
     private var shadowsNeedUpdate = false
-    private(set) var blockFilter = MapBlockFilter()
-    private(set) var showsDarkSpots = false
+    var blockFilter: MapBlockFilter { presentation.blockFilter }
+    var showsDarkSpots: Bool { presentation.overlays.showsDarkSpots }
     @ObservationIgnored private let readNightLighting: @MainActor () -> MonsterSpawnLight?
     var nightLighting: MonsterSpawnLight? { isClosed ? nil : readNightLighting() }
     var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
@@ -69,24 +66,29 @@ final class MapModel {
     @ObservationIgnored private let readDetail: DetailReader
 
     private var failed: Set<RegionPosition> = []
-    private var renderer: RegionTileRenderer
+    private var renderer: RegionTileRenderer?
+    private let chunkConcurrency: Int
     @ObservationIgnored private let readGameResources: @MainActor () -> MapGameResources
+    @ObservationIgnored private var gameResourceObservation: ModelObservation?
+    @ObservationIgnored private var definitionObservation: ModelObservation?
+    @ObservationIgnored private var lightingObservation: ModelObservation?
+    @ObservationIgnored private let readDefinitions: @MainActor () -> MapDefinitions
     private var gameResources: MapGameResources { isClosed ? .unavailable : readGameResources() }
     private var gameData: GameDataLibrary? { gameResources.data }
     private var gameArtwork: GameArtworkLibrary? { gameResources.artwork }
     /// A value snapshot also used by image exports, preserving this map's view and cache rules.
-    var currentRenderer: RegionTileRenderer {
-        var current = renderer
-        let resources = gameResources
-        current.cutawayY = depth.cutawayY
-        current.style = style
-        current.blendsBiomeColors = blendsBiomeColors
-        current.usesSavedLighting = lighting != nil
-        current.blockFilter = blockFilter
+    var currentRenderer: RegionTileRenderer? {
+        guard var current = renderer else { return nil }
+        let resources = gameResources, drawing = drawingInput
+        current.cutawayY = drawing.depth.cutawayY
+        current.style = drawing.style
+        current.blendsBiomeColors = drawing.blendsBiomeColors
+        current.usesSavedLighting = drawing.lighting != nil
+        current.blockFilter = drawing.blockFilter
         current.darkSpots = darkSpots
-        current.gameData = style == .height ? nil : resources.data
-        current.gameArtwork = style == .height ? nil : resources.artwork
-        current.biomeColors = style == .height ? nil : resources.biomeColors
+        current.gameData = resources.data
+        current.gameArtwork = resources.artwork
+        current.biomeColors = resources.biomeColors
         return current
     }
     private let work: BackgroundWork
@@ -106,13 +108,14 @@ final class MapModel {
     /// keeps the total thread count at the core count however many tasks are queued.
     static let defaultConcurrency = ProcessInfo.processInfo.activeProcessorCount
 
-    init(gameResources: @escaping @MainActor () -> MapGameResources,
+    init(definitions: @escaping @MainActor () -> MapDefinitions,
+         gameResources: @escaping @MainActor () -> MapGameResources,
          savedLighting: @escaping @MainActor () -> MapLighting?,
          nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
          work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
+         presentation: MapPresentation = MapPresentation(),
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
-         surfaceContext: MapSurfaceContext = .unknown, heightScale: MapHeightScale? = nil,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) },
@@ -121,7 +124,10 @@ final class MapModel {
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
+        self.presentation = presentation
         readGameResources = gameResources
+        readDefinitions = definitions
+        let definitions = definitions()
         readSavedLighting = savedLighting
         readNightLighting = nightLighting
         renderWork = work.makeScope()
@@ -133,21 +139,48 @@ final class MapModel {
         self.readDetail = readDetail
         shadowWork = work.makeScope()
         self.dimension = dimension
-        self.heightScale = heightScale
+        self.chunkConcurrency = max(1, chunkConcurrency)
+        self.heightScale = definitions.heightScale
         self.readTopBlocksFor = readTopBlocks
         self.renderTile = renderTile
         self.writeCache = writeCache
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
         self.regionConcurrency = max(1, regionConcurrency)
-        self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: surfaceContext,
+        self.renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
                                            chunkConcurrency: max(1, chunkConcurrency),
-                                           cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: heightScale)
+                                           cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: definitions.heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
         self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
         observeLighting()
         observeGameResources()
+        observeDefinitions()
         updateTopBlockReads()
+    }
+
+    /// A world reread changes file inputs, never this window's chosen view or navigation.
+    /// A missing dimension has no renderer, so neither display nor export can read its old path.
+    func replaceSource(_ dimension: ChunkseeKit.Dimension?, cacheDirectory: URL?) {
+        guard !isClosed else { return }
+        coordinateWork.cancel()
+        cacheWork.cancel()
+        resetTopBlockReads()
+        clearRenderedTiles()
+        if let dimension {
+            precondition(dimension.id == self.dimension.id)
+            let definitions = readDefinitions()
+            self.dimension = dimension
+            heightScale = definitions.heightScale
+            renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
+                chunkConcurrency: chunkConcurrency, cache: cacheDirectory.map(TileCache.init(directory:)),
+                heightScale: heightScale)
+            availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        } else {
+            renderer = nil
+            heightScale = nil
+            availableRegions = []
+        }
+        surfaceChanged()
     }
 
     /// Whether the view shows regions large enough on screen to need full-resolution tiles:
@@ -167,6 +200,7 @@ final class MapModel {
     func requestTiles(visibleIn size: CGSize, displayScale: CGFloat = 2) {
         guard !isClosed, size.width > 0, size.height > 0 else { return }
         lastView = (size, displayScale)
+        guard renderer != nil else { return }
         requestDetail(visibleIn: size)
         let full = needsFullResolution(displayScale: displayScale)
         // Panning within the same block of regions at the same resolution needs nothing new; this
@@ -180,7 +214,7 @@ final class MapModel {
         wantsFullResolution = full
         // Keep both sides for the light's changing east/west direction. A clock update then
         // uses these immutable heights without starting any terrain read.
-        shadowSources = !castsShadows || style == .height ? [] : visible.reduce(into: Set<RegionPosition>()) {
+        shadowSources = !castsShadows || !style.inputs.shadows ? [] : visible.reduce(into: Set<RegionPosition>()) {
             $0.formUnion(MapShadow.retainedSources(for: $1, savedTime: lighting != nil).intersection(availableRegions))
         }
         shadowHeights = shadowHeights.filter { shadowSources.contains($0.key) }
@@ -221,7 +255,7 @@ final class MapModel {
     private func startQueued() {
         while !isClosed, inFlight.count < regionConcurrency, !queue.isEmpty {
             let region = queue.removeFirst()
-            let renderer = currentRenderer
+            guard let renderer = currentRenderer else { return }
             nextJobID += 1
             let id = nextJobID, render = renderTile
             guard let task = renderWork.start(priority: nil, operation: { [weak self] in
@@ -255,7 +289,7 @@ final class MapModel {
         case .success(let tile?):
             // Job identity guards source replacement and file-change notifications. The typed
             // key independently guards every drawing input before pixels or disk work publish.
-            if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer.accepts(tile.key) {
+            if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer?.accepts(tile.key) == true {
                 store(tile, for: region)
                 if let operation = tile.cacheWrite, operation.key == tile.key.surface {
                     let write = writeCache
@@ -294,6 +328,7 @@ final class MapModel {
 
     /// Redraws regions whose files the game saved, and shows regions it just created.
     func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
+        guard !isClosed, let currentRenderer else { return }
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
         let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
@@ -344,7 +379,7 @@ final class MapModel {
         if wantsFullResolution {
             invalidateDetail(in: [region], keepingImages: false)
             tiles[region] = CachedMapImage(key: tile.key, picture: tile.full)
-            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style != .height {
+            if viewport.scale >= MapDetailRenderer.minimumScale, visibleRegions.contains(region), gameArtwork != nil, style.inputs.detail {
                 detailSurfaces[region] = tile.detail.map { .init(key: tile.key.surface, surface: $0) }
             }
         } else if wasStale {
@@ -411,6 +446,9 @@ final class MapModel {
     }
 
     func close() {
+        definitionObservation?.cancel()
+        lightingObservation?.cancel()
+        gameResourceObservation?.cancel()
         renderWork.close()
         readoutWork.close()
         activeTopBlockReads = [:]
@@ -432,7 +470,7 @@ final class MapModel {
 
     private func requestDetail(visibleIn size: CGSize) {
         guard !isClosed else { return }
-        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameArtwork != nil && style != .height
+        let enabled = viewport.scale >= MapDetailRenderer.minimumScale && gameArtwork != nil && style.inputs.detail
         detailRegionsWanted = enabled
             ? Set(viewport.visibleRegions(in: size, among: availableRegions).filter { tiles[$0] != nil && !stale.contains($0) }) : []
         detailSurfaces = detailSurfaces.filter { detailRegionsWanted.contains($0.key) }
@@ -476,7 +514,8 @@ final class MapModel {
               let region = viewport.visibleRegions(in: lastView.size, among: detailRegionsWanted).first(where: {
                   detailSurfaces[$0] == nil && !detailLoadsAttempted.contains($0)
               }) else { return }
-        let id = UUID(), reader = readDetail, renderer = currentRenderer, work = work, cacheWork = cacheWork
+        guard let renderer = currentRenderer else { return }
+        let id = UUID(), reader = readDetail, work = work, cacheWork = cacheWork
         guard let task = detailWork.start(priority: nil, operation: { [weak self] in
             // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
             // writes before loading, so zooming cannot cause a redundant world read.
@@ -516,7 +555,7 @@ final class MapModel {
     }
 
     private func startDetail() {
-        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork else { return }
+        guard !isClosed, detailJob == nil, !detailQueue.isEmpty, let assets = gameArtwork, let currentRenderer else { return }
         let chunk = detailQueue.removeFirst()
         guard let surface = detailSurfaces[chunk.region], surface.key == tiles[chunk.region]?.key.surface else { return }
         let id = UUID(), render = renderDetail, heightScale = heightScale, usesSavedLighting = lighting != nil
@@ -527,7 +566,7 @@ final class MapModel {
             catch { image = nil }
             guard let self, self.detailJob?.id == id, !self.isClosed else { return }
             self.detailJob = nil
-            if !Task.isCancelled, self.currentRenderer.accepts(key), self.tiles[chunk.region]?.key.surface == key.surface {
+            if !Task.isCancelled, self.currentRenderer?.accepts(key) == true, self.tiles[chunk.region]?.key.surface == key.surface {
                 self.detailImages[chunk] = image.map { CachedMapImage(key: key, picture: $0) }
                 self.detailAttempted.insert(chunk)
                 self.trimDetailCache()
@@ -592,7 +631,8 @@ final class MapModel {
         if let cached = topBlock(at: coordinates.position) { completion(cached); return }
         let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
-        let renderer = currentRenderer, cached = readoutRegion, read = readTopBlocksFor
+        guard let renderer = currentRenderer else { completion(nil); return }
+        let cached = readoutRegion, read = readTopBlocksFor
         coordinateWork.start(priority: nil) { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self else { return }
@@ -616,14 +656,6 @@ final class MapModel {
         // The centered accessibility readout needs definition evidence without a mouse hover.
         if showsDarkSpots || gameData != nil, let center = Self.chunk(at: viewport.center) { chunks.insert(center) }
         return chunks
-    }
-
-    private var readoutRenderer: RegionTileRenderer {
-        var renderer = currentRenderer
-        // Height style skips artwork when drawing, but selected-game definition evidence
-        // still belongs in block information. This renderer is used only for readouts.
-        renderer.gameData = gameData
-        return renderer
     }
 
     func blockDefinitionNotice(for block: RegionTileRenderer.TopBlock?) -> BlockDefinitionNotice? {
@@ -658,7 +690,8 @@ final class MapModel {
 
     private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
-        let renderer = readoutRenderer, cached = readoutRegion, read = readTopBlocksFor
+        guard let renderer = currentRenderer else { return }
+        let cached = readoutRegion, read = readTopBlocksFor
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }
@@ -734,19 +767,26 @@ final class MapModel {
     func setDepth(_ value: MapDepth) {
         guard !isClosed, value != depth else { return }
         let previous = depth.cutawayY
-        depth = value
+        presentation.depth = value
         guard previous != value.cutawayY else { return }
         surfaceChanged()
     }
 
-    func setDimensionSettings(_ settings: DimensionSettings?, water: GameTag?) {
-        let context = MapSurfaceContext(settings: settings, water: water)
-        let scale = MapHeightScale(settings: settings)
-        guard !isClosed, context != renderer.surfaceContext || scale != heightScale else { return }
-        renderer.surfaceContext = context
-        renderer.heightScale = scale
+    private func adoptDefinitions() {
+        let definitions = readDefinitions(), context = definitions.context, scale = definitions.heightScale
+        guard !isClosed, context != renderer?.surfaceContext || scale != heightScale else { return }
+        renderer?.surfaceContext = context
+        renderer?.heightScale = scale
         heightScale = scale
         surfaceChanged()
+    }
+
+    private func observeDefinitions() {
+        definitionObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.readDefinitions()
+        }) { model, _ in
+            model.adoptDefinitions()
+        }
     }
 
     /// Changing a hidden block can change its Y as well as its colour. Late reads of the previous
@@ -754,16 +794,23 @@ final class MapModel {
     func setBlockFilter(_ value: MapBlockFilter) {
         guard !isClosed, value != blockFilter else { return }
         let previous = blockFilter
-        blockFilter = value
+        presentation.blockFilter = value
         guard previous.cacheKey != value.cacheKey else { return }
         if previous.effectiveHiddenIDs != value.effectiveHiddenIDs { surfaceChanged() }
         else { reloadTiles() }
     }
 
     func setDarkSpots(_ shown: Bool) {
-        guard !isClosed, showsDarkSpots != shown else { return }
-        showsDarkSpots = shown
-        surfaceChanged(coordinatesChanged: false)
+        var overlays = presentation.overlays
+        overlays.showsDarkSpots = shown
+        setOverlays(overlays)
+    }
+
+    func setOverlays(_ value: LayerVisibility) {
+        guard !isClosed, value != presentation.overlays else { return }
+        let darkSpotsChanged = showsDarkSpots != value.showsDarkSpots
+        presentation.overlays = value
+        if darkSpotsChanged { surfaceChanged(coordinatesChanged: false) }
     }
 
     private func resetTopBlockReads() {
@@ -785,55 +832,48 @@ final class MapModel {
     func setStyle(_ value: MapStyle) {
         guard !isClosed, value != chosenStyle else { return }
         let previous = style
-        chosenStyle = value
+        presentation.style = value
         if style != previous { reloadTiles() }
     }
 
-    func canShowStyle(_ value: MapStyle) -> Bool { value != .height || heightScale != nil }
+    func canShowStyle(_ value: MapStyle) -> Bool { value.isAvailable(heightScale: heightScale) }
 
     func setBiomeBlending(_ enabled: Bool) {
         guard !isClosed, enabled != blendsBiomeColors else { return }
-        blendsBiomeColors = enabled
-        if style != .height { reloadTiles() }
+        presentation.blendsBiomeColors = enabled
+        if style.inputs.materialColors { reloadTiles() }
     }
 
     /// The world owns the publication; the map only observes it and invalidates its drawing work.
     /// Its loader and test publications are main-actor isolated. didSet runs on that setter's
     /// actor, so synchronous invalidation needs neither an unowned task nor a second fact copy.
     private func observeLighting() {
-        guard !isClosed else { return }
-        let previous = savedLighting, previousNight = nightLighting
-        withObservationTracking(options: [.didSet]) {
-            _ = savedLighting
-            _ = nightLighting
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeLighting()
-                if previousNight != self.nightLighting, self.showsDarkSpots {
-                    self.surfaceChanged(coordinatesChanged: false)
-                    return
-                }
-                guard previous != self.savedLighting else { return }
-                let prepared = self.lighting(using: previous) != nil
-                let previousLight = self.shadowLight(using: previous)
-                if prepared != (self.lighting != nil) { self.reloadTiles() }
-                else if previousLight != self.shadowLight { self.invalidateShadows(); self.updateLoadingState() }
+        lightingObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (lighting: $0.savedLighting, night: $0.nightLighting)
+        }) { model, previous in
+            if previous.night != model.nightLighting, model.showsDarkSpots {
+                model.surfaceChanged(coordinatesChanged: false)
+                return
             }
+            guard previous.lighting != model.savedLighting else { return }
+            let before = model.drawingInput(using: previous.lighting), after = model.drawingInput
+            if (before.lighting != nil) != (after.lighting != nil) { model.reloadTiles() }
+            else if before.shadowLight != after.shadowLight { model.invalidateShadows(); model.updateLoadingState() }
         }
     }
 
     func setLightingMode(_ value: MapLightingMode) {
         guard !isClosed, value != lightingMode else { return }
-        let prepared = lighting != nil, previousLight = shadowLight
-        lightingMode = value
-        if prepared != (lighting != nil) { reloadTiles() }
-        else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
+        let before = drawingInput
+        presentation.lightingMode = value
+        let after = drawingInput
+        if (before.lighting != nil) != (after.lighting != nil) { reloadTiles() }
+        else if before.shadowLight != after.shadowLight { invalidateShadows(); updateLoadingState() }
     }
 
     func setCastsShadows(_ value: Bool) {
         guard !isClosed, value != castsShadows else { return }
-        castsShadows = value
+        presentation.castsShadows = value
         invalidateShadows()
         if !value { shadowImages = [:]; shadowHeights = [:]; shadowSources = [] }
         lastRequest = nil
@@ -878,21 +918,15 @@ final class MapModel {
     /// World and test publications are main-actor isolated, as with lighting above. Capture
     /// identities rather than libraries so the observation does not retain a retired archive.
     private func observeGameResources() {
-        guard !isClosed else { return }
-        let previous = gameResources.identity
-        withObservationTracking(options: [.didSet]) {
-            _ = gameResources
-        } onChange: { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isClosed else { return }
-                self.observeGameResources()
-                let current = self.gameResources.identity
-                guard previous != current else { return }
-                let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
-                if readoutsChanged { self.resetTopBlockReads() }
-                if self.style != .height { self.reloadTiles() }
-                if readoutsChanged { self.updateTopBlockReads() }
-            }
+        gameResourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            $0.gameResources.identity
+        }) { model, previous in
+            let current = model.gameResources.identity
+            guard previous != current else { return }
+            let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
+            if readoutsChanged { model.resetTopBlockReads() }
+            if model.style.inputs.materialColors { model.reloadTiles() }
+            if readoutsChanged { model.updateTopBlockReads() }
         }
     }
 

@@ -21,9 +21,9 @@ import Testing
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension(dimensionID))
         let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id], water: nil)
-        if let read { return MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
-                                     cacheDirectory: nil, surfaceContext: context, readTopBlocks: read) }
-        return MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil, surfaceContext: context)
+        if let read { return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+                                     cacheDirectory: nil, readTopBlocks: read) }
+        return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
     }
 
     private func board() -> NSPasteboard {
@@ -45,25 +45,25 @@ import Testing
         let board = board()
         defer { board.releaseGlobally() }
         var examples: [(MapContent, CGPoint, String)] = []
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         let pet = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: -3.093, y: 64.9, z: 0.3,
                                                        owner: UUID()), dimension: "minecraft:overworld"))
         content.creatures = [pet]
         examples.append((content, pet.position, "-4 64 0"))
-        content = MapContent()
+        content = MapContent(gameNames: .unavailable)
         let place = PlaceMarker(Spawner(x: -7, y: -23, z: 4, mob: "minecraft:zombie"))
         content.places = [place]
         examples.append((content, place.position, "-7 -23 4"))
-        content = MapContent()
+        content = MapContent(gameNames: .unavailable)
         let portal = PlaceMarker(NetherPortal(dimension: "minecraft:overworld", blocks: [.init(x: -8, y: -30, z: -2)]))
         content.places = [portal]
         examples.append((content, portal.position, "-8 -30 -2"))
-        content = MapContent()
-        let hit = SearchHit(id: "chest", source: .container(kind: "minecraft:chest"), dimension: "minecraft:overworld",
-                            position: CGPoint(x: -20.2, y: -30.8), y: -32, title: "Chest", detail: "", count: 1)
+        content = MapContent(gameNames: .unavailable)
+        let hit = SearchHit(id: "chest", dimension: "minecraft:overworld",
+                            position: CGPoint(x: -20.2, y: -30.8), y: -32, content: .container(kind: "minecraft:chest", customName: nil, items: []))
         content.hits = [hit]
         examples.append((content, try #require(hit.position), "-21 -32 -31"))
-        content = MapContent()
+        content = MapContent(gameNames: .unavailable)
         let structure = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                       pieces: [("piece", [-10, -60, -20, -1, -41, -11])]))
         content.structures = [structure]
@@ -75,7 +75,7 @@ import Testing
             "respawn": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([20, 92, 25])]),
         ]))
         for marker in PlayerPresentation.markers(for: [player], in: "minecraft:overworld", singleplayerUUID: nil, worldDataVersion: 5023) {
-            content = MapContent(); content.players = [marker]
+            content = MapContent(gameNames: .unavailable); content.players = [marker]
             let expected: String
             switch marker.kind {
             case .player: expected = "-14 77 2"
@@ -182,7 +182,7 @@ import Testing
         ]))
         let board = board()
         defer { board.releaseGlobally() }
-        var content = MapContent()
+        var content = MapContent(gameNames: .unavailable)
         content.players = PlayerPresentation.markers(for: [player], in: "minecraft:overworld", singleplayerUUID: nil, worldDataVersion: 5023)
         let viewport = MapViewport(center: CGPoint(x: -8.7, y: -5.2), scale: 8)
         let playerHit = try #require(content.hit(at: CGPoint(x: 200, y: 150), viewport: viewport, size: size))

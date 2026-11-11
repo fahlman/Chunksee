@@ -6,23 +6,26 @@ import Observation
 /// Reads retain their access until they finish, even when Settings removes the folder.
 @Observable
 final class MinecraftResources {
-    enum Change { case source, artwork }
+    /// Permission and its readers change together; observers never see an intermediate removal.
+    private struct Source {
+        let generation = UUID()
+        let access: WorldReadAccess?
+        let libraries = GameResourceLibraries()
+    }
 
-    private(set) var generation = UUID()
+    private var source = Source(access: nil)
+    var generation: UUID { source.generation }
     var usesGameArtwork: Bool {
         didSet {
             guard usesGameArtwork != oldValue else { return }
             defaults.set(usesGameArtwork, forKey: Self.artworkKey)
-            for observer in observers.values { observer(.artwork) }
         }
     }
     var folder: URL? { access?.url }
-    private(set) var access: WorldReadAccess?
+    var access: WorldReadAccess? { source.access }
     private let defaults: UserDefaults
     private let work = BackgroundWork()
     @ObservationIgnored private lazy var reads = work.makeScope()
-    private var libraries = GameResourceLibraries()
-    @ObservationIgnored private var observers: [UUID: (Change) -> Void] = [:]
     private static let bookmarkKey = "minecraftFolderBookmark"
     private static let artworkKey = "usesGameArtwork"
 
@@ -36,46 +39,34 @@ final class MinecraftResources {
             defaults.removeObject(forKey: Self.bookmarkKey)
             return
         }
-        access = WorldReadAccess(url)
+        source = Source(access: WorldReadAccess(url))
     }
 
     isolated deinit { work.close() }
 
     func choose(_ url: URL) {
-        retire()
-        access = WorldReadAccess(url)
+        let access = WorldReadAccess(url)
         let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                                              includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(bookmark, forKey: Self.bookmarkKey)
-        for observer in observers.values { observer(.source) }
+        replaceSource(access)
     }
 
     func forget() {
-        retire()
-        for observer in observers.values { observer(.source) }
+        defaults.removeObject(forKey: Self.bookmarkKey)
+        replaceSource(nil)
     }
 
-    func observeChanges(_ action: @escaping (Change) -> Void) -> UUID {
-        let id = UUID()
-        observers[id] = action
-        return id
-    }
-
-    func stopObserving(_ id: UUID) { observers[id] = nil }
-
-    private func retire() {
-        generation = UUID()
+    private func replaceSource(_ access: WorldReadAccess?) {
+        let previous = source
         reads.cancel()
-        let previousLibraries = libraries, previousAccess = access
-        access = nil
-        libraries = GameResourceLibraries()
         // Hidden native tabs may not run a view task when the generation changes. Retire all
         // previous readers here, keeping permission until their current actor work finishes.
         work.start(priority: .utility) {
-            await previousLibraries.close()
-            withExtendedLifetime(previousAccess) {}
+            await previous.libraries.close()
+            withExtendedLifetime(previous.access) {}
         }
-        defaults.removeObject(forKey: Self.bookmarkKey)
+        source = Source(access: access)
     }
 
     /// This is the only artwork-policy decision; the data handle exposes no artwork methods.
@@ -92,7 +83,7 @@ final class MinecraftResources {
     func readLibrary() async throws -> GameResourceLibrary? {
         try Task.checkCancellation()
         guard let access else { return nil }
-        let generation = generation, libraries = libraries
+        let generation = generation, libraries = source.libraries
         var result: Result<GameResourceLibrary?, any Error> = .failure(CancellationError())
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
             defer { withExtendedLifetime(access) {} }
@@ -116,8 +107,17 @@ final class MinecraftResources {
 actor GameResourceLibraries {
     nonisolated private struct Identity: Hashable {
         let url: URL
-        let size: Int
-        let modified: Int64
+        let source: GameAssets.SourceIdentity
+
+        init?(url: URL) {
+            guard let source = try? GameAssets.SourceIdentity(contentsOf: url) else { return nil }
+            self.url = url
+            self.source = source
+        }
+
+        func sourceKey(for version: GameAssets.Version) -> String {
+            CacheKey.hash("\(url.absoluteString)|\(source.cacheKey)|\(version.id)|\(version.dataVersion)")
+        }
     }
     nonisolated private final class WeakLibrary {
         weak var value: GameResourceLibrary?
@@ -165,8 +165,9 @@ actor GameResourceLibraries {
             guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
             let url = entry.appendingPathComponent(entry.lastPathComponent + ".jar").resolvingSymlinksInPath()
             // Bound one archive, and retain at most the best uncached candidate during discovery.
-            guard let stamp = CacheKey.fileStamp(for: url), (1...134_217_728).contains(stamp.size) else { continue }
-            let key = Identity(url: url, size: stamp.size, modified: stamp.modified)
+            // Kit owns the identity used by both discovery and the opened reader.
+            // A restored file may keep size/mtime but must not reuse that invalid reader.
+            guard let key = Identity(url: url), (1...134_217_728).contains(key.source.byteCount) else { continue }
             seen.insert(key)
             let assets: GameAssets?
             let version: GameAssets.Version
@@ -175,7 +176,8 @@ actor GameResourceLibraries {
                 version = known
             } else {
                 guard let opened = try? GameAssets(contentsOf: url),
-                      let after = CacheKey.fileStamp(for: url), after.size == stamp.size, after.modified == stamp.modified else { continue }
+                      opened.sourceIdentity == key.source, opened.isUnchanged,
+                      Identity(url: url) == key else { continue }
                 assets = opened
                 version = opened.version
                 versions[key] = version
@@ -186,7 +188,7 @@ actor GameResourceLibraries {
         versions = versions.filter { seen.contains($0.key) }
         guard let selected else { return nil }
         let key = selected.key
-        guard let stamp = CacheKey.fileStamp(for: key.url), stamp.size == key.size, stamp.modified == key.modified else { return nil }
+        guard Identity(url: key.url) == key else { return nil }
         if let cached = live[key]?.value { return cached }
         if let data = live[key]?.data, let artwork = live[key]?.artwork {
             let library = GameResourceLibrary(data: data, artwork: artwork)
@@ -194,10 +196,10 @@ actor GameResourceLibraries {
             return library
         }
         guard let assets = try selected.assets ?? GameAssets(contentsOf: key.url),
-              let after = CacheKey.fileStamp(for: key.url), after.size == stamp.size, after.modified == stamp.modified else { return nil }
+              assets.sourceIdentity == key.source, assets.isUnchanged,
+              Identity(url: key.url) == key else { return nil }
         try Task.checkCancellation()
-        let data = live[key]?.data ?? GameDataLibrary(assets: assets,
-            sourceKey: CacheKey.hash("\(key.url.absoluteString)|\(stamp.size)|\(stamp.modified)|\(assets.version.id)|\(assets.version.dataVersion)"))
+        let data = live[key]?.data ?? GameDataLibrary(assets: assets, sourceKey: key.sourceKey(for: assets.version))
         let pictures = GameResourceLibrary(data: data, artwork: GameArtworkLibrary(assets: assets, data: data))
         live[key] = WeakLibrary(pictures)
         return pictures

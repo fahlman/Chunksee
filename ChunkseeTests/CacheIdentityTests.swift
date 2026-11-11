@@ -6,15 +6,15 @@ import Testing
 @testable import ChunkseeTestHost
 
 extension TileCache {
-    /// Existing disk-format fixtures supply their presentation explicitly through the real
-    /// input normalizer; production renderers additionally supply sampled neighbor files.
+    /// Disk-format fixtures use explicit Normal inputs. Style and game-source behavior
+    /// must be checked through RegionTileRenderer.cacheKey, which owns those decisions.
     nonisolated static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown,
-                    cutawayY: Int? = nil, style: MapStyle = .normal, heightScale: MapHeightScale? = nil,
-                    blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: RegionTileRenderer.ColorSource? = nil,
-                    gameSource: GameResourceSource = .unavailable, darkSpots: DarkSpots? = nil) -> Key? {
+                    cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(),
+                    darkSpots: DarkSpots? = nil) -> Key? {
         key(for: region, regionFile: regionFile,
-            inputs: Inputs(context: context, cutawayY: cutawayY, style: style, heightScale: heightScale,
-                           blockFilter: blockFilter, colorSource: colorSource, gameSource: gameSource,
+            inputs: Inputs(context: context, cutawayY: cutawayY, style: .normal,
+                           assets: GameAssets.interpretationVersion, heightScale: nil,
+                           blockFilter: blockFilter, colorSource: nil, gameSource: .unavailable,
                            samplesNeighborBiomes: false, darkSpots: darkSpots), biomeFiles: nil)
     }
 }
@@ -125,7 +125,7 @@ extension RegionTileRenderer {
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let oldTerrain = try changing(Chunk.interpretationVersion, field: "generatedFacts")
         let directory = root.appendingPathComponent("tiles")
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             cacheDirectory: directory, writeCache: { _ in Issue.record("Incompatible pixels started a cache write") },
             renderTile: { renderer, region in
                 guard let tile = try await renderer.tile(for: region) else { return nil }

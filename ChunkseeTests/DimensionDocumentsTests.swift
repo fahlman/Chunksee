@@ -43,7 +43,7 @@ import Testing
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")
         #expect(source.map === map && source.map?.viewport == original)
-        #expect(source.visibility === visibility && source.annotations.ruler.distance == 5)
+        #expect(source.visibility == visibility && source.annotations.ruler.distance == 5)
         #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
         // A later normal opening must not replay an action that could not invoke its opener.
         let target = WorldSession(resources: resources, dimensionID: place.dimension)
@@ -52,7 +52,7 @@ import Testing
         await resources.waitUntilClosed()
     }
 
-    @Test func restoringAnotherDimensionKeepsTheTargetDocumentIdentity() async throws {
+    @Test func rereadingSharedWorldInputsKeepsEachDocumentIdentity() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let source = WorldSession(resources: resources, dimensionID: "minecraft:overworld")
@@ -63,11 +63,13 @@ import Testing
         source.annotations.ruler.mark(CGPoint(x: 3, y: 4))
         let target = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         let map = try #require(target.map), original = map.viewport
-        target.restoreView(from: source)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
         #expect(target.selectedDimensionID == "minecraft:the_nether")
         #expect(target.map === map && target.map?.viewport == original)
         #expect(!target.navigation.canGoBack && !target.navigation.canGoForward)
         #expect(target.annotations.ruler.start == nil && target.annotations.ruler.end == nil)
+        #expect(source.navigation.canGoBack && source.annotations.ruler.distance == 5)
+        #expect(source.map?.viewport.center == CGPoint(x: 500.5, y: 600.5))
         resources.close()
         await resources.waitUntilClosed()
     }
@@ -149,7 +151,9 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: -100, y: -200), scale: 0.125)
         source.map?.viewport = sourceView
         let targetDepth = MapDepth(y: 48, isSurface: false)
-        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: targetDepth)
+        var targetPresentation = resources.settings.mapPresentation(for: dimension)
+        targetPresentation.depth = targetDepth
+        resources.settings.save(targetView, presentation: targetPresentation, for: dimension, selected: source.selectedDimensionID)
         let existing = alreadyOpen ? WorldSession(resources: resources, dimensionID: dimension) : nil
         var opened = recordOpens(of: source)
         let expected: CGPoint
@@ -477,7 +481,7 @@ import Testing
         #expect(await gate.requested == ["region"])     // the queued pass never ran
     }
 
-    @Test func anOlderPlayerReadCannotOverwriteANewerOne() async throws {
+    @Test func playerSavesKeepCurrentProgressThenPublishTheFollowingRead() async throws {
         let (url, resources) = try await makeResources()
         defer { resources.close(); try? FileManager.default.removeItem(at: url) }
         let session = WorldSession(resources: resources)
@@ -495,9 +499,10 @@ import Testing
         resources.worldChanged([file])
         await gate.waitForRequest("read0")              // the first refresh is reading the older file
         resources.worldChanged([file])
-        await gate.waitForRequest("read1")              // a second refresh reads the newer one
-        await gate.finish("read1", with: [player(atX: 200)])
         await gate.finish("read0", with: [player(atX: 100)])
+        await gate.waitForRequest("read1")              // same-source saves follow the running pass
+        #expect(resources.players.first?.position?.x == 100)
+        await gate.finish("read1", with: [player(atX: 200)])
         await resources.waitForRefresh()
         #expect(resources.players.first?.position?.x == 200)
         #expect(resources.playerSnapshot !== originalPlayers)

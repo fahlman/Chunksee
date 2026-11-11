@@ -96,6 +96,9 @@ import Testing
             #expect(resources.dimensions.map(\.id) == ["minecraft:overworld", "minecraft:the_nether"])
             #expect(resources.readers["minecraft:the_nether"] != nil)
             #expect(resources.dimensionDocuments[folder.resolvingSymlinksInPath().path] == "minecraft:the_nether")
+            // Including a dimension also refreshes definitions and players. Settle that
+            // publication before taking the baseline for a later repeated document opening.
+            await resources.waitForRefresh()
             await resources.index.waitForIndex()
             #expect(resources.index.index.dimensions["minecraft:the_nether"]?.places.filter { $0.group == .spawner }.count == 1)
             #expect(first.map === oldMap && oldMap.viewport == view)
@@ -103,6 +106,7 @@ import Testing
 
             let reader = resources.readers["minecraft:the_nether"], revision = resources.index.revision
             let repeated = try await f.open(folder)
+            await resources.waitForRefresh()
             await resources.index.waitForIndex()
             #expect(repeated.map != nil && repeated.resources === resources)
             #expect(resources.readers.count == 2 && resources.readers["minecraft:the_nether"] === reader)

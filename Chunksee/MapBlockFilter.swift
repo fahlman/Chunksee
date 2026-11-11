@@ -1,9 +1,9 @@
 import ChunkseeKit
 import Foundation
 
-/// One dimension's presentation choices. Names come from saved palettes; this does not infer
+/// One dimension's presentation choices. IDs come from saved palettes; this does not infer
 /// block occupancy or change the world's data. Rendering, hover and export share this value.
-nonisolated struct MapBlockFilter: Equatable, Sendable {
+nonisolated struct MapBlockFilter: Equatable, Sendable, Codable {
     enum Choice: CaseIterable { case show, hide, highlight }
 
     let isEnabled: Bool
@@ -27,6 +27,22 @@ nonisolated struct MapBlockFilter: Equatable, Sendable {
     }
 
     var effectiveHiddenIDs: Set<String> { isEnabled ? hiddenIDs : [] }
+
+    private enum CodingKeys: String, CodingKey { case isEnabled, hiddenIDs, highlightedIDs }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self), defaults = Self()
+        self.init(isEnabled: (try? values.decode(Bool.self, forKey: .isEnabled)) ?? defaults.isEnabled,
+                  hiddenIDs: Set((try? values.decode([String].self, forKey: .hiddenIDs)) ?? []),
+                  highlightedIDs: Set((try? values.decode([String].self, forKey: .highlightedIDs)) ?? []))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(isEnabled, forKey: .isEnabled)
+        try values.encode(hiddenIDs.sorted(), forKey: .hiddenIDs)
+        try values.encode(highlightedIDs.sorted(), forKey: .highlightedIDs)
+    }
 
     func choice(for id: String) -> Choice {
         hiddenIDs.contains(id) ? .hide : highlightedIDs.contains(id) ? .highlight : .show

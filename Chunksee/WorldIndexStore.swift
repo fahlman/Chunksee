@@ -3,34 +3,49 @@ import ChunkseeKit
 import Foundation
 import Observation
 
+/// Index facts and their carried-player projection always describe the same publication.
+nonisolated final class WorldIndexSnapshot: Sendable {
+    let index: SearchIndex
+    let players: PlayerSnapshot
+    let revision: Int
+
+    init(index: SearchIndex, players: PlayerSnapshot, revision: Int) {
+        self.index = index
+        self.players = players
+        self.revision = revision
+    }
+
+    static let empty = WorldIndexSnapshot(index: SearchIndex(), players: PlayerSnapshot([]), revision: 0)
+}
+
 /// One index pass per world, shared by every dimension's independent search controls.
 @Observable
 final class WorldIndexStore {
-    let savedQueries: SavedQueryResults
-    private(set) var index = SearchIndex()
-    let playerRoster: PlayerRoster
-    private(set) var playerSnapshot: PlayerSnapshot
-    private var regionIndex = SearchIndex()
-    private(set) var portals: [String: [NetherPortal]] = [:]
-    private(set) var revision = 0
-    private(set) var isIndexing = false
+    var snapshot: WorldIndexSnapshot { projection.value ?? closedSnapshot ?? .empty }
+    @ObservationIgnored private var closedSnapshot: WorldIndexSnapshot?
+    var index: SearchIndex { snapshot.index }
+    let playerRoster: any PlayerSnapshotSource
+    var playerSnapshot: PlayerSnapshot { snapshot.players }
+    private var regionIndex: SearchIndex { loader.value?.index ?? SearchIndex() }
+    var portals: [String: [NetherPortal]] { loader.value?.portals ?? [:] }
+    var revision: Int { snapshot.revision }
+    var isIndexing: Bool { loader.isReading && loader.valueAtReadStart?.index.dimensions.isEmpty != false }
     /// The world's canonical reader catalog. Resources derive their dimension views from it.
-    private(set) var readers: [RegionReader]
-    private let readDimension: @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent
-    @ObservationIgnored private var indexTask: Task<Void, Never>?
-    @ObservationIgnored private var readerGeneration = 0
-    @ObservationIgnored private var projectionTask: Task<Void, Never>?
-    @ObservationIgnored private var projectionRequest: (id: UUID, revision: Int, players: PlayerSnapshot)?
-    @ObservationIgnored private var sourceRevision = 0
-    @ObservationIgnored private var projectedRevision = 0
-    private let projectCreatures: @Sendable (SearchIndex, [ShoulderPet]) async -> SearchIndex
-    /// A pass asked for while one runs, with the dimension to read first. It starts when the
-    /// running pass ends, so a stream of world saves can't keep cancelling unfinished passes.
-    @ObservationIgnored private var queuedPass: Pass?
-    private let work: BackgroundWork.Scope
-    private var isClosed: Bool { work.isClosed }
+    var readers: [RegionReader] { loader.source.readers }
+    private let loader: RefreshLoader<ReaderSource, Pass, RegionSnapshot>
+    private let projection: RefreshLoader<ProjectionSource, RefreshInvalidation, WorldIndexSnapshot>
+    @ObservationIgnored private var playerObservation: ModelObservation?
+    var isClosed: Bool { loader.isClosed || loader.work.isClosed || projection.isClosed }
 
-    private struct Pass {
+    /// Catalog additions belong to this same source. Each pass captures its reader array on
+    /// the main actor; replacement creates a new source, retiring all previous publications.
+    @MainActor @Observable fileprivate final class ReaderSource: Equatable {
+        var readers: [RegionReader]
+        init(_ readers: [RegionReader]) { self.readers = readers }
+        nonisolated static func == (lhs: ReaderSource, rhs: ReaderSource) -> Bool { lhs === rhs }
+    }
+
+    nonisolated private struct Pass: Sendable {
         var firstDimension: String?
         /// Nil means a complete world pass. A complete request dominates queued subsets.
         var changes: [String: RegionChange]?
@@ -44,16 +59,58 @@ final class WorldIndexStore {
         }
     }
 
-    init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?, playerRoster: PlayerRoster,
+    nonisolated private final class RegionSnapshot: Sendable {
+        let index: SearchIndex
+        let portals: [String: [NetherPortal]]
+        init(_ index: SearchIndex) {
+            self.index = index
+            portals = index.dimensions.mapValues { $0.places.compactMap(\.portal) }
+        }
+    }
+
+    nonisolated private struct ProjectionSource: Equatable, Sendable {
+        let regions: RegionSnapshot
+        let players: PlayerSnapshot
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.regions === rhs.regions && lhs.players === rhs.players
+        }
+    }
+
+    init(readers: [RegionReader], work: BackgroundWork, firstDimension: String?, playerRoster: any PlayerSnapshotSource,
          projectCreatures: @escaping @Sendable (SearchIndex, [ShoulderPet]) async -> SearchIndex = { await $0.including($1) },
          readDimension: @escaping @Sendable (RegionReader, DimensionContent?, RegionChange) async -> DimensionContent = DimensionContent.read) {
-        self.work = work.makeScope()
         self.playerRoster = playerRoster
-        playerSnapshot = playerRoster.snapshot
-        self.projectCreatures = projectCreatures
-        savedQueries = SavedQueryResults(work: work)
-        self.readers = readers
-        self.readDimension = readDimension
+        let players = playerRoster.snapshot, regions = RegionSnapshot(SearchIndex())
+        projection = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+            source: ProjectionSource(regions: regions, players: players),
+            initialValue: WorldIndexSnapshot(index: regions.index, players: players, revision: 0),
+            firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, _, _ in previous }) { source, _, previous in
+                let index = await projectCreatures(source.regions.index, source.players.shoulderPets)
+                return WorldIndexSnapshot(index: index, players: source.players, revision: (previous?.revision ?? 0) + 1)
+            }
+        loader = RefreshLoader(progressRead: { source, request, previous, publish in
+            let catalog = await source.readers
+            let readers = catalog.filter { request.changes?[$0.dimension.id] != nil || request.changes == nil }
+                .sorted { ($0.dimension.id == request.firstDimension ? 0 : 1) < ($1.dimension.id == request.firstDimension ? 0 : 1) }
+            var result = previous ?? RegionSnapshot(SearchIndex())
+            for (offset, reader) in readers.enumerated() {
+                try Task.checkCancellation()
+                var index = result.index
+                let part = await readDimension(reader, index.dimensions[reader.dimension.id], request.changes?[reader.dimension.id] ?? .all)
+                try Task.checkCancellation()
+                index.dimensions[reader.dimension.id] = part
+                result = RegionSnapshot(index)
+                if offset + 1 < readers.count, !(await publish(result)) { throw CancellationError() }
+            }
+            return .complete(result)
+        }, work: work, priority: .utility, whenInactive: .finish, source: ReaderSource(readers),
+            initialValue: regions,
+            firstRequest: Pass(firstDimension: firstDimension, changes: nil),
+            merge: { previous, next in var merged = previous; merged.merge(next); return merged })
+        loader.published = { [weak self] previous, current in
+            guard let self, !self.isClosed, let snapshot = current.value, previous.value !== snapshot else { return }
+            self.refreshProjection()
+        }
         observePlayers()
         rebuild(firstDimension: firstDimension)
     }
@@ -61,61 +118,38 @@ final class WorldIndexStore {
     /// Index and player facts publish together after the carried-pet merge runs off-main.
     /// Views keep the previous coherent snapshot while a newer one is being prepared.
     private func observePlayers() {
-        withObservationTracking { _ = playerRoster.snapshot } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, !self.isClosed else { return }
-                self.observePlayers()
-                self.refreshProjection()
-            }
+        playerObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            _ = $0.playerRoster.snapshot
+        }) { store, _ in
+            store.refreshProjection()
         }
     }
 
     private func refreshProjection() {
-        guard !isClosed else { return }
+        guard !isClosed, let regions = loader.value else { return }
         let players = playerRoster.snapshot
-        guard projectedRevision != sourceRevision || playerSnapshot !== players else { return }
-        if let request = projectionRequest, request.revision == sourceRevision, request.players === players { return }
-        projectionTask?.cancel()
-        projectionTask = nil
-        projectionRequest = nil
-        let source = sourceRevision, base = regionIndex
+        let source = ProjectionSource(regions: regions, players: players)
+        guard projection.source != source else { return }
         if players.shoulderPets.isEmpty {
-            publish(base, players: players, source: source)
-            return
+            projection.replace(source: source, value: WorldIndexSnapshot(index: regions.index, players: players, revision: revision + 1))
+        } else {
+            projection.request(source: source, isEnabled: true, reread: false)
         }
-        let id = UUID(), project = projectCreatures
-        projectionRequest = (id, source, players)
-        projectionTask = work.start(priority: .utility) { [weak self] in
-            let projected = await project(base, players.shoulderPets)
-            guard let self, !Task.isCancelled, !self.isClosed,
-                  self.projectionRequest?.id == id, self.sourceRevision == source,
-                  self.playerRoster.snapshot === players else { return }
-            self.publish(projected, players: players, source: source)
-            self.projectionTask = nil
-            self.projectionRequest = nil
-        }
-    }
-
-    private func publish(_ projected: SearchIndex, players: PlayerSnapshot, source: Int) {
-        index = projected
-        playerSnapshot = players
-        projectedRevision = source
-        revision += 1
     }
 
     /// Includes a roster change whose observation callback has not run yet.
     func waitForProjection() async {
         while !isClosed {
             refreshProjection()
-            guard let task = projectionTask else { return }
-            await task.value
+            guard projection.isReading else { return }
+            await projection.waitForCurrentRead()
         }
     }
 
     /// Missing results mean loading only when an actual reader is still due to publish them.
     /// An absent/unsupported dimension cannot finish a read that was never scheduled.
     func isWaitingForPortals(in dimension: String) -> Bool {
-        !isClosed && indexTask != nil && portals[dimension] == nil &&
+        !isClosed && loader.isReading && portals[dimension] == nil &&
             readers.contains { $0.dimension.id == dimension }
     }
 
@@ -126,94 +160,65 @@ final class WorldIndexStore {
         var known = Set(readers.map { $0.dimension.id })
         let added = additions.filter { known.insert($0.dimension.id).inserted }
         guard !added.isEmpty else { return }
-        readers += added
+        loader.source.readers += added
         rebuild(firstDimension: firstDimension)
     }
 
     func rebuild(firstDimension: String?, changes: [String: RegionChange]? = nil) {
         guard !isClosed, changes?.isEmpty != true else { return }
-        let pass = Pass(firstDimension: firstDimension, changes: changes)
-        if indexTask != nil {
-            if queuedPass != nil { queuedPass?.merge(pass) }
-            else { queuedPass = pass }
-            return
-        }
-        isIndexing = index.dimensions.isEmpty
-        let readers = readers.filter { changes?[$0.dimension.id] != nil || changes == nil }
-            .sorted { ($0.dimension.id == firstDimension ? 0 : 1) < ($1.dimension.id == firstDimension ? 0 : 1) }
-        let readDimension = readDimension, generation = readerGeneration
-        indexTask = work.start(priority: .utility) { [weak self] in
-            defer {
-                if self?.isClosed == true, self?.readerGeneration == generation {
-                    self?.indexTask = nil
-                    self?.queuedPass = nil
-                    self?.isIndexing = false
-                }
-            }
-            for reader in readers {
-                guard !Task.isCancelled, self?.isClosed == false else { return }
-                let previous = self?.regionIndex.dimensions[reader.dimension.id]
-                let part = await readDimension(reader, previous, changes?[reader.dimension.id] ?? .all)
-                guard let self, !Task.isCancelled, !self.isClosed, self.readerGeneration == generation else { return }
-                self.regionIndex.dimensions[reader.dimension.id] = part
-                self.portals = self.regionIndex.dimensions.mapValues { $0.places.compactMap(\.portal) }
-                self.sourceRevision += 1
-                self.refreshProjection()
-            }
-            guard let self, !Task.isCancelled, !self.isClosed, self.readerGeneration == generation else { return }
-            self.isIndexing = false
-            self.indexTask = nil
-            if let next = self.queuedPass {
-                self.queuedPass = nil
-                self.rebuild(firstDimension: next.firstDimension, changes: next.changes)
-            }
-        }
+        loader.request(source: loader.source, isEnabled: true,
+                       refresh: Pass(firstDimension: firstDimension, changes: changes))
     }
 
     /// Definitions are part of the readers' immutable cache identity. Retire a previous pass
     /// immediately; ordinary region saves still use the queued-pass behavior above.
     func replace(readers: [RegionReader], firstDimension: String?) {
+        replace(readers: readers, firstDimension: firstDimension, retaining: SearchIndex(), projection: SearchIndex())
+    }
+
+    /// A reread or move keeps this world's compatible completed facts while new readers check
+    /// its files. Publishing an empty intermediate index would falsely remove selected items.
+    func replaceWorldSource(readers: [RegionReader], firstDimension: String?) {
+        let previous = Dictionary(uniqueKeysWithValues: self.readers.map { ($0.dimension.id, $0.inputs) })
+        let compatible = Set(readers.filter { previous[$0.dimension.id] == $0.inputs }.map { $0.dimension.id })
+        var retained = regionIndex, projected = index
+        retained.dimensions = retained.dimensions.filter { compatible.contains($0.key) }
+        projected.dimensions = projected.dimensions.filter { compatible.contains($0.key) }
+        replace(readers: readers, firstDimension: firstDimension, retaining: retained, projection: projected)
+    }
+
+    private func replace(readers: [RegionReader], firstDimension: String?,
+                         retaining retained: SearchIndex, projection: SearchIndex) {
         guard !isClosed else { return }
-        readerGeneration += 1
-        indexTask?.cancel()
-        indexTask = nil
-        queuedPass = nil
-        self.readers = readers
-        regionIndex = SearchIndex()
-        index = SearchIndex()
-        portals = [:]
-        sourceRevision += 1
-        projectionTask?.cancel()
-        projectionTask = nil
-        projectionRequest = nil
-        revision += 1
-        refreshProjection()
+        self.projection.replace(source: self.projection.source,
+            value: WorldIndexSnapshot(index: projection, players: playerSnapshot, revision: revision + 1))
+        loader.replace(source: ReaderSource(readers), value: RegionSnapshot(retained))
         rebuild(firstDimension: firstDimension)
     }
 
     /// Waits for the running pass and any pass queued behind it, or until the store closes.
     func waitForIndex() async {
         while !isClosed {
-            if let task = indexTask { await task.value; continue }
+            await loader.waitForCurrentRead()
             await waitForProjection()
-            if indexTask == nil { return }
+            if !loader.isReading { return }
         }
     }
 
     /// Closing drops the running and queued passes, so waiting for the index ends; `waitForTasks`
     /// still drains the cancelled reads.
     func cancel() {
-        work.close()
-        savedQueries.cancel()
-        projectionTask = nil
-        projectionRequest = nil
-        indexTask = nil
-        queuedPass = nil
-        isIndexing = false
+        playerObservation?.cancel()
+        guard !loader.isClosed else { return }
+        // Closing stops reads; it does not remove facts from a document still finishing
+        // its close. Retain the same immutable publication until its owner is released.
+        closedSnapshot = snapshot
+        loader.close()
+        projection.close()
     }
 
     func waitForTasks() async {
-        await work.waitUntilFinished()
-        await savedQueries.waitForTasks()
+        await loader.waitUntilFinished()
+        await projection.waitUntilFinished()
     }
 }

@@ -24,7 +24,7 @@ nonisolated enum ReadableName {
     }
 }
 
-/// The same level numerals for equipment and effects; each caller decides when to show a level.
+/// Readable numerals for GameNames when the game's shared effect/enchantment level key is absent.
 nonisolated enum LevelText {
     static func numeral(_ level: Int) -> String {
         let numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]

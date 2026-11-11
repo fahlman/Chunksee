@@ -4,12 +4,14 @@ import SwiftUI
 
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
-    var mapStyle = MapStyle.normal
-    var lighting: MapLighting?
-    var shadowLight: MapShadow.Light?
-    var heightScale: MapHeightScale?
-    var blockFilter = MapBlockFilter()
-    var showsDarkSpots = false
+    let gameNames: GameNames
+    /// Legends and terrain consume the same resolved value, supplied with the scene.
+    var terrain: MapDrawingInput
+    var mapStyle: MapStyle { terrain.style }
+    var lighting: MapLighting? { terrain.lighting }
+    var heightScale: MapHeightScale? { terrain.heightScale }
+    var blockFilter: MapBlockFilter { terrain.blockFilter }
+    var showsDarkSpots: Bool { terrain.showsDarkSpots }
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -44,16 +46,13 @@ struct MapContent {
     }
     /// Search results, drawn as pins.
     var hits: [SearchHit] = []
-    var selectedHitID: SearchHit.ID?
     /// Players' positions, last deaths and respawn points.
     var players: [MapMarker] = []
-    /// The player whose details the inspector shows; their position is drawn highlighted.
-    var selectedPlayerID: UUID?
     var savedPlaces: [SavedPlace] = []
     var ruler = MapRuler()
-    /// The selected portal or creature, drawn highlighted.
-    var selection: MapSelection?
-    /// The resolved sidebar identity, used to prioritize its label without another selection owner.
+    /// Derived by SelectionModel for all drawing paths; inspector visibility is not an input.
+    var highlighted: Set<MapTarget> = []
+    /// The selected sidebar identity preserves a creature's ordinary-versus-mob row route.
     var selectedItem: SidebarItem?
 
     /// The surface biome of the chunk under a block, once the dimension has been read.
@@ -66,11 +65,7 @@ struct MapContent {
     /// "Plains · Deep Dark below".
     func biomeDescription(at block: CGPoint) -> String? {
         guard let chunk = Self.chunk(at: block) else { return nil }
-        let surface = biome(at: block).map(ReadableName.from)
-        let caves = (caveBiomes[chunk] ?? []).map(ReadableName.from)
-        let below = caves.isEmpty ? nil : String(localized: "\(caves.formatted(.list(type: .and))) below")
-        let parts = [surface, below].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return gameNames.biomeDescription(surface: biomes[chunk], caves: caveBiomes[chunk] ?? [])
     }
 
     private static func chunk(at block: CGPoint) -> ChunkPosition? {
@@ -89,7 +84,7 @@ struct MapContent {
         guard shownCreatureGroups?.isEmpty != true || !shownMobTypes.isEmpty else { return [] }
         return creaturePoints.candidates(in: bounds ?? CGRect(origin: .zero, size: size).insetBy(dx: -20, dy: -20),
                                          viewport: viewport, size: size)
-            .filter { showsCreature($0) && (viewport.scale >= 0.25 || selection == .creature($0)) }
+            .filter { showsCreature($0) && (viewport.scale >= 0.25 || highlighted.contains(.row(.creature($0.id)))) }
     }
 
     private func showsCreature(_ marker: CreatureMarker) -> Bool {
@@ -127,20 +122,16 @@ struct MapContent {
 extension MapContent {
     /// A value projected from live document models, without retaining the document or a cache.
     init(session: WorldSession) {
-        self.init()
-        guard session.map != nil, let id = session.selectedDimensionID else { return }
-        mapStyle = session.map?.style ?? .normal
-        lighting = session.map?.lighting
-        shadowLight = session.map?.shadowLight
-        heightScale = session.map?.heightScale
-        blockFilter = session.map?.blockFilter ?? MapBlockFilter()
-        showsDarkSpots = session.map?.showsDarkSpots == true
+        let map = session.map
+        self.init(gameNames: session.resources.gameNames, terrain: map?.drawingInput
+            ?? MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil))
+        guard map != nil, let id = session.selectedDimensionID else { return }
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown
         slimeChunks = session.slimeChunks.visibleImages
         slimeSeed = session.slimeChunks.visibleSeed
-        if case .inGameMap(let item)? = session.selection.mapSelection, let image = session.selection.image(for: item) {
+        if let item = session.selection.inGameMapOverlay, let image = session.selection.image(for: item) {
             inGameMap = (item, image, session.selection.inGameMapOpacity)
         }
         biomeAreas = index.biomeAreas.filter { session.visibility.biomes.contains($0.group) }
@@ -159,11 +150,9 @@ extension MapContent {
             session.visibility.appearance(for: kind).map { (kind.id, $0) }
         })
         hits = session.search.pinnedHits(where: session.presentation.lists).filter { $0.dimension == id && $0.position != nil }
-        selectedHitID = session.selection.selectedHitID
         players = session.presentation.drawnPlayerMarkers
-        selection = session.selection.mapSelection
+        highlighted = session.selection.highlighted
         selectedItem = session.selection.sidebarSelection
-        selectedPlayerID = if case .player(let uuid)? = session.selection.inspector { uuid } else { nil }
         savedPlaces = session.visibility.showsSavedPlaces ? session.savedPlaces.all.filter { $0.dimension == id } : []
         ruler = session.annotations.ruler
     }

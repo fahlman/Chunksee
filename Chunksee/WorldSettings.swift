@@ -1,10 +1,11 @@
 import CoreGraphics
 import Foundation
+import ChunkseeIndex
 
 /// One world's persisted presentation, shared by its dimension documents. Feature models own
 /// live state; its bookmark identity keeps this storage independent of the folder's path.
 final class WorldSettings {
-    enum Layer: String, CaseIterable {
+    private enum Layer: String {
         case structures = "shownStructureGroups", places = "shownPlaceGroups"
         case structureVisibility
         case creatures = "shownCreatureGroups", biomes = "shownBiomeGroups"
@@ -12,7 +13,7 @@ final class WorldSettings {
         case hiddenPlayers, showsGrid, showsSavedPlaces, timeSpent = "showsTimeSpent", slimeChunks = "showsSlimeChunks"
         case showsWorldBorder, darkSpots = "showsDarkSpots"
 
-        fileprivate static let legacy: [Layer] = [.structures, .places, .creatures, .biomes, .hiddenPlayers, .showsGrid]
+        static let legacy: [Layer] = [.structures, .places, .creatures, .biomes, .hiddenPlayers, .showsGrid]
     }
 
     private let defaults: UserDefaults
@@ -63,85 +64,133 @@ final class WorldSettings {
         defaults.set(saved, forKey: key)
     }
 
-    func viewport(for dimension: String) -> MapViewport? {
-        guard let view = (stored["views"] as? [String: [Double]])?[dimension], view.count == 3,
-              view[2].isFinite, view[2] > 0 else { return nil }
-        let viewport = MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])
-        return viewport.isValid ? viewport : nil
+    /// The viewport is saved beside the choices, but remains independently owned by navigation.
+    nonisolated private struct MapRecord: Codable {
+        var viewport: MapViewport?
+        var presentation: MapPresentation
+
+        init(viewport: MapViewport?, presentation: MapPresentation) {
+            self.viewport = viewport
+            self.presentation = presentation
+        }
+
+        private enum CodingKeys: String, CodingKey { case viewport, presentation }
+
+        init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            presentation = (try? values.decode(MapPresentation.self, forKey: .presentation)) ?? MapPresentation()
+            viewport = Self.viewport(from: try? values.decode([Double].self, forKey: .viewport))
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(presentation, forKey: .presentation)
+            if let viewport {
+                try values.encode([viewport.center.x, viewport.center.y, viewport.scale], forKey: .viewport)
+            }
+        }
+
+        static func viewport(from view: [Double]?) -> MapViewport? {
+            guard let view, view.count == 3, view[2].isFinite, view[2] > 0 else { return nil }
+            let viewport = MapViewport(center: CGPoint(x: view[0], y: view[1]), scale: view[2])
+            return viewport.isValid ? viewport : nil
+        }
     }
 
-    func depth(for dimension: String) -> MapDepth {
-        guard let value = (stored["depths"] as? [String: [String: Int]])?[dimension],
-              let y = value["y"], let surface = value["surface"], surface == 0 || surface == 1 else { return MapDepth() }
-        return MapDepth(y: y, isSurface: surface == 1)
+    func viewport(for dimension: String) -> MapViewport? { record(for: dimension).viewport }
+
+    func mapPresentation(for dimension: String?) -> MapPresentation { record(for: dimension).presentation }
+
+    /// A choice changes immediately, even with no visible SwiftUI view or usable terrain reader.
+    /// Keep the saved viewport and front dimension until their own owners change them.
+    func save(_ presentation: MapPresentation, for dimension: String?) {
+        guard let dimension else { return }
+        var record = record(for: dimension)
+        record.presentation = presentation
+        write(record, for: dimension, in: stored)
     }
 
-    func style(for dimension: String) -> MapStyle {
-        let value = (stored["styles"] as? [String: String])?[dimension]
-        return value.flatMap(MapStyle.init(rawValue:)) ?? .normal
-    }
-
-    func blendsBiomeColors(for dimension: String) -> Bool {
-        (stored["biomeBlending"] as? [String: Bool])?[dimension] ?? false
-    }
-
-    func lightingMode(for dimension: String) -> MapLightingMode {
-        let value = (stored["lightingModes"] as? [String: String])?[dimension]
-        return value.flatMap(MapLightingMode.init(rawValue:)) ?? .savedTime
-    }
-
-    func castsShadows(for dimension: String) -> Bool {
-        (stored["castsShadows"] as? [String: Bool])?[dimension] ?? true
-    }
-
-    func blockFilter(for dimension: String) -> MapBlockFilter {
-        guard let value = (stored["blockFilters"] as? [String: [String: Any]])?[dimension] else { return MapBlockFilter() }
-        return MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? true,
-                              hiddenIDs: Set(value["hidden"] as? [String] ?? []),
-                              highlightedIDs: Set(value["highlighted"] as? [String] ?? []))
-    }
-
-    func save(_ viewport: MapViewport, for dimension: String, selected: String?, depth: MapDepth? = nil,
-              style: MapStyle? = nil, blockFilter: MapBlockFilter? = nil, blendsBiomeColors: Bool? = nil,
-              lightingMode: MapLightingMode? = nil, castsShadows: Bool? = nil) {
+    func save(_ viewport: MapViewport, presentation: MapPresentation, for dimension: String, selected: String?) {
         guard viewport.isValid else { return }
         var saved = stored
-        var views = saved["views"] as? [String: [Double]] ?? [:]
-        views[dimension] = [viewport.center.x, viewport.center.y, viewport.scale]
-        saved["views"] = views
-        if let depth {
-            var depths = saved["depths"] as? [String: [String: Int]] ?? [:]
-            depths[dimension] = ["y": depth.y, "surface": depth.isSurface ? 1 : 0]
-            saved["depths"] = depths
-        }
-        if let style {
-            var styles = saved["styles"] as? [String: String] ?? [:]
-            styles[dimension] = style.rawValue
-            saved["styles"] = styles
-        }
-        if let blendsBiomeColors {
-            var choices = saved["biomeBlending"] as? [String: Bool] ?? [:]
-            choices[dimension] = blendsBiomeColors
-            saved["biomeBlending"] = choices
-        }
-        if let lightingMode {
-            var modes = saved["lightingModes"] as? [String: String] ?? [:]
-            modes[dimension] = lightingMode.rawValue
-            saved["lightingModes"] = modes
-        }
-        if let castsShadows {
-            var values = saved["castsShadows"] as? [String: Bool] ?? [:]
-            values[dimension] = castsShadows
-            saved["castsShadows"] = values
-        }
-        if let blockFilter {
-            var filters = saved["blockFilters"] as? [String: [String: Any]] ?? [:]
-            filters[dimension] = ["enabled": blockFilter.isEnabled,
-                                  "hidden": blockFilter.hiddenIDs.sorted(), "highlighted": blockFilter.highlightedIDs.sorted()]
-            saved["blockFilters"] = filters
-        }
         saved["dimension"] = selected
+        write(MapRecord(viewport: viewport, presentation: presentation), for: dimension, in: saved)
+    }
+
+    private static let oldMapSections = ["views", "depths", "styles", "blockFilters", "biomeBlending",
+                                         "lightingModes", "castsShadows", "layers"]
+
+    private func record(for dimension: String?) -> MapRecord {
+        let saved = stored
+        if let dimension, let data = (saved["mapPresentations"] as? [String: Any])?[dimension] as? Data,
+           let record = try? JSONDecoder().decode(MapRecord.self, from: data) { return record }
+        let record = legacyRecord(for: dimension, in: saved)
+        if let dimension { write(record, for: dimension, in: saved) }
+        return record
+    }
+
+    private func write(_ record: MapRecord, for dimension: String, in previous: [String: Any]) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(record) else { return }
+        var saved = previous
+        var records = saved["mapPresentations"] as? [String: Any] ?? [:]
+        records[dimension] = data
+        saved["mapPresentations"] = records
+        // Retire only this dimension's old fields. Unopened dimensions migrate when first read.
+        for section in Self.oldMapSections {
+            guard var values = saved[section] as? [String: Any] else { continue }
+            values[dimension] = nil
+            saved[section] = values.isEmpty ? nil : values
+        }
+        saved["version"] = 2
         defaults.set(saved, forKey: key)
+    }
+
+    private func legacyRecord(for dimension: String?, in saved: [String: Any]) -> MapRecord {
+        func field(_ section: String) -> Any? {
+            dimension.flatMap { (saved[section] as? [String: Any])?[$0] }
+        }
+        var presentation = MapPresentation()
+        if let value = field("depths") as? [String: Int], let y = value["y"],
+           let surface = value["surface"], surface == 0 || surface == 1 {
+            presentation.depth = MapDepth(y: y, isSurface: surface == 1)
+        }
+        if let raw = field("styles") as? String, let style = MapStyle(rawValue: raw) { presentation.style = style }
+        if let value = field("biomeBlending") as? Bool { presentation.blendsBiomeColors = value }
+        if let raw = field("lightingModes") as? String, let mode = MapLightingMode(rawValue: raw) { presentation.lightingMode = mode }
+        if let value = field("castsShadows") as? Bool { presentation.castsShadows = value }
+        if let value = field("blockFilters") as? [String: Any] {
+            presentation.blockFilter = MapBlockFilter(isEnabled: value["enabled"] as? Bool ?? presentation.blockFilter.isEnabled,
+                hiddenIDs: Set(value["hidden"] as? [String] ?? []), highlightedIDs: Set(value["highlighted"] as? [String] ?? []))
+        }
+        let values = (field("layers") as? [String: Any]) ?? Dictionary(uniqueKeysWithValues: Layer.legacy.compactMap { field in
+            defaults.object(forKey: field.rawValue).map { (field.rawValue, $0) }
+        })
+        var overlays = presentation.overlays
+        if let choices = values[Layer.structureVisibility.rawValue] as? [String: Bool] {
+            overlays.structures = Set(StructureGroup.allCases.filter { choices[$0.rawValue] ?? $0.isShownByDefault })
+        } else if let shown = values[Layer.structures.rawValue] as? [String] {
+            // This is the fixed historical schema, not a catalog of current game content.
+            let original: Set<StructureGroup> = [.village, .stronghold, .ancientCity, .trialChambers,
+                .monument, .mansion, .temple, .ruins, .ruinedPortal, .shipwreck, .buriedTreasure,
+                .outpost, .mineshaft, .fortress, .bastion, .netherFossil, .endCity, .other]
+            overlays.structures = Set(shown.compactMap(StructureGroup.init(rawValue:)))
+                .union(StructureGroup.allCases.filter { !original.contains($0) && $0.isShownByDefault })
+        }
+        if let names = values[Layer.places.rawValue] as? [String] { overlays.places = Set(names.compactMap(PlaceGroup.init(rawValue:))) }
+        if let names = values[Layer.creatures.rawValue] as? [String] { overlays.creatures = Set(names.compactMap(CreatureGroup.init(rawValue:))) }
+        if let names = values[Layer.mobTypes.rawValue] as? [String] { overlays.mobTypes = Set(names) }
+        if let names = values[Layer.biomes.rawValue] as? [String] { overlays.biomes = Set(names.map(BiomeGroup.init(id:))) }
+        if let names = values[Layer.hiddenPlayers.rawValue] as? [String] { overlays.hiddenPlayers = Set(names.compactMap(UUID.init(uuidString:))) }
+        if let value = values[Layer.showsGrid.rawValue] as? Bool { overlays.showsGrid = value }
+        if let value = values[Layer.showsSavedPlaces.rawValue] as? Bool { overlays.showsSavedPlaces = value }
+        if let value = values[Layer.showsWorldBorder.rawValue] as? Bool { overlays.showsWorldBorder = value }
+        if let value = values[Layer.timeSpent.rawValue] as? Bool { overlays.showsTimeSpent = value }
+        if let value = values[Layer.slimeChunks.rawValue] as? Bool { overlays.showsSlimeChunks = value }
+        if let value = values[Layer.darkSpots.rawValue] as? Bool { overlays.showsDarkSpots = value }
+        presentation.overlays = overlays
+        return MapRecord(viewport: MapRecord.viewport(from: field("views") as? [Double]), presentation: presentation)
     }
 
     var savedPlaces: [SavedPlace] {
@@ -152,31 +201,6 @@ final class WorldSettings {
         guard let data = try? JSONEncoder().encode(places) else { return }
         var saved = stored
         saved["places"] = data
-        defaults.set(saved, forKey: key)
-    }
-
-    func layers(for dimension: String?) -> [Layer: Any]? {
-        guard let dimension, let values = (stored["layers"] as? [String: [String: Any]])?[dimension] else { return nil }
-        return Dictionary(uniqueKeysWithValues: Layer.allCases.compactMap { field in
-            values[field.rawValue].map { (field, $0) }
-        })
-    }
-
-    /// Old app-wide choices seed a dimension once; live controls never write those keys.
-    var legacyLayers: [Layer: Any] {
-        Dictionary(uniqueKeysWithValues: Layer.legacy.compactMap { field in
-            defaults.object(forKey: field.rawValue).map { (field, $0) }
-        })
-    }
-
-    func saveLayers(_ values: [Layer: Any], for dimension: String?) {
-        guard let dimension else { return }
-        var saved = stored
-        var dimensions = saved["layers"] as? [String: [String: Any]] ?? [:]
-        var layers = dimensions[dimension] ?? [:]
-        for (field, value) in values { layers[field.rawValue] = value }
-        dimensions[dimension] = layers
-        saved["layers"] = dimensions
         defaults.set(saved, forKey: key)
     }
 

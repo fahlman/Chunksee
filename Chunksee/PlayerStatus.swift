@@ -10,7 +10,7 @@ struct PlayerEffectsSection: View {
         if !effects.isEmpty {
             Section("Active Effects") {
                 ForEach(Array(effects.sorted { $0.id < $1.id }.enumerated()), id: \.offset) { _, effect in
-                    let name = Text(PlayerEffectText.name(effect, gameNames: gameNames, locale: locale))
+                    let name = Text(gameNames.effect(effect, locale: locale))
                     LabeledContent {
                         Text(PlayerEffectText.duration(effect, locale: locale))
                     } label: {
@@ -34,12 +34,6 @@ struct PlayerEffectsSection: View {
 }
 
 nonisolated enum PlayerEffectText {
-    static func name(_ effect: StatusEffect, gameNames: GameNames, locale: Locale = .current) -> String {
-        let base = gameNames.name(effect.id, in: "effect")
-        guard effect.level > 1 else { return base }
-        return String(localized: "\(base) \(LevelText.numeral(effect.level))", locale: locale)
-    }
-
     static func duration(_ effect: StatusEffect, locale: Locale = .current) -> String {
         guard let saved = savedDuration(effect) else { return String(localized: "Infinite", locale: locale) }
         return saved.formatted(.time(pattern: saved >= .seconds(3600)

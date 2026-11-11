@@ -74,7 +74,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let renderer = RegionTileRenderer(dimension: dimension, chunkConcurrency: 1)
         let bounds = CGRect(x: -24, y: -8, width: 48, height: 32)
@@ -85,7 +85,7 @@ import Testing
             await map.waitUntilIdle()
             for appearance in [ColorScheme.light, .dark] {
                 for grid in [false, true] {
-                    var content = MapContent()
+                    var content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
                     content.showsGrid = grid
                     var progress: [Int] = []
                     let actual = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: renderer,
@@ -120,7 +120,7 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let task = Task {
             try await MapImage.export(plan: plan, regions: [region], renderer: RegionTileRenderer(dimension: dimension),
-                content: MapContent(), portalStatus: { _ in nil }, colorScheme: .light, locale: .current,
+                content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, colorScheme: .light, locale: .current,
                 progress: { finished, _ in #expect(finished == 0) }, readTile: { _, _ in await gate.read("tile") })
         }
         await gate.waitForRequest("tile")
@@ -153,8 +153,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
-                           regionConcurrency: 1, chunkConcurrency: 1, heightScale: scale)
+        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+                           regionConcurrency: 1, chunkConcurrency: 1)
         defer { map.close() }
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 512, height: 512), blocksPerPixel: 1)
         map.viewport = plan.viewport
@@ -164,19 +164,17 @@ import Testing
                 map.setDepth(depth)
                 map.requestTiles(visibleIn: plan.size, displayScale: 1)
                 await map.waitUntilIdle()
-                var content = MapContent()
-                content.mapStyle = style
-                content.heightScale = scale
+                let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
                 for appearance in [ColorScheme.light, .dark] {
                     let image = try await MapImage.export(plan: plan, regions: map.availableRegions,
-                        renderer: map.currentRenderer, content: content, portalStatus: { _ in nil },
+                        renderer: (try requiredRenderer(map)), content: content, portalStatus: { _ in nil },
                         colorScheme: appearance, locale: Locale(identifier: "en_US"), progress: { _, _ in })
                     let view = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil },
                         size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
                     #expect(try pixels(image) == pixels(view))
                     // A matching terrain image alone would miss the shared style legend.
-                    let withoutLegend = try #require(MapImage.render(map, content: MapContent(), portalStatus: { _ in nil },
-                        size: plan.size, scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
+                    let withoutLegend = try #require(MapImage.renderWithoutLegend(map, content: content,
+                        size: plan.size, colorScheme: appearance, locale: Locale(identifier: "en_US")))
                     #expect(try pixels(image) != pixels(withoutLegend))
                 }
             }
@@ -184,47 +182,54 @@ import Testing
         await map.waitForRenders()
     }
 
-    @Test(.timeLimit(.minutes(1))) func cancelAndDocumentCloseDrainTheOwnedExportBeforeAnotherCanStart() async throws {
-        for closeDocument in [false, true] {
-            let root = try TestWorld.make(chunks: [
-                TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
-            ])
-            defer { try? FileManager.default.removeItem(at: root) }
-            let defaults = TestDefaults.make()
-            let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
-                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
-            let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
-            let session = WorldSession(resources: resources, renderTile: { renderer, _ in
-                #expect(renderer.cutawayY == 12)
-                #expect(renderer.style == .waterDepth)
-                #expect(renderer.blockFilter == MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
-                return await gate.read("tile")
-            })
-            await session.search.waitForIndex()
-            session.map?.setDepth(MapDepth(y: 12, isSurface: false))
-            session.map?.setStyle(.waterDepth)
-            session.map?.setBlockFilter(MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
-            let export = session.imageExport
-            export.options.area = .dimension
-            #expect(export.canCreate)
-            export.create(colorScheme: .light, locale: .current)
-            await gate.waitForRequest("tile")
-            #expect(export.isRunning && export.renderedDepth?.y == 12)
-            session.map?.setDepth(MapDepth(y: 3, isSurface: false))
-            session.map?.setStyle(.normal)
-            session.map?.setBlockFilter(MapBlockFilter())
-            #expect(export.renderedDepth?.y == 12)
-            if closeDocument { session.close() } else { export.cancel() }
-            #expect(export.isRunning && export.isCancelling && !export.canCreate)
-            export.create(colorScheme: .dark, locale: .current) // A draining export still owns its allocation.
-            await gate.waitForCancellation("tile")
-            await gate.finish("tile", with: nil)
-            await export.waitUntilIdle()
-            #expect(!export.isRunning && export.result == nil && export.preview == nil && export.error == nil)
-            #expect(export.canCreate == !closeDocument)
-            session.close()
-            await session.waitUntilClosed()
+    enum ExportEnd: CaseIterable { case cancel, dismissSheet, replaceSheet, closeDocument }
+
+    @Test(.timeLimit(.minutes(1)), arguments: ExportEnd.allCases)
+    func endingAnExportDrainsItsWorkBeforeAnotherCanStart(_ ending: ExportEnd) async throws {
+        let root = try TestWorld.make(chunks: [
+            TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let gate = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
+        let session = WorldSession(resources: resources, renderTile: { renderer, _ in
+            #expect(renderer.cutawayY == 12)
+            #expect(renderer.style == .waterDepth)
+            #expect(renderer.blockFilter == MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
+            return await gate.read("tile")
+        })
+        await session.search.waitForIndex()
+        session.map?.setDepth(MapDepth(y: 12, isSurface: false))
+        session.map?.setStyle(.waterDepth)
+        session.map?.setBlockFilter(MapBlockFilter(highlightedIDs: ["minecraft:stone"]))
+        let export = session.imageExport
+        export.options.area = .dimension
+        session.presentSheet(.imageExport)
+        #expect(export.canCreate)
+        export.create(colorScheme: .light, locale: .current)
+        await gate.waitForRequest("tile")
+        #expect(export.isRunning && export.renderedDepth?.y == 12)
+        session.map?.setDepth(MapDepth(y: 3, isSurface: false))
+        session.map?.setStyle(.normal)
+        session.map?.setBlockFilter(MapBlockFilter())
+        #expect(export.renderedDepth?.y == 12)
+        switch ending {
+        case .cancel: export.cancel()
+        case .dismissSheet: session.sheet = nil
+        case .replaceSheet: session.presentSheet(.coordinates)
+        case .closeDocument: session.close()
         }
+        #expect(export.isRunning && export.isCancelling && !export.canCreate)
+        export.create(colorScheme: .dark, locale: .current) // A draining export still owns its allocation.
+        await gate.waitForCancellation("tile")
+        await gate.finish("tile", with: nil)
+        await export.waitUntilIdle()
+        #expect(!export.isRunning && export.result == nil && export.preview == nil && export.error == nil)
+        #expect(export.canCreate == (ending != .closeDocument))
+        session.close()
+        await session.waitUntilClosed()
     }
 
     @Test func aFinishedImageCopiesToAnExplicitBoardWithoutChangingTheDocumentsViewOrLayers() async throws {

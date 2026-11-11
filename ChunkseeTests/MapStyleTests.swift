@@ -2,11 +2,41 @@ import AppKit
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Observation
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
+@Observable @MainActor private final class MapStyleDefinitions {
+    var value: MapDefinitions
+    init(_ value: MapDefinitions) { self.value = value }
+}
+
 @Suite(.isolatedStores) struct MapStyleTests {
+    @Test func heightRendersAndReusesItsKeyWithoutOpeningUnusedGameArtwork() async throws {
+        let root = try terrainWorld(), fixture = try ItemPictureFixture()
+        defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let scale = try heightScale(sea: 40), artwork = try fixture.library()
+        let region = RegionPosition(x: 0, z: 0)
+        let plain = RegionTileRenderer(dimension: dimension, style: .height, heightScale: scale)
+        let supplied = RegionTileRenderer(dimension: dimension, style: .height, heightScale: scale,
+            gameData: artwork.data, gameArtwork: artwork, usesSavedLighting: true)
+        let expected = try #require(try await plain.tile(for: region))
+        #expect(supplied.cacheInputs == plain.cacheInputs && supplied.preparation == plain.preparation)
+        // A dependency that is not part of Height cannot break it after its access ends.
+        await artwork.close()
+        let actual = try #require(try await supplied.tile(for: region))
+        #expect(actual.key == expected.key)
+        #expect(actual.full.image.dataProvider?.data as Data? == expected.full.image.dataProvider?.data as Data?)
+        #expect(actual.full.normals == nil && actual.detail == nil && actual.heights == nil)
+        #expect(try await supplied.detail(for: region) == nil)
+        let file = try #require(try dimension.region(x: 0, z: 0))
+        let actualColumns = try await supplied.topBlocks(in: file, localX: 0, localZ: 0)
+        let expectedColumns = try await plain.topBlocks(in: file, localX: 0, localZ: 0)
+        #expect(actualColumns == expectedColumns)
+    }
+
     @Test func heightScaleChangesPreparedPicturesWithoutRetiringUnlitNormalTiles() async throws {
         let root = try terrainWorld()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -118,11 +148,13 @@ import Testing
             #expect(tile.cacheWrite == nil)
             #expect(tile.full.image.dataProvider?.data as Data? == saved[style])
         }
-        let changedScale = try heightScale(sea: 80), file = dimension.regionURL(at: region)
+        let changedScale = try heightScale(sea: 80)
         for y in [Int?.none, 30] {
             for style in MapStyle.allCases {
-                let before = try #require(TileCache.key(for: region, regionFile: file, cutawayY: y, style: style, heightScale: scale))
-                let after = try #require(TileCache.key(for: region, regionFile: file, cutawayY: y, style: style, heightScale: changedScale))
+                var renderer = RegionTileRenderer(dimension: dimension, cutawayY: y, style: style, heightScale: scale)
+                let before = try #require(renderer.cacheKey(for: region))
+                renderer.heightScale = changedScale
+                let after = try #require(renderer.cacheKey(for: region))
                 #expect((before == after) == (style != .height))
             }
         }
@@ -135,7 +167,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), heightScale: scale,
+        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             renderTile: { renderer, _ in await render.read(renderer.style.rawValue) },
             readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
@@ -143,14 +175,14 @@ import Testing
         var copiedY: Int?
         map.readTopBlock(at: CGPoint(x: 17, y: 1)) { copiedY = $0?.y }
         await render.waitForRequest("normal")
-        let previousRenderer = map.currentRenderer
+        let previousRenderer = (try requiredRenderer(map))
         await columns.waitForRequest("0")
         await columns.waitForRequest("1")
         map.setStyle(.height)
         await render.waitForCancellation("normal")
         await render.waitForRequest("height")
         let heightImage = try #require(CGImage.rgba([10, 20, 30, 255], width: 1, height: 1))
-        await render.finish("height", with: try map.currentRenderer.fixtureTile(heightImage, for: .init(x: 0, z: 0)))
+        await render.finish("height", with: try (try requiredRenderer(map)).fixtureTile(heightImage, for: .init(x: 0, z: 0)))
         await map.waitUntilIdle()
         let normalImage = try #require(CGImage.rgba([40, 50, 60, 255], width: 1, height: 1))
         await render.finish("normal", with: try previousRenderer.fixtureTile(normalImage, for: .init(x: 0, z: 0)))
@@ -176,7 +208,7 @@ import Testing
         let second = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         first.map?.setStyle(.height)
         first.map?.setBiomeBlending(true)
-        #expect(first.map?.currentRenderer.samplesNeighborBiomes == false)
+        #expect(try requiredRenderer(first.map).samplesNeighborBiomes == false)
         second.map?.setStyle(.waterDepth)
         first.saveView()
         second.saveView()
@@ -184,12 +216,12 @@ import Testing
         let restoredNether = WorldSession(resources: resources, dimensionID: "minecraft:the_nether")
         #expect(restored.map?.style == .height && restoredNether.map?.style == .waterDepth)
         first.map?.setStyle(.waterDepth)
-        restored.restoreView(from: first)
-        #expect(restored.map?.style == .waterDepth)
+        try await resources.replaceSource(from: WorldSnapshot.read(url))
+        #expect(restored.map?.style == .height && first.map?.style == .waterDepth)
         #expect(second.map?.style == .waterDepth)
         // An unreadable saved build range cannot enable a guessed height scale.
         let dimension = try #require(resources.world.dimension("overworld"))
-        let unknown = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         unknown.setStyle(.height)
         #expect(unknown.style == .normal)
         unknown.setStyle(.waterDepth)
@@ -229,15 +261,15 @@ import Testing
             let scale = try #require(map.heightScale)
             map.setStyle(.height)
             first.saveView()
-            #expect(first.resources.settings.style(for: id) == .height)
+            #expect(first.resources.settings.mapPresentation(for: id).style == .height)
 
             // A real absence changes what can be shown, not what the user chose.
             names.forgetMinecraftFolder()
             await first.resources.waitForRefresh()
             #expect(map.heightScale == nil && map.style == .normal)
-            #expect(map.currentRenderer.style == .normal && MapContent(session: first).mapStyle == .normal)
+            #expect(try requiredRenderer(map).style == .normal && MapContent(session: first).mapStyle == .normal)
             first.saveView()
-            #expect(first.resources.settings.style(for: id) == .height)
+            #expect(first.resources.settings.mapPresentation(for: id).style == .height)
             first.close()
             await first.waitUntilClosed()
 
@@ -245,36 +277,33 @@ import Testing
             let reopened = try await open(), restored = try #require(reopened.map)
             #expect(restored.heightScale == nil && restored.style == .normal)
             reopened.saveView()
-            #expect(reopened.resources.settings.style(for: id) == .height)
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
 
-            // The document reread/move path copies the choice while both maps show Normal.
-            let reread = try await open(), rereadMap = try #require(reread.map)
-            rereadMap.setStyle(.waterDepth)
-            reread.restoreView(from: reopened)
-            reread.saveView()
-            #expect(reread.resources.settings.style(for: id) == .height)
+            // Rereading the source keeps the unavailable choice in the same window.
+            try await reopened.resources.replaceSource(from: WorldSnapshot.read(root))
+            #expect(reopened.map === restored && restored.style == .normal)
+            reopened.saveView()
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
             await names.chooseMinecraftFolder(game.root)
-            for session in [reopened, reread] { await session.resources.waitForRefresh() }
-            for current in [restored, rereadMap] {
-                #expect(current.heightScale == scale && current.style == .height)
-                #expect(current.currentRenderer.style == .height)
-            }
+            await reopened.resources.waitForRefresh()
+            #expect(restored.heightScale == scale && restored.style == .height)
+            #expect(try requiredRenderer(restored).style == .height)
             #expect(MapContent(session: reopened).mapStyle == .height)
             let region = RegionPosition(x: 0, z: 0)
-            let pixels = try #require(try await restored.currentRenderer.pixels(for: region))
+            let pixels = try #require(try await (try requiredRenderer(restored)).pixels(for: region))
             let expected = MapStylePalette.heightColor(y: 40, scale: scale)
             #expect(pixel(pixels, x: 4) == [expected.red, expected.green, expected.blue, 255])
 
             for artwork in [false, true] {
                 names.minecraft.usesGameArtwork = artwork
                 await reopened.resources.waitForRefresh()
-                #expect(restored.style == .height && restored.currentRenderer.style == .height)
+                #expect(try restored.style == .height && requiredRenderer(restored).style == .height)
             }
             await names.chooseMinecraftFolder(game.root)
             await reopened.resources.waitForRefresh()
             #expect(restored.style == .height)
             reopened.saveView()
-            #expect(reopened.resources.settings.style(for: id) == .height)
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
         } catch { failure = error }
         for session in sessions { session.close() }
         for session in sessions { await session.waitUntilClosed() }
@@ -289,11 +318,12 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
-        let map = MapModel(gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
-            work: BackgroundWork(), dimension: dimension, center: .zero, heightScale: MapHeightScale(settings: settings))
+        let definitions = MapStyleDefinitions(.init(settings: settings, water: nil))
+        let map = MapModel(definitions: { definitions.value }, gameResources: { .unavailable },
+            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
-        map.setDimensionSettings(nil, water: nil)
+        definitions.value = .unknown
         #expect(map.chosenStyle == .height && map.style == .normal)
 
         let menu = NSHostingMenu(rootView: MapStyleOptions(map: map))
@@ -303,9 +333,9 @@ import Testing
         #expect(height.state == .off && !height.isEnabled)
         menu.performActionForItem(at: choice == .normal ? 0 : 2)
         #expect(map.chosenStyle == choice && map.style == choice)
-        map.setDimensionSettings(settings, water: nil)
+        definitions.value = .init(settings: settings, water: nil)
         #expect(map.chosenStyle == choice && map.style == choice)
-        #expect(map.currentRenderer.style == choice)
+        #expect(try requiredRenderer(map).style == choice)
     }
 
     @Test func bothRampsCarryTheirOrderInLightnessAsWellAsHue() {

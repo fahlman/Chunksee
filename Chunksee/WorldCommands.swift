@@ -18,34 +18,7 @@ private struct MapHeightPopoverKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
-private struct CoordinateSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
-private struct MapImageSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
-private struct MapBlockFilterSheetKey: FocusedValueKey {
-    typealias Value = Binding<Bool>
-}
-
 extension FocusedValues {
-    var mapBlockFilterSheet: Binding<Bool>? {
-        get { self[MapBlockFilterSheetKey.self] }
-        set { self[MapBlockFilterSheetKey.self] = newValue }
-    }
-
-    var mapImageSheet: Binding<Bool>? {
-        get { self[MapImageSheetKey.self] }
-        set { self[MapImageSheetKey.self] = newValue }
-    }
-
-    var coordinateSheet: Binding<Bool>? {
-        get { self[CoordinateSheetKey.self] }
-        set { self[CoordinateSheetKey.self] = newValue }
-    }
-
     var mapHeightPopover: Binding<Bool>? {
         get { self[MapHeightPopoverKey.self] }
         set { self[MapHeightPopoverKey.self] = newValue }
@@ -68,9 +41,6 @@ struct WorldCommands: Commands {
     @FocusedValue(\.worldSession) private var session
     @FocusedValue(\.focusSearch) private var focusSearch
     @FocusedBinding(\.mapHeightPopover) private var showsMapHeight
-    @FocusedBinding(\.coordinateSheet) private var showsCoordinateSheet
-    @FocusedBinding(\.mapImageSheet) private var showsImageExport
-    @FocusedBinding(\.mapBlockFilterSheet) private var showsBlockFilter
 
     var body: some Commands {
         CommandGroup(after: .pasteboard) {
@@ -104,7 +74,7 @@ struct WorldCommands: Commands {
                     session?.map?.blendsBiomeColors ?? false
                 } set: { session?.map?.setBiomeBlending($0) })
                 .help("Smooth grass, foliage and water colors across biome boundaries")
-                .disabled(session?.map?.style == .height)
+                .disabled(session?.map?.style.inputs.materialColors != true)
             }
             .disabled(session?.map == nil)
             Toggle("Use Game Artwork", isOn: $minecraft.usesGameArtwork)
@@ -122,9 +92,9 @@ struct WorldCommands: Commands {
                     session?.map?.castsShadows ?? true
                 } set: { session?.map?.setCastsShadows($0) })
             }
-            .disabled(session?.map == nil || session?.map?.style == .height)
-            Button("Show/Hide Blocks…") { showsBlockFilter = true }
-                .disabled(session?.map == nil || showsBlockFilter == nil)
+            .disabled(session?.map?.style.inputs.lighting != true)
+            Button("Show/Hide Blocks…") { session?.presentSheet(.blockFilter) }
+                .disabled(session?.map == nil)
             Button("Map Height…") { showsMapHeight = true }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
                 .disabled(session?.map == nil || showsMapHeight == nil)
@@ -136,8 +106,8 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("-", modifiers: [.command, .control])
                 .buttonRepeatBehavior(.enabled)
                 .disabled(session?.map == nil || session?.map?.depth.y == Int.min)
-            Button("Create Map Image…") { showsImageExport = true }
-                .disabled(session?.map == nil || showsImageExport == nil)
+            Button("Create Map Image…") { session?.presentSheet(.imageExport) }
+                .disabled(session?.map == nil)
             Toggle("Surface", isOn: Binding {
                 session?.map?.depth.isSurface ?? true
             } set: { isSurface in
@@ -151,12 +121,12 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("i")
             inspectorCommand("Storage", inspector: .storage)
             Toggle("Time Spent", isOn: Binding {
-                session?.heatMap.isShown ?? false
-            } set: { session?.heatMap.isShown = $0 })
+                session?.visibility.showsTimeSpent ?? false
+            } set: { session?.visibility.showsTimeSpent = $0 })
             .disabled(session?.map == nil)
             Toggle("Slime Chunks", isOn: Binding {
-                session?.slimeChunks.isShown ?? false
-            } set: { session?.slimeChunks.isShown = $0 })
+                session?.visibility.showsSlimeChunks ?? false
+            } set: { session?.visibility.showsSlimeChunks = $0 })
             .disabled(session?.slimeChunks.isAvailable != true)
             Toggle("Dark Spots", isOn: Binding {
                 session?.map?.showsDarkSpots ?? false
@@ -186,9 +156,9 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("]")
                 .disabled(session?.navigation.canGoForward != true)
             Divider()
-            Button("Go to Coordinates…") { showsCoordinateSheet = true }
+            Button("Go to Coordinates…") { session?.presentSheet(.coordinates) }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(session?.map == nil || showsCoordinateSheet == nil)
+                .disabled(session?.map == nil)
             // ⇧⌘H, like Finder's Go ▸ Home.
             Button("Go to Spawn") { session?.routing.goToSpawn() }
             .keyboardShortcut("h", modifiers: [.command, .shift])

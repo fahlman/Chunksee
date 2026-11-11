@@ -9,12 +9,12 @@ import Testing
     func defaultNamespaceUsesTheSameNamesAndGroups(prefix: String) throws {
         #expect(ReadableName.from(prefix + "diamond_sword") == "Diamond Sword")
         #expect(ItemAppearance.symbol(for: prefix + "diamond_sword") == ItemAppearance.symbol(for: "minecraft:diamond_sword"))
-        #expect(PlayerRecords.travelName(prefix + "aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
-        #expect(WorldDetails.readableRule(prefix + "keep_inventory") == "Keep Inventory")
-        #expect(PetDetailText.name(prefix + "red_blue") == "Red Blue")
+        #expect(GameNames.unavailable.name(prefix + "aviate_one_cm", in: "stat") == "Aviate One Cm")
+        #expect(GameNames.unavailable.gameRule(prefix + "keep_inventory") == "Keep Inventory")
+        #expect(GameNames.unavailable.appearanceValue(prefix + "red_blue") == "Red Blue")
         #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)
         let bed = PlaceMarker(PointOfInterest(type: prefix + "home", x: 1, y: 64, z: 2, freeTickets: 0))
-        #expect(bed.group == .bed && bed.name == "Villager’s Bed")
+        #expect(bed.group == .bed && bed.name(in: .unavailable) == "Villager’s Bed")
     }
 
     @Test func customAndUnfamiliarNamesStayVisibleWithoutBecomingVanillaGroups() {
@@ -25,7 +25,7 @@ import Testing
         #expect(!BlockColors.isWater("mod:water"))
         #expect(ReadableName.from("mod:minecraft:home") == "Mod:minecraft:home")
         #expect(ReadableName.from("minecraft:") == "Minecraft:")
-        #expect(WorldDetails.readableRule("doDaylightCycle") == "Do Daylight Cycle")
+        #expect(GameNames.unavailable.gameRule("doDaylightCycle") == "Do Daylight Cycle")
     }
 
     @Test(arguments: ["minecraft:", "", ":"])
@@ -42,7 +42,7 @@ import Testing
         #expect(blocks.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })
         #expect(columns.compactMap { $0 }.allSatisfy { $0.y == 3 && $0.waterDepth == 3 })
         let first = try #require(blocks.first.flatMap { $0 })
-        #expect(MapView.describe(first) == "Water, 3 deep")
+        #expect(GameNames.unavailable.blockDescription(first) == "Water, 3 deep")
         #expect(BlockColors.isWater(prefix + "bubble_column"))
     }
 
@@ -86,8 +86,8 @@ import Testing
         let data = try PropertyListEncoder().encode([stale])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
-        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, structureGroups: groups)).structures
-        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Village Plains")
+        let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, inputs: .init(structureGroups: groups))).structures
+        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name(in: .unavailable) == "Village Plains")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 }
