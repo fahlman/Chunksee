@@ -2299,7 +2299,18 @@ MapView.readout requires an explicit naming snapshot, and its former describe po
 The shared equipment section gets its slot headings from GameNames.equipmentSlot, preserving the
 existing app wording and readable fallback for unfamiliar saved slots. EquipmentPresentation owns
 only the nonempty rows and their order; player and creature equipment membership is unchanged.
-Game-rule consumers and the final naming audit remain before foundation step 5e and #438 are
+World Info gets game-rule names and sorted rows from GameNames, retaining every raw saved ID and
+value. Modern IDs use the game's registry description-key format. Older literal keys can use the
+direct replacement exposed by Kit 0.82.0 from the selected game's language metadata; the app does
+not guess replacements or follow chains. Per-key selected-language/English fallback and readable
+saved words remain available without artwork or game files. WorldDetails retains the typed
+wandering-trader rule interpretation and no longer formats rule names.
+The registry description-key format has one owner inside GameNames. Displayed rule, block,
+map-group and mob names use its shared localized natural comparison with saved IDs as the
+equal-name tie-break; storage and search item summaries use that comparison after their existing
+quantity priority. Linked pets use it within each dimension, retaining dimension-first grouping.
+LayerGroups asks the service for ordered groups and does not choose its own name order.
+The final naming audit remains before foundation step 5e and #438 are
 complete. These source changes retain the applicable map timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
