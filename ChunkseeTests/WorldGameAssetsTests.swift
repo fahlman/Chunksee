@@ -8,6 +8,38 @@ import Synchronization
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldGameAssetsTests {
+    @Test func folderObservationSeesOnlyTheCompletedChoiceAndItsPermission() async throws {
+        let first = try ItemPictureFixture(), second = try ItemPictureFixture()
+        defer { first.remove(); second.remove() }
+        let defaults = TestDefaults.make(), minecraft = MinecraftResources(defaults: defaults)
+        minecraft.usesGameArtwork = false
+        let folders: [URL?] = [first.root, second.root, nil, first.root]
+        for folder in folders {
+            let previous = minecraft.generation
+            let delivered = Mutex<(UUID, URL?, URL?)?>(nil)
+            withObservationTracking(options: [.didSet]) {
+                _ = minecraft.generation
+                _ = minecraft.folder
+                _ = minecraft.access
+            } onChange: { event in
+                event.cancel()
+                MainActor.assumeIsolated {
+                    delivered.withLock { $0 = (minecraft.generation, minecraft.folder, minecraft.access?.url) }
+                }
+            }
+            if let folder { minecraft.choose(folder) } else { minecraft.forget() }
+            let publication = try #require(delivered.withLock { $0 })
+            #expect(publication.0 != previous && publication.0 == minecraft.generation)
+            #expect(publication.1 == folder && publication.2 == folder)
+            #expect(!minecraft.usesGameArtwork)
+            let restored = MinecraftResources(defaults: defaults)
+            #expect(restored.folder?.standardizedFileURL == folder?.standardizedFileURL)
+            #expect(!restored.usesGameArtwork)
+            #expect((try await minecraft.readLibrary() != nil) == (folder != nil))
+        }
+        minecraft.forget(); await minecraft.waitUntilIdle()
+    }
+
     @Test func sourceChangesDoNotMultiplyMapRenderRequests() async throws {
         let game = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:stone")], biomes: ["test:sample"])
@@ -16,8 +48,17 @@ import Synchronization
                                 sections: [section], extra: ["yPos": .int(0)]))])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(World(contentsOf: root).dimension("overworld"))
-        let resources = try await resources(root, game: game)
-        let session = WorldSession(resources: resources)
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.choose(game.root)
+        let assetReads = Mutex<[UUID]>([])
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { minecraft in
+                let generation = await minecraft.generation
+                assetReads.withLock { $0.append(generation) }
+                return try await minecraft.readLibrary()
+            })
+        let session = WorldSession(resources: resources), hidden = WorldSession(resources: resources)
         await resources.waitForRefresh()
         let drawings = Mutex<[MapGameResources.Identity]>([])
         let map = MapModel(definitions: { .unknown }, gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
@@ -33,12 +74,14 @@ import Synchronization
         for _ in 0..<3 {
             for available in [false, true] {
                 drawings.withLock { $0.removeAll() }
+                assetReads.withLock { $0.removeAll() }
                 if available { resources.names.minecraft.choose(game.root) }
                 else { resources.names.minecraft.forget() }
                 await resources.waitForRefresh()
                 await resources.backgroundWork.waitUntilFinished()
                 await map.waitUntilIdle(); await map.waitForRenders()
                 let actual = drawings.withLock { $0 }
+                #expect(assetReads.withLock { $0 } == [names.minecraft.generation])
                 let distinct = actual.reduce(into: [MapGameResources.Identity]()) { values, value in
                     if !values.contains(value) { values.append(value) }
                 }
@@ -46,9 +89,10 @@ import Synchronization
                 #expect(actual.count == distinct.count,
                         "One source transition must not restart the same map drawing through duplicate observers")
                 #expect(try (requiredRenderer(map).gameData != nil) == available)
+                #expect(try requiredRenderer(session.map).gameData === requiredRenderer(hidden.map).gameData)
             }
         }
-        map.close(); session.close(); resources.close()
+        map.close(); session.close(); hidden.close(); resources.close()
         await resources.waitUntilClosed()
         resources.names.minecraft.forget(); await resources.names.minecraft.waitUntilIdle()
     }
@@ -282,6 +326,16 @@ import Synchronization
         let artworkKey = try #require((try requiredRenderer(map)).colorSourceKey)
         #expect(!map.detailImages.isEmpty)
         let observation = observe(first, source: source)
+        let colorReads = Mutex<Int>(0)
+        for resources in [first, second] {
+            resources.readBiomeColors = { world, data, artwork, previous, reload in
+                colorReads.withLock { $0 += 1 }
+                return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork, previous: previous, reload: reload)
+            }
+        }
+        names.minecraft.usesGameArtwork = true
+        await first.waitForRefresh(); await second.waitForRefresh()
+        #expect(colorReads.withLock { $0 } == 0) // Assigning the same choice is not a refresh.
 
         names.minecraft.usesGameArtwork = false
         await expectUpdate(observation)
@@ -297,6 +351,10 @@ import Synchronization
         #expect(first.details.definitions == definitions && first.readers["minecraft:overworld"] === readers["minecraft:overworld"])
         #expect(await names.minecraft.library()?.data === library.data && names.minecraft.generation == source.generation)
         #expect(first.biomeColors?.outlineColor(for: "test:sample", at: .zero) == MapColor(0x123456))
+        #expect(colorReads.withLock { $0 } == 2) // One producer per world, independent of tab count.
+        names.minecraft.usesGameArtwork = false
+        await first.waitForRefresh(); await second.waitForRefresh()
+        #expect(colorReads.withLock { $0 } == 2)
 
         names.minecraft.usesGameArtwork = true
         await first.waitForRefresh(); await second.waitForRefresh(); await map.waitForRenders()
@@ -304,8 +362,31 @@ import Synchronization
         #expect(try requiredRenderer(map).colorSourceKey == artworkKey && !map.detailImages.isEmpty)
         #expect(try ItemPictureFixture.pixels(try #require(map.tiles[.init(x: 0, z: 0)]?.image)).bytes == originalPixels)
         #expect(first.details.definitions == definitions)
+        #expect(colorReads.withLock { $0 } == 4)
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed(); await names.minecraft.waitUntilIdle()
+        names.minecraft.usesGameArtwork = false
+        await first.waitForRefresh(); await second.waitForRefresh()
+        #expect(colorReads.withLock { $0 } == 4)
+    }
+
+    @Test func gameObservationDoesNotRetainAClosedWorld() async throws {
+        let game = try artworkFixture(), root = try TestWorld.make(chunks: [])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        var world: WorldResources? = try await resources(root, game: game)
+        let minecraft = try #require(world?.names.minecraft)
+        await world?.waitForRefresh()
+        weak let released = world
+        world?.close(); await world?.waitUntilClosed()
+        world = nil
+        #expect(released == nil)
+        minecraft.usesGameArtwork = false
+        minecraft.forget()
+        minecraft.choose(game.root)
+        await minecraft.waitUntilIdle()
+        #expect(released == nil)
+        #expect(try await minecraft.readLibrary() != nil)
+        minecraft.forget(); await minecraft.waitUntilIdle()
     }
 
     @Test func delayedArtworkColorsCannotReturnAfterTheSwitchIsOff() async throws {

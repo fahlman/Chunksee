@@ -94,12 +94,12 @@ extension EnvironmentValues {
 /// A document retains its shared library. Changing the chosen folder makes
 /// old pictures ineligible immediately. A Mac scene can stay active without focus,
 /// so focus returning to the document separately rechecks the installed game files.
+/// The world observes folder changes; this modifier revalidates on activation, focus or language change.
 struct WorldGameAssets: ViewModifier {
     let world: WorldResources
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.appearsActive) private var appearsActive
     private struct Request: Equatable {
-        let source: WorldGameAssetSource
         let phase: ScenePhase
         let world: ObjectIdentifier
         let preferredLanguage: String
@@ -115,7 +115,7 @@ struct WorldGameAssets: ViewModifier {
             .onChange(of: appearsActive) { _, active in
                 if active { refresh(preferredLanguage: preferredLanguage) }
             }
-            .task(id: Request(source: source, phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
+            .task(id: Request(phase: scenePhase, world: ObjectIdentifier(world), preferredLanguage: preferredLanguage)) {
                 guard scenePhase == .active else { return }
                 refresh(preferredLanguage: preferredLanguage)
             }

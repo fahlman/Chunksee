@@ -54,6 +54,7 @@ final class WorldResources {
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
+    @ObservationIgnored private var gameResourceObservation: ModelObservation?
     @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
@@ -147,7 +148,6 @@ final class WorldResources {
         LanguageSource(generation: names.minecraft.generation, library: gameData,
                        preference: languagePreference, folder: names.minecraft.folder)
     }
-    @ObservationIgnored private var assetObserver: UUID?
     var readDefinitions: WorldDefinitionLoader.ReadDefinitions {
         get { definitionLoader.readDefinitions }
         set { definitionLoader.readDefinitions = newValue }
@@ -324,12 +324,7 @@ final class WorldResources {
             }
         }
         watchCurrentSource()
-        assetObserver = names.minecraft.observeChanges { [weak self] change in
-            switch change {
-            case .source: self?.refreshGameAssets()
-            case .artwork: self?.refreshGameArtwork()
-            }
-        }
+        observeGameResources()
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
@@ -440,6 +435,18 @@ final class WorldResources {
 
     /// All dimension views share one source request. Permission changes also reach hidden tabs,
     /// whose SwiftUI tasks may not run until they become visible again.
+    private func observeGameResources() {
+        gameResourceObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (generation: $0.names.minecraft.generation, artwork: $0.names.minecraft.usesGameArtwork)
+        }) { resources, previous in
+            if resources.names.minecraft.generation != previous.generation {
+                resources.refreshGameAssets()
+            } else if resources.names.minecraft.usesGameArtwork != previous.artwork {
+                resources.refreshGameArtwork()
+            }
+        }
+    }
+
     func refreshGameAssets() {
         guard !isClosed else { return }
         let source = WorldGameAssetSource(generation: names.minecraft.generation)
@@ -669,9 +676,8 @@ final class WorldResources {
 
     func close() {
         guard !isClosed else { return }
+        gameResourceObservation?.cancel()
         isClosed = true
-        if let assetObserver { names.minecraft.stopObserving(assetObserver) }
-        assetObserver = nil
         openings = []
         pendingActions = [:]
         watcher?.stop()

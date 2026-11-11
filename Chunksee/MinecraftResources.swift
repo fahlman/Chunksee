@@ -6,23 +6,26 @@ import Observation
 /// Reads retain their access until they finish, even when Settings removes the folder.
 @Observable
 final class MinecraftResources {
-    enum Change { case source, artwork }
+    /// Permission and its readers change together; observers never see an intermediate removal.
+    private struct Source {
+        let generation = UUID()
+        let access: WorldReadAccess?
+        let libraries = GameResourceLibraries()
+    }
 
-    private(set) var generation = UUID()
+    private var source = Source(access: nil)
+    var generation: UUID { source.generation }
     var usesGameArtwork: Bool {
         didSet {
             guard usesGameArtwork != oldValue else { return }
             defaults.set(usesGameArtwork, forKey: Self.artworkKey)
-            for observer in observers.values { observer(.artwork) }
         }
     }
     var folder: URL? { access?.url }
-    private(set) var access: WorldReadAccess?
+    var access: WorldReadAccess? { source.access }
     private let defaults: UserDefaults
     private let work = BackgroundWork()
     @ObservationIgnored private lazy var reads = work.makeScope()
-    private var libraries = GameResourceLibraries()
-    @ObservationIgnored private var observers: [UUID: (Change) -> Void] = [:]
     private static let bookmarkKey = "minecraftFolderBookmark"
     private static let artworkKey = "usesGameArtwork"
 
@@ -36,46 +39,34 @@ final class MinecraftResources {
             defaults.removeObject(forKey: Self.bookmarkKey)
             return
         }
-        access = WorldReadAccess(url)
+        source = Source(access: WorldReadAccess(url))
     }
 
     isolated deinit { work.close() }
 
     func choose(_ url: URL) {
-        retire()
-        access = WorldReadAccess(url)
+        let access = WorldReadAccess(url)
         let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                                              includingResourceValuesForKeys: nil, relativeTo: nil)
         defaults.set(bookmark, forKey: Self.bookmarkKey)
-        for observer in observers.values { observer(.source) }
+        replaceSource(access)
     }
 
     func forget() {
-        retire()
-        for observer in observers.values { observer(.source) }
+        defaults.removeObject(forKey: Self.bookmarkKey)
+        replaceSource(nil)
     }
 
-    func observeChanges(_ action: @escaping (Change) -> Void) -> UUID {
-        let id = UUID()
-        observers[id] = action
-        return id
-    }
-
-    func stopObserving(_ id: UUID) { observers[id] = nil }
-
-    private func retire() {
-        generation = UUID()
+    private func replaceSource(_ access: WorldReadAccess?) {
+        let previous = source
         reads.cancel()
-        let previousLibraries = libraries, previousAccess = access
-        access = nil
-        libraries = GameResourceLibraries()
         // Hidden native tabs may not run a view task when the generation changes. Retire all
         // previous readers here, keeping permission until their current actor work finishes.
         work.start(priority: .utility) {
-            await previousLibraries.close()
-            withExtendedLifetime(previousAccess) {}
+            await previous.libraries.close()
+            withExtendedLifetime(previous.access) {}
         }
-        defaults.removeObject(forKey: Self.bookmarkKey)
+        source = Source(access: access)
     }
 
     /// This is the only artwork-policy decision; the data handle exposes no artwork methods.
@@ -92,7 +83,7 @@ final class MinecraftResources {
     func readLibrary() async throws -> GameResourceLibrary? {
         try Task.checkCancellation()
         guard let access else { return nil }
-        let generation = generation, libraries = libraries
+        let generation = generation, libraries = source.libraries
         var result: Result<GameResourceLibrary?, any Error> = .failure(CancellationError())
         guard let task = reads.start(priority: .utility, operation: { [weak self] in
             defer { withExtendedLifetime(access) {} }

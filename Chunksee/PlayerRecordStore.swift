@@ -1,6 +1,5 @@
 import ChunkseeKit
 import Foundation
-import Observation
 
 /// The world owns one read and completed value per requested player. Windows own only handles.
 final class PlayerRecordStore {

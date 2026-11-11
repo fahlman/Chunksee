@@ -577,14 +577,14 @@ older scan envelopes.
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `WorldQueryStore.swift` | Independent per-dimension search controls, saved-query commands and the shared sidebar/map result projection; WorldQueryStore owns the world's typed and saved query publications |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
-| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; newest installed release selection, file identity and weak sharing across live documents |
+| `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; coherent observed source replacement, newest installed release selection, file identity and weak sharing across live documents |
 | `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
 | `GameArtworkLibrary.swift`, `GameModelRenderer.swift`, `ItemTexture.swift` | Off-main model/texture/thumbnail caches, saved tint adoption, native PNG decoding, orthographic projection and nearest-neighbor drawing of Kit's resolved geometry |
 | `RegionReader.swift`, `ScanCache.swift` | Coalesced Kit region reads, one versioned facts envelope per region, cancellation and draining when a world closes |
 | `CacheKey.swift` | Current file size/date stamps and stable hashes shared by tile and scan cache keys; each cache owns its entry format/version |
 | `BackgroundWork.swift`, `RefreshLoader.swift` | Scoped task registration, cancellation and draining, plus retained-value refresh with producer-merged typed demand |
-| `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
 | `ModelObservation.swift` | Main-actor synchronous model observation, with weak ownership, registration identity and one rearming policy |
+| `PlayerRecords.swift`, `PlayerRecordStore.swift` | Statistics and advancement snapshots, world-owned keyed reads and per-window demand handles |
 | `WorldCommands.swift` | Map and navigation menus routed to the focused document; SwiftUI supplies sidebar and inspector commands |
 | `ReadOnlyDocumentMenus.swift` | A small AppKit menu hook that removes editing actions while preserving native Open, Open Recent, Close and Close All; SwiftUI's save group includes Close and has no separate Rename/Move placements |
 | `SettingsView.swift` | Settings: one Minecraft folder for local names/item pictures, and optional online name lookup |
@@ -805,14 +805,6 @@ actor, so the callback's actor assertion is safe and invalidates drawing work sy
 the value changes. Maps keep no editable lighting copy, and WorldResources pushes no lighting into
 them. This also works for hidden and newly attached dimensions. Render jobs keep their existing
 revision and typed-key checks; observation creates no background task or competing lifetime owner.
-ModelObservation owns registration identity, cancellation and rearming for the ten subscriptions
-in MapModel, HeatMapLayer, SlimeChunkLayer, PlayerRecordStore, SelectionModel, WorldIndexStore,
-WorldQueryStore and WorldSession. It tracks new dependencies before reacting and rejects callbacks
-captured before their registration was retired, so nested source changes cannot multiply subscriptions.
-Models hold observations, observations hold
-owners weakly, and explicit close cancels reactions. The slime layer also stops observing when its
-world closes. Existing invalidation and record-demand decisions stay in their models; no native
-resource-notification migration is introduced here.
 The required game-resources accessor follows the same observation contract. WorldResources
 derives MapGameResources from its current data, artwork and biome-color publications; source
 replacement clears old values before publishing the new token. MapGameResources admits colors
@@ -1842,7 +1834,11 @@ while choosing a source. One file shares its separate data and artwork actors ac
 
 A changed folder generation retires the previous registry through MinecraftResources' background
 owner, clearing each live archive/cache after current synchronous drawing ends and retaining file
-access until cleanup completes. MinecraftResources also notifies each open world directly.
+access until cleanup completes. Permission, registry and generation publish as one observed source
+value after the bookmark is updated. WorldResources observes that source and the artwork choice
+through Observation, including when every tab is hidden. No custom Minecraft notification list
+remains. An unchanged artwork choice requests no new read; a closed world ignores later
+changes, and its observation does not retain it.
 WorldResources owns one game-library RefreshLoader, seeded with WorldPreparation's actual source
 and completed selection. A successful selection can contain no library, independently of a failed
 or unfinished read. Same-source activations coalesce while preserving completed progress; a folder
@@ -1858,13 +1854,24 @@ The loader invokes that continuation after synchronous Observation delivery retu
 publishing turn and at the caller's priority. Failed reads and closing publish no dependent work.
 Current-source/read guards run after delivery and again after the continuation, because either can
 replace the source or close the loader. This avoids nested delivery and a deferred-task gap before
-dependent requests. Map observers remain unchanged; the continuation only schedules producer work.
+dependent requests. The continuation only schedules producer work; map consumers observe the
+published values. ModelObservation owns the same synchronous tracking lifetime for map, world,
+index, query, player-record, selection and overlay consumers. It cancels a fired registration and
+rejects already-captured retired callbacks before rearming. The next registration is installed
+before the reaction, preserving changes made by nested publications. Reads only capture inputs;
+reactions retain each model's existing invalidation and request policy. Models cancel their
+observation when closing, and observation never retains its owner. The slime layer also stops
+observing when its world closes. It adds no background task or editable snapshot. The native
+continuous-observation runner is asynchronous, so these consumers
+keep didSet tracking to invalidate old sources before the setter returns.
 View environment values derive from that publication, so first load and archive replacement
 update visible item pictures without another scene event. Returning to an active scene rechecks
 file identity. `WorldGameAssets` also observes SwiftUI's `appearsActive`: returning focus to a
 document rechecks through the same world loader, since a Mac scene can remain active while
-another app has focus. Losing focus adds no refresh. Initial/source/language and scene-phase
-requests remain intact, and overlapping requests still coalesce in the shared loader.
+another app has focus. Losing focus adds no refresh. The view task follows activation, world
+identity and language preference; source replacement belongs to the world observer and cannot
+also restart that task. Initial, focus, language and scene-phase requests remain intact, and
+overlapping requests still coalesce in the shared loader.
 Definition, player and index generations reject canceled/closed-world results.
 A jar is an immutable snapshot; no artwork is extracted or shipped. Tests retain old libraries
 across Remove/rechoose and close a registry containing two files. The native regression also
