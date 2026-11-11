@@ -274,7 +274,7 @@ enum StructureTestWorld {
         #expect(refreshed.creature.appearance?.variant == "minecraft:woods")
         #expect(refreshed.creature.equipment?["body"]?.id == "minecraft:wolf_armor")
         guard case .creature(let detail)? = session.selection.inspectorItem else { Issue.record("Missing refreshed creature details"); return }
-        #expect(detail == refreshed)
+        #expect(detail.marker == refreshed)
         #expect(session.selection.highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))] && MapContent(session: session).highlighted == [.row(.creature(refreshed.id)), .row(.mobCreature(refreshed.id))])
         #expect(refreshed.creature.owner == pet.creature.owner && refreshed.position == pet.position)
         session.map?.viewport.scale = 0.125

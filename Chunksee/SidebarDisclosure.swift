@@ -32,16 +32,14 @@ struct SidebarDisclosure {
         case .place(let marker)?:
             collapsedSections.remove(.places)
             places.insert(marker.group)
-        case .creature(let marker)?:
-            if case .mobCreature = item {
+        case .creature(let selection)?:
+            switch selection.list {
+            case .mobs(let id):
                 collapsedSections.remove(.mobs)
-                mobTypes.insert(marker.creature.id)
-            } else if marker.group == .mob {
-                collapsedSections.remove(.mobs)
-                mobTypes.insert(marker.creature.id)
-            } else {
+                mobTypes.insert(id)
+            case .creatures(let group):
                 collapsedSections.remove(.creatures)
-                creatures.insert(marker.group)
+                creatures.insert(group)
             }
         case .mobType?: collapsedSections.remove(.mobs)
         case .biome(let marker)?:
