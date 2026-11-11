@@ -68,6 +68,21 @@ nonisolated struct GameNames: Sendable {
         translation(id, in: "item") ?? translation(id, in: "block") ?? ReadableName.from(id)
     }
 
+    func equipmentSlot(_ slot: String, locale: Locale = .current) -> String {
+        switch slot {
+        case "body": String(localized: "Body", locale: locale)
+        case "saddle": String(localized: "Saddle", locale: locale)
+        case "storage": String(localized: "Storage", locale: locale)
+        case "head": String(localized: "Head", locale: locale)
+        case "chest": String(localized: "Chest", locale: locale)
+        case "legs": String(localized: "Legs", locale: locale)
+        case "feet": String(localized: "Feet", locale: locale)
+        case "mainhand": String(localized: "Main Hand", locale: locale)
+        case "offhand": String(localized: "Off Hand", locale: locale)
+        default: ReadableName.from(slot)
+        }
+    }
+
     func entity(_ id: String) -> String { name(id, in: "entity") }
 
     func creature(_ creature: Creature) -> String {
