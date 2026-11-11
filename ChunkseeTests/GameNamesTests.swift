@@ -102,9 +102,9 @@ enum GameNameFixture {
             #expect(GameNames.unavailable.appearanceValue("minecraft:" + id) == expected)
         }
         #expect(ReadableName.from("minecraft:abandoned_camp_old_growth_pine_taiga") == "Abandoned Camp Old Growth Pine Taiga")
-        #expect(LootTableName.name("minecraft:chests/simple_dungeon") == "Simple Dungeon Loot")
-        #expect(LootTableName.name("minecraft:chests/jungle_temple") == "Jungle Temple Loot")
-        #expect(LootTableName.name("minecraft:chests/abandoned_mineshaft") == "Abandoned Mineshaft Loot")
+        #expect(GameNames.unavailable.lootTable("minecraft:chests/simple_dungeon") == "Simple Dungeon Loot")
+        #expect(GameNames.unavailable.lootTable("minecraft:chests/jungle_temple") == "Jungle Temple Loot")
+        #expect(GameNames.unavailable.lootTable("minecraft:chests/abandoned_mineshaft") == "Abandoned Mineshaft Loot")
     }
 
     @Test func translatedBlockSearchMatchesTheDisplayedNameAndStillAcceptsIDs() async throws {

@@ -50,7 +50,8 @@ import SwiftUI
                     let locations = content.accessibleLocations(viewport: viewport, size: size)
                     #expect(locations.map(\.id) == expectedPlaces.map { "place-" + $0.id } + expectedCreatures.map { "creature-" + $0.id })
                     #expect(content.scene(viewport: viewport, size: size).items.map(\.id) == locations.map(\.id))
-                    #expect(locations.map(\.name) == expectedPlaces.map(\.name) + expectedCreatures.map { $0.name(in: content.gameNames) })
+                    #expect(locations.map(\.name) == expectedPlaces.map { $0.name(in: content.gameNames) }
+                            + expectedCreatures.map { $0.name(in: content.gameNames) })
                     #expect(locations.map(\.position) == expectedPlaces.map(\.position) + expectedCreatures.map(\.position))
                     #expect(locations.map(\.target) == expectedPlaces.map { MapTarget.row(.place($0.id)) } + expectedCreatures.map { MapTarget.row(.creature($0.id)) })
                     if scale == 2 && shown.contains(.spawner) {

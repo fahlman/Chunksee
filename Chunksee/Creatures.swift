@@ -4,19 +4,10 @@ import ChunkseeKit
 import ChunkseeIndex
 import SwiftUI
 
-/// Shared category identity with native names, symbols, colors and visibility defaults.
+/// Shared category identity with native symbols, colors and visibility defaults.
 typealias CreatureGroup = CreatureEntry.Group
 
 extension CreatureGroup {
-    nonisolated var name: String {
-        switch self {
-        case .named: String(localized: "Named Creatures")
-        case .pet: String(localized: "Pets")
-        case .villager: String(localized: "Villagers and Traders")
-        case .mob: String(localized: "Mobs")
-        }
-    }
-
     nonisolated var symbol: String {
         switch self {
         case .named: "tag.fill"

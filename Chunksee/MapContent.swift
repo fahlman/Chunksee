@@ -67,11 +67,7 @@ struct MapContent {
     /// "Plains · Deep Dark below".
     func biomeDescription(at block: CGPoint) -> String? {
         guard let chunk = Self.chunk(at: block) else { return nil }
-        let surface = biome(at: block).map(ReadableName.from)
-        let caves = (caveBiomes[chunk] ?? []).map(ReadableName.from)
-        let below = caves.isEmpty ? nil : String(localized: "\(caves.formatted(.list(type: .and))) below")
-        let parts = [surface, below].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return gameNames.biomeDescription(surface: biomes[chunk], caves: caveBiomes[chunk] ?? [])
     }
 
     private static func chunk(at block: CGPoint) -> ChunkPosition? {

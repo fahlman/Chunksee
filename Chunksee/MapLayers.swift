@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A kind of map marker that the sidebar lists, and can show or hide.
 nonisolated protocol MapLayerGroup: Hashable {
-    var name: String { get }
+    func name(in gameNames: GameNames) -> String
     var symbol: String { get }
 }
 
@@ -22,21 +22,31 @@ nonisolated protocol MapLayerMarker: Identifiable where ID == String {
 }
 
 extension MapLayerMarker {
-    nonisolated func searchText(in gameNames: GameNames) -> String { name(in: gameNames) + " " + group.name }
+    nonisolated func searchText(in gameNames: GameNames) -> String { name(in: gameNames) + " " + group.name(in: gameNames) }
 }
 
-extension StructureGroup: MapLayerGroup {}
-extension PlaceGroup: MapLayerGroup {}
-extension CreatureGroup: MapLayerGroup {}
+extension StructureGroup: MapLayerGroup {
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
+extension PlaceGroup: MapLayerGroup {
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
+extension CreatureGroup: MapLayerGroup {
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.group(self) }
+}
 extension StructureMarker: MapLayerMarker {
     var yCoordinate: Double? { y.map(Double.init) }
-    nonisolated func name(in gameNames: GameNames) -> String { name }
-    nonisolated func searchText(in gameNames: GameNames) -> String { name + " " + group.name + " " + structureID }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.structure(structureID) }
+    nonisolated func searchText(in gameNames: GameNames) -> String {
+        name(in: gameNames) + " " + group.name(in: gameNames) + " " + structureID
+    }
 }
 extension PlaceMarker: MapLayerMarker {
     var yCoordinate: Double? { Double(y) }
-    nonisolated func name(in gameNames: GameNames) -> String { name }
-    nonisolated func searchText(in gameNames: GameNames) -> String { [name, group.name, type, mob ?? "", lootTable ?? ""].joined(separator: " ") }
+    nonisolated func name(in gameNames: GameNames) -> String { gameNames.place(self) }
+    nonisolated func searchText(in gameNames: GameNames) -> String {
+        [name(in: gameNames), group.name(in: gameNames), type, mob ?? "", lootTable ?? ""].joined(separator: " ")
+    }
 }
 extension CreatureMarker: MapLayerMarker {
     var yCoordinate: Double? { creature.y }
@@ -61,7 +71,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
 
     var body: some View {
         let byGroup = Dictionary(grouping: markers, by: \.group)
-        let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name < $1.name }
+        let groups = Set(byGroup.keys).union(allGroups).sorted { $0.name(in: gameNames) < $1.name(in: gameNames) }
         ForEach(groups, id: \.self) { group in
             if byGroup[group] == nil {
                 row(group, count: 0)
@@ -105,7 +115,7 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
             }
         }
         return MapVisibilityRow(isShown: visibility) {
-            Label(CountedText.label(group.name, count: count, locale: locale), systemImage: group.symbol)
+            Label(CountedText.label(group.name(in: gameNames), count: count, locale: locale), systemImage: group.symbol)
         }
     }
 

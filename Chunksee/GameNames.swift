@@ -150,11 +150,11 @@ nonisolated struct GameNames: Sendable {
 
     func creatureCaption(_ marker: CreatureMarker) -> String {
         let kind = entity(marker.creature.id)
-        return creature(marker.creature) == kind ? marker.group.name : kind
+        return creature(marker.creature) == kind ? group(marker.group) : kind
     }
 
     func creatureSearchText(_ marker: CreatureMarker) -> String {
-        creatureSearchText(marker.creature) + " " + marker.group.name
+        creatureSearchText(marker.creature) + " " + group(marker.group)
     }
 
     func creatureSearchText(_ creature: Creature) -> String {

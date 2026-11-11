@@ -14,7 +14,7 @@ import Testing
         #expect(GameNames.unavailable.appearanceValue(prefix + "red_blue") == "Red Blue")
         #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)
         let bed = PlaceMarker(PointOfInterest(type: prefix + "home", x: 1, y: 64, z: 2, freeTickets: 0))
-        #expect(bed.group == .bed && bed.name == "Villager’s Bed")
+        #expect(bed.group == .bed && bed.name(in: .unavailable) == "Villager’s Bed")
     }
 
     @Test func customAndUnfamiliarNamesStayVisibleWithoutBecomingVanillaGroups() {
@@ -87,7 +87,7 @@ import Testing
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
         let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, inputs: .init(structureGroups: groups))).structures
-        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name == "Village Plains")
+        #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name(in: .unavailable) == "Village Plains")
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 }

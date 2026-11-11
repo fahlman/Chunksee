@@ -7,21 +7,6 @@ import SwiftUI
 nonisolated enum PlaceGroup: String, CaseIterable, Codable, Sendable {
     case portal, bell, lodestone, bed, workstation, beeNest, lightningRod, spawner, unopenedLoot, other
 
-    var name: String {
-        switch self {
-        case .portal: String(localized: "Nether Portals")
-        case .bell: String(localized: "Village Bells")
-        case .lodestone: String(localized: "Lodestones")
-        case .bed: String(localized: "Beds")
-        case .workstation: String(localized: "Villager Workstations")
-        case .beeNest: String(localized: "Bee Nests and Hives")
-        case .lightningRod: String(localized: "Lightning Rods")
-        case .spawner: String(localized: "Monster Spawners")
-        case .unopenedLoot: String(localized: "Unopened Loot")
-        case .other: String(localized: "Other Places")
-        }
-    }
-
     var symbol: String {
         switch self {
         case .portal: "oval.portrait.fill"
@@ -93,26 +78,6 @@ nonisolated struct PlaceMarker: Identifiable, Equatable, Sendable {
     var lootTable: String?
     /// The saved block location is absent for entity loot containers and grouped locations.
     var blockPosition: BlockPosition?
-
-    var name: String {
-        let base = ReadableName.identifierPath(type)
-        switch group {
-        case .portal: return String(localized: "Nether Portal")
-        case .bell: return String(localized: "Village Bell")
-        case .lodestone: return String(localized: "Lodestone")
-        case .bed: return isClaimed ? String(localized: "Villager’s Bed") : String(localized: "Bed")
-        case .workstation:
-            let job = base.prefix(1).uppercased() + base.dropFirst()
-            return String(localized: "\(job)’s Workstation")
-        case .beeNest: return base == "beehive" ? String(localized: "Beehive") : String(localized: "Bee Nest")
-        case .lightningRod: return String(localized: "Lightning Rod")
-        // Named by its mob, not its surroundings: a zombie spawner may be in a monster room or
-        // placed by a player, so the player judges from the map (Ryan, 2026-10-13).
-        case .spawner: return mob.map { String(localized: "\(ReadableName.from($0)) Spawner") } ?? String(localized: "Empty Spawner")
-        case .unopenedLoot: return LootTableName.name(lootTable)
-        case .other: return ReadableName.from(base)
-        }
-    }
 
     init(_ poi: PointOfInterest) {
         id = "\(poi.type)@\(poi.x),\(poi.y),\(poi.z)"
@@ -209,6 +174,7 @@ nonisolated enum PortalLinkStatus: Equatable, Sendable {
 struct PortalDetailView: View {
     let session: WorldSession
     let portal: NetherPortal
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         let trip = session.presentation.roundTrip(for: portal)
@@ -218,7 +184,7 @@ struct PortalDetailView: View {
                             destination: MapDestination(coordinates: Coordinates(CGPoint(x: portal.centerX, y: portal.centerZ), y: portal.minY),
                                                         dimension: portal.dimension))
             } header: {
-                InspectorHeading(title: Text("Nether Portal"), symbol: PlaceGroup.portal.symbol)
+                InspectorHeading(title: Text(gameNames.netherPortal()), symbol: PlaceGroup.portal.symbol)
             }
             SelectedSearchSection(session: session)
             Section {
