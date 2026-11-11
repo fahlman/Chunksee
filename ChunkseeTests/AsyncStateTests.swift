@@ -171,8 +171,8 @@ import Testing
 
 @Suite(.isolatedStores) struct SearchRequestLifetimeTests {
     func hit(_ name: String) -> SearchHit {
-        SearchHit(id: name, source: .sign, dimension: "minecraft:overworld", position: .zero, y: 64,
-                  title: name, detail: name, count: 1)
+        SearchHit(id: name, dimension: "minecraft:overworld", position: .zero, y: 64,
+                  content: .sign(kind: "minecraft:sign", lines: [name]))
     }
 
     @Test func editingKeepsTheDisplayedResultsAndReusesCompletedSavedSearches() async {
@@ -193,18 +193,18 @@ import Testing
         search.text = "second"
         await gate.waitForRequest("second")
         #expect(search.isSearching)
-        #expect(search.results.map(\.title) == ["First"])
-        #expect(search.results(for: "second").map(\.title) == ["First"])
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
+        #expect(search.results.map(\.id) == ["First"])
+        #expect(search.results(for: "second").map(\.id) == ["First"])
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
         await gate.finish("second", with: ["second": [hit("Second")]])
         await search.waitForSearch()
-        #expect(search.results.map(\.title) == ["Second"])
+        #expect(search.results.map(\.id) == ["Second"])
         #expect(search.results(for: "first").isEmpty)
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
 
         search.text = ""
         #expect(search.results.isEmpty && search.results(for: "").isEmpty)
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
         await search.closeTestWorld()
     }
 
@@ -225,8 +225,8 @@ import Testing
         await search.waitForSearch()
         await gate.finish("first", with: ["first": [hit("Obsolete")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Second"])
-        #expect(search.results(for: "saved").map(\.title) == ["Saved"])
+        #expect(search.results.map(\.id) == ["Second"])
+        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         await search.closeTestWorld()
     }
@@ -248,14 +248,14 @@ import Testing
         await search.waitForSearch()
         players.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
         for query in ["saved", "query"] { await gate.waitForRequest("\(query)-1") }
-        #expect(search.results.map(\.title) == ["Previous query"])
-        #expect(search.results(for: "saved").map(\.title) == ["Previous saved"])
+        #expect(search.results.map(\.id) == ["Previous query"])
+        #expect(search.results(for: "saved").map(\.id) == ["Previous saved"])
         for query in ["saved", "query"] {
             await gate.finish("\(query)-1", with: [query: [hit("Updated \(query)")]])
         }
         await search.waitForSearch()
-        #expect(search.results.map(\.title) == ["Updated query"])
-        #expect(search.results(for: "saved").map(\.title) == ["Updated saved"])
+        #expect(search.results.map(\.id) == ["Updated query"])
+        #expect(search.results(for: "saved").map(\.id) == ["Updated saved"])
         await search.closeTestWorld()
     }
 
@@ -273,7 +273,7 @@ import Testing
         await search.waitForSearch()
         await gate.finish("old", with: ["old": [hit("Obsolete")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Current"])
+        #expect(search.results.map(\.id) == ["Current"])
         #expect(search.results(for: "old").isEmpty)
         await search.closeTestWorld()
     }
@@ -296,7 +296,7 @@ import Testing
         await search.waitForSearch()
         await gate.finish(unknown, with: ["diamond": [hit("Unknown")]])
         await search.waitForTasks()
-        #expect(search.results.map(\.title) == ["Known"])
+        #expect(search.results.map(\.id) == ["Known"])
         await search.closeTestWorld()
     }
 }

@@ -13,8 +13,8 @@ struct SearchWorkTests {
     }
 
     private func hit(_ title: String) -> SearchHit {
-        SearchHit(id: title, source: .sign, dimension: "minecraft:overworld", position: .zero,
-                  y: 64, title: title, detail: title, count: 1)
+        SearchHit(id: title, dimension: "minecraft:overworld", position: .zero,
+                  y: 64, content: .sign(kind: "minecraft:sign", lines: [title]))
     }
 
     @Test(.timeLimit(.minutes(1))) func savedQueriesUseTheCurrentSingleplayerIdentityAndRejectRetiredLabels() async {
@@ -32,7 +32,7 @@ struct SearchWorkTests {
         await gate.waitForRequest("you")
         await gate.finish("you", with: ["saved": [hit("You")]])
         await model.waitForSearch()
-        #expect(model.results(for: "saved").map(\.title) == ["You"])
+        #expect(model.results(for: "saved").map(\.id) == ["You"])
         identity.uuid = nil
         #expect(model.results(for: "saved").isEmpty)
         await gate.waitForRequest("other")
@@ -42,7 +42,7 @@ struct SearchWorkTests {
         await gate.finish("other", with: ["saved": [hit("Retired name")]])
         await gate.finish("you", with: ["saved": [hit("Current You")]])
         await model.waitForSearch()
-        #expect(model.results(for: "saved").map(\.title) == ["Current You"])
+        #expect(model.results(for: "saved").map(\.id) == ["Current You"])
         await model.closeTestWorld()
         work.close(); await work.waitUntilFinished()
     }
@@ -104,7 +104,7 @@ struct SearchWorkTests {
         #expect(drained && first.results.isEmpty && second.isSearching)
         await gate.finish("1", with: ["query": [hit("Kept")]])
         await second.waitForSearch()
-        #expect(second.results.map(\.title) == ["Kept"])
+        #expect(second.results.map(\.id) == ["Kept"])
         second.cancel()
         queries.close()
         await queries.waitForTasks()

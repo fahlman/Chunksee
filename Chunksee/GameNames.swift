@@ -293,10 +293,31 @@ nonisolated struct GameNames: Sendable {
     }
 
     func itemLabel(of item: ItemStack, locale: Locale = .current) -> String {
+        itemLabel(ItemName(item), locale: locale)
+    }
+
+    /// Only facts used by an item label. Search summaries do not retain nested inventories,
+    /// book pages or equipment components merely to display a matching stack's name.
+    nonisolated struct ItemName: Equatable, Sendable {
+        let id: String
+        let customName: String?
+        let bookTitle: String?
+        let bookAuthor: String?
+
+        init(_ item: ItemStack) {
+            id = item.id
+            customName = item.customName
+            let book = item.customName == nil ? item.book : nil
+            bookTitle = book?.title
+            bookAuthor = book?.author
+        }
+    }
+
+    func itemLabel(_ item: ItemName, locale: Locale = .current) -> String {
         let base = itemLabel(kind: item.id, customName: item.customName, locale: locale)
-        guard item.customName == nil, let book = item.book, let title = book.title else { return base }
+        guard item.customName == nil, let title = item.bookTitle else { return base }
         let titled = itemLabel(kind: item.id, customName: title, locale: locale)
-        return book.author.map { String(localized: "\(titled) by \($0)", locale: locale) } ?? titled
+        return item.bookAuthor.map { String(localized: "\(titled) by \($0)", locale: locale) } ?? titled
     }
 
     func itemName(of item: ItemStack, includingOne: Bool = false, locale: Locale = .current) -> String {

@@ -809,8 +809,8 @@ import Testing
         }
         #expect(spawner.mob == "minecraft:zombie" && spawner.y == 12)
         #expect(session.selection.selectedSearchHit == hit)
-        #expect(hit.title == spawner.name(in: session.resources.gameNames)
-                && hit.detail == PlaceGroup.spawner.name(in: session.resources.gameNames))
+        #expect(hit.title(in: session.resources.gameNames) == spawner.name(in: session.resources.gameNames)
+                && hit.detail(in: session.resources.gameNames) == PlaceGroup.spawner.name(in: session.resources.gameNames))
         #expect(MapContent(session: session).inGameMap?.map.id == map.id)
         session.selection.choose(.place(spawner.id))
         #expect(session.selection.selectedSearchHit == nil)

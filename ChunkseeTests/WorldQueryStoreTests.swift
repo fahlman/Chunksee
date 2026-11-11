@@ -14,8 +14,8 @@ import Testing
             execute: { request in
                 let query = request.queries[0]
                 await reads.read(query)
-                let hit = SearchHit(id: query, source: .sign, dimension: nil, position: .zero,
-                    y: 64, title: query, detail: query, count: 1)
+                let hit = SearchHit(id: query, dimension: nil, position: .zero,
+                    y: 64, content: .sign(kind: "minecraft:sign", lines: [query]))
                 return [query: [hit]]
             }, gameNames: { .unavailable })
         await model.waitForIndex()
@@ -23,14 +23,14 @@ import Testing
         await model.waitForSearch()
         model.saveSearch()
         model.text = "second"
-        #expect(model.results.map(\.title) == ["first"])
+        #expect(model.results.map(\.id) == ["first"])
         model.saveSearch()
         model.text = ""
-        #expect(model.results(for: "first").map(\.title) == ["first"])
+        #expect(model.results(for: "first").map(\.id) == ["first"])
         #expect(model.results(for: "second").isEmpty)
         await model.waitForSearch()
-        #expect(model.results(for: "first").map(\.title) == ["first"])
-        #expect(model.results(for: "second").map(\.title) == ["second"])
+        #expect(model.results(for: "first").map(\.id) == ["first"])
+        #expect(model.results(for: "second").map(\.id) == ["second"])
         #expect(await reads.requested == ["first", "second"])
         await model.closeTestWorld()
     }
@@ -40,8 +40,8 @@ import Testing
         let saved = SavedSearches(defaults: defaults), gate = AsyncReadGate<WorldQueryStore.Results>()
         saved.add("saved")
         func hit(_ title: String) -> SearchHit {
-            SearchHit(id: title, source: .sign, dimension: nil, position: .zero,
-                      y: 64, title: title, detail: title, count: 1)
+            SearchHit(id: title, dimension: nil, position: .zero,
+                      y: 64, content: .sign(kind: "minecraft:sign", lines: [title]))
         }
         let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults),
             singleplayerUUID: { nil }, firstDimension: nil, savedSearches: saved,
@@ -54,7 +54,7 @@ import Testing
         await gate.finish("first", with: ["first": [hit("First")]])
         await model.waitForSearch()
         model.text = "saved"
-        #expect(model.results.map(\.title) == ["Saved"] && !model.isSearching)
+        #expect(model.results.map(\.id) == ["Saved"] && !model.isSearching)
         await model.waitForSearch()
         #expect(await gate.requested == ["saved", "first"])
         await model.closeTestWorld()
@@ -117,8 +117,8 @@ import Testing
             PlayerInfo(uuid: uuid, nbt: .compound(["XpLevel": .int(level)]))
         }
         func hit(_ title: String) -> SearchHit {
-            SearchHit(id: title, source: .sign, dimension: nil, position: .zero,
-                      y: 64, title: title, detail: title, count: 1)
+            SearchHit(id: title, dimension: nil, position: .zero,
+                      y: 64, content: .sign(kind: "minecraft:sign", lines: [title]))
         }
         let players = PlayerRoster([player(1)])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
@@ -129,15 +129,15 @@ import Testing
         await gate.waitForRequest("1")
         await gate.finish("1", with: ["saved": [hit("First")]])
         await store.waitForTasks()
-        #expect(store.results(for: "saved").map(\.title) == ["First"])
+        #expect(store.results(for: "saved").map(\.id) == ["First"])
         players.publish([player(2)])
         await gate.waitForRequest("2")
-        #expect(store.results(for: "saved").map(\.title) == ["First"])
+        #expect(store.results(for: "saved").map(\.id) == ["First"])
         await gate.finish("2", with: ["saved": [hit("Second")]])
         await store.waitForTasks()
         let window = SearchModel(queryStore: store)
         await window.waitForSearch()
-        #expect(window.results(for: "saved").map(\.title) == ["Second"])
+        #expect(window.results(for: "saved").map(\.id) == ["Second"])
         #expect(await gate.requested == ["1", "2"])
         window.cancel()
         store.close(); index.cancel()

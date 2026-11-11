@@ -21,6 +21,7 @@ struct MapScene {
     /// picking never needs their formatted names or prefixed accessibility IDs.
     enum Label {
         case structure(StructureMarker), place(PlaceMarker), creature(CreatureMarker)
+        case search(SearchHit)
         case pin(id: String, name: String, detail: String? = nil)
 
         var id: String {
@@ -28,6 +29,7 @@ struct MapScene {
             case .structure(let marker): "structure-" + marker.id
             case .place(let marker): "place-" + marker.id
             case .creature(let marker): "creature-" + marker.id
+            case .search(let hit): "search-" + hit.id
             case .pin(let id, _, _): id
             }
         }
@@ -37,11 +39,13 @@ struct MapScene {
             case .structure(let marker): gameNames.structure(marker.structureID)
             case .place(let marker): gameNames.place(marker)
             case .creature(let marker): gameNames.creature(marker.creature)
+            case .search(let hit): hit.title(in: gameNames)
             case .pin(_, let name, _): name
             }
         }
 
         func accessibleName(in gameNames: GameNames) -> String {
+            if case .search(let hit) = self { return hit.title(in: gameNames) + ", " + hit.detail(in: gameNames) }
             if case .pin(_, let name, let detail?) = self { return name + ", " + detail }
             return name(in: gameNames)
         }
@@ -213,7 +217,7 @@ struct MapScene {
             let point = viewport.viewPoint(for: position, in: size)
             guard accessibilityBounds.contains(point) else { continue }
             let selected = hit.id == content.selectedHitID
-            items.append(Item(label: .pin(id: "search-" + hit.id, name: hit.title, detail: hit.detail), layer: .search,
+            items.append(Item(label: .search(hit), layer: .search,
                 target: .searchHit(hit.id), position: position, y: hit.y.map(Double.init),
                 anchor: position, point: point, scale: viewport.scale, style: .search,
                 labelPriority: selected ? .selected : .other))

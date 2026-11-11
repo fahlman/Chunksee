@@ -37,20 +37,6 @@ nonisolated enum PlayerPresentation {
             }
         }
 
-        var inventory: String {
-            switch self {
-            case .you: String(localized: "Your inventory")
-            case .named(let name): String(localized: "\(name)’s inventory")
-            }
-        }
-
-        var enderChest: String {
-            switch self {
-            case .you: String(localized: "Your ender chest")
-            case .named(let name): String(localized: "\(name)’s ender chest")
-            }
-        }
-
         var respawn: String {
             switch self {
             case .you: String(localized: "Your respawn point")

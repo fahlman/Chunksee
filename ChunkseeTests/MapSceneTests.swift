@@ -13,8 +13,8 @@ import Testing
                               y: 48, label: "First", isOutdated: false)
         var second = first
         second.id = "second"; second.playerID = UUID(); second.label = "Second"; second.y = 62
-        let search = SearchHit(id: "sign", source: .sign, dimension: saved.dimension,
-                               position: saved.mapPosition, y: 70, title: "Sign", detail: "Sign", count: 1)
+        let search = SearchHit(id: "sign", dimension: saved.dimension,
+                               position: saved.mapPosition, y: 70, content: .sign(kind: "minecraft:sign", lines: ["Sign"]))
         var content = MapContent(gameNames: .unavailable)
         content.savedPlaces = [saved]; content.players = [first, second]; content.hits = [search]
         let viewport = MapViewport(center: saved.mapPosition, scale: 32)
@@ -80,8 +80,8 @@ import Testing
 
     @Test func searchPinsShareSelectedGeometryAndSavedCoordinatesWithoutOffscreenTargets() throws {
         let position = CGPoint(x: -8.7, y: -16.2)
-        var first = SearchHit(id: "first", source: .sign, dimension: "minecraft:overworld",
-                              position: position, y: 48, title: "Sign", detail: "At the mine", count: 1)
+        var first = SearchHit(id: "first", dimension: "minecraft:overworld",
+                              position: position, y: 48, content: .sign(kind: "minecraft:sign", lines: ["At the mine"]))
         var second = first
         second.id = "second"; second.y = 62
         let viewport = MapViewport(center: position, scale: 2)
@@ -142,8 +142,8 @@ import Testing
         var content = MapContent(gameNames: .unavailable)
         content.places = [place]; content.creatures = [pet]; content.selection = .portal(portal)
         content.biomeAreas = BiomePresentation.areas(from: [.init(x: 0, z: 0): "minecraft:plains"])
-        let hit = SearchHit(id: "pin", source: .sign, dimension: portal.dimension,
-            position: place.position, y: 70, title: "Sign", detail: "Overlapping", count: 1)
+        let hit = SearchHit(id: "pin", dimension: portal.dimension,
+            position: place.position, y: 70, content: .sign(kind: "minecraft:sign", lines: ["Overlapping"]))
         content.hits = [hit]
         let viewport = MapViewport(center: place.position, scale: 2)
         let scene = content.scene(viewport: viewport, size: size)

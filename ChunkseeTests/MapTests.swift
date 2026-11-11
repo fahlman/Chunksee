@@ -59,8 +59,10 @@ import Testing
             .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), label: "Friend’s respawn point", isOutdated: false),
             .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), label: "Outside", isOutdated: false)
         ]
-        content.hits = [.init(id: "chest", source: .container(kind: "minecraft:chest"), dimension: "minecraft:overworld",
-                             position: CGPoint(x: 5, y: 6), y: 64, title: "Chest", detail: "3 Diamond", count: 3)]
+        content.hits = [.init(id: "chest", dimension: "minecraft:overworld",
+                             position: CGPoint(x: 5, y: 6), y: 64,
+                             content: .container(kind: "minecraft:chest", customName: nil,
+                                 items: [.init(name: GameNames.ItemName(ItemStack(id: "minecraft:diamond")), count: 3)]))]
         let locations = content.accessibleLocations(viewport: .init(center: .zero, scale: 1), size: .init(width: 400, height: 300))
         #expect(Set(locations.map(\.name)) == ["Friend", "Where Friend last died", "Friend’s respawn point", "Chest, 3 Diamond"])
         let death = try #require(locations.first { $0.name == "Where Friend last died" })

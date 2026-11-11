@@ -2273,8 +2273,16 @@ and searchable labels live in the service too; membership still comes from Kit's
 StructureMarker.name, PlaceMarker.name and the separate LootTableName owner are removed.
 None of these naming changes alter group membership, the held cave-biome inference, raw facts,
 visibility, selected identity, location ordering or map geometry.
-Typed search-hit labels remain part of foundation step 5e and #438; this adoption does not complete
-that finish line.
+SearchHit retains typed naming facts instead of finished titles/details. Its source and immutable
+count derive from those facts; GameNames owns the title, detail, item-summary and player-inventory
+phrases. Sidebar, inspector and lazy map labels require an explicit snapshot. Item matches retain
+only the ID, literal custom name, book title/author and quantity needed for their label; they do
+not retain book pages or nested inventories. Temporary comparison keys preserve the existing
+same-ID/same-label grouping and quantity/name sort. Matching trade inputs stay typed, while biome
+results keep identity and chunk count without retaining drawing paths. WorldQueryStore's existing
+identity guard still rejects old-language results; no publication or query-lifetime rule changes.
+The remaining player-marker and other naming consumers still need audit before foundation step 5e
+and #438 are complete. These source changes retain the map-caption timing requirement.
 
 PlayerRecords owns the displayed advancements; both the definition reader and inspector use
 that one value. It asks Kit for those advancements' actual display titles,

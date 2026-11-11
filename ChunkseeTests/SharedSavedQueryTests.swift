@@ -7,8 +7,8 @@ import Testing
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct SharedSavedQueryTests {
     private func hit(_ title: String) -> SearchHit {
-        SearchHit(id: title, source: .sign, dimension: "minecraft:overworld", position: .zero,
-                  y: 64, title: title, detail: title, count: 1)
+        SearchHit(id: title, dimension: "minecraft:overworld", position: .zero,
+                  y: 64, content: .sign(kind: "minecraft:sign", lines: [title]))
     }
 
     @Test func threeDocumentsReusePendingAndCompletedSavedQueries() async {
@@ -29,12 +29,12 @@ import Testing
         for model in [first, second, third] { await model.waitForSearch() }
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         for model in [first, second, third] {
-            #expect(model.results(for: "saved").map(\.title) == ["Shared"])
+            #expect(model.results(for: "saved").map(\.id) == ["Shared"])
         }
 
         let later = document()
         await later.waitForSearch()
-        #expect(later.results(for: "saved").map(\.title) == ["Shared"])
+        #expect(later.results(for: "saved").map(\.id) == ["Shared"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
 
         first.text = "diamond"
@@ -70,7 +70,7 @@ import Testing
         #expect(first.results(for: "saved").isEmpty && !first.isSearching)
         await gate.finish("saved", with: ["saved": [hit("Shared")]])
         await second.waitForSearch()
-        #expect(second.results(for: "saved").map(\.title) == ["Shared"])
+        #expect(second.results(for: "saved").map(\.id) == ["Shared"])
         #expect(await gate.requested == ["saved"])
         second.cancel()
         await second.waitForTasks()
@@ -126,7 +126,7 @@ import Testing
         let current = Task.immediate { await model.waitForSearch() }
         await gate.finish("saved", with: ["saved": [hit("Still Wanted")]])
         await current.value
-        #expect(model.results.map(\.title) == ["Still Wanted"])
+        #expect(model.results.map(\.id) == ["Still Wanted"])
         model.text = ""
         await model.waitForSearch()
         saved.add("saved")
@@ -135,7 +135,7 @@ import Testing
         await gate.releaseAllAndFuture(with: ["saved": [hit("New Pass")]])
         await again.value
         #expect(await gate.requested == ["saved", "saved"])
-        #expect(model.results(for: "saved").map(\.title) == ["New Pass"])
+        #expect(model.results(for: "saved").map(\.id) == ["New Pass"])
         await model.closeTestWorld()
     }
 
@@ -168,7 +168,7 @@ import Testing
         await gate.finish("1", with: ["saved": [hit("Obsolete")]])
         for model in [first, second, later] {
             await model.waitForTasks()
-            #expect(model.results(for: "saved").map(\.title) == ["New"])
+            #expect(model.results(for: "saved").map(\.id) == ["New"])
             model.cancel()
         }
         queries.close()
@@ -209,7 +209,7 @@ import Testing
         await first.waitForTasks()
         await second.waitForSearch()
         #expect(first.results.isEmpty)
-        #expect(second.results.map(\.title) == ["Current"])
+        #expect(second.results.map(\.id) == ["Current"])
         #expect(Set(await gate.requested) == ["first-1", "second-1", "second-2"])
         await first.closeTestWorld()
         await second.closeTestWorld()
@@ -237,12 +237,12 @@ import Testing
         for model in [first, second] { await model.waitForSearch() }
         await names.lookUp([uuid])
         await gate.waitForRequest("Known")
-        #expect(first.results(for: "saved").map(\.title) == ["Previous"])
-        #expect(second.results(for: "saved").map(\.title) == ["Previous"])
+        #expect(first.results(for: "saved").map(\.id) == ["Previous"])
+        #expect(second.results(for: "saved").map(\.id) == ["Previous"])
         await gate.finish("Known", with: ["saved": [hit("Known")]])
         for model in [first, second] {
             await model.waitForSearch()
-            #expect(model.results(for: "saved").map(\.title) == ["Known"])
+            #expect(model.results(for: "saved").map(\.id) == ["Known"])
             model.cancel()
             await model.waitForTasks()
         }
@@ -337,7 +337,7 @@ import Testing
             if step == 3 { players.publish([PlayerInfo(uuid: other, nbt: playerData, lastSaved: date)]) }
             for model in [first, second] {
                 await model.waitForSearch()
-                #expect(model.results(for: "saved").map(\.title) == ["Result"])
+                #expect(model.results(for: "saved").map(\.id) == ["Result"])
             }
         }
         #expect(await gate.requested == ["0", "1", "2", "3"])

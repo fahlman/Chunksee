@@ -113,15 +113,15 @@ import Testing
             WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
         }
         for query in ["place:revenant", "place:minecraft:zombie"] {
-            #expect(search(query).map(\.title) == ["Revenant Spawner"])
+            #expect(search(query).map { $0.title(in: names) } == ["Revenant Spawner"])
             #expect(search(query).first?.source == .layer(.place(.spawner), markerID: spawner.id))
         }
-        #expect(search("structure:old growth").map(\.title) == ["Abandoned Camp Old Growth Pine Taiga"])
-        #expect(search("biome:plaines").map(\.title) == ["Plaines"])
+        #expect(search("structure:old growth").map { $0.title(in: names) } == ["Abandoned Camp Old Growth Pine Taiga"])
+        #expect(search("biome:plaines").map { $0.title(in: names) } == ["Plaines"])
         #expect(search("biome:minecraft:plains").map(\.id) == search("biome:plaines").map(\.id))
         let equal = search("biome:high meadow")
         #expect(equal.count == 2 && Set(equal.map(\.id)).count == 2)
-        #expect(equal.map(\.title) == ["High Meadow", "High Meadow"])
+        #expect(equal.map { $0.title(in: names) } == ["High Meadow", "High Meadow"])
         #expect(equal.first?.position != equal.last?.position)
     }
 
@@ -174,8 +174,8 @@ import Testing
         second.selection.choose(.biome(plains.id))
         let oldBiomeHits = first.search.results(for: "biome:")
         let oldPlaceHits = first.search.results(for: "place:")
-        #expect(Set(oldBiomeHits.map(\.title)) == ["Plains", "Deep Dark"])
-        #expect(oldPlaceHits.map(\.title) == ["Zombie Spawner"])
+        #expect(Set(oldBiomeHits.map { $0.title(in: world.gameNames) }) == ["Plains", "Deep Dark"])
+        #expect(oldPlaceHits.map { $0.title(in: world.gameNames) } == ["Zombie Spawner"])
         #expect(first.search.results(for: "biome:plaines").isEmpty && first.search.results(for: "place:revenant").isEmpty)
         let captured = MapContent(session: first)
         let viewport = MapViewport(center: CGPoint(x: 16, y: 8), scale: 8), size = CGSize(width: 800, height: 600)
@@ -193,12 +193,12 @@ import Testing
         for session in [first, second] {
             await session.search.waitForSearch()
             let biomes = session.search.results(for: "biome:"), places = session.search.results(for: "place:")
-            #expect(Set(biomes.map(\.title)) == ["Plaines", "Abîmes"])
+            #expect(Set(biomes.map { $0.title(in: world.gameNames) }) == ["Plaines", "Abîmes"])
             #expect(biomes.map(\.id) == oldBiomeHits.map(\.id) && biomes.map(\.count) == oldBiomeHits.map(\.count))
-            #expect(places.map(\.title) == ["Revenant Spawner"] && places.map(\.id) == oldPlaceHits.map(\.id))
-            #expect(session.search.results(for: "biome:plaines").map(\.title) == ["Plaines"])
-            #expect(session.search.results(for: "place:revenant").map(\.title) == ["Revenant Spawner"])
-            #expect(session.search.results(for: "structure:").map(\.title) == ["Abandoned Camp Old Growth Pine Taiga"])
+            #expect(places.map { $0.title(in: world.gameNames) } == ["Revenant Spawner"] && places.map(\.id) == oldPlaceHits.map(\.id))
+            #expect(session.search.results(for: "biome:plaines").map { $0.title(in: world.gameNames) } == ["Plaines"])
+            #expect(session.search.results(for: "place:revenant").map { $0.title(in: world.gameNames) } == ["Revenant Spawner"])
+            #expect(session.search.results(for: "structure:").map { $0.title(in: world.gameNames) } == ["Abandoned Camp Old Growth Pine Taiga"])
             #expect(session.presentation.selectedIndex.structures == original.structures)
             #expect(session.presentation.selectedIndex.places == original.places)
             #expect(session.visibility.biomes == Set(original.biomeAreas.map(\.group)))

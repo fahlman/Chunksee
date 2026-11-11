@@ -114,7 +114,7 @@ enum GameNameFixture {
         let index = SearchIndex.overworld(DimensionContent(blocks: [deposit]))
         for query in ["block:minerai", "block:minecraft:diamond_ore"] {
             let found = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
-            #expect(found.map(\.title) == ["Minerai de diamant"])
+            #expect(found.map { $0.title(in: names) } == ["Minerai de diamant"])
             #expect(found.first?.count == 4)
         }
     }
@@ -174,7 +174,7 @@ enum GameNameFixture {
         await world.index.waitForIndex()
         for session in [first, second] {
             await session.search.waitForSearch()
-            #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Monster Spawner"])
         }
         let identity = world.gameNames.identity
         for usesArtwork in [false, true, false] {
@@ -184,7 +184,7 @@ enum GameNameFixture {
             #expect(NotableBlock.spawner.name(in: world.gameNames) == "Monster Spawner")
             for session in [first, second] {
                 await session.search.waitForSearch()
-                #expect(session.search.results(for: "block:").map(\.title)
+                #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) }
                         == [NotableBlock.spawner.name(in: world.gameNames)])
             }
         }
@@ -198,15 +198,15 @@ enum GameNameFixture {
         #expect(NotableBlock.spawner.name(in: world.gameNames) == "Spawner")
         for session in [first, second] {
             await session.search.waitForSearch()
-            #expect(session.search.results(for: "block:").map(\.title)
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) }
                     == [NotableBlock.spawner.name(in: world.gameNames)])
         }
         await gate.finish("language", with: french)
         await world.waitForRefresh()
         for session in [first, second] {
             await session.search.waitForSearch()
-            #expect(session.search.results(for: "block:").map(\.title) == ["Générateur de monstres"])
-            #expect(session.search.results(for: "block:").map(\.title)
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Générateur de monstres"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) }
                     == [NotableBlock.spawner.name(in: world.gameNames)])
         }
         world.names.minecraft.forget()
@@ -214,7 +214,7 @@ enum GameNameFixture {
         await world.waitForRefresh()
         for session in [first, second] {
             await session.search.waitForSearch()
-            #expect(session.search.results(for: "block:").map(\.title) == ["Spawner"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Spawner"])
         }
         world.close()
         await world.waitUntilClosed()
@@ -245,14 +245,14 @@ enum GameNameFixture {
         #expect(world.gameNames.identity == loaded.identity)
         #expect(world.gameNames.name("unluck", in: "effect") == "Bad Luck")
         for session in sessions {
-            #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Monster Spawner"])
             #expect(!session.search.isSearching)
         }
         await gate.finish("reread", with: reread)
         await world.waitForRefresh()
         #expect(world.gameNames.identity == loaded.identity)
         for session in sessions {
-            #expect(session.search.results(for: "block:").map(\.title) == ["Monster Spawner"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Monster Spawner"])
             #expect(!session.search.isSearching)
         }
         // A changed language object with the same jar still publishes new names.
@@ -264,7 +264,7 @@ enum GameNameFixture {
         #expect(world.gameNames.name("unluck", in: "effect") == "Malchance")
         for session in sessions {
             await session.search.waitForSearch()
-            #expect(session.search.results(for: "block:").map(\.title) == ["Générateur de monstres"])
+            #expect(session.search.results(for: "block:").map { $0.title(in: world.gameNames) } == ["Générateur de monstres"])
         }
         world.close()
         await world.waitUntilClosed()

@@ -39,7 +39,7 @@ struct WorldInspector: View {
             LocationDetails(session: session, title: Text(place.name), symbol: MarkerStyle.savedPlaceSymbol,
                             destination: MapDestination(coordinates: Coordinates(place.position), dimension: place.dimension)) {}
         case .hit(let hit)?:
-            LocationDetails(session: session, title: Text(hit.title), symbol: MarkerStyle.search.symbol.name,
+            LocationDetails(session: session, title: Text(hit.title(in: gameNames)), symbol: MarkerStyle.search.symbol.name,
                             destination: hit.position.map {
                                 MapDestination(coordinates: Coordinates($0, y: hit.y.map(Double.init)), dimension: hit.dimension)
                             }) {}
@@ -128,19 +128,20 @@ private struct LocationDetails<Details: View>: View {
 /// A search keeps its source and matching contents even when it opens a player's or pet's details.
 struct SelectedSearchSection: View {
     let session: WorldSession
+    @Environment(\.gameNames) private var gameNames
 
     var body: some View {
         if let hit = session.selection.selectedSearchHit {
             Section("Search Result") {
                 switch hit.source {
-                case .inventory, .enderChest: LabeledContent("Found In", value: hit.title)
+                case .inventory, .enderChest: LabeledContent("Found In", value: hit.title(in: gameNames))
                 default: EmptyView()
                 }
                 if hit.items.isEmpty {
-                    Text(hit.detail).textSelection(.enabled)
+                    Text(hit.detail(in: gameNames)).textSelection(.enabled)
                 } else {
                     ForEach(Array(hit.items.enumerated()), id: \.offset) { _, item in
-                        ItemLabel(id: item.id, title: Text(item.text))
+                        ItemLabel(id: item.id, title: Text(item.text(in: gameNames)))
                             .textSelection(.enabled)
                     }
                 }
