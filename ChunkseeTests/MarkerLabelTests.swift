@@ -124,7 +124,7 @@ import Testing
         map.viewport.scale = 2
         let markers = ["a", "b"].map {
             MapMarker(id: $0, playerID: UUID(), kind: .player, position: .zero,
-                      y: 64, label: "Player " + $0, isOutdated: false)
+                      y: 64, name: .named("Player " + $0), isOutdated: false)
         }
         var content = MapContent(gameNames: .unavailable); content.players = markers
         let size = CGSize(width: 400, height: 200)
@@ -141,7 +141,7 @@ import Testing
         // winner's name provides a reference image independent of label collision priority.
         content.players = content.players.map {
             MapMarker(id: $0.id, playerID: $0.playerID, kind: $0.kind, position: $0.position,
-                      y: $0.y, label: markers[1].label, isOutdated: $0.isOutdated)
+                      y: $0.y, name: markers[1].name, isOutdated: $0.isOutdated)
         }
         let expected = try #require(MapImage.render(map, content: content, portalStatus: { _ in nil }, size: size, scale: 2, colorScheme: .light, locale: Locale(identifier: "en_US")))
         #expect(try matchingPixels(selected, expected))

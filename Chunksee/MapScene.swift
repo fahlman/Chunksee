@@ -22,7 +22,8 @@ struct MapScene {
     enum Label {
         case structure(StructureMarker), place(PlaceMarker), creature(CreatureMarker)
         case search(SearchHit)
-        case pin(id: String, name: String, detail: String? = nil)
+        case player(MapMarker)
+        case pin(id: String, name: String)
 
         var id: String {
             switch self {
@@ -30,7 +31,8 @@ struct MapScene {
             case .place(let marker): "place-" + marker.id
             case .creature(let marker): "creature-" + marker.id
             case .search(let hit): "search-" + hit.id
-            case .pin(let id, _, _): id
+            case .player(let marker): "player-" + marker.id
+            case .pin(let id, _): id
             }
         }
 
@@ -40,13 +42,13 @@ struct MapScene {
             case .place(let marker): gameNames.place(marker)
             case .creature(let marker): gameNames.creature(marker.creature)
             case .search(let hit): hit.title(in: gameNames)
-            case .pin(_, let name, _): name
+            case .player(let marker): gameNames.playerMarker(marker)
+            case .pin(_, let name): name
             }
         }
 
         func accessibleName(in gameNames: GameNames) -> String {
             if case .search(let hit) = self { return hit.title(in: gameNames) + ", " + hit.detail(in: gameNames) }
-            if case .pin(_, let name, let detail?) = self { return name + ", " + detail }
             return name(in: gameNames)
         }
     }
@@ -229,7 +231,7 @@ struct MapScene {
             let point = viewport.viewPoint(for: marker.anchor, in: size)
             guard playerBounds.contains(point) else { continue }
             let selected = marker.playerID == content.selectedPlayerID
-            items.append(Item(label: .pin(id: "player-" + marker.id, name: marker.label), layer: .player,
+            items.append(Item(label: .player(marker), layer: .player,
                 target: .row(.player(marker.playerID)), position: marker.position, y: marker.y,
                 anchor: marker.anchor, point: point, scale: viewport.scale,
                 style: .player(marker.kind),

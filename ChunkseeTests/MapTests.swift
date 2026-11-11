@@ -54,10 +54,10 @@ import Testing
         let playerID = UUID()
         var content = MapContent(gameNames: .unavailable)
         content.players = [
-            .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, label: "Friend", isOutdated: false),
-            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, label: "Where Friend last died", isOutdated: false),
-            .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), label: "Friend’s respawn point", isOutdated: false),
-            .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), label: "Outside", isOutdated: false)
+            .init(id: "friend-player", playerID: playerID, kind: .player, position: .zero, name: .named("Friend"), isOutdated: false),
+            .init(id: "friend-death", playerID: playerID, kind: .death, position: CGPoint(x: 10, y: 20), y: 64, name: .named("Friend"), isOutdated: false),
+            .init(id: "friend-respawn", playerID: playerID, kind: .respawn, position: CGPoint(x: -10, y: -20), name: .named("Friend"), isOutdated: false),
+            .init(id: "outside", playerID: playerID, kind: .player, position: CGPoint(x: 1000, y: 1000), name: .named("Outside"), isOutdated: false)
         ]
         content.hits = [.init(id: "chest", dimension: "minecraft:overworld",
                              position: CGPoint(x: 5, y: 6), y: 64,

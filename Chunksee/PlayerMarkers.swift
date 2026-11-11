@@ -1,4 +1,3 @@
-import ChunkseeIndex
 import CoreGraphics
 import Foundation
 import ChunkseeKit
@@ -15,7 +14,7 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     /// World X/Z of the marker.
     var position: CGPoint
     var y: Double?
-    var label: String
+    var name: GameNames.PlayerName
     /// Entity positions are exact; death and respawn positions identify whole blocks. Drawing,
     /// picking and VoiceOver share this anchor, while copying retains the saved coordinates.
     var anchor: CGPoint { kind == .player ? position : CGPoint(x: position.x + 0.5, y: position.y + 0.5) }
@@ -24,48 +23,8 @@ nonisolated struct MapMarker: Identifiable, Equatable, Sendable {
     var isOutdated: Bool
 }
 
-/// Presentation of players: names, notes, and which markers belong on a dimension's map.
+/// Valid saved player locations, their age, and membership in a dimension's map.
 nonisolated enum PlayerPresentation {
-    enum Name: Equatable, Sendable {
-        case you
-        case named(String)
-
-        var text: String {
-            switch self {
-            case .you: String(localized: "You")
-            case .named(let name): name
-            }
-        }
-
-        var respawn: String {
-            switch self {
-            case .you: String(localized: "Your respawn point")
-            case .named(let name): String(localized: "\(name)’s respawn point")
-            }
-        }
-
-        var lastDeath: String {
-            switch self {
-            case .you: String(localized: "Where you last died")
-            case .named(let name): String(localized: "Where \(name) last died")
-            }
-        }
-    }
-
-    /// A player's name when one is known (Minecraft's name caches or Mojang). Player files hold
-    /// only UUIDs, so otherwise the singleplayer player is "You" and others are named by the start
-    /// of their UUID.
-    static func name(of player: PlayerInfo, singleplayerUUID: UUID?, knownName: String? = nil) -> String {
-        label(of: player, singleplayerUUID: singleplayerUUID, knownName: knownName).text
-    }
-
-    /// Retain the personal pronoun separately from an account whose actual name is "You".
-    static func label(of player: PlayerInfo, singleplayerUUID: UUID?, knownName: String? = nil) -> Name {
-        if let knownName { return .named(knownName) }
-        if player.uuid == singleplayerUUID { return .you }
-        return .named(fallbackName(player.uuid))
-    }
-
     /// Whether the player hasn't joined since the world was last upgraded.
     static func isOutdated(_ player: PlayerInfo, worldDataVersion: Int?) -> Bool {
         guard let worldDataVersion else { return false }
@@ -86,13 +45,6 @@ nonisolated enum PlayerPresentation {
         let position: PlayerInfo.Location
         var id: MapMarker.Kind { kind }
         var isBlockPosition: Bool { kind != .player }
-        var title: String {
-            switch kind {
-            case .player: String(localized: "Last Location")
-            case .death: String(localized: "Last Death")
-            case .respawn: String(localized: "Respawn Point")
-            }
-        }
     }
 
     /// The inspector and map consume the same valid saved locations.
@@ -105,34 +57,20 @@ nonisolated enum PlayerPresentation {
         }
     }
 
-    static func absentPlayerName(_ uuid: UUID, knownName: String?) -> String {
-        knownName ?? String(localized: "\(fallbackName(uuid)) (not in this world)")
-    }
-
-    private static func fallbackName(_ uuid: UUID) -> String {
-        let shortID = String(uuid.uuidString.lowercased().prefix(8))
-        return String(localized: "Player \(shortID)")
-    }
-
     /// Markers for one dimension: each mappable player's last position, last death and respawn point.
     static func markers(for players: [PlayerInfo], in dimensionID: String, singleplayerUUID: UUID?,
                         worldDataVersion: Int?, knownName: (UUID) -> String? = { _ in nil }) -> [MapMarker] {
         var markers: [MapMarker] = []
         for player in players {
-            let name = label(of: player, singleplayerUUID: singleplayerUUID, knownName: knownName(player.uuid))
+            let name = GameNames.PlayerName(playerID: player.uuid, singleplayerUUID: singleplayerUUID, knownName: knownName(player.uuid))
             let outdated = isOutdated(player, worldDataVersion: worldDataVersion)
             let id = player.uuid.uuidString
             // Keep the live-position badge last, matching the existing overlap priority.
             for saved in locations(of: player).reversed() where saved.position.dimension == dimensionID {
                 let location = saved.position
-                let label = switch saved.kind {
-                case .player: name.text
-                case .death: name.lastDeath
-                case .respawn: name.respawn
-                }
                 markers.append(MapMarker(id: "\(id)-\(saved.kind)", playerID: player.uuid, kind: saved.kind,
                                          position: CGPoint(x: location.x, y: location.z), y: location.y,
-                                         label: label, isOutdated: outdated))
+                                         name: name, isOutdated: outdated))
             }
         }
         return markers

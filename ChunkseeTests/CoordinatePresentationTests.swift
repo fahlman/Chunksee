@@ -15,7 +15,7 @@ import Testing
         defer { board.releaseGlobally(); map.close() }
         var content = MapContent(gameNames: .unavailable)
         content.players = [.init(id: "player", playerID: UUID(), kind: .player, position: position,
-                                 y: -0.1, label: "Player", isOutdated: false)]
+                                 y: -0.1, name: .named("Player"), isOutdated: false)]
         let location = try #require(content.accessibleLocations(viewport: .init(center: position, scale: 32),
                                                                size: CGSize(width: 400, height: 300)).first)
         #expect(location.position == position && location.y == -0.1)
@@ -39,7 +39,7 @@ import Testing
         let viewport = MapViewport(center: blockCenter, scale: 32)
         for kind in [MapMarker.Kind.death, .respawn] {
             let player = MapMarker(id: "point", playerID: UUID(), kind: kind, position: block, y: 64,
-                                   label: "Location", isOutdated: false)
+                                   name: .named("Location"), isOutdated: false)
             var content = MapContent(gameNames: .unavailable)
             content.players = [player]
             #expect(player.anchor == blockCenter)

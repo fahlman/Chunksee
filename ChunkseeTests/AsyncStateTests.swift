@@ -283,11 +283,11 @@ import Testing
         let names = PlayerNames(defaults: defaults, mojang: MojangProfiles(fetch: { _ in (Data(#"{"name":"Known"}"#.utf8), 200) }))
         names.looksUpOnline = true
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
-        let unknown = PlayerPresentation.name(of: player, singleplayerUUID: nil)
+        let unknown = GameNames.unavailable.player(.unnamed(uuid))
         let gate = AsyncReadGate<[String: [SearchHit]]>()
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { nil }, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
-                                 execute: { await gate.read($0.playerNames[uuid]!.text) }, gameNames: { .unavailable })
+                                 execute: { await gate.read($0.gameNames.player($0.playerNames[uuid]!)) }, gameNames: { .unavailable })
         search.text = "diamond"
         await gate.waitForRequest(unknown)
         await names.lookUp([uuid])

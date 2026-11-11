@@ -31,11 +31,11 @@ import Testing
         let markers = PlayerPresentation.markers(for: players, in: "minecraft:overworld", singleplayerUUID: you, worldDataVersion: 5023)
         // You (position + respawn), the friend and a legacy numeric-dimension player; death is in the Nether.
         #expect(markers.count == 4)
-        let mine = markers.first { $0.kind == .player && $0.label == "You" }
+        let mine = markers.first { $0.kind == .player && GameNames.unavailable.playerMarker($0) == "You" }
         #expect(mine?.position == CGPoint(x: -2806.6, y: -3895.2))
         #expect(mine?.isOutdated == false)
-        #expect(markers.contains { $0.kind == .respawn && $0.label == "Your respawn point" })
-        let theirs = markers.first { $0.label == "Player 06d119da" }
+        #expect(markers.contains { $0.kind == .respawn && GameNames.unavailable.playerMarker($0) == "Your respawn point" })
+        let theirs = markers.first { GameNames.unavailable.playerMarker($0) == "Player 06d119da" }
         #expect(theirs?.isOutdated == true)  // file predates the world's version
         #expect(markers.contains { $0.position == CGPoint(x: -12, y: 241) })
     }
@@ -80,7 +80,7 @@ import Testing
     @Test func inspectorAndMarkersShareValidLocationsWithoutLosingMissingDimensionDetails() {
         let locations = PlayerPresentation.locations(of: players[0])
         #expect(locations.map(\.kind) == [.player, .death, .respawn])
-        #expect(locations.map(\.title) == ["Last Location", "Last Death", "Respawn Point"])
+        #expect(locations.map { GameNames.unavailable.playerLocation($0.kind) } == ["Last Location", "Last Death", "Respawn Point"])
         #expect(locations.map(\.isBlockPosition) == [false, true, true])
         #expect(PlayerPresentation.locations(of: players[2]).map(\.kind) == [.player])
         let invalid = PlayerInfo(uuid: UUID(), nbt: .compound([
@@ -91,18 +91,18 @@ import Testing
         #expect(valid.map(\.kind) == [.death])
         #expect(valid.first?.position.dimension == "example:missing")
         #expect(PlayerPresentation.position(of: invalid) == nil)
-        #expect(PlayerPresentation.absentPlayerName(friend, knownName: nil) == "Player 06d119da (not in this world)")
-        #expect(PlayerPresentation.absentPlayerName(friend, knownName: "Friend") == "Friend")
+        #expect(GameNames.unavailable.absentPlayer(friend, knownName: nil) == "Player 06d119da (not in this world)")
+        #expect(GameNames.unavailable.absentPlayer(friend, knownName: "Friend") == "Friend")
     }
 
     @Test func deathMarkerAppearsInItsOwnDimension() {
         let nether = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you, worldDataVersion: 5023)
         #expect(nether.map(\.kind) == [.death])
         #expect(nether.first?.position == CGPoint(x: 10, y: 20))
-        #expect(nether.first?.label == "Where you last died")
+        #expect(nether.first.map { GameNames.unavailable.playerMarker($0) } == "Where you last died")
         let named = PlayerPresentation.markers(for: players, in: "minecraft:the_nether", singleplayerUUID: you,
                                                worldDataVersion: 5023, knownName: { _ in "You" })
-        #expect(named.first?.label == "Where You last died")
+        #expect(named.first.map { GameNames.unavailable.playerMarker($0) } == "Where You last died")
     }
 }
 
@@ -183,8 +183,8 @@ import Testing
         await names.lookUp([you])
         #expect(names.name(for: you) == "fahlman")
         #expect(fake.requests.isEmpty)  // known locally, so not sent online
-        let player = PlayerInfo(uuid: you, nbt: .compound([:]))
-        #expect(PlayerPresentation.name(of: player, singleplayerUUID: you, knownName: names.name(for: you)) == "fahlman")
+        let name = GameNames.PlayerName(playerID: you, singleplayerUUID: you, knownName: names.name(for: you))
+        #expect(GameNames.unavailable.player(name) == "fahlman")
         names.forgetMinecraftFolder()
         #expect(names.name(for: you) == nil)
     }
