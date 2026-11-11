@@ -161,7 +161,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
         let key = TileCache.Key(region: .init(x: -1, z: 0), file: .init(size: 1, modified: 2),
-            inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal,
+                          assets: GameAssets.interpretationVersion, heightScale: nil,
                           blockFilter: MapBlockFilter(), colorSource: .game("test-assets"),
                           gameSource: .init(data: "test-assets", artwork: .game("test-assets")),
                           samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
@@ -201,7 +202,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = TileCache(directory: directory)
         let ordinary = TileCache.Key(region: .init(x: -1, z: -1), file: .init(size: 1, modified: 2),
-            inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal,
+                          assets: GameAssets.interpretationVersion, heightScale: nil,
                           blockFilter: MapBlockFilter(), colorSource: .game("test-assets"),
                           gameSource: .init(data: "test-assets", artwork: .game("test-assets")),
                           samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)

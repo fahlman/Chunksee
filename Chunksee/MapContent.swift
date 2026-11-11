@@ -5,12 +5,13 @@ import SwiftUI
 /// Everything drawn over one dimension's terrain, bottom to top in this order.
 struct MapContent {
     let gameNames: GameNames
-    var mapStyle = MapStyle.normal
-    var lighting: MapLighting?
-    var shadowLight: MapShadow.Light?
-    var heightScale: MapHeightScale?
-    var blockFilter = MapBlockFilter()
-    var showsDarkSpots = false
+    /// Legends and terrain consume the same resolved value, supplied with the scene.
+    var terrain: MapDrawingInput
+    var mapStyle: MapStyle { terrain.style }
+    var lighting: MapLighting? { terrain.lighting }
+    var heightScale: MapHeightScale? { terrain.heightScale }
+    var blockFilter: MapBlockFilter { terrain.blockFilter }
+    var showsDarkSpots: Bool { terrain.showsDarkSpots }
     /// Time-spent heat images by region.
     var heatMap: [RegionPosition: CGImage] = [:]
     var showsHeatMap = false
@@ -124,14 +125,10 @@ struct MapContent {
 extension MapContent {
     /// A value projected from live document models, without retaining the document or a cache.
     init(session: WorldSession) {
-        self.init(gameNames: session.resources.gameNames)
-        guard session.map != nil, let id = session.selectedDimensionID else { return }
-        mapStyle = session.map?.style ?? .normal
-        lighting = session.map?.lighting
-        shadowLight = session.map?.shadowLight
-        heightScale = session.map?.heightScale
-        blockFilter = session.map?.blockFilter ?? MapBlockFilter()
-        showsDarkSpots = session.map?.showsDarkSpots == true
+        let map = session.map
+        self.init(gameNames: session.resources.gameNames, terrain: map?.drawingInput
+            ?? MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil))
+        guard map != nil, let id = session.selectedDimensionID else { return }
         let index = session.presentation.selectedIndex
         heatMap = session.heatMap.visibleImages ?? [:]
         showsHeatMap = session.heatMap.isShown

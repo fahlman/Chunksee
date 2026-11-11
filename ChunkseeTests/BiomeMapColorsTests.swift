@@ -276,6 +276,7 @@ import Testing
         renderer.gameData = library.data; renderer.gameArtwork = library
         renderer.biomeColors = try await library.data.biomeColors(in: original, artwork: library)
         let firstKey = renderer.colorSourceKey
+        let originalRenderer = renderer
         let red = try #require(try await renderer.tile(for: position))
         try pack(at: url, grass: 0x0000ff)
         renderer.biomeColors = try await library.data.biomeColors(in: World(contentsOf: url), artwork: library)
@@ -289,9 +290,13 @@ import Testing
         #expect(renderer.colorSourceKey == blueKey)
         let hit = try #require(try await renderer.tile(for: position))
         #expect(try ItemPictureFixture.pixels(hit.full.image).bytes == ItemPictureFixture.pixels(blue.full.image).bytes)
-        let file = dimension.regionURL(at: position)
-        #expect(TileCache.key(for: position, regionFile: file, style: .height, colorSource: blueKey)
-            == TileCache.key(for: position, regionFile: file, style: .height, colorSource: firstKey))
+        for style in MapStyle.allCases {
+            var before = originalRenderer, after = renderer
+            before.style = style; after.style = style
+            let originalKey = try #require(before.cacheKey(for: position))
+            let changedKey = try #require(after.cacheKey(for: position))
+            #expect((originalKey == changedKey) == (style == .height))
+        }
         await library.close()
     }
 
@@ -987,9 +992,9 @@ import Testing
         }
         for appearance in [ColorScheme.light, .dark] {
             let area = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
-                content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),
+                content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),
                 progress: { _, _ in })
-            let view = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: plan.size,
+            let view = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: plan.size,
                 scale: 1, colorScheme: appearance, locale: Locale(identifier: "en_US")))
             #expect(try bytes(area) == bytes(view))
         }

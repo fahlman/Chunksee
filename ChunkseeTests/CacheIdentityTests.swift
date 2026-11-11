@@ -6,15 +6,15 @@ import Testing
 @testable import ChunkseeTestHost
 
 extension TileCache {
-    /// Existing disk-format fixtures supply their presentation explicitly through the real
-    /// input normalizer; production renderers additionally supply sampled neighbor files.
+    /// Disk-format fixtures use explicit Normal inputs. Style and game-source behavior
+    /// must be checked through RegionTileRenderer.cacheKey, which owns those decisions.
     nonisolated static func key(for region: RegionPosition, regionFile: URL, context: MapSurfaceContext = .unknown,
-                    cutawayY: Int? = nil, style: MapStyle = .normal, heightScale: MapHeightScale? = nil,
-                    blockFilter: MapBlockFilter = MapBlockFilter(), colorSource: RegionTileRenderer.ColorSource? = nil,
-                    gameSource: GameResourceSource = .unavailable, darkSpots: DarkSpots? = nil) -> Key? {
+                    cutawayY: Int? = nil, blockFilter: MapBlockFilter = MapBlockFilter(),
+                    darkSpots: DarkSpots? = nil) -> Key? {
         key(for: region, regionFile: regionFile,
-            inputs: Inputs(context: context, cutawayY: cutawayY, style: style, heightScale: heightScale,
-                           blockFilter: blockFilter, colorSource: colorSource, gameSource: gameSource,
+            inputs: Inputs(context: context, cutawayY: cutawayY, style: .normal,
+                           assets: GameAssets.interpretationVersion, heightScale: nil,
+                           blockFilter: blockFilter, colorSource: nil, gameSource: .unavailable,
                            samplesNeighborBiomes: false, darkSpots: darkSpots), biomeFiles: nil)
     }
 }

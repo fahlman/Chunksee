@@ -89,7 +89,9 @@ import Testing
     @Test func cachedSurfacesKeepUnlitColoursSignedHeightsAndWater() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ReliefCache-\(UUID())")
         defer { try? FileManager.default.removeItem(at: url) }
-        let cache = TileCache(directory: url), key = TileCache.Key(region: .init(x: -1, z: 2), file: .init(size: 12, modified: 0), inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+        let cache = TileCache(directory: url), key = TileCache.Key(region: .init(x: -1, z: 2), file: .init(size: 12, modified: 0),
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal,
+            assets: GameAssets.interpretationVersion, heightScale: nil,
             blockFilter: MapBlockFilter(), colorSource: nil, gameSource: .unavailable,
             samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         var surface = RegionTileRenderer.Canvas()

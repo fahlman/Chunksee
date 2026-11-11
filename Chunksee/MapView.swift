@@ -171,24 +171,24 @@ struct MapView: View {
         .focusedSceneValue(\.mapHeightPopover, $showsHeightPopover)
     }
 
-    /// Draws the map: terrain tiles, then every overlay, bottom to top. The map view and image
-    /// export both draw through this, so an exported image matches the screen.
+    /// Draws visible tiles, then overlays. Image creation uses the same resolved terrain input
+    /// and drawing primitives, with its bounded shader rasterizer for Copy and area export.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
                         displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
-                    image: { map.image(for: $0, fullResolution: fullResolution) }, lighting: map.lighting,
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain,
                     shadow: { map.shadowImages[$0] }, detail: map.detailImages.mapValues(\.picture),
-                    protectsWater: map.style == .waterDepth, in: context, size: size)
+                    in: context, size: size)
         drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
-                            lighting: MapLighting? = nil, shadow: (RegionPosition) -> CGImage? = { _ in nil },
-                            detail: [ChunkPosition: MapTileImage] = [:], protectsWater: Bool = false,
+                            input: MapDrawingInput, shadow: (RegionPosition) -> CGImage? = { _ in nil },
+                            detail: [ChunkPosition: MapTileImage] = [:],
                             increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
@@ -196,13 +196,15 @@ struct MapView: View {
             guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
             // Overlap neighbors by half a point so smoothed edges don't expose seams.
             let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
-            drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: lighting,
-                             protectsWater: protectsWater, increasedContrast: increasedContrast, in: context)
-            drawDetail(viewport: viewport, region: region, images: detail, lighting: lighting,
-                       increasedContrast: increasedContrast, in: context, size: size)
+            drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: input.lighting,
+                             protectsWater: input.protectsWater, increasedContrast: increasedContrast, in: context)
+            if input.includesDetail {
+                drawDetail(viewport: viewport, region: region, images: detail, lighting: input.lighting,
+                           increasedContrast: increasedContrast, in: context, size: size)
+            }
             // Finish each region before drawing the next overlapping edge. This keeps the
             // screen and streamed area export identical, without double-shading transparent detail.
-            if let mask = shadow(region) {
+            if input.shadowLight != nil, let mask = shadow(region) {
                 drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
             }
         }

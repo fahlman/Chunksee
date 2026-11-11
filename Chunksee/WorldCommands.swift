@@ -104,7 +104,7 @@ struct WorldCommands: Commands {
                     session?.map?.blendsBiomeColors ?? false
                 } set: { session?.map?.setBiomeBlending($0) })
                 .help("Smooth grass, foliage and water colors across biome boundaries")
-                .disabled(session?.map?.style == .height)
+                .disabled(session?.map?.style.inputs.materialColors != true)
             }
             .disabled(session?.map == nil)
             Toggle("Use Game Artwork", isOn: $minecraft.usesGameArtwork)
@@ -122,7 +122,7 @@ struct WorldCommands: Commands {
                     session?.map?.castsShadows ?? true
                 } set: { session?.map?.setCastsShadows($0) })
             }
-            .disabled(session?.map == nil || session?.map?.style == .height)
+            .disabled(session?.map?.style.inputs.lighting != true)
             Button("Show/Hide Blocks…") { showsBlockFilter = true }
                 .disabled(session?.map == nil || showsBlockFilter == nil)
             Button("Map Height…") { showsMapHeight = true }

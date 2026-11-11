@@ -203,7 +203,7 @@ import Testing
         await map.waitUntilIdle()
         #expect(map.detailImages[.init(x: -1, z: -1)] != nil)
         for scheme in [ColorScheme.light, .dark] {
-            let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil },
+            let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil },
                 size: size, scale: 1, colorScheme: scheme, locale: .init(identifier: "en_US")))
             let pixels = try #require(ItemTexture(png: image.data))
             #expect(pixels.rgb(at: .init(1, 1)) == 0xff0000)
@@ -283,7 +283,7 @@ import Testing
         let image = try #require(map.detailImages[chunk])
         #expect(image.normals != nil)
         func copiedPixel() throws -> UInt32? {
-            let copy = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil },
+            let copy = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil },
                 size: size, scale: 1, colorScheme: .light, locale: .init(identifier: "en_US")))
             return try #require(ItemTexture(png: copy.data)).rgb(at: .init(1, 1))
         }
@@ -344,12 +344,12 @@ import Testing
         #expect(map.shadowImages[region] != nil && map.detailImages.isEmpty)
         func screen() throws -> [UInt8] {
             let view = Canvas { context, size in
-                MapView.drawMap(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, displayScale: 1, in: context, size: size)
+                MapView.drawMap(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, displayScale: 1, in: context, size: size)
             }.frame(width: size.width, height: size.height)
             return try ItemPictureFixture.pixels(#require(ImageRenderer(content: view).cgImage)).bytes
         }
         func copy(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
-            let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil },
+            let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil },
                 size: size, scale: 1, colorScheme: .light, locale: .init(identifier: "en_US"), contrast: contrast))
             return try #require(ItemTexture(png: image.data)).pixels
         }

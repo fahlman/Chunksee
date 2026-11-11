@@ -241,8 +241,7 @@ import Testing
         map.viewport = plan.viewport
         map.requestTiles(visibleIn: plan.size, displayScale: 1)
         await map.waitUntilIdle()
-        var content = MapContent(gameNames: .unavailable)
-        content.blockFilter = filter
+        let content = MapContent(gameNames: .unavailable, terrain: map.drawingInput)
         for appearance in [ColorScheme.light, .dark] {
             let actual = try await MapImage.export(plan: plan, regions: map.availableRegions, renderer: (try requiredRenderer(map)),
                 content: content, portalStatus: { _ in nil }, colorScheme: appearance, locale: Locale(identifier: "en_US"),

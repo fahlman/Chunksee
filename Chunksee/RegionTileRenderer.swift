@@ -33,10 +33,16 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// Only preparation changes with this flag; saved clock values are drawing uniforms.
     var usesSavedLighting = false
 
-    var gameSource: GameResourceSource { GameResourceSource(data: gameData, artwork: gameArtwork) }
+    /// Resolve style-dependent material access once, including direct renderer callers.
+    /// The window and cache key must not independently strip Height's resources.
+    private var materials: (data: GameDataLibrary?, artwork: GameArtworkLibrary?) {
+        style.inputs.materialColors ? (gameData, gameArtwork) : (nil, nil)
+    }
+
+    var gameSource: GameResourceSource { GameResourceSource(data: materials.data, artwork: materials.artwork) }
 
     private var currentBiomeColors: MapBiomeColors? {
-        guard let biomeColors, biomeColors.source.data == gameSource.data,
+        guard style.inputs.materialColors, let biomeColors, biomeColors.source.data == gameSource.data,
               biomeColors.source.artwork == .unavailable || biomeColors.source.artwork == gameSource.artwork else { return nil }
         return biomeColors
     }
@@ -46,12 +52,12 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     var colorSourceKey: ColorSource? {
-        guard let colors = currentBiomeColors else { return gameData.map { .game($0.sourceKey) } }
+        guard let colors = currentBiomeColors else { return materials.data.map { .game($0.sourceKey) } }
         return .biomes(colors.sourceKey, blending: blendsBiomeColors ? BiomeBlending.cacheKey : nil)
     }
 
     var samplesNeighborBiomes: Bool {
-        style != .height && currentBiomeColors != nil && (blendsBiomeColors || currentBiomeColors?.sampler != nil)
+        currentBiomeColors != nil && (blendsBiomeColors || currentBiomeColors?.sampler != nil)
     }
 
     /// Include unavailable neighbors too, so creating/deleting a file changes the dependency.
@@ -71,7 +77,9 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     /// Immutable publication inputs, compared without disk access or catalog hashing.
     var cacheInputs: TileCache.Inputs {
-        TileCache.Inputs(context: surfaceContext, cutawayY: cutawayY, style: style, heightScale: heightScale,
+        TileCache.Inputs(context: surfaceContext, cutawayY: cutawayY, style: style,
+                         assets: style.inputs.materialColors ? GameAssets.interpretationVersion : nil,
+                         heightScale: style.inputs.requiresHeightScale ? heightScale : nil,
                          blockFilter: blockFilter, colorSource: colorSourceKey, gameSource: gameSource,
                          samplesNeighborBiomes: samplesNeighborBiomes, darkSpots: darkSpots)
     }
@@ -82,8 +90,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     var preparation: Preparation {
-        Preparation(heightScale: style == .height ? nil : heightScale,
-                    usesSavedLighting: style != .height && usesSavedLighting)
+        Preparation(heightScale: style.inputs.lighting ? heightScale : nil,
+                    usesSavedLighting: style.inputs.lighting && usesSavedLighting)
     }
 
     struct ImageKey: Hashable, Sendable {
@@ -106,9 +114,9 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     @concurrent
     private func surface(for region: RegionPosition) async throws -> Canvas? {
-        guard style != .height || heightScale != nil,
+        guard style.isAvailable(heightScale: heightScale),
               let file = try dimension.region(x: region.x, z: region.z) else { return nil }
-        let coverage = style == .height ? nil : try await gameArtwork?.mapCoverageReader()
+        let coverage = try await materials.artwork?.mapCoverageReader()
         if samplesNeighborBiomes, let origin = region.chunkOrigin {
             return try await sampledSurface(in: file, region: region, origin: origin, coverage: coverage)
         }
@@ -141,7 +149,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                 }
             }
         }
-        if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
+        try await materials.data?.checkAvailable()
+        try await materials.artwork?.checkAvailable()
         return canvas
     }
 
@@ -288,8 +297,8 @@ nonisolated struct RegionTileRenderer: Sendable {
                 fillWorkers()
             }
         }
-        try await gameData?.checkAvailable()
-        try await gameArtwork?.checkAvailable()
+        try await materials.data?.checkAvailable()
+        try await materials.artwork?.checkAvailable()
         return canvas
     }
 
@@ -306,7 +315,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     }
 
     private func displayPixels(_ surface: Canvas) -> [UInt8] {
-        let pixels = style == .height ? surface.pixels : surface.litPixels(heightScale: heightScale)
+        let pixels = style.inputs.lighting ? surface.litPixels(heightScale: heightScale) : surface.pixels
         return surface.nightLight.map { DarkSpots.applying($0, to: pixels, side: Self.side) } ?? pixels
     }
 
@@ -361,7 +370,8 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// method would otherwise run on the main actor when called from the map model.
     @concurrent
     func tile(for region: RegionPosition) async throws -> RenderedTile? {
-        if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
+        try await materials.data?.checkAvailable()
+        try await materials.artwork?.checkAvailable()
         // The key is taken before rendering, so a file changed mid-render is re-rendered next time.
         guard let key = cacheKey(for: region) else { return nil }
         var surface: Canvas?
@@ -382,8 +392,9 @@ nonisolated struct RegionTileRenderer: Sendable {
             }
         }
         guard let surface else { return nil }
-        var drawing = style == .height ? (pixels: surface.pixels, normals: nil as [UInt8]?)
-            : surface.drawingPixels(heightScale: heightScale, includesNormals: usesSavedLighting)
+        var drawing = style.inputs.lighting
+            ? surface.drawingPixels(heightScale: heightScale, includesNormals: usesSavedLighting)
+            : (pixels: surface.pixels, normals: nil as [UInt8]?)
         if let nightLight = surface.nightLight {
             drawing.pixels = DarkSpots.applying(nightLight, to: drawing.pixels, side: Self.side)
         }
@@ -399,16 +410,16 @@ nonisolated struct RegionTileRenderer: Sendable {
         return RenderedTile(key: ImageKey(surface: key, preparation: preparation, chunk: nil),
                             full: MapTileImage(full, normals: normals), preview: MapTileImage(preview, normals: previewNormals),
                             cacheWrite: cacheWrite,
-                            detail: scanned && gameArtwork != nil && style != .height ? surface.detailSurface : nil,
-                            heights: style == .height ? nil : surface.heights)
+                            detail: scanned && materials.artwork != nil && style.inputs.detail ? surface.detailSurface : nil,
+                            heights: style.inputs.shadows ? surface.heights : nil)
     }
 
     /// Reuse the existing scan's sidecar only when close-up pixels are requested. A missing
     /// sidecar (including disabled caching) uses the same renderer, never another block parser.
     @concurrent
     func detail(for region: RegionPosition) async throws -> DetailSurface? {
-        guard gameArtwork != nil, style != .height else { return nil }
-        try await gameArtwork?.checkAvailable()
+        guard let artwork = materials.artwork, style.inputs.detail else { return nil }
+        try await artwork.checkAvailable()
         guard let key = cacheKey(for: region) else { return nil }
         if let cache, let detail = cache.loadDetail(key) { return DetailSurface(key: key, surface: detail) }
         guard let surface = try await surface(for: region) else { return nil }
@@ -515,7 +526,7 @@ nonisolated struct RegionTileRenderer: Sendable {
                                 coverage: (@Sendable (BlockState) -> MapBlockCoverage)?) async throws -> ColoredChunk? {
         guard let scanned = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                       cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots, coverage: coverage) else { return nil }
-        guard style != .height, gameData != nil || currentBiomeColors != nil else { return ColoredChunk(columns: scanned.columns) }
+        guard materials.data != nil || currentBiomeColors != nil else { return ColoredChunk(columns: scanned.columns) }
         return try await coloredColumns(Self.colorInput(scanned.sections, columns: scanned.columns),
                                         region: region, localX: localX, localZ: localZ, neighbors: [:])
     }
@@ -524,6 +535,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// chunk offsets from this region, including the one-chunk ring at -1 and 32.
     private func coloredColumns(_ scanned: ColorInput, region: RegionPosition, localX: Int, localZ: Int,
                                 neighbors: BiomeRows) async throws -> ColoredChunk {
+        let (gameData, gameArtwork) = materials
         let biomeColors = currentBiomeColors
         let usesBiomeColors = biomeColors != nil
         let states = scanned.states
@@ -753,12 +765,13 @@ nonisolated struct RegionTileRenderer: Sendable {
 
     @concurrent
     func topBlocks(in file: RegionFile, localX: Int, localZ: Int) async throws -> [TopBlock?]? {
-        let coverage = style == .height ? nil : try await gameArtwork?.mapCoverageReader()
+        let coverage = try await materials.artwork?.mapCoverageReader()
         guard let (sections, columns) = Self.scan(file, localX: localX, localZ: localZ, context: surfaceContext,
                                                 cutawayY: cutawayY, blockFilter: blockFilter, darkSpots: darkSpots,
                                                 coverage: coverage) else { return nil }
         try Task.checkCancellation()
-        if style != .height { try await gameData?.checkAvailable(); try await gameArtwork?.checkAvailable() }
+        try await materials.data?.checkAvailable()
+        try await materials.artwork?.checkAvailable()
         return Self.topBlocks(sections: sections, columns: columns)
     }
 

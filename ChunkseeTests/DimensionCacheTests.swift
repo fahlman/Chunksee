@@ -60,7 +60,9 @@ import Testing
         let worldFolder = try #require(TileCache.worldFolder(forWorldAt: world, root: root))
         let oldDirectory = worldFolder.appendingPathComponent("example_ice_caves")
         let region = RegionPosition(x: 0, z: 0)
-        let key = TileCache.Key(region: region, file: .init(size: 12_288, modified: 1_790_000_000), inputs: .init(context: .unknown, cutawayY: nil, style: .normal, heightScale: nil,
+        let key = TileCache.Key(region: region, file: .init(size: 12_288, modified: 1_790_000_000),
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal,
+            assets: GameAssets.interpretationVersion, heightScale: nil,
             blockFilter: MapBlockFilter(), colorSource: nil, gameSource: .unavailable,
             samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
         TileCache(directory: oldDirectory).store(RegionTileRenderer.Canvas(), for: key)

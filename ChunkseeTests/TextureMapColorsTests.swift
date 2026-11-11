@@ -118,12 +118,16 @@ import Testing
         #expect(try ItemPictureFixture.pixels(original.full.image).bytes != pixels.bytes)
         let file = try #require(try dimension.region(x: 0, z: 0))
         #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
-        let regionFile = dimension.regionURL(.terrain, x: 0, z: 0)
-        let fallback = try #require(TileCache.key(for: position, regionFile: regionFile))
-        let source = try #require(TileCache.key(for: position, regionFile: regionFile, colorSource: .game(library.sourceKey), gameSource: .init(data: library.data, artwork: library)))
+        let fallback = try #require(baseline.cacheKey(for: position))
+        let source = try #require(colored.cacheKey(for: position))
         #expect(fallback.fileName != source.fileName && cache.load(source) != nil)
-        #expect(TileCache.key(for: position, regionFile: regionFile, style: .height, colorSource: .game(library.sourceKey), gameSource: .init(data: library.data, artwork: library))
-            == TileCache.key(for: position, regionFile: regionFile, style: .height))
+        for style in MapStyle.allCases {
+            var plain = baseline, supplied = colored
+            plain.style = style; supplied.style = style
+            let plainKey = try #require(plain.cacheKey(for: position))
+            let suppliedKey = try #require(supplied.cacheKey(for: position))
+            #expect((plainKey == suppliedKey) == (style == .height))
+        }
         await library.close()
         await #expect(throws: CancellationError.self) { try await colored.tile(for: position) }
     }

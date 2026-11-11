@@ -190,14 +190,14 @@ import SwiftUI
             let size = CGSize(width: 16, height: 16)
             map.requestTiles(visibleIn: size, displayScale: 1)
             await map.waitUntilIdle()
-            let surface = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let surface = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             map.setDepth(MapDepth(y: 7, isSurface: false))
             await map.waitUntilIdle()
-            let cutaway = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let cutaway = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             #expect(cutaway.data != surface.data)
             map.setDepth(MapDepth(y: 7, isSurface: true))
             await map.waitUntilIdle()
-            let restored = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
+            let restored = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, size: size, scale: 1, colorScheme: .light, locale: Locale(identifier: "en_US")))
             #expect(restored.data == surface.data && map.depth.y == 7)
         }
     }
