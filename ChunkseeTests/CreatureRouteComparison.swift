@@ -53,7 +53,9 @@ import Testing
                 let expected = config.expected.map { URL(filePath: $0).appendingPathComponent(testCase.key, isDirectory: true) }
                 let expectedStructure = try expected.map { try Data(contentsOf: $0.appendingPathComponent("structure.json")) }
                 let expectedPixels = try expected.map { try Data(contentsOf: $0.appendingPathComponent("pixels.rgba")) }
-                var wall = 0.0, cpu = 0.0, maximumRGBDifference = 0, differingRGBBytes = 0
+                var wall = 0.0, cpu = 0.0
+                var maximumChannelDifferences = Array(repeating: 0, count: 4)
+                var differingChannelBytes = Array(repeating: 0, count: 4)
                 var pixelHashes: [String] = [], structureHashes: [String] = []
                 for frameIndex in 0..<(config.timing ? 8 : 1) {
                     try autoreleasepool {
@@ -76,17 +78,17 @@ import Testing
                             if matches {
                                 for (offset, bytes) in zip(pixels, expectedPixels).enumerated() {
                                     let difference = abs(Int(bytes.0) - Int(bytes.1))
-                                    if offset % 4 == 3 { matches = matches && difference == 0 }
-                                    else {
-                                        maxDifference = max(maxDifference, difference)
-                                        if difference != 0 { differingRGBBytes += 1 }
-                                    }
+                                    let channel = offset % 4
+                                    maximumChannelDifferences[channel] = max(maximumChannelDifferences[channel], difference)
+                                    if difference != 0 { differingChannelBytes[channel] += 1 }
+                                    maxDifference = max(maxDifference, difference)
                                 }
+                                // PointMarkersTests and MobColorTests document one-unit native
+                                // premultiplied edge rounding in every channel, including alpha.
                                 matches = matches && maxDifference <= 1
                             }
                         }
                         if let expectedStructure { matches = matches && structure == expectedStructure }
-                        maximumRGBDifference = max(maximumRGBDifference, maxDifference)
                         if !config.timing || !matches {
                             let destination = !matches
                                 ? directory.appendingPathComponent("mismatch-\(repetition)-\(frameIndex)", isDirectory: true)
@@ -101,7 +103,10 @@ import Testing
                 var row: [String: Any] = ["key": testCase.key, "repetition": repetition,
                     "phase": config.timing ? (repetition == 0 ? "warmup" : "measured") : "proof",
                     "structureHashes": structureHashes, "pixelHashes": pixelHashes,
-                    "maximumRGBDifference": maximumRGBDifference, "differingRGBBytes": differingRGBBytes,
+                    "maximumRGBDifference": maximumChannelDifferences.prefix(3).max() ?? 0,
+                    "differingRGBBytes": differingChannelBytes.prefix(3).reduce(0, +),
+                    "maximumChannelDifferences": maximumChannelDifferences,
+                    "differingChannelBytes": differingChannelBytes,
                     "peakRSSBytes": Self.rss()]
                 if config.timing {
                     row["wallSecondsPerFrame"] = wall / 8
