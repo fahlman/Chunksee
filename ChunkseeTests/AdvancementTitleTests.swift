@@ -179,8 +179,7 @@ import Testing
             let records = try #require(handle.records)
             #expect(world.gameNames.identity == namesIdentity)
             #expect(records.advancements == original.advancements && records.statistics == original.statistics)
-            #expect(PlayerRecords.advancementName(diamond, title: records.title(for: diamond),
-                                                 gameNames: world.gameNames) == "Actual diamonds")
+            #expect(world.gameNames.advancement(diamond, title: records.title(for: diamond)) == "Actual diamonds")
         }
         #expect(await calls.next() == 1)
         world.close()

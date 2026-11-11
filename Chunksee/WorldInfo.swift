@@ -83,7 +83,8 @@ struct WorldInfoView: View {
             Section {
                 if let version = session.resources.savedVersion.name { LabeledContent("Minecraft Version", value: version) }
                 if let notice = session.resources.newerWorldNotice { WorldVersionNoticeText(notice: notice) }
-                LabeledContent("Difficulty", value: difficulty)
+                LabeledContent("Difficulty", value: gameNames.difficulty(level.difficulty,
+                    isHardcore: level.isHardcore == true, isLocked: level.difficultyLocked == true))
                 if level.allowCommands == true { LabeledContent("Cheats", value: String(localized: "Allowed")) }
                 if let spawn = session.presentation.worldSpawn {
                     LocationRow(title: Text("World Spawn"), session: session, destination: spawn)
@@ -168,16 +169,6 @@ struct WorldInfoView: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    private var difficulty: String {
-        var text = level.difficulty.map { gameNames.name(key: "options.difficulty.\($0)", fallback: ReadableName.from($0)) } ?? String(localized: "Unknown")
-        if level.isHardcore == true {
-            let hardcore = gameNames.name(key: "options.difficulty.hardcore", fallback: ReadableName.from("hardcore"))
-            text = String(localized: "\(text), \(hardcore)")
-        }
-        if level.difficultyLocked == true { text = String(localized: "\(text), locked") }
-        return text
     }
 
     private func clockTime(_ ticks: Int) -> String {

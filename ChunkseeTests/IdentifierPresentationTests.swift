@@ -9,7 +9,7 @@ import Testing
     func defaultNamespaceUsesTheSameNamesAndGroups(prefix: String) throws {
         #expect(ReadableName.from(prefix + "diamond_sword") == "Diamond Sword")
         #expect(ItemAppearance.symbol(for: prefix + "diamond_sword") == ItemAppearance.symbol(for: "minecraft:diamond_sword"))
-        #expect(PlayerRecords.travelName(prefix + "aviate_one_cm", gameNames: .unavailable) == "Aviate One Cm")
+        #expect(GameNames.unavailable.name(prefix + "aviate_one_cm", in: "stat") == "Aviate One Cm")
         #expect(WorldDetails.readableRule(prefix + "keep_inventory") == "Keep Inventory")
         #expect(PetDetailText.name(prefix + "red_blue") == "Red Blue")
         #expect(try StructureTagFixture.catalog().group(for: prefix + "village_plains") == .village)

@@ -94,14 +94,6 @@ nonisolated struct PlayerRecords: Equatable, Sendable {
         return primary + distances
     }
 
-    static func travelName(_ id: String, gameNames: GameNames) -> String {
-        gameNames.name(id, in: "stat")
-    }
-
-    static func advancementName(_ id: String, title: TextComponent.Content?, gameNames: GameNames) -> String {
-        gameNames.advancement(id, title: title)
-    }
-
     func title(for id: String) -> TextComponent.Content? {
         guard let identifier = Identifier(id) else { return nil }
         return advancementDefinitions[identifier.description]?.title
@@ -130,21 +122,6 @@ nonisolated struct StatisticRow: Identifiable, Equatable, Sendable {
     var statisticID: String
     var value: Int
     var unit: PlayerStatistics.Unit?
-
-    var category: String {
-        categoryID == "minecraft:custom" ? String(localized: "General") : ReadableName.from(categoryID)
-    }
-
-    func name(in gameNames: GameNames) -> String {
-        switch categoryID {
-        case "minecraft:custom": gameNames.name(statisticID, in: "stat")
-        case "minecraft:mined": gameNames.name(statisticID, in: "block")
-        case "minecraft:killed", "minecraft:killed_by": gameNames.name(statisticID, in: "entity")
-        case "minecraft:used", "minecraft:broken", "minecraft:crafted", "minecraft:picked_up", "minecraft:dropped":
-            gameNames.item(statisticID)
-        default: ReadableName.from(statisticID)
-        }
-    }
 
     /// Both surfaces format the same saved value; the reader owns its unit, not its label.
     struct ValueStyle: FormatStyle, Sendable {
@@ -194,7 +171,7 @@ struct PlayerRecordsSections: View {
             if records.statistics != nil {
                 Section("Statistics") {
                     ForEach(records.summaryStatistics) { row in
-                        LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                        LabeledContent(gameNames.statistic(row)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                     }
                     Button("All Statistics…") { showsAllStatistics = true }
                 }
@@ -205,8 +182,7 @@ struct PlayerRecordsSections: View {
             if !completed.isEmpty {
                 Section {
                     ForEach(records.displayedAdvancements, id: \.id) { advancement in
-                        LabeledContent(PlayerRecords.advancementName(advancement.id,
-                            title: records.title(for: advancement.id), gameNames: gameNames)) {
+                        LabeledContent(gameNames.advancement(advancement.id, title: records.title(for: advancement.id))) {
                             if let date = advancement.completed { Text(date, format: .dateTime.year().month().day()) }
                         }
                     }
@@ -229,7 +205,7 @@ struct PlayerRecordsSections: View {
         if !entries.isEmpty {
             Section(title) {
                 ForEach(entries) { row in
-                    LabeledContent(row.name(in: gameNames)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
+                    LabeledContent(gameNames.statistic(row)) { Text(row, format: StatisticRow.ValueStyle()).monospacedDigit() }
                 }
             }
         }
@@ -245,8 +221,8 @@ struct StatisticsTable: View {
     nonisolated private struct NamedRow: Identifiable, Sendable {
         let row: StatisticRow
         let name: String
+        let category: String
         var id: StatisticRow.ID { row.id }
-        var category: String { row.category }
         var value: Int { row.value }
     }
     @Environment(\.dismiss) private var dismiss
@@ -254,7 +230,8 @@ struct StatisticsTable: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("All Statistics").font(.headline).accessibilityAddTraits(.isHeader)
-            Table(rows.map { NamedRow(row: $0, name: $0.name(in: gameNames)) }.sorted(using: sortOrder), sortOrder: $sortOrder) {
+            Table(rows.map { NamedRow(row: $0, name: gameNames.statistic($0), category: gameNames.statisticCategory($0.categoryID)) }
+                .sorted(using: sortOrder), sortOrder: $sortOrder) {
                 TableColumn("Category", value: \.category)
                 TableColumn("Statistic", value: \.name)
                 TableColumn("Value", value: \.value) { Text($0.row, format: StatisticRow.ValueStyle()).monospacedDigit() }
