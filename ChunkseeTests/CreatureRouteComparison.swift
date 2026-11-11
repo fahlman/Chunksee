@@ -205,7 +205,6 @@ import Testing
         }
         .frame(width: size.width, height: size.height)
         .environment(\.colorScheme, .light)
-        .environment(\.colorSchemeContrast, .standard)
         .environment(\.locale, Locale(identifier: "en_US"))
         let renderer = ImageRenderer(content: canvas); renderer.scale = 1
         guard let image = renderer.cgImage else { throw Failure.image }
