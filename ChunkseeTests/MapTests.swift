@@ -43,9 +43,12 @@ import Testing
     @Test func theGridSettingIsRemembered() {
         let defaults = TestDefaults.make()
         let worldID = UUID()
-        #expect(!LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
-        LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid = true
-        #expect(LayerVisibility(settings: WorldSettings(id: worldID, defaults: defaults), dimension: "minecraft:overworld").showsGrid)
+        #expect(!WorldSettings(id: worldID, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.showsGrid)
+        let settings = WorldSettings(id: worldID, defaults: defaults)
+        var choices = settings.mapPresentation(for: "minecraft:overworld")
+        choices.overlays.showsGrid = true
+        settings.save(choices, for: "minecraft:overworld")
+        #expect(WorldSettings(id: worldID, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.showsGrid)
     }
 }
 

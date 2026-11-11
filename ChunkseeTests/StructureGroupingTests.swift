@@ -62,33 +62,44 @@ enum StructureTagFixture {
         #expect(!partlyAvailable.group(for: "minecraft:mineshaft_mesa").isShownByDefault)
     }
 
-    @Test func savedVisibilityKeepsChoicesAndGivesNewGroupsTheirDefaults() {
-        let settings = WorldSettings(id: UUID(), defaults: TestDefaults.make())
-        let dimension = "minecraft:overworld"
-        settings.saveLayers([.structures: ["village", "mineshaft", "other"]], for: dimension)
-        let restored = LayerVisibility(settings: settings, dimension: dimension)
-        #expect(restored.structures == [.village, .mineshaft, .other, .abandonedCamp])
-        #expect(settings.layers(for: dimension)?[.structureVisibility] as? [String: Bool] != nil)
-        restored.structures.remove(.abandonedCamp)
-        restored.structures.insert(.stronghold)
-        #expect(LayerVisibility(settings: settings, dimension: dimension).structures == [.village, .mineshaft, .other, .stronghold])
-        #expect(LayerVisibility(settings: settings, dimension: "minecraft:the_nether").structures.contains(.abandonedCamp))
+    @Test func savedVisibilityKeepsChoicesAndGivesNewGroupsTheirDefaults() throws {
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
+        let key = "worldSettings." + id.uuidString
+        defaults.set(["layers": [dimension: ["shownStructureGroups": ["village", "mineshaft", "other"]]]], forKey: key)
+        let settings = WorldSettings(id: id, defaults: defaults)
+        var restored = settings.mapPresentation(for: dimension)
+        #expect(restored.overlays.structures == [.village, .mineshaft, .other, .abandonedCamp])
+        #expect(defaults.dictionary(forKey: key)?["layers"] == nil)
+        restored.overlays.structures.remove(.abandonedCamp)
+        restored.overlays.structures.insert(.stronghold)
+        settings.save(restored, for: dimension)
+        #expect(settings.mapPresentation(for: dimension).overlays.structures == [.village, .mineshaft, .other, .stronghold])
+        #expect(settings.mapPresentation(for: "minecraft:the_nether").overlays.structures.contains(.abandonedCamp))
 
-        // A later group absent from the new format uses its own default on every reopen.
-        settings.saveLayers([.structureVisibility: ["village": false, "mineshaft": true]], for: dimension)
-        let newer = LayerVisibility(settings: settings, dimension: dimension)
-        #expect(!newer.structures.contains(.village) && newer.structures.contains(.mineshaft))
-        #expect(newer.structures.contains(.abandonedCamp) && !newer.structures.contains(.netherFossil))
+        // Missing groups in either the historical dictionary or the new record use their default.
+        let choices: [String: Bool] = ["village": false, "mineshaft": true]
+        let payloads: [[String: Any]] = [
+            ["layers": [dimension: ["structureVisibility": choices]]],
+            ["mapPresentations": [dimension: try JSONSerialization.data(withJSONObject:
+                ["presentation": ["overlays": ["structures": choices]]])]]
+        ]
+        for payload in payloads {
+            defaults.set(payload, forKey: key)
+            let newer = settings.mapPresentation(for: dimension).overlays
+            #expect(!newer.structures.contains(.village) && newer.structures.contains(.mineshaft))
+            #expect(newer.structures.contains(.abandonedCamp) && !newer.structures.contains(.netherFossil))
+        }
     }
 
     @Test func oldGlobalVisibilityMigratesOncePerDimension() {
         let defaults = TestDefaults.make()
         defaults.set([String](), forKey: "shownStructureGroups")
         let settings = WorldSettings(id: UUID(), defaults: defaults)
-        let restored = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
-        #expect(restored.structures == [.abandonedCamp])
-        restored.structures.remove(.abandonedCamp)
-        #expect(LayerVisibility(settings: settings, dimension: "minecraft:overworld").structures.isEmpty)
+        var restored = settings.mapPresentation(for: "minecraft:overworld")
+        #expect(restored.overlays.structures == [.abandonedCamp])
+        restored.overlays.structures.remove(.abandonedCamp)
+        settings.save(restored, for: "minecraft:overworld")
+        #expect(settings.mapPresentation(for: "minecraft:overworld").overlays.structures.isEmpty)
     }
 
     @Test func livePackChangesReclassifyCachedStructuresWithoutLosingTheirIdentity() async throws {

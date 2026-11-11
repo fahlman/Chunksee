@@ -151,12 +151,12 @@ struct WorldCommands: Commands {
                 .keyboardShortcut("i")
             inspectorCommand("Storage", inspector: .storage)
             Toggle("Time Spent", isOn: Binding {
-                session?.heatMap.isShown ?? false
-            } set: { session?.heatMap.isShown = $0 })
+                session?.visibility.showsTimeSpent ?? false
+            } set: { session?.visibility.showsTimeSpent = $0 })
             .disabled(session?.map == nil)
             Toggle("Slime Chunks", isOn: Binding {
-                session?.slimeChunks.isShown ?? false
-            } set: { session?.slimeChunks.isShown = $0 })
+                session?.visibility.showsSlimeChunks ?? false
+            } set: { session?.visibility.showsSlimeChunks = $0 })
             .disabled(session?.slimeChunks.isAvailable != true)
             Toggle("Dark Spots", isOn: Binding {
                 session?.map?.showsDarkSpots ?? false

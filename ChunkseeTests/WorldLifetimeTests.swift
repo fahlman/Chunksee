@@ -67,7 +67,7 @@ import Testing
         ]
         await resources.waitForRefresh()
         await session.search.waitForIndex()
-        session.slimeChunks.isShown = true
+        session.visibility.showsSlimeChunks = true
         await session.slimeChunks.waitForImages()
         session.search.text = "stone"
         await session.search.waitForSearch()

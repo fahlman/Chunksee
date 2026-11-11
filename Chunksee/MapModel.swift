@@ -14,16 +14,17 @@ final class MapModel {
             }
         }
     }
-    private(set) var depth = MapDepth()
-    private(set) var chosenStyle = MapStyle.normal
+    private(set) var presentation: MapPresentation
+    var depth: MapDepth { presentation.depth }
+    var chosenStyle: MapStyle { presentation.style }
     /// Missing game definitions can change the picture without replacing the saved choice.
     var style: MapStyle { canShowStyle(chosenStyle) ? chosenStyle : .normal }
-    private(set) var blendsBiomeColors = false
-    private(set) var lightingMode = MapLightingMode.savedTime
+    var blendsBiomeColors: Bool { presentation.blendsBiomeColors }
+    var lightingMode: MapLightingMode { presentation.lightingMode }
     @ObservationIgnored private let readSavedLighting: @MainActor () -> MapLighting?
     var savedLighting: MapLighting? { readSavedLighting() }
     var lighting: MapLighting? { lighting(using: savedLighting) }
-    private(set) var castsShadows = true
+    var castsShadows: Bool { presentation.castsShadows }
     var shadowLight: MapShadow.Light? { shadowLight(using: savedLighting) }
     private func lighting(using saved: MapLighting?) -> MapLighting? {
         style != .height && lightingMode == .savedTime ? saved : nil
@@ -39,8 +40,8 @@ final class MapModel {
     private var shadowJob: Task<Void, Never>?
     private var shadowRevision = 0
     private var shadowsNeedUpdate = false
-    private(set) var blockFilter = MapBlockFilter()
-    private(set) var showsDarkSpots = false
+    var blockFilter: MapBlockFilter { presentation.blockFilter }
+    var showsDarkSpots: Bool { presentation.overlays.showsDarkSpots }
     @ObservationIgnored private let readNightLighting: @MainActor () -> MonsterSpawnLight?
     var nightLighting: MonsterSpawnLight? { isClosed ? nil : readNightLighting() }
     var darkSpots: DarkSpots? { showsDarkSpots ? DarkSpots(rule: nightLighting) : nil }
@@ -116,6 +117,7 @@ final class MapModel {
          savedLighting: @escaping @MainActor () -> MapLighting?,
          nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
          work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
+         presentation: MapPresentation = MapPresentation(),
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
          writeCache: @escaping @Sendable (RegionTileRenderer.CacheWrite) async -> Void = { await $0.store() },
@@ -126,6 +128,7 @@ final class MapModel {
          readTopBlocks: @escaping TopBlockReader
             = { await MapModel.readTopBlocks(of: $0, using: $1, cached: $2) }) {
         self.work = work
+        self.presentation = presentation
         readGameResources = gameResources
         readDefinitions = definitions
         let definitions = definitions()
@@ -776,7 +779,7 @@ final class MapModel {
     func setDepth(_ value: MapDepth) {
         guard !isClosed, value != depth else { return }
         let previous = depth.cutawayY
-        depth = value
+        presentation.depth = value
         guard previous != value.cutawayY else { return }
         surfaceChanged()
     }
@@ -803,16 +806,23 @@ final class MapModel {
     func setBlockFilter(_ value: MapBlockFilter) {
         guard !isClosed, value != blockFilter else { return }
         let previous = blockFilter
-        blockFilter = value
+        presentation.blockFilter = value
         guard previous.cacheKey != value.cacheKey else { return }
         if previous.effectiveHiddenIDs != value.effectiveHiddenIDs { surfaceChanged() }
         else { reloadTiles() }
     }
 
     func setDarkSpots(_ shown: Bool) {
-        guard !isClosed, showsDarkSpots != shown else { return }
-        showsDarkSpots = shown
-        surfaceChanged(coordinatesChanged: false)
+        var overlays = presentation.overlays
+        overlays.showsDarkSpots = shown
+        setOverlays(overlays)
+    }
+
+    func setOverlays(_ value: LayerVisibility) {
+        guard !isClosed, value != presentation.overlays else { return }
+        let darkSpotsChanged = showsDarkSpots != value.showsDarkSpots
+        presentation.overlays = value
+        if darkSpotsChanged { surfaceChanged(coordinatesChanged: false) }
     }
 
     private func resetTopBlockReads() {
@@ -834,7 +844,7 @@ final class MapModel {
     func setStyle(_ value: MapStyle) {
         guard !isClosed, value != chosenStyle else { return }
         let previous = style
-        chosenStyle = value
+        presentation.style = value
         if style != previous { reloadTiles() }
     }
 
@@ -842,7 +852,7 @@ final class MapModel {
 
     func setBiomeBlending(_ enabled: Bool) {
         guard !isClosed, enabled != blendsBiomeColors else { return }
-        blendsBiomeColors = enabled
+        presentation.blendsBiomeColors = enabled
         if style != .height { reloadTiles() }
     }
 
@@ -868,14 +878,14 @@ final class MapModel {
     func setLightingMode(_ value: MapLightingMode) {
         guard !isClosed, value != lightingMode else { return }
         let prepared = lighting != nil, previousLight = shadowLight
-        lightingMode = value
+        presentation.lightingMode = value
         if prepared != (lighting != nil) { reloadTiles() }
         else if previousLight != shadowLight { invalidateShadows(); updateLoadingState() }
     }
 
     func setCastsShadows(_ value: Bool) {
         guard !isClosed, value != castsShadows else { return }
-        castsShadows = value
+        presentation.castsShadows = value
         invalidateShadows()
         if !value { shadowImages = [:]; shadowHeights = [:]; shadowSources = [] }
         lastRequest = nil

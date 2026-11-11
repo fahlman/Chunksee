@@ -69,7 +69,7 @@ import Testing
         #expect(content.creatures == [white])
 
         let settings = WorldSettings(id: UUID(), defaults: TestDefaults.make())
-        let visibility = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
+        var visibility = settings.mapPresentation(for: "minecraft:overworld").overlays
         visibility.mobTypes = [species]
         visibility.mobAppearances[species] = MobAppearance(red.creature.appearance)
         visibility.reveal(white)
@@ -78,9 +78,13 @@ import Testing
         #expect(visibility.appearance(for: try #require(MobTypes([red]).kind(species))) == nil)
         visibility.reveal(red, inMobList: true)
         #expect(visibility.mobAppearances[species] == nil)
-        let reopened = LayerVisibility(settings: settings, dimension: "minecraft:overworld")
+        var choices = settings.mapPresentation(for: "minecraft:overworld")
+        choices.overlays = visibility
+        choices.overlays.mobAppearances[species] = MobAppearance(red.creature.appearance)
+        settings.save(choices, for: "minecraft:overworld")
+        let reopened = settings.mapPresentation(for: "minecraft:overworld").overlays
         #expect(reopened.mobTypes == [species] && reopened.mobAppearances.isEmpty)
-        #expect(LayerVisibility(settings: settings, dimension: "minecraft:the_nether").mobTypes.isEmpty)
+        #expect(settings.mapPresentation(for: "minecraft:the_nether").overlays.mobTypes.isEmpty)
     }
 
     @Test func realSavedMobsDriveTypeSelectionFilteringAndSearchWithoutGameFiles() async throws {

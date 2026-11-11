@@ -43,13 +43,8 @@ nonisolated enum SlimeChunks {
 /// The Overworld rule is independent of terrain contents: compute each saved region once,
 /// reuse it through pan/zoom/export, and add masks only when new regions appear.
 @Observable final class SlimeChunkLayer {
-    var isShown = false {
-        didSet {
-            guard !isClosed, isShown != oldValue else { return }
-            visibility?.rememberSlimeChunks(isShown)
-            update(reread: isShown)
-        }
-    }
+    private let readIsShown: @MainActor () -> Bool
+    var isShown: Bool { readIsShown() }
     private let readSeed: @MainActor () -> Int64?
     var seed: Int64? { readSeed() }
     var isAvailable: Bool { seed != nil }
@@ -61,9 +56,8 @@ nonisolated enum SlimeChunks {
     var visibleSeed: Int64? { isShown ? seed : nil }
 
     private var regions: Set<RegionPosition>
-    @ObservationIgnored private var visibility: LayerVisibility?
     private let loader: RefreshLoader<Int64?, Set<RegionPosition>, Masks>
-    @ObservationIgnored private var seedObservation: ModelObservation?
+    @ObservationIgnored private var inputObservation: ModelObservation?
     private var isClosed: Bool { loader.isClosed || loader.work.isClosed }
 
     nonisolated private struct Masks: Sendable {
@@ -71,9 +65,10 @@ nonisolated enum SlimeChunks {
         var images: [RegionPosition: CGImage] = [:]
     }
 
-    init(dimensionID: String?, seed: @escaping @MainActor () -> Int64?, regions: Set<RegionPosition>, work: BackgroundWork,
+    init(dimensionID: String?, seed: @escaping @MainActor () -> Int64?, isShown: @escaping @MainActor () -> Bool, regions: Set<RegionPosition>, work: BackgroundWork,
          readImages: @escaping @Sendable (Set<RegionPosition>, Int64) async -> [RegionPosition: CGImage] = SlimeChunks.images) {
         readSeed = { dimensionID == "minecraft:overworld" ? seed() : nil }
+        readIsShown = isShown
         self.regions = regions
         loader = RefreshLoader(work: work, priority: nil, whenInactive: .cancel,
             source: dimensionID == "minecraft:overworld" ? seed() : nil,
@@ -90,23 +85,19 @@ nonisolated enum SlimeChunks {
                 next.completed.formUnion(missing)
                 return next
             }
-        observeSeed()
+        observeInputs()
+        update(reread: isShown())
     }
 
     /// The world snapshot and this accessor are main-actor isolated. Invalidate synchronously
     /// so neither a drawn mask nor a late read can describe the previous seed.
-    private func observeSeed() {
-        seedObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
-            $0.seed
+    private func observeInputs() {
+        inputObservation = ModelObservation(self, isActive: { !$0.isClosed }, read: {
+            (seed: $0.seed, shown: $0.isShown)
         }) { layer, previous in
-            guard layer.seed != previous else { return }
-            layer.update(reread: true)
+            guard layer.seed != previous.seed || layer.isShown != previous.shown else { return }
+            layer.update(reread: layer.seed != previous.seed || layer.isShown)
         }
-    }
-
-    func restoreVisibility(from visibility: LayerVisibility) {
-        self.visibility = visibility
-        isShown = visibility.rememberedSlimeChunks
     }
 
     func regionsChanged(_ regions: Set<RegionPosition>) {
@@ -120,6 +111,6 @@ nonisolated enum SlimeChunks {
         loader.request(source: seed, isEnabled: isShown && isAvailable, refresh: reread ? regions : nil)
     }
 
-    func cancel() { seedObservation?.cancel(); loader.close() }
+    func cancel() { inputObservation?.cancel(); loader.close() }
     func waitForImages() async { await loader.waitUntilFinished() }
 }

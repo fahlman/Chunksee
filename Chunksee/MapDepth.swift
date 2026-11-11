@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// One document's terrain presentation, including the last chosen height while on Surface.
-nonisolated struct MapDepth: Equatable, Sendable {
+nonisolated struct MapDepth: Equatable, Sendable, Codable {
     var y = 64
     var isSurface = true
     var cutawayY: Int? { isSurface ? nil : y }

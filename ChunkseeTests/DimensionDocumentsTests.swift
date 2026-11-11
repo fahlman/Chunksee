@@ -43,7 +43,7 @@ import Testing
         }
         #expect(source.selectedDimensionID == "minecraft:overworld")
         #expect(source.map === map && source.map?.viewport == original)
-        #expect(source.visibility === visibility && source.annotations.ruler.distance == 5)
+        #expect(source.visibility == visibility && source.annotations.ruler.distance == 5)
         #expect(!source.navigation.canGoBack && resources.activeDimensionID == "minecraft:overworld")
         // A later normal opening must not replay an action that could not invoke its opener.
         let target = WorldSession(resources: resources, dimensionID: place.dimension)
@@ -151,7 +151,9 @@ import Testing
         let targetView = MapViewport(center: CGPoint(x: -100, y: -200), scale: 0.125)
         source.map?.viewport = sourceView
         let targetDepth = MapDepth(y: 48, isSurface: false)
-        resources.settings.save(targetView, for: dimension, selected: source.selectedDimensionID, depth: targetDepth)
+        var targetPresentation = resources.settings.mapPresentation(for: dimension)
+        targetPresentation.depth = targetDepth
+        resources.settings.save(targetView, presentation: targetPresentation, for: dimension, selected: source.selectedDimensionID)
         let existing = alreadyOpen ? WorldSession(resources: resources, dimensionID: dimension) : nil
         var opened = recordOpens(of: source)
         let expected: CGPoint

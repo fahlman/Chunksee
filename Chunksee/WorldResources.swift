@@ -613,7 +613,9 @@ final class WorldResources {
         guard !isClosed else { return }
         let documents = sessions.values.compactMap(\.value).filter { !$0.isClosed && $0.selectedDimensionID == dimension }
         if documents.isEmpty {
-            LayerVisibility(settings: settings, dimension: dimension).showsSavedPlaces = true
+            var presentation = settings.mapPresentation(for: dimension)
+            presentation.overlays.showsSavedPlaces = true
+            settings.save(presentation, for: dimension)
         } else {
             for document in documents { document.visibility.showsSavedPlaces = true }
         }

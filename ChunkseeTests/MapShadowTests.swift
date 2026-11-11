@@ -84,12 +84,14 @@ import Testing
     @Test func eachDimensionRemembersItsOwnShadowChoice() throws {
         let defaults = TestDefaults.make(), id = UUID(), view = MapViewport(center: .zero, scale: 1)
         let settings = WorldSettings(id: id, defaults: defaults)
-        #expect(settings.castsShadows(for: "minecraft:overworld"))
-        settings.save(view, for: "minecraft:overworld", selected: nil, castsShadows: false)
-        settings.save(view, for: "minecraft:the_nether", selected: nil, castsShadows: true)
+        #expect(settings.mapPresentation(for: "minecraft:overworld").castsShadows)
+        var choices = MapPresentation()
+        choices.castsShadows = false
+        settings.save(view, presentation: choices, for: "minecraft:overworld", selected: nil)
+        settings.save(view, presentation: MapPresentation(), for: "minecraft:the_nether", selected: nil)
         let restored = WorldSettings(id: id, defaults: defaults)
-        #expect(!restored.castsShadows(for: "minecraft:overworld"))
-        #expect(restored.castsShadows(for: "minecraft:the_nether"))
+        #expect(!restored.mapPresentation(for: "minecraft:overworld").castsShadows)
+        #expect(restored.mapPresentation(for: "minecraft:the_nether").castsShadows)
     }
 
     @Test func waterAndLandUseTheSameMaskWhileIncreasedContrastStaysLighter() async throws {

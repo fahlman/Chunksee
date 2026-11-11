@@ -21,11 +21,8 @@ struct WorldView: View {
     @State private var sidebarModifiers: EventModifiers = []
 
     var body: some View {
-        @Bindable var visibility = session.visibility
         @Bindable var search = session.search
         @Bindable var annotations = session.annotations
-        @Bindable var heatMap = session.heatMap
-        @Bindable var slimeChunks = session.slimeChunks
         let nameRequest = session.names.request(for: session.players)
         NavigationSplitView {
             ScrollViewReader { proxy in
@@ -40,14 +37,14 @@ struct WorldView: View {
                         Label("Storage", systemImage: StorageView.symbol)
                             .tag(SidebarItem.storage)
                             .help("Show totals of the items stored in this dimension’s containers")
-                        MapVisibilityRow(isShown: $heatMap.isShown) {
+                        MapVisibilityRow(isShown: $session.visibility.showsTimeSpent) {
                             Label("Time Spent", systemImage: "clock.fill")
                         }
                         .help("Color the map by how long players spent near each chunk")
-                        MapVisibilityRow(isShown: $slimeChunks.isShown) {
+                        MapVisibilityRow(isShown: $session.visibility.showsSlimeChunks) {
                             Label("Slime Chunks", systemImage: "square.grid.3x3.fill")
                         }
-                        .disabled(!slimeChunks.isAvailable)
+                        .disabled(!session.slimeChunks.isAvailable)
                         .help("Mark Overworld chunks where slimes can spawn below Y 40")
                         MapVisibilityRow(isShown: Binding {
                             session.map?.showsDarkSpots ?? false
@@ -56,11 +53,11 @@ struct WorldView: View {
                         }
                         .disabled(session.map == nil)
                         .help(DarkSpots.explanation)
-                        MapVisibilityRow(isShown: $visibility.showsGrid) {
+                        MapVisibilityRow(isShown: $session.visibility.showsGrid) {
                             Label("Grid", systemImage: "grid")
                         }
                         .help("Show block, chunk and region lines; block lines appear from \(ZoomPercentage.text(MapGrid.minimumBlockSpacing)) zoom")
-                        MapVisibilityRow(isShown: session.presentation.limitedWorldBorder == nil ? .constant(false) : $visibility.showsWorldBorder) {
+                        MapVisibilityRow(isShown: session.presentation.limitedWorldBorder == nil ? .constant(false) : $session.visibility.showsWorldBorder) {
                             Label("World Border", systemImage: "square.dashed")
                         }
                         .disabled(session.presentation.limitedWorldBorder == nil)
@@ -74,20 +71,20 @@ struct WorldView: View {
                     if !index.structures.isEmpty {
                         Section("Structures", isExpanded: sectionExpanded(.structures)) {
                             LayerGroups(session: session, markers: index.structures, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.structures, item: { SidebarItem.structure($0.id) },
+                                        shown: $session.visibility.structures, item: { SidebarItem.structure($0.id) },
                                         expandedGroups: $sidebarDisclosure.structures)
                         }
                     }
                     Section("Places", isExpanded: sectionExpanded(.places)) {
                         SavedPlacesGroup(session: session, isExpanded: $sidebarDisclosure.showsSavedPlaces)
                         LayerGroups(session: session, markers: index.places, origin: session.presentation.spawnPoint,
-                                    shown: $visibility.places, item: { SidebarItem.place($0.id) },
+                                    shown: $session.visibility.places, item: { SidebarItem.place($0.id) },
                                     expandedGroups: $sidebarDisclosure.places)
                     }
                     if index.mobTypes.hasSpecialCreatures {
                         Section("Creatures", isExpanded: sectionExpanded(.creatures)) {
                             LayerGroups(session: session, markers: index.mobTypes.specialCreatures, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.creatures, item: { SidebarItem.creature($0.id) },
+                                        shown: $session.visibility.creatures, item: { SidebarItem.creature($0.id) },
                                         expandedGroups: $sidebarDisclosure.creatures)
                         }
                     }
@@ -103,7 +100,7 @@ struct WorldView: View {
                     if !index.biomeAreas.isEmpty || !session.presentation.possibleBiomes.isEmpty {
                         Section("Biomes", isExpanded: sectionExpanded(.biomes)) {
                             LayerGroups(session: session, markers: index.biomeAreas, origin: session.presentation.spawnPoint,
-                                        shown: $visibility.biomes, allGroups: session.presentation.possibleBiomes,
+                                        shown: $session.visibility.biomes, allGroups: session.presentation.possibleBiomes,
                                         item: { SidebarItem.biome($0.id) }, expandedGroups: $sidebarDisclosure.biomes)
                         }
                     }
@@ -180,12 +177,6 @@ struct WorldView: View {
                         onSelect: selectOnMap)
                     .id(map.dimension.id)
                     .safeAreaInset(edge: .top, spacing: 0) { WorldVersionBanner(resources: session.resources) }
-                    .onChange(of: map.depth) { session.saveView() }
-                    .onChange(of: map.chosenStyle) { session.saveView() }
-                    .onChange(of: map.blendsBiomeColors) { session.saveView() }
-                    .onChange(of: map.lightingMode) { session.saveView() }
-                    .onChange(of: map.castsShadows) { session.saveView() }
-                    .onChange(of: map.blockFilter) { session.saveView() }
                     // Edit ▸ Copy copies the map as shown, while the map has focus.
                     .copyable([SharedMapImage { [session, colorScheme, locale, contrast] in MapImage.render(session: session, colorScheme: colorScheme, locale: locale, contrast: contrast) }])
                     // Remember the position a second after the map stops moving.

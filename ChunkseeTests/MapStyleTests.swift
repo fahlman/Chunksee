@@ -235,7 +235,7 @@ import Testing
             let scale = try #require(map.heightScale)
             map.setStyle(.height)
             first.saveView()
-            #expect(first.resources.settings.style(for: id) == .height)
+            #expect(first.resources.settings.mapPresentation(for: id).style == .height)
 
             // A real absence changes what can be shown, not what the user chose.
             names.forgetMinecraftFolder()
@@ -243,7 +243,7 @@ import Testing
             #expect(map.heightScale == nil && map.style == .normal)
             #expect(try requiredRenderer(map).style == .normal && MapContent(session: first).mapStyle == .normal)
             first.saveView()
-            #expect(first.resources.settings.style(for: id) == .height)
+            #expect(first.resources.settings.mapPresentation(for: id).style == .height)
             first.close()
             await first.waitUntilClosed()
 
@@ -251,13 +251,13 @@ import Testing
             let reopened = try await open(), restored = try #require(reopened.map)
             #expect(restored.heightScale == nil && restored.style == .normal)
             reopened.saveView()
-            #expect(reopened.resources.settings.style(for: id) == .height)
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
 
             // Rereading the source keeps the unavailable choice in the same window.
             try await reopened.resources.replaceSource(from: WorldSnapshot.read(root))
             #expect(reopened.map === restored && restored.style == .normal)
             reopened.saveView()
-            #expect(reopened.resources.settings.style(for: id) == .height)
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
             await names.chooseMinecraftFolder(game.root)
             await reopened.resources.waitForRefresh()
             #expect(restored.heightScale == scale && restored.style == .height)
@@ -277,7 +277,7 @@ import Testing
             await reopened.resources.waitForRefresh()
             #expect(restored.style == .height)
             reopened.saveView()
-            #expect(reopened.resources.settings.style(for: id) == .height)
+            #expect(reopened.resources.settings.mapPresentation(for: id).style == .height)
         } catch { failure = error }
         for session in sessions { session.close() }
         for session in sessions { await session.waitUntilClosed() }

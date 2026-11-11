@@ -133,8 +133,8 @@ import Testing
         #expect(other.lighting == nil)
         map.setLightingMode(.daylight); first.saveView()
         #expect(map.lighting == nil && map.savedLighting == updated)
-        #expect(resources.settings.lightingMode(for: "minecraft:overworld") == .daylight)
-        #expect(resources.settings.lightingMode(for: "test:fixed_sky") == .savedTime)
+        #expect(resources.settings.mapPresentation(for: "minecraft:overworld").lightingMode == .daylight)
+        #expect(resources.settings.mapPresentation(for: "test:fixed_sky").lightingMode == .savedTime)
         resources.close(); await resources.waitUntilClosed()
     }
 
