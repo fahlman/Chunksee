@@ -120,7 +120,7 @@ import Testing
         let depth = try #require(try await renderer.pixels(for: .init(x: 0, z: 0)))
         for x in states.indices {
             let columns = try #require(RegionTileRenderer.columns(in: file, localX: x, localZ: 0, context: context))
-            let hover = try #require(RegionTileRenderer.topBlocks(in: file, localX: x, localZ: 0, context: context))
+            let hover = try #require(try await renderer.topBlocks(in: file, localX: x, localZ: 0))
             let expectedDepth = x == 4 ? 0 : 5
             #expect(columns.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
             #expect(hover.allSatisfy { $0?.waterDepth == expectedDepth && $0?.y == 5 })
@@ -158,18 +158,18 @@ import Testing
         try write([])
         resources.worldChanged([tagURL])
         await resources.waitForRefresh()
-        let empty = (try requiredRenderer(map)).surfaceContext
+        let emptyRenderer = try requiredRenderer(map), empty = emptyRenderer.surfaceContext
         #expect(empty.water?.members.isEmpty == true && empty.waterKey != original.waterKey)
         let changed = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: empty))
         #expect(changed != key && changed.fileName != key.fileName)
         let file = try #require(try dimension.region(x: 0, z: 0))
-        #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: empty)?.allSatisfy { $0?.waterDepth == 0 } == true)
+        #expect(try await emptyRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 0 } == true)
         try FileManager.default.removeItem(at: tagURL)
         resources.worldChanged([tagURL])
         await resources.waitForRefresh()
-        let absent = (try requiredRenderer(map)).surfaceContext
+        let absentRenderer = try requiredRenderer(map), absent = absentRenderer.surfaceContext
         #expect(absent.water == nil && absent.waterKey == nil)
-        #expect(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, context: absent)?.allSatisfy { $0?.waterDepth == 5 } == true)
+        #expect(try await absentRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 5 } == true)
         session.close()
         await session.waitUntilClosed()
     }
@@ -185,7 +185,7 @@ import Testing
         let expected: [[UInt8]] = [[182, 192, 184, 255], [150, 171, 193, 255], [47, 88, 171, 255], [35, 65, 125, 255]]
         for (x, depth) in depths.enumerated() {
             let columns = try #require(RegionTileRenderer.columns(in: file, localX: x, localZ: 0))
-            let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: x, localZ: 0))
+            let blocks = try #require(try await RegionTileRenderer(dimension: dimension).topBlocks(in: file, localX: x, localZ: 0))
             #expect(columns.allSatisfy { $0?.waterDepth == depth && $0?.y == depth })
             #expect(columns.allSatisfy { $0?.waterFloorColor == (depth == 32 ? nil : MapColor(0xDBD3A0)) })
             #expect(blocks.allSatisfy { $0 == .init(id: "minecraft:water", y: depth, waterDepth: depth) })
@@ -230,7 +230,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0))
-        let blocks = try #require(RegionTileRenderer.topBlocks(in: file, localX: 0, localZ: 0, cutawayY: 2))
+        let blocks = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: 2).topBlocks(in: file, localX: 0, localZ: 0))
         #expect(blocks.allSatisfy { $0 == .init(id: "minecraft:water", y: 2, waterDepth: 2) })
         let pixels = try #require(try await RegionTileRenderer(dimension: dimension, cutawayY: 2).pixels(for: .init(x: 0, z: 0)))
         #expect(pixel(pixels, x: 5, z: 5) == [174, 187, 187, 255])
