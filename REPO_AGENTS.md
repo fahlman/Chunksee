@@ -831,11 +831,13 @@ derives MapGameResources from its current data, artwork and biome-color publicat
 replacement clears old values before publishing the new token. MapBiomeColors owns compatibility:
 numeric colors from the same data source remain usable while artwork colors load, and available
 artwork colors require their matching artwork source. Game data remains available while colors load.
-WorldResources also derives color readiness from current game selection, the matching color source
-and the loader's preparation. A compatible retained color value is ready; a completed empty or
-failed read permits fallback drawing. MapModel keeps material-color regions queued while preparation
-is pending. Readiness participates in its existing observation identity, so completion wakes the
-queue without a viewport change, including failure without a color publication. Readiness-only
+WorldResources also derives color readiness from the matching color source and the loader's
+preparation. Complete colors for the currently available data can draw while a new game selection
+loads. Newly published data waits for its matching colors; a compatible retained color value is
+ready, and a completed empty or failed read permits fallback drawing. MapModel keeps material-color
+regions queued while that color preparation is pending. Readiness participates in its existing
+observation identity, so completion wakes the queue without a viewport change, including failure
+without a color publication. Readiness-only
 changes retain compatible pictures and in-flight work; only changed data, artwork or colors reload
 the tiles. A failed same-source color refresh therefore keeps the fallback map visible. Height
 remains independent. This scheduling state changes no renderer snapshot, persistent key or export rule.
