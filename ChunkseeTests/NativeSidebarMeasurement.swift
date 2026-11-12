@@ -14,6 +14,9 @@ struct NativeSidebarMeasurement {
     func prepareFixture() throws {
         let config = try SidebarMeasurementConfiguration.read(key: "CHUNKSEE_SIDEBAR_PREPARE")
         let output = try config.createOutput()
+        // Prove this host can read the guard before spending either timed attempt.
+        let idle = try SidebarMeasurementRecorder.inputIdleSeconds()
+        print("Sidebar input guard available: idleSeconds=\(idle)")
         let generated = try SidebarProbeWorld.make(spawners: SidebarMeasurementInput.spawners)
         defer { try? FileManager.default.removeItem(at: generated) }
         let world = output.appendingPathComponent("world", directoryHint: .isDirectory)
@@ -267,7 +270,7 @@ final class SidebarMeasurementRecorder {
         foregroundObservers.removeAll()
     }
 
-    private static func inputIdleSeconds() throws -> Double {
+    static func inputIdleSeconds() throws -> Double {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"))
         guard service != IO_OBJECT_NULL else { throw SidebarMeasurementFailure.input }
         defer { IOObjectRelease(service) }
