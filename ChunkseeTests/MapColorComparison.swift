@@ -42,13 +42,20 @@ import Testing
               !(config.traced && config.timing), (1...9).contains(config.repetitions),
               !config.artworkModes.isEmpty, Set(config.artworkModes).count == config.artworkModes.count,
               config.world == "/Users/ryan/Developer/Chunksee-runs/world-snapshot-loaders-evidence/game-assets/paired-1/input-world",
-              config.game == "/Users/ryan/Developer/Chunksee-runs/world-snapshot-loaders-evidence/game-assets/paired-1/input-game",
-              config.output.hasPrefix("/Users/ryan/Developer/Chunksee-runs/map-color-readiness-evidence/") else {
+              config.game == "/Users/ryan/Developer/Chunksee-runs/world-snapshot-loaders-evidence/game-assets/paired-1/input-game" else {
             throw Failure.configuration
         }
-        let output = URL(filePath: config.output, directoryHint: .isDirectory)
-        guard !FileManager.default.fileExists(atPath: output.appendingPathComponent("records.json").path),
-              !FileManager.default.fileExists(atPath: output.appendingPathComponent("failure.json").path) else {
+        let output = URL(filePath: config.output, directoryHint: .isDirectory).standardizedFileURL
+        let prefix = "MapColorComparison-"
+        // The Release test host may read the copied inputs but writes only inside its own container.
+        // The runner captures and hashes this unique directory after the host has stopped.
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
+              output.deletingLastPathComponent().resolvingSymlinksInPath() == caches.resolvingSymlinksInPath(),
+              output.lastPathComponent.hasPrefix(prefix),
+              UUID(uuidString: String(output.lastPathComponent.dropFirst(prefix.count))) != nil else {
+            throw Failure.configuration
+        }
+        guard !FileManager.default.fileExists(atPath: output.path) else {
             throw Failure.configuration
         }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
