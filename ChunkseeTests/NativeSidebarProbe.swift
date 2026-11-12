@@ -113,14 +113,31 @@ struct NativeSidebarProbe {
             })
             try driver.verifyChildren(count: count)
             let firstRow = driver.groupRow + 1
-            // Selection uses AppKit's native selection path; it must update the SwiftUI binding.
-            try await driver.perform("select", action: {
-                driver.outline.selectRowIndexes(IndexSet(integer: firstRow), byExtendingSelection: false)
-            }, ready: {
-                driver.outline.selectedRow == firstRow && session.selection.sidebarSelection == .place(nearest.id)
-                    && session.selection.isInspectorShown && driver.hasVisibleInspector
-                    && session.visibility.places.contains(.spawner)
-            })
+            func recordSelection(_ stage: String) {
+                let selected = session.selection.sidebarSelection
+                let nativeRow = driver.outline.selectedRow
+                print("Sidebar selection evidence: stage=\(stage), expectedRow=\(firstRow), nativeRow=\(nativeRow), "
+                    + "nativeMatches=\(nativeRow == firstRow), modelMatches=\(selected == .place(nearest.id)), "
+                    + "selection=\(String(describing: selected)), expectedPlace=\(nearest.id), "
+                    + "inspectorShown=\(session.selection.isInspectorShown), inspectorVisible=\(driver.hasVisibleInspector), "
+                    + "spawnersShown=\(session.visibility.places.contains(.spawner)), nativeRows=\(driver.outline.numberOfRows), "
+                    + "windowVisible=\(window.isVisible), windowKey=\(window.isKeyWindow), "
+                    + "windowMain=\(window.isMainWindow), appActive=\(NSApp.isActive)")
+            }
+            do {
+                recordSelection("before action")
+                // Preserve the actual state at completion or cancellation, before closing the document.
+                defer { recordSelection("after wait") }
+                // Selection uses AppKit's native selection path; it must update the SwiftUI binding.
+                try await driver.perform("select", action: {
+                    driver.outline.selectRowIndexes(IndexSet(integer: firstRow), byExtendingSelection: false)
+                    recordSelection("after action")
+                }, ready: {
+                    driver.outline.selectedRow == firstRow && session.selection.sidebarSelection == .place(nearest.id)
+                        && session.selection.isInspectorShown && driver.hasVisibleInspector
+                        && session.visibility.places.contains(.spawner)
+                })
+            }
             let selected = try #require(session.selection.sidebarSelection)
             guard case .place(let selectedID) = selected else { throw SidebarProbeError.wrongSelection }
             try #require(markers.contains { $0.id == selectedID })
