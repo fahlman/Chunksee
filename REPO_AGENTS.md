@@ -628,8 +628,9 @@ opens the dimension folders with SwiftUI's `openDocument` and then closes itself
 Dimension and cross-dimension jumps also use `openDocument`, which brings an already-open dimension
 to the front; a jump runs once that dimension's view exists, and is dropped if it fails to open.
 The opening action captures only `openDocument`, so a view never keeps its own document alive.
-An initial reader failure is also published to its document, without swallowing the native error.
-SwiftUI can retain a restored window after rejecting its read; that window shows the read explanation
+An initial read or apply failure is also published to its document, without swallowing the native error.
+Both paths use the same failure guard. SwiftUI can retain a restored window after rejecting its read;
+that window shows the read explanation
 and a Close button instead of indefinite progress. Closing it allows the usual fresh native opening
 after the world folder supplies access. The existing apply generation and current document URL reject
 retired failures; cancellation does not publish an error, and loaded sessions keep their contents.
