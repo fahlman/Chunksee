@@ -57,7 +57,7 @@ extension MapImage {
             progress(index + 1, visible.count)
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            MapView.drawOverlays(viewport: plan.viewport, regions: visible, content: content,
+            MapView.drawOverlays(viewport: plan.viewport, regions: visible, content: content, displayScale: 1,
                                  portalStatus: portalStatus, in: context, size: size)
         }
         .modifier(MapLegendOverlay(layers: content))

@@ -787,13 +787,16 @@ availability once. MapDrawingInput resolves the chosen presentation with current
 lighting facts; MapContent captures that value with its overlays. Screen drawing, Copy/Share,
 streamed area export and legends consume it without rebuilding lighting or style rules. Copy still
 draws only retained tiles, and area export keeps its bounded tile window and shader rasterizer.
-The shared terrain drawing functions require the output display scale explicitly: the window
+The shared terrain and overlay drawing functions require the output display scale explicitly: the window
 supplies its environment scale, and both export paths supply their renderer scale. Crisp tiles
-own disjoint pixel rectangles. Pixels centered on a tile's outer edge use that edge's texel;
-all interior pixels keep the original image transform. Cropped edge strips extend past their
+own disjoint pixel rectangles, as do the Time Spent and Slime Chunks region images. Pixel centers
+within 1/64 output pixel of an outer edge use that edge's texel; this margin is capped at half a
+source texel to preserve nearest sampling at very small fit-to-world scales. All other pixels
+keep the original image transform. Cropped edge strips extend past their
 clips without adding a retained padded bitmap, and disjoint clips prevent repeated alpha blending.
 Zoomed-out filtering and the saved terrain/normal images are unchanged. The edge regression checks
-cover both rendering routes, fractional placement, shadow opacity and a nonuniform texture grid.
+cover both rendering routes, exact and near-tie placement, shadow/overlay opacity, tile corners
+and a nonuniform texture grid.
 RegionTileRenderer resolves material access for its style, including direct renderer calls, before
 reading artwork or forming cache inputs. TileCache encodes those resolved inputs without applying a
 second style policy. Raw game data remains available to block-information reads even in Height.

@@ -39,7 +39,7 @@ import Testing
         for join in Join.allCases {
             for zoom: CGFloat in [8, 16] {
                 for scale: CGFloat in [1, 2] {
-                    for shift: CGFloat in [0, 0.25, 0.5] {
+                    for shift in edgeShifts(displayScale: scale) {
                         for opacity: CGFloat in [1, 0.5] {
                             for shadows in [false, true] {
                                 let viewport = join.viewport(zoom: zoom, shift: shift)
@@ -72,7 +72,7 @@ import Testing
         for join in [Join.regionX, .regionZ] {
             for zoom: CGFloat in [1, 4] {
                 for scale: CGFloat in [1, 2] {
-                    for shift: CGFloat in [0, 0.25, 0.5] {
+                    for shift in edgeShifts(displayScale: scale) {
                         for shadows in [false, true] {
                             // The reference fills the view, so stay inside the supplied
                             // regions along the join even when the view spans 32 blocks.
@@ -141,57 +141,110 @@ import Testing
 
     @Test func clampedEdgesPreserveThePatternAndSingleAlphaBlend() throws {
         let side = 128
-        for vertical in [true, false] {
+        for (columns, rows) in [(2, 1), (1, 2), (2, 2)] {
             for alpha in [255, 128] {
-                let width = vertical ? 2 * side : side, height = vertical ? side : 2 * side
+                let width = columns * side, height = rows * side
                 var bytes: [UInt8] = []
                 for y in 0..<height {
                     for x in 0..<width {
-                        let along = vertical ? x : y, across = vertical ? y : x
                         // Equal colors immediately beside the join make the tie's tile ownership
                         // immaterial. Every other texel varies, catching any shifted sampling grid.
-                        let stripe = along == side - 1 ? side : along
-                        bytes += [UInt8((40 + stripe % 5 * 40) * alpha / 255),
-                                  UInt8((40 + across % 3 * 60) * alpha / 255),
-                                  UInt8((50 + stripe / 7 % 3 * 50) * alpha / 255), UInt8(alpha)]
+                        let stripeX = x == side - 1 ? side : x, stripeY = y == side - 1 ? side : y
+                        bytes += [UInt8((40 + stripeX % 5 * 40) * alpha / 255),
+                                  UInt8((40 + stripeY % 3 * 60) * alpha / 255),
+                                  UInt8((50 + (stripeX / 7 + stripeY / 11) % 3 * 50) * alpha / 255), UInt8(alpha)]
                     }
                 }
                 let whole = try #require(CGImage.rgba(bytes, width: width, height: height))
-                let first = MapTileImage(try #require(whole.cropping(to: CGRect(x: 0, y: 0, width: side, height: side))))
-                let second = MapTileImage(try #require(whole.cropping(to: CGRect(
-                    x: vertical ? side : 0, y: vertical ? 0 : side, width: side, height: side))))
+                var tiles: [(image: MapTileImage, offset: CGPoint)] = []
+                for y in 0..<rows {
+                    for x in 0..<columns {
+                        let crop = CGRect(x: x * side, y: y * side, width: side, height: side)
+                        tiles.append((MapTileImage(try #require(whole.cropping(to: crop))), crop.origin))
+                    }
+                }
                 for texel: CGFloat in [0.5, 1, 2, 3.25] {
                     for scale: CGFloat in [1, 2] {
-                        for shift: CGFloat in [0, 0.25, 0.5] {
+                        for shift in edgeShifts(displayScale: scale) {
                             let seam = size.width / 2 + shift
-                            let origin = CGPoint(x: vertical ? seam - CGFloat(side) * texel : size.width / 2 - CGFloat(side) * texel / 2,
-                                                 y: vertical ? size.height / 2 - CGFloat(side) * texel / 2 : seam - CGFloat(side) * texel)
+                            let origin = CGPoint(x: columns == 2 ? seam - CGFloat(side) * texel : size.width / 2 - CGFloat(side) * texel / 2,
+                                                 y: rows == 2 ? seam - CGFloat(side) * texel : size.height / 2 - CGFloat(side) * texel / 2)
                             let firstRect = CGRect(origin: origin, size: CGSize(width: CGFloat(side) * texel, height: CGFloat(side) * texel))
-                            let secondRect = firstRect.offsetBy(dx: vertical ? firstRect.width : 0,
-                                                               dy: vertical ? 0 : firstRect.height)
                             let wholeRect = CGRect(origin: origin, size: CGSize(width: CGFloat(width) * texel, height: CGFloat(height) * texel))
                             let reference = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
                                 drawing.draw(Image(decorative: whole, scale: 1).interpolation(.none), in: wholeRect)
                             }
                             let actual = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
-                                for (tile, rect) in [(first, firstRect), (second, secondRect)] {
-                                    MapView.drawTerrainImage(tile, rect: rect, interpolation: .none, lighting: nil,
+                                for tile in tiles {
+                                    let rect = firstRect.offsetBy(dx: tile.offset.x * texel, dy: tile.offset.y * texel)
+                                    MapView.drawTerrainImage(tile.image, rect: rect, interpolation: .none, lighting: nil,
                                         protectsWater: false, displayScale: scale, increasedContrast: false, in: drawing)
                                 }
                             }
-                            let label = "pattern vertical \(vertical), alpha \(alpha), texel \(texel), display \(scale), shift \(shift)"
-                            try check(render(actual, scale: scale), reference: render(reference, scale: scale), context: "screen: \(label)")
-                            let pixels = Int(size.width * scale)
-                            let destination = try #require(MapImage.imageContext(width: pixels, height: pixels))
-                            let expected = try #require(MapImage.imageContext(width: pixels, height: pixels))
-                            try #require(MapImage.drawImageLayer(actual, size: size, scale: scale, into: destination))
-                            try #require(MapImage.drawImageLayer(reference, size: size, scale: scale, into: expected))
-                            try check(#require(destination.makeImage()), reference: #require(expected.makeImage()), context: "export: \(label)")
+                            let label = "pattern \(columns)x\(rows), alpha \(alpha), texel \(texel), display \(scale), shift \(shift)"
+                            try checkRoutes(actual, reference: reference, scale: scale, context: label)
                         }
                     }
                 }
             }
         }
+    }
+
+    @Test func regionOverlaysKeepTheirOpacityAtExactAndNearbyEdges() throws {
+        let heat = try #require(HeatMap.image(fromTicks: Array(repeating: HeatMap.maximumTicks, count: 1024)))
+        let tint = SlimeChunks.pixel
+        let slime = try #require(CGImage.rgba(Array(repeating: [tint.red, tint.green, tint.blue, tint.alpha], count: 1024)
+            .flatMap { $0 }, width: 32, height: 32))
+        for (showsHeat, showsSlime) in [(true, false), (false, true), (true, true)] {
+            let layers = [showsHeat ? heat : nil, showsSlime ? slime : nil].compactMap { $0 }
+            for join in [Join.regionX, .regionZ] {
+                for zoom: CGFloat in [0.25, 1, 8] {
+                    for scale: CGFloat in [1, 2] {
+                        for shift in edgeShifts(displayScale: scale) {
+                            let viewport = join.viewport(zoom: zoom, shift: shift, centerAlongJoin: 256)
+                            let regions = viewport.visibleRegions(in: size, among: Set(join.regions))
+                            try #require(regions.count == 2)
+                            var content = MapContent(gameNames: .unavailable)
+                            if showsHeat {
+                                content.heatMap = Dictionary(uniqueKeysWithValues: regions.map { ($0, heat) })
+                            }
+                            if showsSlime {
+                                content.slimeChunks = Dictionary(uniqueKeysWithValues: regions.map { ($0, slime) })
+                            }
+                            let actual = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
+                                MapView.drawOverlays(viewport: viewport, regions: regions, content: content,
+                                    displayScale: scale, portalStatus: { _ in nil }, in: drawing, size: size)
+                            }
+                            let reference = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
+                                for image in layers {
+                                    drawing.draw(Image(decorative: image, scale: 1).interpolation(.none),
+                                                 in: CGRect(origin: .zero, size: size))
+                                }
+                            }
+                            let label = "heat \(showsHeat), slime \(showsSlime), \(join.rawValue), zoom \(zoom), display \(scale), shift \(shift)"
+                            try checkRoutes(actual, reference: reference, scale: scale, context: label)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func edgeShifts(displayScale: CGFloat) -> [CGFloat] {
+        let tie = 0.5 / displayScale
+        // Keep the original placements and approach each pixel-center tie from both sides.
+        return [0, 0.25, 0.5, tie - 1 / (512 * displayScale), tie + 1 / (512 * displayScale),
+                tie - 1 / (1_048_576 * displayScale), tie + 1 / (1_048_576 * displayScale)]
+    }
+
+    private func checkRoutes<V: View, R: View>(_ actual: V, reference: R, scale: CGFloat, context: String) throws {
+        try check(render(actual, scale: scale), reference: render(reference, scale: scale), context: "screen: \(context)")
+        let pixels = Int(size.width * scale)
+        let destination = try #require(MapImage.imageContext(width: pixels, height: pixels))
+        let expected = try #require(MapImage.imageContext(width: pixels, height: pixels))
+        try #require(MapImage.drawImageLayer(actual, size: size, scale: scale, into: destination))
+        try #require(MapImage.drawImageLayer(reference, size: size, scale: scale, into: expected))
+        try check(#require(destination.makeImage()), reference: #require(expected.makeImage()), context: "export: \(context)")
     }
 
     private func drawingInput(shadows: Bool) -> MapDrawingInput {

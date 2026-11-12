@@ -29,7 +29,7 @@ nonisolated struct MapImage: Sendable {
                                  contrast: contrast, shadow: map.shadowImages[region], detail: detail, into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
+            MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content, displayScale: scale,
                                  portalStatus: portalStatus, in: context, size: size)
         }
         .modifier(MapLegendOverlay(layers: content))
