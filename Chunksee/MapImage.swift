@@ -88,8 +88,8 @@ nonisolated struct MapImage: Sendable {
         return true
     }
 
-    /// Copy, Share and area export keep the same CGContext rasterizer for nonshader layers,
-    /// preserving their existing antialiased edges. Terrain shaders use the bounded helper above.
+    /// Copy, Share and area export share the CGContext rasterizer for nonshader layers.
+    /// Each layer controls its edge filtering. Terrain shaders use the bounded helper above.
     @MainActor
     static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
         let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height))

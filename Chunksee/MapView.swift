@@ -202,15 +202,16 @@ struct MapView: View {
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
             guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
-            // Overlap neighbors by half a point so smoothed edges don't expose seams.
-            let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
+            // Filtering needs padded edges when zoomed out. Crisp tiles own their exact
+            // bounds: padding would paint over the previous region's close-up detail.
+            let rect = viewport.scale < 1 ? bounds.insetBy(dx: -0.5, dy: -0.5) : bounds
             drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: input.lighting,
                              protectsWater: input.protectsWater, increasedContrast: increasedContrast, in: context)
             if input.includesDetail {
                 drawDetail(viewport: viewport, region: region, images: detail, lighting: input.lighting,
                            increasedContrast: increasedContrast, in: context, size: size)
             }
-            // Finish each region before drawing the next overlapping edge. This keeps the
+            // Finish each region before drawing the next. This keeps the
             // screen and streamed area export identical, without double-shading transparent detail.
             if input.shadowLight != nil, let mask = shadow(region) {
                 drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
@@ -223,7 +224,7 @@ struct MapView: View {
         var shading = context
         let contrast = increasedContrast ?? (context.environment.colorSchemeContrast == .increased)
         shading.opacity = contrast ? 0.12 : 0.22
-        shading.draw(Image(decorative: mask, scale: 1).interpolation(interpolation), in: rect)
+        drawTerrainPixels(mask, rect: rect, interpolation: interpolation, in: shading)
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
@@ -248,7 +249,26 @@ struct MapView: View {
             layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
                 increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
         }
-        layer.draw(Image(decorative: image.image, scale: 1).interpolation(interpolation), in: rect)
+        drawTerrainPixels(image.image, rect: rect, interpolation: interpolation, in: layer)
+    }
+
+    private static func drawTerrainPixels(_ image: CGImage, rect: CGRect,
+                                          interpolation: Image.Interpolation, in context: GraphicsContext) {
+        switch interpolation {
+        case .none:
+            // Independent antialiased image edges blend twice at a shared boundary.
+            // The proxy keeps SwiftUI's lighting, opacity and clipping while giving
+            // each device pixel one tile's coverage, without changing its transform.
+            context.withCGContext { pixels in
+                pixels.setShouldAntialias(false)
+                pixels.interpolationQuality = .none
+                pixels.translateBy(x: rect.minX, y: rect.maxY)
+                pixels.scaleBy(x: 1, y: -1)
+                pixels.draw(image, in: CGRect(origin: .zero, size: rect.size))
+            }
+        default:
+            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+        }
     }
 
     static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent,

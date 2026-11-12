@@ -2228,13 +2228,23 @@ partial pixels remain premultiplied. Its normals remain one pixel per block and 
 optional nighttime status. Ordinary tiles and close-up pictures use the same saved-time shader
 and Dark Spots color treatment; clock-only changes reuse both pictures. The shared shadow mask is
 composited once after coarse terrain and close-up images in each region, before the other overlays,
-on screen and in current-view Copy/Share. Each region finishes before the next overlapping edge,
+on screen and in current-view Copy/Share. Each region finishes before the next region,
 matching streamed area exports. Transparent close-up pixels therefore cannot double-darken the
 fallback. Full tile budgets count
 color, normals, shadow heights/masks and retained detail data, including after a deferred load. Water and highlighted blocks keep the ordinary presentation,
 and missing/unsupported models keep its fallback. Share draws through MapView's same detail layer.
 Area export still offers its existing scales of at most one pixel per block, below the detail
 threshold. No new controls, localization keys, file access, asset copy or world modification.
+
+At one point per block or above, terrain regions use their exact bounds so a neighbor's base
+cannot cover existing close-up detail. Base, detail and shadow images share one Canvas
+Core Graphics drawing helper with nearest-neighbor sampling and edge antialiasing disabled;
+SwiftUI retains the lighting filters, opacity and clipping. This gives neighboring region and
+chunk images one pixel's coverage at fractional viewport positions without changing the
+world-to-view transform used by markers and normals. Zoomed-out images retain the existing
+filtered SwiftUI drawing and half-point padding. Overlay drawing is separate and unchanged.
+Only final composition changes; cached unlit tiles, detail data, shadow masks and their keys
+remain valid and require no renderer-version change.
 
 With selected game artwork, MapBlockCoverage measures the same projected geometry, UVs and texture
 alpha used by the detail renderer. Full coverage stops the column walk; partial coverage retains
