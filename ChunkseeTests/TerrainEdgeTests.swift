@@ -23,10 +23,10 @@ import Testing
             return vertical ? [.init(x: first, z: 0), .init(x: second, z: 0)]
                             : [.init(x: 0, z: first), .init(x: 0, z: second)]
         }
-        func viewport(zoom: CGFloat, shift: CGFloat) -> MapViewport {
+        func viewport(zoom: CGFloat, shift: CGFloat, centerAlongJoin: CGFloat = 8) -> MapViewport {
             let edge: CGFloat = regionBoundary ? 0 : 16
-            let center = vertical ? CGPoint(x: edge - shift / zoom, y: 8)
-                                  : CGPoint(x: 8, y: edge - shift / zoom)
+            let center = vertical ? CGPoint(x: edge - shift / zoom, y: centerAlongJoin)
+                                  : CGPoint(x: centerAlongJoin, y: edge - shift / zoom)
             return MapViewport(center: center, scale: zoom)
         }
     }
@@ -73,9 +73,14 @@ import Testing
                 for scale: CGFloat in [1, 2] {
                     for shift: CGFloat in [0, 0.25, 0.5] {
                         for shadows in [false, true] {
-                            let viewport = join.viewport(zoom: zoom, shift: shift)
+                            // The reference fills the view, so stay inside the supplied
+                            // regions along the join even when the view spans 32 blocks.
+                            let viewport = join.viewport(zoom: zoom, shift: shift, centerAlongJoin: 256)
                             let regions = viewport.visibleRegions(in: size, among: Set(join.regions))
                             try #require(regions.count == 2)
+                            let coverage = try regions.map { try #require(viewport.viewRect(for: $0, in: size)) }
+                                .reduce(CGRect.null) { $0.union($1) }
+                            try #require(coverage.contains(CGRect(origin: .zero, size: size)))
                             let tiles = Dictionary(uniqueKeysWithValues: regions.map { ($0, base) })
                             let expected = try reference(base: base, detail: nil,
                                 shadow: shadows ? mask : nil, scale: scale)
