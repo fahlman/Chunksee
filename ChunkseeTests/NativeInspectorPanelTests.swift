@@ -95,22 +95,26 @@ struct NativeInspectorPanelTests {
             window.viewsNeedDisplay = true
             try record(["event": "awaiting-activation", "phase": phase,
                         "dimension": session.selectedDimensionID ?? "nil", "appActive": NSApp.isActive])
-            // Read real focus and appearance after a native update; never wait for the desired
-            // inspector result, which would hide a failure behind a readiness timeout.
-            for await _ in updates {
+            // Focus and appearance may already be ready without another native update.
+            // Never wait for the inspector result: that would hide a failure as a timeout.
+            func isReady() throws -> Bool {
                 guard NSApp.isActive, window.isKeyWindow, window.isMainWindow,
                       session.resources.activeDimensionID == session.selectedDimensionID,
-                      session.routing.openDocument != nil else { continue }
+                      session.routing.openDocument != nil else { return false }
                 window.contentView?.layoutSubtreeIfNeeded()
                 window.displayIfNeeded()
                 let items = Self.splitItems(in: try #require(window.contentView))
-                guard !items.isEmpty else { continue }
+                guard !items.isEmpty else { return false }
                 try record(["event": "activated", "phase": phase,
                             "dimension": session.selectedDimensionID ?? "nil", "window": window.windowNumber,
                             "storageSelected": session.selection.sidebarSelection == .storage,
                             "modelShown": session.selection.isInspectorShown,
                             "collapsed": items.first { $0.behavior == .inspector }?.isCollapsed as Any? ?? NSNull()])
-                return
+                return true
+            }
+            if try isReady() { return }
+            for await _ in updates {
+                if try isReady() { return }
             }
             throw CancellationError()
         }
