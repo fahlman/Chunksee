@@ -1797,7 +1797,9 @@ can add room when it opens. The 420-point height minimum follows the inspector, 
 original window height instead of adding the navigation chrome twice. The document scene must
 not put another minimum-width frame around the loaded view: that masks the columns' combined
 minimum and lets them overflow. Only the opening placeholder has its own 640-by-420 frame.
-The app and regression tests share WorldDocumentScene. Tests open real document windows with
+The app and regression tests share WorldDocumentScene, including the focused-session observer,
+activation and native Sidebar/Inspector commands. The app supplies its current termination flag;
+the isolated host supplies false. Tests open real document windows with
 synthetic files, shrink first to small and medium widths, then show World Info and a location
 inspector, with and without the newer-world banner. They verify the columns fit before any
 test-driven resize, hide the inspector, shrink again and invoke native Zoom. A disposable second
