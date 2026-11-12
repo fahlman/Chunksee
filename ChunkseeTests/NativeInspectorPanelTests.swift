@@ -123,7 +123,18 @@ struct NativeInspectorPanelTests {
             try #require(NSDocumentController.shared.document(for: targetURL) === native)
             try record(["event": "close-target", "phase": phase,
                         "dimension": targetURL.lastPathComponent, "window": window.windowNumber])
-            try await activate(survivor, phase: phase + "-survivor") { window.performClose(nil) }
+            let group = window.tabGroup
+            try await activate(survivor, phase: phase + "-survivor") {
+                window.performClose(nil)
+                let survivorWindow = try #require(survivor.window)
+                try record(["event": "native-close-choice", "phase": phase,
+                            "targetWindow": window.windowNumber, "survivorWindow": survivorWindow.windowNumber,
+                            "selectedWindow": group?.selectedWindow?.windowNumber ?? -1,
+                            "keyWindow": NSApp.keyWindow?.windowNumber ?? -1,
+                            "selectedSurvivor": group?.selectedWindow === survivorWindow,
+                            "keySurvivor": NSApp.keyWindow === survivorWindow,
+                            "targetVisible": window.isVisible])
+            }
             try #require(NSDocumentController.shared.document(for: targetURL) == nil)
             try #require(!window.isVisible)
             try #require(survivor.window?.tabbedWindows?.contains(where: { $0 === window }) != true)
