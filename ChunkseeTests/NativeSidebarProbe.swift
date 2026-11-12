@@ -83,17 +83,19 @@ struct NativeSidebarProbe {
             }
             SidebarProbeTrace.event("window ready; awaiting initial map work")
             await map.waitUntilIdle()
-            SidebarProbeTrace.event("initial map work finished; activating accessibility tree")
-            // Existing native accessibility tests use this request to materialize SwiftUI's tree.
-            let activation = await Task.detached {
-                var windows: CFTypeRef?
-                return AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()),
-                    kAXWindowsAttribute as CFString, &windows).rawValue
+            SidebarProbeTrace.event("initial map work finished; laying out before accessibility reads")
+            window.contentView?.layoutSubtreeIfNeeded()
+            let groupTitle = PlaceGroup.spawner.name(in: session.resources.gameNames)
+            let windowTitle = window.title
+            // Keep AX messaging off the main actor, whose accessibility server answers the reads.
+            // Only value records cross back; the AX objects remain in this detached client.
+            let capture = await Task.detached {
+                SidebarAXLookup.capture(windowTitle: windowTitle, groupTitle: groupTitle)
             }.value
-            SidebarProbeTrace.event("accessibility request returned: status=\(activation)")
-            try #require(activation == AXError.success.rawValue)
+            for line in capture.records { SidebarProbeTrace.event("lookup diagnostic " + line) }
             SidebarProbeTrace.event("locating native sidebar controls")
-            _ = try SidebarNativeDriver(window: window, groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
+            _ = try SidebarNativeDriver(window: window, groupTitle: groupTitle)
+            try #require(capture.complete, "The AX lookup capture must finish within its declared bounds")
             SidebarProbeTrace.event("native sidebar lookup finished; no actions or counters read")
         } catch {
             await close()
@@ -178,6 +180,8 @@ private final class SidebarNativeDriver {
                 let frame = node.accessibilityFrame?()
                 try Self.record([
                     "kind": "node", "row": position, "node": nodeIndex,
+                    "objectClass": String(reflecting: Swift.type(of: node)),
+                    "selectorSupport": Self.selectorSupport(node),
                     "role": String(describing: node.accessibilityRole?()),
                     "label": String(label.prefix(256)), "labelLength": label.count,
                     "value": String(value.text.prefix(256)), "valueLength": value.text.count,
@@ -328,9 +332,158 @@ private final class SidebarNativeDriver {
         return (String(reflecting: Swift.type(of: value)), text)
     }
 
+    private static func selectorSupport(_ node: AnyObject) -> [String: Bool] {
+        let names = ["accessibilityRole", "accessibilityLabel", "accessibilityChildren", "accessibilityFrame",
+                     "accessibilityIndex", "accessibilityTitle", "accessibilityValue", "accessibilityIdentifier",
+                     "accessibilityAttributeNames", "accessibilityAttributeValue:"]
+        return Dictionary(uniqueKeysWithValues: names.map { name in
+            (name, (node as? NSObject)?.responds(to: NSSelectorFromString(name)) == true)
+        })
+    }
+
     private static func record(_ fields: [String: Any]) throws {
         let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
         SidebarProbeTrace.event("lookup diagnostic " + String(decoding: data, as: UTF8.self))
+    }
+}
+
+/// Read-only diagnostic client. It never selects a row, expands a group or activates a window.
+private nonisolated enum SidebarAXLookup {
+    nonisolated struct Capture: Sendable {
+        let records: [String]
+        let complete: Bool
+    }
+    private nonisolated enum Failure: Error { case budget, deadline, attribute(String, Int32), shape(String), windowIdentity }
+
+    private nonisolated final class Reader {
+        let clock = ContinuousClock()
+        let deadline: ContinuousClock.Instant
+        var reads = 0
+        var records: [String] = []
+
+        init() { deadline = clock.now.advanced(by: .seconds(30)) }
+
+        func record(_ values: [String: Any]) throws {
+            let data = try JSONSerialization.data(withJSONObject: values, options: [.sortedKeys])
+            records.append(String(decoding: data, as: UTF8.self))
+        }
+
+        func attribute(_ element: AXUIElement, _ name: String) throws -> (status: Int32, value: CFTypeRef?) {
+            guard reads < 2_048 else { throw Failure.budget }
+            guard clock.now < deadline else { throw Failure.deadline }
+            reads += 1
+            // Apple's timeout is per AX object; setting it on the application does not
+            // bound messages to the window, rows or their children.
+            let timeoutStatus = AXUIElementSetMessagingTimeout(element, 0.25)
+            guard timeoutStatus == .success else { throw Failure.attribute("messagingTimeout", timeoutStatus.rawValue) }
+            var value: CFTypeRef?
+            let status = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+            return (status.rawValue, value)
+        }
+
+        func elements(_ element: AXUIElement, _ name: String, limit: Int) throws -> [AXUIElement] {
+            let result = try attribute(element, name)
+            // Leaves need not expose children. Required window/row collections keep their errors.
+            if name == kAXChildrenAttribute,
+               result.status == AXError.noValue.rawValue || result.status == AXError.attributeUnsupported.rawValue { return [] }
+            guard result.status == AXError.success.rawValue else { throw Failure.attribute(name, result.status) }
+            guard let values = result.value as? [AXUIElement] else { throw Failure.shape(name) }
+            guard values.count <= limit else { throw Failure.budget }
+            return values
+        }
+
+        func text(_ element: AXUIElement, _ name: String) throws -> (status: Int32, text: String, type: String) {
+            let result = try attribute(element, name)
+            return (result.status, result.value as? String ?? "",
+                    result.value.map { String(reflecting: Swift.type(of: $0)) } ?? "absent")
+        }
+
+        func outlines(in window: AXUIElement) throws -> [AXUIElement] {
+            var pending = [(window, 0)], seen: [AXUIElement] = [], outlines: [AXUIElement] = []
+            while let (element, depth) = pending.popLast() {
+                guard !seen.contains(where: { CFEqual($0, element) }) else { continue }
+                guard seen.count < 512, depth <= 12 else { throw Failure.budget }
+                seen.append(element)
+                let role = try text(element, kAXRoleAttribute)
+                guard role.status == AXError.success.rawValue else { throw Failure.attribute(kAXRoleAttribute, role.status) }
+                if role.text == kAXOutlineRole {
+                    outlines.append(element)
+                } else {
+                    pending += try elements(element, kAXChildrenAttribute, limit: 128).reversed().map { ($0, depth + 1) }
+                }
+            }
+            try record(["kind": "ax-outline-search", "visited": seen.count, "outlines": outlines.count])
+            return outlines
+        }
+
+        func captureRow(_ row: AXUIElement, outline: Int, position: Int, groupTitle: String) throws -> Bool {
+            var pending = [(row, 0)], seen: [AXUIElement] = [], matched = false
+            while let (element, depth) = pending.popLast() {
+                guard !seen.contains(where: { CFEqual($0, element) }) else { continue }
+                guard seen.count < 64, depth <= 8 else { throw Failure.budget }
+                let node = seen.count
+                seen.append(element)
+                let role = try text(element, kAXRoleAttribute)
+                let title = try text(element, kAXTitleAttribute)
+                let description = try text(element, kAXDescriptionAttribute)
+                let value = try text(element, kAXValueAttribute)
+                let matches = title.text.contains(groupTitle) || description.text.contains(groupTitle)
+                matched = matched || matches
+                try record([
+                    "kind": "ax-node", "outline": outline, "row": position, "node": node,
+                    "role": role.text, "roleStatus": role.status,
+                    "title": String(title.text.prefix(256)), "titleLength": title.text.count, "titleStatus": title.status,
+                    "description": String(description.text.prefix(256)), "descriptionLength": description.text.count,
+                    "descriptionStatus": description.status,
+                    "value": String(value.text.prefix(256)), "valueLength": value.text.count,
+                    "valueStatus": value.status, "valueType": value.type, "matchesTitle": matches
+                ])
+                pending += try elements(element, kAXChildrenAttribute, limit: 64).reversed().map { ($0, depth + 1) }
+            }
+            try record(["kind": "ax-row", "outline": outline, "row": position, "nodes": seen.count, "matchesTitle": matched])
+            return matched
+        }
+    }
+
+    static func capture(windowTitle: String, groupTitle: String) -> Capture {
+        let reader = Reader()
+        var complete = false
+        do {
+            let app = AXUIElementCreateApplication(getpid())
+            try reader.record(["kind": "ax-start", "windowTitle": windowTitle, "groupTitle": groupTitle,
+                               "messagingTimeoutSeconds": 0.25, "deadlineSeconds": 30, "attributeBudget": 2_048])
+            let windows = try reader.elements(app, kAXWindowsAttribute, limit: 16)
+            var matching: [AXUIElement] = []
+            for (position, window) in windows.enumerated() {
+                let title = try reader.text(window, kAXTitleAttribute)
+                let matches = title.status == AXError.success.rawValue && title.text == windowTitle
+                try reader.record(["kind": "ax-window", "position": position,
+                                   "title": String(title.text.prefix(256)), "titleLength": title.text.count,
+                                   "titleStatus": title.status, "matchesTarget": matches])
+                if matches { matching.append(window) }
+            }
+            try reader.record(["kind": "ax-window-lookup", "windows": windows.count, "matches": matching.count])
+            // This test opens one synthetic document. Ambiguous titles are a setup failure,
+            // never permission to inspect a different window or to relax the lookup.
+            guard matching.count == 1, let window = matching.first else { throw Failure.windowIdentity }
+            let outlines = try reader.outlines(in: window)
+            for (outlineIndex, outline) in outlines.enumerated() {
+                let rows = try reader.elements(outline, kAXRowsAttribute, limit: 128)
+                try reader.record(["kind": "ax-outline", "outline": outlineIndex, "rows": rows.count])
+                var matchingRows: [Int] = []
+                for (position, row) in rows.enumerated() {
+                    if try reader.captureRow(row, outline: outlineIndex, position: position, groupTitle: groupTitle) {
+                        matchingRows.append(position)
+                    }
+                }
+                try reader.record(["kind": "ax-lookup", "outline": outlineIndex, "matchingRows": matchingRows])
+            }
+            complete = true
+        } catch {
+            try? reader.record(["kind": "ax-error", "error": String(describing: error)])
+        }
+        try? reader.record(["kind": "ax-complete", "complete": complete, "attributeReads": reader.reads])
+        return Capture(records: reader.records, complete: complete)
     }
 }
 
