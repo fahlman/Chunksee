@@ -17,6 +17,13 @@ struct NativeSidebarProbe {
         let root = try SidebarProbeWorld.make(spawners: count)
         SidebarProbeTrace.event("fixture created")
         defer { try? FileManager.default.removeItem(at: root) }
+        try await SidebarProbeScenario.run(root: root, count: count, measurement: nil)
+    }
+}
+
+/// Both fixture sizes exercise the same native document, actions and completion predicates.
+enum SidebarProbeScenario {
+    static func run(root: URL, count: Int, measurement: SidebarMeasurementRecorder?) async throws {
         let dimension = try #require(try World(contentsOf: root).dimension("minecraft:overworld"))
             .documentURL(inWorldAt: root).resolvingSymlinksInPath()
         let model = AppModel(defaults: TestDefaults.make(), cacheRoot: nil)
@@ -76,10 +83,17 @@ struct NativeSidebarProbe {
             let window = try #require(native.windowControllers.first?.window)
             window.appearance = NSAppearance(named: .aqua)
             window.setContentSize(CGSize(width: 900, height: 650))
-            window.orderFront(nil)
+            if measurement != nil {
+                window.title = "Chunksee Sidebar Comparison"
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate()
+            } else {
+                window.orderFront(nil)
+            }
             SidebarProbeTrace.event("window readiness entered: visible=\(window.isVisible), routingInstalled=\(session.routing.openDocument != nil)")
             try await SidebarNativeDriver.afterUpdate(window) {
                 window.isVisible && session.routing.openDocument != nil
+                    && (measurement == nil || SidebarMeasurementRecorder.isForeground(window))
             }
             SidebarProbeTrace.event("window ready; awaiting initial map work")
             await map.waitUntilIdle()
@@ -95,7 +109,7 @@ struct NativeSidebarProbe {
             try #require(activation == AXError.success.rawValue)
             SidebarProbeTrace.event("locating native sidebar controls")
             let driver = try SidebarNativeDriver(window: window,
-                groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
+                groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames), measurement: measurement)
             SidebarProbeTrace.event("native sidebar controls located")
             let collapsedRows = driver.outline.numberOfRows
             try #require(!driver.isExpanded)
@@ -105,15 +119,17 @@ struct NativeSidebarProbe {
             try #require(counter.isFinite && counter >= 0)
             print("Sidebar probe setup: spawners=\(count), nativeRows=\(collapsedRows), mainThreadCPUCounter=\(counter)")
 
-            try await driver.perform("Grid while collapsed", action: {
-                try driver.performVisibilityAction(label: "Grid", show: true)
+            try measurement?.ready(window: window, spawners: count, rows: collapsedRows)
+            try await driver.perform("Grid while collapsed", prepareAction: {
+                try driver.visibilityAction(label: "Grid", show: true)
             }, ready: { session.visibility.showsGrid && driver.outline.numberOfRows == collapsedRows })
-            try await driver.perform("expand", action: { try driver.pressDisclosure() }, ready: {
+            try await driver.perform("expand", prepareAction: { try driver.disclosureAction() }, ready: {
                 driver.isExpanded && driver.outline.numberOfRows == collapsedRows + count
             })
             try driver.verifyChildren(count: count)
             let firstRow = driver.groupRow + 1
             func recordSelection(_ stage: String) {
+                guard measurement == nil else { return }
                 let selected = session.selection.sidebarSelection
                 let nativeRow = driver.outline.selectedRow
                 print("Sidebar selection evidence: stage=\(stage), expectedRow=\(firstRow), nativeRow=\(nativeRow), "
@@ -129,9 +145,11 @@ struct NativeSidebarProbe {
                 // Preserve the actual state at completion or cancellation, before closing the document.
                 defer { recordSelection("after wait") }
                 // Selection uses AppKit's native selection path; it must update the SwiftUI binding.
-                try await driver.perform("select", action: {
-                    driver.outline.selectRowIndexes(IndexSet(integer: firstRow), byExtendingSelection: false)
-                    recordSelection("after action")
+                try await driver.perform("select", prepareAction: {
+                    return {
+                        driver.outline.selectRowIndexes(IndexSet(integer: firstRow), byExtendingSelection: false)
+                        recordSelection("after action")
+                    }
                 }, ready: {
                     driver.outline.selectedRow == firstRow && session.selection.sidebarSelection == .place(nearest.id)
                         && session.selection.isInspectorShown && driver.hasVisibleInspector
@@ -144,13 +162,15 @@ struct NativeSidebarProbe {
             SidebarProbeTrace.event("selection verified; awaiting map work")
             await map.waitUntilIdle()
             SidebarProbeTrace.event("selection map work finished")
-            try await driver.perform("Grid while expanded", action: {
-                try driver.performVisibilityAction(label: "Grid", show: false)
+            try await driver.perform("Grid while expanded", prepareAction: {
+                try driver.visibilityAction(label: "Grid", show: false)
             }, ready: {
                 !session.visibility.showsGrid && driver.isExpanded
                     && driver.outline.numberOfRows == collapsedRows + count
             })
-            try await driver.perform("collapse before reveal", action: { try driver.pressDisclosure() }, ready: {
+            // Collapse, map-control lookup and reveal share the original 180-second reveal allowance.
+            try measurement?.beginRevealSequence()
+            try await driver.perform("collapse before reveal", prepareAction: { try driver.disclosureAction() }, ready: {
                 !driver.isExpanded && driver.outline.numberOfRows == collapsedRows
             })
             let mapNode = try driver.mapNode()
@@ -161,19 +181,21 @@ struct NativeSidebarProbe {
                     return id != selectedID
                 })
             guard case .row(.place(let revealedID))? = location.target else { throw SidebarProbeError.wrongSelection }
-            let button = try driver.mapButton(location, in: mapNode)
-            try await driver.perform("reveal through map", action: {
-                try #require(button.accessibilityPerformPress?() == true)
+            try await driver.perform("reveal through map", prepareAction: {
+                let button = try driver.mapButton(location, in: driver.mapNode())
+                return { try #require(button.accessibilityPerformPress?() == true) }
             }, ready: {
                 driver.isExpanded && driver.outline.numberOfRows == collapsedRows + count
                     && session.selection.sidebarSelection == .place(revealedID)
                     && session.selection.isInspectorShown && driver.hasVisibleInspector
                     && driver.isSelectedRowVisible
             })
+            try measurement?.endRevealSequence()
             try driver.verifyChildren(count: count)
             try #require(driver.outline.selectedRow > driver.groupRow
                 && driver.outline.selectedRow <= driver.groupRow + count)
-            print("Sidebar probe complete: native disclosure, selection, Grid and map reveal verified; no performance verdict")
+            try measurement?.scenarioComplete()
+            print("Sidebar probe complete: native disclosure, selection, Grid and map reveal verified")
         } catch {
             await close()
             throw error
@@ -193,9 +215,9 @@ private enum SidebarProbeTrace {
     }
 }
 
-private enum SidebarProbeWorld {
+enum SidebarProbeWorld {
     static func make(spawners count: Int) throws -> URL {
-        precondition(count > 0 && count <= 11_000)
+        precondition(count > 0 && count <= SidebarMeasurementInput.spawners)
         let chunks = (0..<((count + 255) / 256)).map { chunkIndex in
             let occupants = min(256, count - chunkIndex * 256)
             var chunk = TestWorld.chunk(x: chunkIndex, z: 0,
@@ -216,25 +238,29 @@ private enum SidebarProbeWorld {
     }
 }
 
-private final class SidebarNativeDriver {
+final class SidebarNativeDriver {
     let window: NSWindow
     let outline: NSOutlineView
     let groupRow: Int
     private let groupTitle: String
+    private let measurement: SidebarMeasurementRecorder?
 
-    init(window: NSWindow, groupTitle: String) throws {
+    init(window: NSWindow, groupTitle: String, measurement: SidebarMeasurementRecorder?) throws {
         self.window = window
         self.groupTitle = groupTitle
+        self.measurement = measurement
         let content = try #require(window.contentView)
         let outlines = Self.views(in: content).compactMap { $0 as? NSOutlineView }
         outline = try #require(outlines.first)
         try #require(outlines.count == 1)
-        groupRow = try Self.groupControls(in: outline, title: groupTitle, window: window).row
+        groupRow = try Self.groupControls(in: outline, title: groupTitle, window: window,
+            visibleOnly: measurement != nil).row
     }
 
-    private static func groupControls(in outline: NSOutlineView, title: String, window: NSWindow) throws
+    private static func groupControls(in outline: NSOutlineView, title: String, window: NSWindow,
+                                      visibleOnly: Bool) throws
         -> (row: Int, cell: NSButtonCell, view: NSView) {
-        let matches = try existingRows(in: outline).filter { row in
+        let matches = try existingRows(in: outline, visibleOnly: visibleOnly).filter { row in
             row.nodes.contains { ($0.accessibilityLabel?() ?? "").contains(title) }
         }
         try #require(matches.count == 1)
@@ -275,25 +301,26 @@ private final class SidebarNativeDriver {
         }
     }
 
-    func pressDisclosure() throws {
+    func disclosureAction() throws -> () throws -> Void {
         // Native layout can reuse cells after selection or expansion; resolve the current group again.
-        let current = try Self.groupControls(in: outline, title: groupTitle, window: window)
+        let current = try Self.groupControls(in: outline, title: groupTitle, window: window,
+            visibleOnly: measurement != nil)
         try #require(current.row == groupRow)
         try #require(current.cell.isEnabled)
         try #require(current.cell.action != nil)
-        current.cell.performClick(current.view)
+        return { current.cell.performClick(current.view) }
     }
 
-    func performVisibilityAction(label: String, show: Bool) throws {
-        // This small proof may traverse the tree. A timed driver must prepare controls before its clock starts.
-        let matches = try Self.existingRows(in: outline).flatMap(\.nodes).filter {
+    func visibilityAction(label: String, show: Bool) throws -> () throws -> Void {
+        // Resolve the current action before the clock starts, without constructing offscreen rows.
+        let matches = try Self.existingRows(in: outline, visibleOnly: measurement != nil).flatMap(\.nodes).filter {
             ($0.accessibilityLabel?() ?? "") == label && !($0.accessibilityCustomActions?() ?? []).isEmpty
         }
         try #require(matches.count == 1)
         let node = try #require(matches.first)
         let action = try #require((node.accessibilityCustomActions?() ?? []).first { $0.name == (show ? "Show on Map" : "Hide on Map") })
         let handler = try #require(action.handler)
-        try #require(handler())
+        return { try #require(handler()) }
     }
 
     func mapNode() throws -> AnyObject {
@@ -313,16 +340,31 @@ private final class SidebarNativeDriver {
         return try #require(matches.first)
     }
 
-    func perform(_ name: String, action: () throws -> Void, ready: @escaping @MainActor () -> Bool) async throws {
+    func perform(_ name: String, prepareAction: () throws -> () throws -> Void,
+                 ready: @escaping @MainActor () -> Bool) async throws {
         print("Sidebar probe action: \(name)")
-        try await Self.afterUpdate(window, label: name, action: action, ready: ready)
+        try measurement?.beginAction(name, window: window)
+        let sample = try await Self.afterUpdate(window, label: name, prepareAction: prepareAction,
+            timing: measurement?.clock, ready: {
+                ready() && (self.measurement == nil
+                    || (!self.outline.needsLayout && self.window.contentView?.needsLayout == false))
+            })
+        if let measurement {
+            try measurement.endAction(name, window: window, sample: #require(sample),
+                rows: outline.numberOfRows, expanded: isExpanded, selectedRow: outline.selectedRow)
+        }
         print("Sidebar probe observed: \(name), nativeRows=\(outline.numberOfRows), expanded=\(isExpanded), selectedRow=\(outline.selectedRow)")
     }
 
+    @discardableResult
     static func afterUpdate(_ window: NSWindow, label: String = "window readiness",
-                            action: () throws -> Void = {}, ready: @escaping @MainActor () -> Bool) async throws {
-        let (updates, updated) = AsyncStream.makeStream(of: ContinuousClock.Instant.self,
+                            prepareAction: () throws -> () throws -> Void = { {} },
+                            timing: SidebarMainThreadClock? = nil,
+                            ready: @escaping @MainActor () -> Bool) async throws -> SidebarActionSample? {
+        let (updates, updated) = AsyncStream.makeStream(
+            of: (ContinuousClock.Instant, Result<SidebarActionStamp?, any Error>).self,
             bufferingPolicy: .bufferingNewest(1))
+        let dispatch = SidebarActionDispatch()
         // An inactive host can lay out its inspector without a window-update notification.
         // Observe after other before-waiting observers so deferred UI work can finish first.
         let observer = try #require(CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault,
@@ -330,7 +372,12 @@ private final class SidebarNativeDriver {
                 // Installed only on the main run loop; its synchronous callback has main-actor isolation.
                 MainActor.assumeIsolated {
                     // A false predicate queues no work and cannot keep the run loop awake itself.
-                    if ready() { updated.yield(.now) }
+                    // A native action can enter a nested run loop before returning.
+                    if dispatch.hasReturned && ready() {
+                        let stamp = Result { try timing.map { try SidebarActionStamp(clock: $0) } }
+                        updated.yield((.now, stamp))
+                        if case .failure = stamp { updated.finish() }
+                    }
                 }
             })
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
@@ -342,21 +389,31 @@ private final class SidebarNativeDriver {
             updated.finish()
             SidebarProbeTrace.event("\(label) wait ended: updates=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
         }
+        // Resolving and validating a native control cannot suspend before its dispatch.
+        // Its tree lookup is deliberately outside the measured interval.
+        let action = try prepareAction()
         let actionStart = ContinuousClock.now
+        let sampleStart = try timing.map { try SidebarActionStamp(clock: $0) }
         try action()
+        dispatch.hasReturned = true
         satisfied = ready()
-        if satisfied {
+        // A correctness-only action may already be ready. A measured action must include deferred UI work.
+        if satisfied && timing == nil {
             SidebarProbeTrace.event("\(label) already ready after action")
             SidebarProbeTrace.event("\(label) readiness elapsed: \(actionStart.duration(to: .now))")
-            return
+            return nil
         }
-        SidebarProbeTrace.event("\(label) awaiting UI readiness")
-        for await observedAt in updates {
+        if timing == nil { SidebarProbeTrace.event("\(label) awaiting UI readiness") }
+        for await (observedAt, result) in updates {
+            let sampleEnd = try result.get()
             updateCount += 1
             satisfied = ready()
             if satisfied {
                 SidebarProbeTrace.event("\(label) readiness elapsed: \(actionStart.duration(to: observedAt))")
-                return
+                if let sampleStart, let sampleEnd {
+                    return try SidebarActionSample(start: sampleStart, end: sampleEnd)
+                }
+                return nil
             }
         }
         throw CancellationError()
@@ -364,14 +421,24 @@ private final class SidebarNativeDriver {
 
     private static func views(in root: NSView) -> [NSView] { [root] + root.subviews.flatMap { views(in: $0) } }
 
-    private static func existingRows(in outline: NSOutlineView) throws -> [(index: Int, nodes: [AnyObject])] {
+    private static func existingRows(in outline: NSOutlineView, visibleOnly: Bool) throws -> [(index: Int, nodes: [AnyObject])] {
         let rowCount = outline.numberOfRows
-        try #require(rowCount > 0 && rowCount <= 128,
-            "The small proof permits at most 128 native sidebar rows")
+        let range: Range<Int>
+        if visibleOnly {
+            try #require(rowCount > 0 && rowCount <= SidebarMeasurementInput.spawners + 128)
+            let visible = outline.rows(in: outline.visibleRect)
+            try #require(visible.location != NSNotFound && visible.location >= 0 && visible.location < rowCount)
+            try #require(visible.length > 0 && visible.length <= 128 && visible.length <= rowCount - visible.location)
+            range = visible.location..<(visible.location + visible.length)
+        } else {
+            try #require(rowCount > 0 && rowCount <= 128,
+                "The small proof permits at most 128 native sidebar rows")
+            range = 0..<rowCount
+        }
         // SwiftUI has no API for locating its backing outline controls. Its accessibility-row
         // proxies can omit label children, so inspect only row views that already exist.
         var rows: [(index: Int, nodes: [AnyObject])] = []
-        for index in 0..<rowCount {
+        for index in range {
             guard let row = outline.rowView(atRow: index, makeIfNecessary: false) else { continue }
             rows.append((index, try nodes(in: row, budget: 64)))
         }
@@ -396,8 +463,12 @@ private final class SidebarNativeDriver {
     }
 }
 
+private final class SidebarActionDispatch {
+    var hasReturned = false
+}
+
 /// A retained send right identifies the actual main thread, not an arbitrary task thread.
-private final class SidebarMainThreadClock {
+final class SidebarMainThreadClock {
     private let thread: mach_port_t
 
     init() throws {
