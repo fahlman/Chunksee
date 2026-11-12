@@ -166,7 +166,7 @@ import Testing
                 // A small binary offset leaves the seam placements unchanged while
                 // keeping interior texel edges away from output pixel centers.
                 for baseTexel: CGFloat in [0.5, 1, 2, 3.25] {
-                    let texel = baseTexel + 1 / 128
+                    let texel = baseTexel + 33 / 1024
                     for scale: CGFloat in [1, 2] {
                         for shift in edgeShifts(displayScale: scale) {
                             let seam = size.width / 2 + shift
