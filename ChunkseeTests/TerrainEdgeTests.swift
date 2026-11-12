@@ -2,6 +2,7 @@ import ChunkseeKit
 import CoreGraphics
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 @testable import ChunkseeTestHost
 
@@ -190,6 +191,86 @@ import Testing
                 input: input, contrast: .standard, shadow: shadow, detail: detail, into: destination))
         }
         try check(#require(destination.makeImage()), reference: reference, context: "export: \(context)")
+        var rectangles = try regions.map { region in
+            ("region \(region.x),\(region.z)", try #require(viewport.viewRect(for: region, in: size)))
+        }
+        for chunk in detail.keys.sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
+            rectangles.append(("chunk \(chunk.x),\(chunk.z)", try #require(viewport.viewRect(for: chunk, in: size))))
+        }
+        try captureTransforms(rectangles: rectangles, scale: scale, context: context)
+    }
+
+    nonisolated private struct RectangleTransform: Codable, Sendable {
+        let name: String
+        let user: [Double]
+        let device: [Double]
+
+        init(name: String, rect: CGRect, context: CGContext) {
+            self.name = name
+            user = [rect.minX, rect.minY, rect.width, rect.height].map(Double.init)
+            let converted = context.convertToDeviceSpace(rect)
+            device = [converted.minX, converted.minY, converted.width, converted.height].map(Double.init)
+        }
+    }
+
+    nonisolated private struct TransformSample: Codable, Sendable {
+        let ctm: [Double]
+        let rectangles: [RectangleTransform]
+    }
+
+    nonisolated private struct TransformCapture: Sendable {
+        var calls = 0
+        var samples: [TransformSample] = []
+    }
+
+    nonisolated private struct TransformEvidence: Codable, Sendable {
+        let context: String
+        let displayScale: Double
+        let width: Int
+        let height: Int
+        let callbackCount: Int
+        let overflow: Bool
+        let samples: [TransformSample]
+    }
+
+    private func captureTransforms(rectangles: [(String, CGRect)], scale: CGFloat, context: String) throws {
+        // Observe a separate Canvas through each actual rendering path. Recording here
+        // leaves the product drawing code and the preceding pixel assertions untouched.
+        for route in ["screen", "export"] {
+            // A renderer may invoke its callback more than once. Keep bounded evidence
+            // without assuming its thread, and reject overflow after preserving the log.
+            let capture = Mutex(TransformCapture())
+            let probe = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
+                drawing.withCGContext { pixels in
+                    let ctm = pixels.ctm
+                    let sample = TransformSample(ctm: [ctm.a, ctm.b, ctm.c, ctm.d, ctm.tx, ctm.ty].map(Double.init),
+                        rectangles: rectangles.map { RectangleTransform(name: $0.0, rect: $0.1, context: pixels) })
+                    capture.withLock { value in
+                        value.calls += 1
+                        if value.samples.count < 8 { value.samples.append(sample) }
+                    }
+                    // Keep the diagnostic layer nonempty; it never touches the map image.
+                    pixels.setFillColor(CGColor(gray: 0, alpha: 1))
+                    pixels.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+                }
+            }
+            let side = Int(size.width * scale)
+            if route == "screen" {
+                _ = try render(probe, scale: scale)
+            } else {
+                let destination = try #require(MapImage.imageContext(width: side, height: side))
+                try #require(MapImage.drawImageLayer(probe, size: size, scale: scale, into: destination))
+                _ = try #require(destination.makeImage())
+            }
+            let result = capture.withLock { $0 }
+            let record = TransformEvidence(context: "\(route): \(context)", displayScale: Double(scale),
+                width: side, height: side, callbackCount: result.calls, overflow: result.calls > 8, samples: result.samples)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(record)
+            print("Terrain transform evidence: \(String(decoding: data, as: UTF8.self))")
+            try #require(result.calls > 0 && result.calls <= 8)
+        }
     }
 
     private func check(_ actual: CGImage, reference: CGImage, context: String) throws {
