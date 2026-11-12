@@ -834,8 +834,10 @@ WorldResources also derives color readiness from current game selection, the mat
 and the loader's preparation. A compatible retained color value is ready; a completed empty or
 failed read permits fallback drawing. MapModel keeps material-color regions queued while preparation
 is pending. Readiness participates in its existing observation identity, so completion wakes the
-queue without a viewport change, including failure without a color publication. Height remains
-independent. This scheduling state changes no renderer snapshot, persistent key or export rule.
+queue without a viewport change, including failure without a color publication. Readiness-only
+changes retain compatible pictures and in-flight work; only changed data, artwork or colors reload
+the tiles. A failed same-source color refresh therefore keeps the fallback map visible. Height
+remains independent. This scheduling state changes no renderer snapshot, persistent key or export rule.
 World closure remains unready until the owned maps close, so publishing closure cannot start a
 queued fallback render before their work scopes are stopped.
 Maps keep no separately editable resource triple, and WorldResources sends no manual resource updates. Map

@@ -926,7 +926,15 @@ final class MapModel {
             guard previous != current else { return }
             let readoutsChanged = previous.data != current.data || previous.artwork != current.artwork
             if readoutsChanged { model.resetTopBlockReads() }
-            if model.style.inputs.materialColors { model.reloadTiles() }
+            if model.style.inputs.materialColors {
+                if readoutsChanged || previous.colors != current.colors {
+                    model.reloadTiles()
+                } else {
+                    // Readiness alone changes scheduling, not the accepted drawing inputs.
+                    model.startQueued()
+                    model.updateLoadingState()
+                }
+            }
             if readoutsChanged { model.updateTopBlockReads() }
         }
     }

@@ -102,6 +102,26 @@ import Synchronization
             #expect(actual.picture.image.dataProvider?.data as Data? == expected.full.image.dataProvider?.data as Data?)
             #expect((renderer.biomeColors != nil) == (result != .colorFailure))
 
+            if result == .colorFailure {
+                // An autosave retries the failed color read, but its pending state must not
+                // erase an already accepted fallback picture or redraw unchanged inputs.
+                resources.refreshDelay = .zero
+                resources.worldChanged([root.appendingPathComponent("level.dat")])
+                await colors.waitForRequest("colors", count: 2)
+                #expect(!resources.mapGameResources.colorsReady)
+                #expect(map.tiles[region]?.image === actual.image)
+                #expect(!map.isLoading && map.viewport == viewport)
+                #expect(drawings.withLock { $0.count } == 1)
+                await colors.finish("colors", with: .failure(CocoaError(.fileReadUnknown)))
+                await resources.waitForRefresh()
+                await map.waitUntilIdle(); await map.waitForRenders()
+                #expect(resources.mapGameResources.colorsReady)
+                #expect(map.tiles[region]?.image === actual.image)
+                #expect(!map.isLoading && map.viewport == viewport)
+                #expect(drawings.withLock { $0.count } == 1)
+                #expect(heightDrawings.withLock { $0 } == 1)
+            }
+
             names.minecraft.choose(game.root)
             #expect(!resources.mapGameResources.colorsReady && map.isLoading)
             map.close()
