@@ -9,10 +9,10 @@ import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
-/// Probe-only source: validate native actions on a small fixture before freezing a large run.
+/// Diagnostic-only source: inspect the group lookup before any native action or timing.
 @Suite(.isolatedStores, .serialized, .timeLimit(.minutes(2)))
 struct NativeSidebarProbe {
-    @Test func validatesDisclosureSelectionGridAndMapReveal() async throws {
+    @Test func diagnosesNativeSidebarGroupLookup() async throws {
         let count = 31
         let root = try SidebarProbeWorld.make(spawners: count)
         SidebarProbeTrace.event("fixture created")
@@ -64,7 +64,7 @@ struct NativeSidebarProbe {
             let markers = session.presentation.selectedIndex.places.filter { $0.group == .spawner }
             try #require(markers.count == count && Set(markers.map(\.id)).count == count)
             try #require(session.presentation.spawnPoint == .zero)
-            let nearest = try #require(markers.first {
+            _ = try #require(markers.first {
                 $0.blockPosition == BlockPosition(blockX: 0, blockY: 12, blockZ: 0)
             })
             let map = try #require(session.map)
@@ -93,68 +93,8 @@ struct NativeSidebarProbe {
             SidebarProbeTrace.event("accessibility request returned: status=\(activation)")
             try #require(activation == AXError.success.rawValue)
             SidebarProbeTrace.event("locating native sidebar controls")
-            let driver = try SidebarNativeDriver(window: window, groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
-            SidebarProbeTrace.event("native sidebar controls located")
-            let collapsedRows = driver.outline.numberOfRows
-            try #require(!driver.isExpanded)
-            // Reading one actual main-thread counter verifies the source, not action speed.
-            let clock = try SidebarMainThreadClock()
-            let counter = try clock.read()
-            try #require(counter.isFinite && counter >= 0)
-            print("Sidebar probe setup: spawners=\(count), nativeRows=\(collapsedRows), mainThreadCPUCounter=\(counter)")
-
-            try await driver.perform("Grid while collapsed", action: {
-                try driver.performVisibilityAction(label: "Grid", show: true)
-            }, ready: { session.visibility.showsGrid && driver.outline.numberOfRows == collapsedRows })
-            try await driver.perform("expand", action: { try driver.pressDisclosure() }, ready: {
-                driver.isExpanded && driver.outline.numberOfRows == collapsedRows + count
-            })
-            try driver.verifyChildren(count: count)
-            let firstRow = driver.groupRow + 1
-            // Selection uses AppKit's native selection path; it must update the SwiftUI binding.
-            try await driver.perform("select", action: {
-                driver.outline.selectRowIndexes(IndexSet(integer: firstRow), byExtendingSelection: false)
-            }, ready: {
-                driver.outline.selectedRow == firstRow && session.selection.sidebarSelection == .place(nearest.id)
-                    && session.selection.isInspectorShown && driver.hasVisibleInspector
-                    && session.visibility.places.contains(.spawner)
-            })
-            let selected = try #require(session.selection.sidebarSelection)
-            guard case .place(let selectedID) = selected else { throw SidebarProbeError.wrongSelection }
-            try #require(markers.contains { $0.id == selectedID })
-            SidebarProbeTrace.event("selection verified; awaiting map work")
-            await map.waitUntilIdle()
-            SidebarProbeTrace.event("selection map work finished")
-            try await driver.perform("Grid while expanded", action: {
-                try driver.performVisibilityAction(label: "Grid", show: false)
-            }, ready: {
-                !session.visibility.showsGrid && driver.isExpanded
-                    && driver.outline.numberOfRows == collapsedRows + count
-            })
-            try await driver.perform("collapse before reveal", action: { try driver.pressDisclosure() }, ready: {
-                !driver.isExpanded && driver.outline.numberOfRows == collapsedRows
-            })
-            let mapNode = try driver.mapNode()
-            let mapSize = try #require(mapNode.accessibilityFrame?()).size
-            let location = try #require(MapContent(session: session).accessibleLocations(viewport: map.viewport, size: mapSize)
-                .first { location in
-                    guard case .row(.place(let id))? = location.target else { return false }
-                    return id != selectedID
-                })
-            guard case .row(.place(let revealedID))? = location.target else { throw SidebarProbeError.wrongSelection }
-            let button = try driver.mapButton(location, in: mapNode)
-            try await driver.perform("reveal through map", action: {
-                try #require(button.accessibilityPerformPress?() == true)
-            }, ready: {
-                driver.isExpanded && driver.outline.numberOfRows == collapsedRows + count
-                    && session.selection.sidebarSelection == .place(revealedID)
-                    && session.selection.isInspectorShown && driver.hasVisibleInspector
-                    && driver.isSelectedRowVisible
-            })
-            try driver.verifyChildren(count: count)
-            try #require(driver.outline.selectedRow > driver.groupRow
-                && driver.outline.selectedRow <= driver.groupRow + count)
-            print("Sidebar probe complete: native disclosure, selection, Grid and map reveal verified; no performance verdict")
+            _ = try SidebarNativeDriver(window: window, groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
+            SidebarProbeTrace.event("native sidebar lookup finished; no actions or counters read")
         } catch {
             await close()
             throw error
@@ -210,11 +150,42 @@ private final class SidebarNativeDriver {
         outline = try #require(outlines.first)
         try #require(outlines.count == 1)
         let rows = try #require(outline.accessibilityRows())
-        let matches = try rows.filter { row in
-            try Self.nodes(in: row as AnyObject, budget: 64).contains {
-                ($0.accessibilityLabel?() ?? "").contains(groupTitle)
+        try Self.record([
+            "kind": "outline", "groupTitle": groupTitle,
+            "accessibleRows": rows.count, "nativeRows": outline.numberOfRows,
+            "visibleRect": NSStringFromRect(outline.visibleRect),
+            "windowFrame": NSStringFromRect(window.frame), "windowVisible": window.isVisible,
+            "windowKey": window.isKeyWindow, "appActive": NSApp.isActive
+        ])
+        try #require(rows.count <= 128, "The diagnostic permits at most 128 accessible rows")
+        var matches: [AnyObject] = []
+        for (position, value) in rows.enumerated() {
+            let row = value as AnyObject, index = row.accessibilityIndex?() ?? -1
+            let validIndex = index >= 0 && index < outline.numberOfRows
+            try Self.record([
+                "kind": "row", "position": position, "index": index,
+                "rect": validIndex ? NSStringFromRect(outline.rect(ofRow: index)) : "unavailable",
+                "intersectsVisibleRect": validIndex && outline.visibleRect.intersects(outline.rect(ofRow: index))
+            ])
+            var matched = false
+            for (nodeIndex, node) in try Self.nodes(in: row, budget: 64).enumerated() {
+                let label = node.accessibilityLabel?() ?? ""
+                let matchesTitle = label.contains(groupTitle)
+                matched = matched || matchesTitle
+                let value = Self.diagnosticValue(node)
+                let frame = node.accessibilityFrame?()
+                try Self.record([
+                    "kind": "node", "row": position, "node": nodeIndex,
+                    "role": String(describing: node.accessibilityRole?()),
+                    "label": String(label.prefix(256)), "labelLength": label.count,
+                    "value": String(value.text.prefix(256)), "valueLength": value.text.count,
+                    "valueType": value.type, "matchesTitle": matchesTitle,
+                    "frame": frame.map(NSStringFromRect) ?? "unavailable"
+                ])
             }
+            if matched { matches.append(row) }
         }
+        try Self.record(["kind": "lookup", "matches": matches.count])
         try #require(matches.count == 1)
         let row = try #require(matches.first) as AnyObject
         groupRow = try #require(row.accessibilityIndex?())
@@ -329,6 +300,25 @@ private final class SidebarNativeDriver {
         let selector = NSSelectorFromString("accessibilityValue")
         guard let object = node as? NSObject, object.responds(to: selector) else { return nil }
         return object.perform(selector)?.takeUnretainedValue() as? String
+    }
+
+    private static func diagnosticValue(_ node: AnyObject) -> (type: String, text: String) {
+        let selector = NSSelectorFromString("accessibilityValue")
+        guard let object = node as? NSObject, object.responds(to: selector),
+              let value = object.perform(selector)?.takeUnretainedValue() else { return ("absent", "") }
+        let text: String
+        switch value {
+        case let value as String: text = value
+        case let value as NSAttributedString: text = value.string
+        case let value as NSNumber: text = value.stringValue
+        default: text = ""
+        }
+        return (String(reflecting: Swift.type(of: value)), text)
+    }
+
+    private static func record(_ fields: [String: Any]) throws {
+        let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+        SidebarProbeTrace.event("lookup diagnostic " + String(decoding: data, as: UTF8.self))
     }
 }
 
