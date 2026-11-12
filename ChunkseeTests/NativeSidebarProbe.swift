@@ -353,7 +353,9 @@ private nonisolated enum SidebarAXLookup {
         let records: [String]
         let complete: Bool
     }
-    private nonisolated enum Failure: Error { case budget, deadline, attribute(String, Int32), shape(String), windowIdentity }
+    private nonisolated enum Failure: Error {
+        case budget(String), deadline, attribute(String, Int32), shape(String), windowIdentity
+    }
 
     private nonisolated final class Reader {
         let clock = ContinuousClock()
@@ -369,7 +371,7 @@ private nonisolated enum SidebarAXLookup {
         }
 
         func attribute(_ element: AXUIElement, _ name: String) throws -> (status: Int32, value: CFTypeRef?) {
-            guard reads < 2_048 else { throw Failure.budget }
+            guard reads < 2_048 else { throw Failure.budget("attribute reads: limit=2048, next=\(name)") }
             guard clock.now < deadline else { throw Failure.deadline }
             reads += 1
             // Apple's timeout is per AX object; setting it on the application does not
@@ -381,14 +383,16 @@ private nonisolated enum SidebarAXLookup {
             return (status.rawValue, value)
         }
 
-        func elements(_ element: AXUIElement, _ name: String, limit: Int) throws -> [AXUIElement] {
+        func elements(_ element: AXUIElement, _ name: String, limit: Int, context: String) throws -> [AXUIElement] {
             let result = try attribute(element, name)
             // Leaves need not expose children. Required window/row collections keep their errors.
             if name == kAXChildrenAttribute,
                result.status == AXError.noValue.rawValue || result.status == AXError.attributeUnsupported.rawValue { return [] }
             guard result.status == AXError.success.rawValue else { throw Failure.attribute(name, result.status) }
             guard let values = result.value as? [AXUIElement] else { throw Failure.shape(name) }
-            guard values.count <= limit else { throw Failure.budget }
+            guard values.count <= limit else {
+                throw Failure.budget("\(context), \(name): count=\(values.count), limit=\(limit)")
+            }
             return values
         }
 
@@ -402,14 +406,16 @@ private nonisolated enum SidebarAXLookup {
             var pending = [(window, 0)], seen: [AXUIElement] = [], outlines: [AXUIElement] = []
             while let (element, depth) = pending.popLast() {
                 guard !seen.contains(where: { CFEqual($0, element) }) else { continue }
-                guard seen.count < 512, depth <= 12 else { throw Failure.budget }
+                guard seen.count < 512 else { throw Failure.budget("outline search nodes: limit=512") }
+                guard depth <= 12 else { throw Failure.budget("outline search depth: actual=\(depth), limit=12") }
                 seen.append(element)
                 let role = try text(element, kAXRoleAttribute)
                 guard role.status == AXError.success.rawValue else { throw Failure.attribute(kAXRoleAttribute, role.status) }
                 if role.text == kAXOutlineRole {
                     outlines.append(element)
                 } else {
-                    pending += try elements(element, kAXChildrenAttribute, limit: 128).reversed().map { ($0, depth + 1) }
+                    pending += try elements(element, kAXChildrenAttribute, limit: 128,
+                        context: "outline search role=\(role.text)").reversed().map { ($0, depth + 1) }
                 }
             }
             try record(["kind": "ax-outline-search", "visited": seen.count, "outlines": outlines.count])
@@ -420,15 +426,19 @@ private nonisolated enum SidebarAXLookup {
             var pending = [(row, 0)], seen: [AXUIElement] = [], matched = false
             while let (element, depth) = pending.popLast() {
                 guard !seen.contains(where: { CFEqual($0, element) }) else { continue }
-                guard seen.count < 64, depth <= 8 else { throw Failure.budget }
+                guard seen.count < 64 else { throw Failure.budget("row nodes: row=\(position), limit=64") }
+                guard depth <= 8 else { throw Failure.budget("row depth: row=\(position), actual=\(depth), limit=8") }
                 let node = seen.count
                 seen.append(element)
                 let role = try text(element, kAXRoleAttribute)
                 let title = try text(element, kAXTitleAttribute)
                 let description = try text(element, kAXDescriptionAttribute)
                 let value = try text(element, kAXValueAttribute)
-                let matches = title.text.contains(groupTitle) || description.text.contains(groupTitle)
-                matched = matched || matches
+                let matchesTitle = title.text.contains(groupTitle)
+                let matchesDescription = description.text.contains(groupTitle)
+                let matchesValue = value.text.contains(groupTitle)
+                let matchesGroup = matchesTitle || matchesDescription || matchesValue
+                matched = matched || matchesGroup
                 try record([
                     "kind": "ax-node", "outline": outline, "row": position, "node": node,
                     "role": role.text, "roleStatus": role.status,
@@ -436,11 +446,14 @@ private nonisolated enum SidebarAXLookup {
                     "description": String(description.text.prefix(256)), "descriptionLength": description.text.count,
                     "descriptionStatus": description.status,
                     "value": String(value.text.prefix(256)), "valueLength": value.text.count,
-                    "valueStatus": value.status, "valueType": value.type, "matchesTitle": matches
+                    "valueStatus": value.status, "valueType": value.type,
+                    "matchesTitle": matchesTitle, "matchesDescription": matchesDescription,
+                    "matchesValue": matchesValue, "matchesGroup": matchesGroup
                 ])
-                pending += try elements(element, kAXChildrenAttribute, limit: 64).reversed().map { ($0, depth + 1) }
+                pending += try elements(element, kAXChildrenAttribute, limit: 64,
+                    context: "row=\(position), node=\(node), role=\(role.text)").reversed().map { ($0, depth + 1) }
             }
-            try record(["kind": "ax-row", "outline": outline, "row": position, "nodes": seen.count, "matchesTitle": matched])
+            try record(["kind": "ax-row", "outline": outline, "row": position, "nodes": seen.count, "matchesGroup": matched])
             return matched
         }
     }
@@ -452,7 +465,7 @@ private nonisolated enum SidebarAXLookup {
             let app = AXUIElementCreateApplication(getpid())
             try reader.record(["kind": "ax-start", "windowTitle": windowTitle, "groupTitle": groupTitle,
                                "messagingTimeoutSeconds": 0.25, "deadlineSeconds": 30, "attributeBudget": 2_048])
-            let windows = try reader.elements(app, kAXWindowsAttribute, limit: 16)
+            let windows = try reader.elements(app, kAXWindowsAttribute, limit: 16, context: "application windows")
             var matching: [AXUIElement] = []
             for (position, window) in windows.enumerated() {
                 let title = try reader.text(window, kAXTitleAttribute)
@@ -468,7 +481,8 @@ private nonisolated enum SidebarAXLookup {
             guard matching.count == 1, let window = matching.first else { throw Failure.windowIdentity }
             let outlines = try reader.outlines(in: window)
             for (outlineIndex, outline) in outlines.enumerated() {
-                let rows = try reader.elements(outline, kAXRowsAttribute, limit: 128)
+                let rows = try reader.elements(outline, kAXRowsAttribute, limit: 128,
+                    context: "outline=\(outlineIndex), role=\(kAXOutlineRole)")
                 try reader.record(["kind": "ax-outline", "outline": outlineIndex, "rows": rows.count])
                 var matchingRows: [Int] = []
                 for (position, row) in rows.enumerated() {
