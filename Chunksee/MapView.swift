@@ -257,10 +257,12 @@ struct MapView: View {
                                        interpolation: Image.Interpolation, in context: GraphicsContext) {
         switch interpolation {
         case .none:
-            // Let Canvas rasterize each complete image once at its actual output scale.
-            // Crisp neighboring images must not smooth their shared geometric edge.
-            context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect,
-                         style: FillStyle(antialiased: false))
+            // Image edge filtering alone does not constrain the CGContext export route.
+            // Give neighboring crisp layers separate coverage without moving their texels.
+            var layer = context
+            let crisp = FillStyle(antialiased: false)
+            layer.clip(to: Path(rect), style: crisp)
+            layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect, style: crisp)
         default:
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
         }

@@ -787,16 +787,12 @@ availability once. MapDrawingInput resolves the chosen presentation with current
 lighting facts; MapContent captures that value with its overlays. Screen drawing, Copy/Share,
 streamed area export and legends consume it without rebuilding lighting or style rules. Copy still
 draws only retained tiles, and area export keeps its bounded tile window and shader rasterizer.
-The shared terrain and overlay drawing functions require the output display scale explicitly: the window
-supplies its environment scale, and both export paths supply their renderer scale. Crisp tiles
-own disjoint pixel rectangles, as do the Time Spent and Slime Chunks region images. Pixel centers
-within 1/64 output pixel of an outer edge use that edge's texel; this margin is capped at half a
-source texel to preserve nearest sampling at very small fit-to-world scales. All other pixels
-keep the original image transform. Cropped edge strips extend past their
-clips without adding a retained padded bitmap, and disjoint clips prevent repeated alpha blending.
-Zoomed-out filtering and the saved terrain/normal images are unchanged. The edge regression checks
-cover both rendering routes, exact and near-tie placement, shadow/overlay opacity, tile corners
-and a nonuniform texture grid.
+Terrain, detail, shadows and the Time Spent and Slime Chunks region images share the native
+Canvas image-drawing helper described with close-up detail below. Crisp images use their original
+rectangles for both a non-antialiased clip and a single nearest-neighbor draw. SwiftUI owns the
+output scale; there is no separate pixel rounding or edge-image expansion. Zoomed-out filtering
+and the saved terrain/normal images are unchanged. The edge regression checks cover both rendering
+routes, exact and near-tie placement, shadow/overlay opacity, tile corners and a nonuniform texture grid.
 RegionTileRenderer resolves material access for its style, including direct renderer calls, before
 reading artwork or forming cache inputs. TileCache encodes those resolved inputs without applying a
 second style policy. Raw game data remains available to block-information reads even in Height.
@@ -2248,10 +2244,12 @@ threshold. No new controls, localization keys, file access, asset copy or world 
 
 At one point per block or above, terrain regions use their exact bounds so a neighbor's base
 cannot cover existing close-up detail. Base, detail, shadows, Time Spent and Slime Chunks share
-one native Canvas image-drawing helper. Nearest-neighbor images use
-`FillStyle(antialiased: false)` so SwiftUI owns their edge coverage at the actual output scale;
-there are no separately cropped edge bands or Core Graphics clips. SwiftUI also retains the
-lighting filters, opacity and unchanged world-to-view transform used by markers and normals.
+one native Canvas image-drawing helper. Each nearest-neighbor image clips its own context to the
+original image rectangle with `FillStyle(antialiased: false)`, then uses that same fill style for
+the single image draw. This makes coverage explicit in the shared owner while SwiftUI handles
+the actual output scale; there are no separately cropped edge bands or Core Graphics clips.
+SwiftUI also retains the lighting filters, opacity and unchanged world-to-view transform used
+by markers and normals.
 Zoomed-out terrain retains the existing filtered drawing and half-point padding. The patterned
 edge test keeps exact and nearby seam ties but offsets interior texel spacing and requires a
 clear margin from every visible interior tie before comparing against the whole-image reference.
