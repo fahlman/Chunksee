@@ -203,25 +203,34 @@ private final class SidebarNativeDriver {
     let window: NSWindow
     let outline: NSOutlineView
     let groupRow: Int
-    private let disclosure: NSButtonCell
+    private let groupTitle: String
 
     init(window: NSWindow, groupTitle: String) throws {
         self.window = window
+        self.groupTitle = groupTitle
         let content = try #require(window.contentView)
         let outlines = Self.views(in: content).compactMap { $0 as? NSOutlineView }
         outline = try #require(outlines.first)
         try #require(outlines.count == 1)
-        let matches = try Self.existingRows(in: outline).filter { row in
-            row.nodes.contains { ($0.accessibilityLabel?() ?? "").contains(groupTitle) }
+        groupRow = try Self.groupControls(in: outline, title: groupTitle, window: window).row
+    }
+
+    private static func groupControls(in outline: NSOutlineView, title: String, window: NSWindow) throws
+        -> (row: Int, cell: NSButtonCell, view: NSView) {
+        let matches = try existingRows(in: outline).filter { row in
+            row.nodes.contains { ($0.accessibilityLabel?() ?? "").contains(title) }
         }
         try #require(matches.count == 1)
         let match = try #require(matches.first)
-        groupRow = match.index
         let disclosures = match.nodes.filter {
             $0.accessibilityRole?() == NSAccessibility.Role.disclosureTriangle
         }
         try #require(disclosures.count == 1)
-        disclosure = try #require(disclosures.first as? NSButtonCell)
+        let cell = try #require(disclosures.first as? NSButtonCell)
+        let view = try #require(cell.controlView)
+        try #require(view.window === window)
+        try #require(outline.row(for: view) == match.index)
+        return (match.index, cell, view)
     }
 
     var isExpanded: Bool { outline.isItemExpanded(outline.item(atRow: groupRow)) }
@@ -250,9 +259,12 @@ private final class SidebarNativeDriver {
     }
 
     func pressDisclosure() throws {
-        try #require(disclosure.isEnabled && disclosure.action != nil)
-        // The native disclosure is a cell; use its click action and observe the outline's update.
-        disclosure.performClick(outline)
+        // Native layout can reuse cells after selection or expansion; resolve the current group again.
+        let current = try Self.groupControls(in: outline, title: groupTitle, window: window)
+        try #require(current.row == groupRow)
+        try #require(current.cell.isEnabled)
+        try #require(current.cell.action != nil)
+        current.cell.performClick(current.view)
     }
 
     func performVisibilityAction(label: String, show: Bool) throws {
