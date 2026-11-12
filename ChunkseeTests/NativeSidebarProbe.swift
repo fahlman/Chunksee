@@ -203,7 +203,7 @@ private final class SidebarNativeDriver {
     let window: NSWindow
     let outline: NSOutlineView
     let groupRow: Int
-    private let disclosure: AnyObject
+    private let disclosure: NSButtonCell
 
     init(window: NSWindow, groupTitle: String) throws {
         self.window = window
@@ -221,7 +221,7 @@ private final class SidebarNativeDriver {
             $0.accessibilityRole?() == NSAccessibility.Role.disclosureTriangle
         }
         try #require(disclosures.count == 1)
-        disclosure = try #require(disclosures.first)
+        disclosure = try #require(disclosures.first as? NSButtonCell)
     }
 
     var isExpanded: Bool { outline.isItemExpanded(outline.item(atRow: groupRow)) }
@@ -249,7 +249,11 @@ private final class SidebarNativeDriver {
         }
     }
 
-    func pressDisclosure() throws { try #require(disclosure.accessibilityPerformPress?() == true) }
+    func pressDisclosure() throws {
+        try #require(disclosure.isEnabled && disclosure.action != nil)
+        // The native disclosure is a cell; use its click action and observe the outline's update.
+        disclosure.performClick(outline)
+    }
 
     func performVisibilityAction(label: String, show: Bool) throws {
         // This small proof may traverse the tree. A timed driver must prepare controls before its clock starts.
