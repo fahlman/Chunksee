@@ -86,7 +86,7 @@ import Synchronization
             defer { continuation.finish() }
             withObservationTracking(options: [.didSet]) { _ = resources.biomeColors } onChange: { event in
                 event.cancel()
-                MainActor.assumeIsolated { continuation.yield(resources.biomeColors != nil) }
+                MainActor.assumeIsolated { _ = continuation.yield(resources.biomeColors != nil) }
                 continuation.finish()
             }
             await availableColors.finish("colors", with: ())
