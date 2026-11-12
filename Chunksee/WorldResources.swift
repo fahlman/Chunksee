@@ -570,6 +570,10 @@ final class WorldResources {
     @concurrent nonisolated static func readBiomeColors(_ world: World, data: GameDataLibrary?,
                                                        artwork: GameArtworkLibrary?, previous: MapBiomeColors?,
                                                        reload: Bool) async throws -> MapBiomeColors {
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        let diagnosticSpan = RechooseDiagnosticTrace.start("biome.colors", detail: "data=\(data != nil),artwork=\(artwork != nil),reload=\(reload)")
+        defer { RechooseDiagnosticTrace.end("biome.colors", diagnosticSpan) }
+#endif
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
         let source = GameResourceSource(data: data, artwork: artwork)
@@ -744,6 +748,9 @@ final class WorldResources {
     }
 
     func worldChanged(_ files: [URL]) {
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        RechooseDiagnosticTrace.mark("world.changed", detail: files.map(\.lastPathComponent).joined(separator: ","))
+#endif
         guard !isClosed, !refreshWork.isClosed else { return }
         for file in files.map(\.standardizedFileURL) {
             var mayChangeSavedData = true
@@ -809,6 +816,9 @@ final class WorldResources {
         // `refreshDelay` during play instead of only once the game goes quiet.
         guard !isRefreshScheduled else { return }
         isRefreshScheduled = true
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        RechooseDiagnosticTrace.mark("refresh.scheduled")
+#endif
         let delay = refreshDelay
         let wait = waitBeforeRefresh
         refreshWork.start(priority: nil) { [weak self] in
@@ -828,6 +838,10 @@ final class WorldResources {
     }
 
     private func refresh() async {
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        let diagnosticSpan = RechooseDiagnosticTrace.start("world.refresh")
+        defer { RechooseDiagnosticTrace.end("world.refresh", diagnosticSpan) }
+#endif
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
         let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
         let lightingChanged = pendingLighting, worldDataChanged = pendingWorldData

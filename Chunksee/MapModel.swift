@@ -263,9 +263,22 @@ final class MapModel {
                 // Await into a local before using `region` again: Swift 6.4 release builds miscompile
                 // `(region, try await …, true)` so `region` reads back as (0, 0) after the suspension
                 // (fahlman/Chunksee#6 has a standalone reproduction).
+#if CHUNKSEE_TEST_HOST
+                MapColorComparisonMetrics.tileStarted()
+                defer { MapColorComparisonMetrics.tileFinished() }
+#endif
                 let result: Result<RegionTileRenderer.RenderedTile?, any Error>
                 do {
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+                    let tile = try await RechooseDiagnosticTrace.$renderJob.withValue(id) {
+                        let span = RechooseDiagnosticTrace.start("tile.operation", detail: "region=\(region.x),\(region.z)")
+                        defer { RechooseDiagnosticTrace.end("tile.operation", span) }
+                        return try await render(renderer, region)
+                    }
+#endif
+#if !(CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE)
                     let tile = try await render(renderer, region)
+#endif
                     result = .success(tile)
                 } catch {
                     result = .failure(error)
@@ -279,6 +292,9 @@ final class MapModel {
     private func finish(_ region: RegionPosition, job id: Int, with result: Result<RegionTileRenderer.RenderedTile?, any Error>) {
         // A job cancelled because its region left the view was already removed (and may have been
         // replaced by a newer job for the same region); its result is dropped.
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        RechooseDiagnosticTrace.mark("tile.finish", job: id, detail: "accepted=\(inFlight[region]?.id == id)")
+#endif
         guard inFlight[region]?.id == id else { return }
         inFlight[region] = nil
         guard !isClosed else {
@@ -292,6 +308,12 @@ final class MapModel {
             // key independently guards every drawing input before pixels or disk work publish.
             if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer?.accepts(tile.key) == true {
                 store(tile, for: region)
+#if CHUNKSEE_TEST_HOST
+                MapColorComparisonMetrics.tilePublished(in: region)
+#endif
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+                RechooseDiagnosticTrace.mark("tile.publish", job: id, detail: "region=\(region.x),\(region.z)")
+#endif
                 if let operation = tile.cacheWrite, operation.key == tile.key.surface {
                     let write = writeCache
                     cacheWork.start(priority: .utility) {
@@ -428,6 +450,9 @@ final class MapModel {
     }
 
     func cancel() {
+#if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
+        RechooseDiagnosticTrace.mark("map.cancel", detail: "jobs=\(inFlight.values.map(\.id).sorted())")
+#endif
         lastRequest = nil
         renderWork.cancel()
         inFlight = [:]
