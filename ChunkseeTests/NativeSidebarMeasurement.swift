@@ -23,7 +23,7 @@ struct NativeSidebarMeasurement {
         try await SidebarProbeScenario.run(root: foregroundWorld, count: 31, mode: .foregroundPreparation)
         let generated = try SidebarProbeWorld.make(spawners: SidebarMeasurementInput.spawners)
         defer { try? FileManager.default.removeItem(at: generated) }
-        let world = output.appendingPathComponent("world", directoryHint: .isDirectory)
+        let world = output.appendingPathComponent("world", isDirectory: true)
         try FileManager.default.copyItem(at: generated, to: world)
         let manifest = try SidebarMeasurementInput.manifest(world)
         try JSONEncoder().encode(manifest).write(to: output.appendingPathComponent("fixture.json"), options: .withoutOverwriting)
@@ -102,8 +102,8 @@ nonisolated enum SidebarMeasurementInput {
     static let spawners = 11_000
     // This path is populated once by the reviewed preparation step, never by either measured host.
     static func world() throws -> URL {
-        try caches().appendingPathComponent("SidebarMeasurementInput-1", directoryHint: .isDirectory)
-            .appendingPathComponent("world", directoryHint: .isDirectory)
+        try caches().appendingPathComponent("SidebarMeasurementInput-1", isDirectory: true)
+            .appendingPathComponent("world", isDirectory: true)
     }
 
     static func caches() throws -> URL {
