@@ -199,6 +199,32 @@ import Testing
         try #require(actualPixels.count == expected.count)
         let differentBytes = zip(actualPixels, expected).filter { $0 != $1 }.count
         #expect(differentBytes == 0, "\(context)")
+        // Preserve the unchanged comparison before collecting diagnostic evidence.
+        // Full buffers make pixel location and color/alpha differences inspectable.
+        let differingPixels = stride(from: 0, to: actualPixels.count, by: 4).filter { offset in
+            actualPixels[offset..<(offset + 4)] != expected[offset..<(offset + 4)]
+        }
+        let samples: [[String: Any]] = differingPixels.prefix(16).map { offset in
+            ["x": (offset / 4) % actual.width, "y": (offset / 4) / actual.width,
+             "actual": Array(actualPixels[offset..<(offset + 4)]),
+             "expected": Array(expected[offset..<(offset + 4)])]
+        }
+        let identifier = context.map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
+        let record: [String: Any] = ["context": context, "identifier": identifier,
+            "width": actual.width, "height": actual.height,
+            "differentBytes": differentBytes, "differentPixels": differingPixels.count,
+            "samples": samples]
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        print("Terrain edge evidence: \(String(decoding: data, as: UTF8.self))")
+        if differentBytes != 0 {
+            Attachment.record(Array(data), named: identifier + "-comparison.json")
+            Attachment.record(actualPixels, named: identifier + "-actual.rgba")
+            Attachment.record(expected, named: identifier + "-expected.rgba")
+            let actualPNG = try #require(MapImage.png(actual))
+            let expectedPNG = try #require(MapImage.png(reference))
+            Attachment.record(Array(actualPNG.data), named: identifier + "-actual.png")
+            Attachment.record(Array(expectedPNG.data), named: identifier + "-expected.png")
+        }
     }
 
     private func pixels(_ image: CGImage) throws -> [UInt8] {
