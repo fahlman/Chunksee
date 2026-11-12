@@ -127,11 +127,66 @@ import Testing
                             let input = drawingInput(shadows: shadows)
                             let actual = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                                 MapView.drawTerrain(viewport: viewport, regions: regions, image: { tiles[$0] },
-                                    input: input, shadow: { _ in shadows ? mask : nil }, increasedContrast: false,
+                                    input: input, displayScale: scale, shadow: { _ in shadows ? mask : nil }, increasedContrast: false,
                                     in: context, size: size)
                             }
                             try check(render(actual, scale: scale), reference: render(reference, scale: scale),
                                 context: "low zoom \(zoom), \(join.rawValue), display \(scale), shift \(shift), shadows \(shadows)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func clampedEdgesPreserveThePatternAndSingleAlphaBlend() throws {
+        let side = 128
+        for vertical in [true, false] {
+            for alpha in [255, 128] {
+                let width = vertical ? 2 * side : side, height = vertical ? side : 2 * side
+                var bytes: [UInt8] = []
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let along = vertical ? x : y, across = vertical ? y : x
+                        // Equal colors immediately beside the join make the tie's tile ownership
+                        // immaterial. Every other texel varies, catching any shifted sampling grid.
+                        let stripe = along == side - 1 ? side : along
+                        bytes += [UInt8((40 + stripe % 5 * 40) * alpha / 255),
+                                  UInt8((40 + across % 3 * 60) * alpha / 255),
+                                  UInt8((50 + stripe / 7 % 3 * 50) * alpha / 255), UInt8(alpha)]
+                    }
+                }
+                let whole = try #require(CGImage.rgba(bytes, width: width, height: height))
+                let first = MapTileImage(try #require(whole.cropping(to: CGRect(x: 0, y: 0, width: side, height: side))))
+                let second = MapTileImage(try #require(whole.cropping(to: CGRect(
+                    x: vertical ? side : 0, y: vertical ? 0 : side, width: side, height: side))))
+                for texel: CGFloat in [0.5, 1, 2, 3.25] {
+                    for scale: CGFloat in [1, 2] {
+                        for shift: CGFloat in [0, 0.25, 0.5] {
+                            let seam = size.width / 2 + shift
+                            let origin = CGPoint(x: vertical ? seam - CGFloat(side) * texel : size.width / 2 - CGFloat(side) * texel / 2,
+                                                 y: vertical ? size.height / 2 - CGFloat(side) * texel / 2 : seam - CGFloat(side) * texel)
+                            let firstRect = CGRect(origin: origin, size: CGSize(width: CGFloat(side) * texel, height: CGFloat(side) * texel))
+                            let secondRect = firstRect.offsetBy(dx: vertical ? firstRect.width : 0,
+                                                               dy: vertical ? 0 : firstRect.height)
+                            let wholeRect = CGRect(origin: origin, size: CGSize(width: CGFloat(width) * texel, height: CGFloat(height) * texel))
+                            let reference = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
+                                drawing.draw(Image(decorative: whole, scale: 1).interpolation(.none), in: wholeRect)
+                            }
+                            let actual = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
+                                for (tile, rect) in [(first, firstRect), (second, secondRect)] {
+                                    MapView.drawTerrainImage(tile, rect: rect, interpolation: .none, lighting: nil,
+                                        protectsWater: false, displayScale: scale, increasedContrast: false, in: drawing)
+                                }
+                            }
+                            let label = "pattern vertical \(vertical), alpha \(alpha), texel \(texel), display \(scale), shift \(shift)"
+                            try check(render(actual, scale: scale), reference: render(reference, scale: scale), context: "screen: \(label)")
+                            let pixels = Int(size.width * scale)
+                            let destination = try #require(MapImage.imageContext(width: pixels, height: pixels))
+                            let expected = try #require(MapImage.imageContext(width: pixels, height: pixels))
+                            try #require(MapImage.drawImageLayer(actual, size: size, scale: scale, into: destination))
+                            try #require(MapImage.drawImageLayer(reference, size: size, scale: scale, into: expected))
+                            try check(#require(destination.makeImage()), reference: #require(expected.makeImage()), context: "export: \(label)")
                         }
                     }
                 }
@@ -180,7 +235,7 @@ import Testing
                               scale: CGFloat, reference: CGImage, context: String) throws {
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
             MapView.drawTerrain(viewport: viewport, regions: regions, image: { tiles[$0] }, input: input,
-                shadow: { _ in shadow }, detail: detail, increasedContrast: false, in: drawing, size: size)
+                displayScale: scale, shadow: { _ in shadow }, detail: detail, increasedContrast: false, in: drawing, size: size)
         }
         try check(render(canvas, scale: scale), reference: reference, context: "screen: \(context)")
         let side = Int(size.width * scale)

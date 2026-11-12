@@ -54,7 +54,7 @@ nonisolated struct MapImage: Sendable {
         guard needsShader else {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                    input: input, shadow: { _ in shadow }, detail: detail,
+                                    input: input, displayScale: scale, shadow: { _ in shadow }, detail: detail,
                                     increasedContrast: contrast == .increased, in: context, size: size)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
@@ -72,7 +72,7 @@ nonisolated struct MapImage: Sendable {
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
                     MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                        input: input, shadow: { _ in shadow }, detail: detail,
+                                        input: input, displayScale: scale, shadow: { _ in shadow }, detail: detail,
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)

@@ -295,7 +295,7 @@ import Testing
         let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: light)
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, actualSize in
             MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
-                                increasedContrast: true, in: context, size: actualSize)
+                                displayScale: scale, increasedContrast: true, in: context, size: actualSize)
         }.frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: canvas); renderer.scale = scale
         let expected = try rgba(#require(renderer.cgImage))
