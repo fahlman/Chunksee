@@ -66,6 +66,7 @@ import Testing
                 var coldFinalFiles: [String: String] = [:]
                 for phase in ["cold", "reopen"] {
                     let key = "\(artwork ? "artwork-on" : "artwork-off")-\(phase)"
+                    let rowStart = DispatchTime.now().uptimeNanoseconds
                     MapColorComparisonMetrics.beginRow("rep-\(repetition)/" + key)
                     let defaults = TestDefaults.make(), scans = Scans()
                     let model = AppModel(defaults: defaults, cacheRoot: cache, readRegion: { dimension, region, options in
@@ -100,9 +101,11 @@ import Testing
                         resources.refreshGameAssets()
                         await Self.settle(resources, map)
                         try #require(MapColorComparisonMetrics.snapshot.firstAcceptedTileSeen)
-                        let firstOpeningTile = try #require(MapColorComparisonMetrics.snapshot.firstAcceptedTile)
-                        timings["firstOpeningTile"] = firstOpeningTile
                         timings["initialFinalColorsReady"] = initialStart.values
+                        let openingKey = try #require(map.tiles[regions[0]]).key
+                        let openingPublications = try #require(MapColorComparisonMetrics.settled(key: openingKey))
+                        timings["firstOpeningTile"] = openingPublications.firstTile
+                        timings["firstFinalOpeningTile"] = openingPublications.firstFinalTile
                         let initialScans = await scans.calls
                         guard initialScans == (phase == "cold" ? 3 : 0) else {
                             throw Failure.cache("opening scans: \(initialScans), \(key)")
@@ -208,7 +211,10 @@ import Testing
                         await Self.settle(resources, map)
                         await model.names.minecraft.waitUntilIdle()
                         timings["remove"] = removalStart.values
-                        timings["firstRemovalTile"] = try #require(MapColorComparisonMetrics.snapshot.firstAcceptedTile)
+                        let removalKey = try #require(map.tiles[regions[2]]).key
+                        let removalPublications = try #require(MapColorComparisonMetrics.settled(key: removalKey))
+                        timings["firstRemovalTile"] = removalPublications.firstTile
+                        timings["firstFinalRemovalTile"] = removalPublications.firstFinalTile
                         let rechooseStart = Stamp()
                         MapColorComparisonMetrics.phase("rechoose", region: regions[2], since: rechooseStart)
                         model.names.minecraft.choose(game)
@@ -216,7 +222,10 @@ import Testing
                         await model.names.minecraft.waitUntilIdle()
                         try Self.checkSource(map, artwork: artwork)
                         timings["rechoose"] = rechooseStart.values
-                        timings["firstRechooseTile"] = try #require(MapColorComparisonMetrics.snapshot.firstAcceptedTile)
+                        let rechooseKey = try #require(map.tiles[regions[2]]).key
+                        let rechoosePublications = try #require(MapColorComparisonMetrics.settled(key: rechooseKey))
+                        timings["firstRechooseTile"] = rechoosePublications.firstTile
+                        timings["firstFinalRechooseTile"] = rechoosePublications.firstFinalTile
                         let sourceScans = await scans.calls
                         let sourceMetrics = MapColorComparisonMetrics.snapshot
                         try Self.checkDrained(sourceMetrics)
@@ -257,6 +266,10 @@ import Testing
                             "key": key, "repetition": repetition,
                             "phase": config.timing ? (repetition == 0 ? "warmup" : "measured") : "diagnostic",
                             "timings": timings, "peakRSSBytes": Self.peakRSSBytes(),
+                            "rowElapsedWallSeconds": Double(DispatchTime.now().uptimeNanoseconds - rowStart) / 1e9,
+                            "tilePublications": try Self.object([
+                                "opening": openingPublications, "remove": removalPublications, "rechoose": rechoosePublications
+                            ]),
                             "signature": signature, "fields": fields,
                             "initialScans": initialScans, "sourceCycleScans": sourceScans - initialScans,
                             "sameContentColorReads": 1, "totalObservedColorReads": await colorReads.calls,

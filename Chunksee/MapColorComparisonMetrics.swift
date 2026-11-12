@@ -31,6 +31,38 @@ nonisolated struct MapColorComparisonStamp {
     private(set) static var snapshot = Snapshot()
     private static var firstRegion: RegionPosition?
     private static var phaseStart: MapColorComparisonStamp?
+    private struct Publication {
+        let key: RegionTileRenderer.ImageKey
+        let stamp: [String: Double]
+    }
+    private static var publications: [Publication] = []
+    private static var publicationOverflow = false
+
+    nonisolated struct KeyRecord: Encodable, Sendable {
+        let surface: TileCache.Key
+        let heightScale: MapHeightScale?
+        let usesSavedLighting: Bool
+        let chunkX: Int?
+        let chunkZ: Int?
+
+        init(_ key: RegionTileRenderer.ImageKey) {
+            surface = key.surface
+            heightScale = key.preparation.heightScale
+            usesSavedLighting = key.preparation.usesSavedLighting
+            chunkX = key.chunk?.x
+            chunkZ = key.chunk?.z
+        }
+    }
+
+    nonisolated struct SettledPublications: Encodable, Sendable {
+        let firstTile: [String: Double]
+        let firstFinalTile: [String: Double]
+        let firstMatchesFinal: Bool
+        let firstKey: KeyRecord
+        let settledKey: KeyRecord
+        let publicationKeys: [KeyRecord]
+        let publicationStamps: [[String: Double]]
+    }
 
     static var tracing: Bool {
 #if CHUNKSEE_COLOR_TRACE
@@ -44,6 +76,8 @@ nonisolated struct MapColorComparisonStamp {
         snapshot = Snapshot()
         firstRegion = nil
         phaseStart = nil
+        publications = []
+        publicationOverflow = false
 #if CHUNKSEE_COLOR_TRACE
         RechooseDiagnosticTrace.beginRow(name)
 #endif
@@ -53,6 +87,8 @@ nonisolated struct MapColorComparisonStamp {
         firstRegion = region
         phaseStart = start
         snapshot.firstAcceptedTile = nil
+        publications = []
+        publicationOverflow = false
 #if CHUNKSEE_COLOR_TRACE
         RechooseDiagnosticTrace.phase(name)
 #endif
@@ -60,11 +96,23 @@ nonisolated struct MapColorComparisonStamp {
 
     static func tileStarted() { snapshot.tileStarted += 1 }
     static func tileFinished() { snapshot.tileFinished += 1 }
-    static func tilePublished(in region: RegionPosition) {
+    static func tilePublished(in region: RegionPosition, key: RegionTileRenderer.ImageKey) {
         snapshot.tilePublished += 1
-        if region == firstRegion, snapshot.firstAcceptedTile == nil, let phaseStart {
-            snapshot.firstAcceptedTile = phaseStart.values
-        }
+        guard region == firstRegion, let phaseStart else { return }
+        guard publications.count < 64 else { publicationOverflow = true; return }
+        let stamp = phaseStart.values
+        publications.append(Publication(key: key, stamp: stamp))
+        if snapshot.firstAcceptedTile == nil { snapshot.firstAcceptedTile = stamp }
+    }
+
+    /// Resolve identity after the ordinary settle, without guessing that an early tile is final.
+    /// Encoding/hashing keys belongs outside the measured publication path.
+    static func settled(key: RegionTileRenderer.ImageKey) -> SettledPublications? {
+        guard !publicationOverflow, let first = publications.first,
+              let final = publications.first(where: { $0.key == key }) else { return nil }
+        return SettledPublications(firstTile: first.stamp, firstFinalTile: final.stamp,
+            firstMatchesFinal: first.key == key, firstKey: KeyRecord(first.key), settledKey: KeyRecord(key),
+            publicationKeys: publications.map { KeyRecord($0.key) }, publicationStamps: publications.map(\.stamp))
     }
 }
 

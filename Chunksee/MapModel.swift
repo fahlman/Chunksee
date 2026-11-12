@@ -309,7 +309,7 @@ final class MapModel {
             if tile.key.surface.region == region, tile.key.chunk == nil, currentRenderer?.accepts(tile.key) == true {
                 store(tile, for: region)
 #if CHUNKSEE_TEST_HOST
-                MapColorComparisonMetrics.tilePublished(in: region)
+                MapColorComparisonMetrics.tilePublished(in: region, key: tile.key)
 #endif
 #if CHUNKSEE_TEST_HOST && CHUNKSEE_COLOR_TRACE
                 RechooseDiagnosticTrace.mark("tile.publish", job: id, detail: "region=\(region.x),\(region.z)")
