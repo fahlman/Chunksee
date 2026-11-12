@@ -274,6 +274,12 @@ private final class SidebarNativeDriver {
             SidebarProbeTrace.event("\(label) wait ended: updates=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
         }
         try action()
+        // An already-visible, appeared document need not emit another window update.
+        satisfied = ready()
+        if satisfied {
+            SidebarProbeTrace.event("\(label) already ready after action")
+            return
+        }
         window.viewsNeedDisplay = true
         SidebarProbeTrace.event("\(label) awaiting native update")
         for await _ in updates {
