@@ -256,12 +256,18 @@ struct MapView: View {
                                           interpolation: Image.Interpolation, in context: GraphicsContext) {
         switch interpolation {
         case .none:
-            // Independent antialiased image edges blend twice at a shared boundary.
-            // The proxy keeps SwiftUI's lighting, opacity and clipping while giving
-            // each device pixel one tile's coverage, without changing its transform.
+            // Neighboring crisp images must own disjoint device pixels, including
+            // when ImageRenderer replays the Canvas into an export CGContext.
+            // Clip their coverage without changing the texture's sampling transform.
             context.withCGContext { pixels in
                 pixels.setShouldAntialias(false)
                 pixels.interpolationQuality = .none
+                let device = pixels.convertToDeviceSpace(rect)
+                let left = device.minX.rounded(), top = device.minY.rounded()
+                let coverage = CGRect(x: left, y: top,
+                                      width: device.maxX.rounded() - left,
+                                      height: device.maxY.rounded() - top)
+                pixels.clip(to: pixels.convertToUserSpace(coverage))
                 pixels.translateBy(x: rect.minX, y: rect.maxY)
                 pixels.scaleBy(x: 1, y: -1)
                 pixels.draw(image, in: CGRect(origin: .zero, size: rect.size))
