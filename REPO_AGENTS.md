@@ -2247,14 +2247,17 @@ Area export still offers its existing scales of at most one pixel per block, bel
 threshold. No new controls, localization keys, file access, asset copy or world modification.
 
 At one point per block or above, terrain regions use their exact bounds so a neighbor's base
-cannot cover existing close-up detail. Base, detail and shadow images share one Canvas
-Core Graphics drawing helper with nearest-neighbor sampling and edge antialiasing disabled;
-SwiftUI retains the lighting filters, opacity and clipping. This gives neighboring region and
-chunk images one pixel's coverage at fractional viewport positions without changing the
-world-to-view transform used by markers and normals. Zoomed-out images retain the existing
-filtered SwiftUI drawing and half-point padding. Overlay drawing is separate and unchanged.
+cannot cover existing close-up detail. Base, detail, shadows, Time Spent and Slime Chunks share
+one native Canvas image-drawing helper. Nearest-neighbor images use
+`FillStyle(antialiased: false)` so SwiftUI owns their edge coverage at the actual output scale;
+there are no separately cropped edge bands or Core Graphics clips. SwiftUI also retains the
+lighting filters, opacity and unchanged world-to-view transform used by markers and normals.
+Zoomed-out terrain retains the existing filtered drawing and half-point padding. The patterned
+edge test keeps exact and nearby seam ties but offsets interior texel spacing and requires a
+clear margin from every visible interior tie before comparing against the whole-image reference.
 Only final composition changes; cached unlit tiles, detail data, shadow masks and their keys
-remain valid and require no renderer-version change.
+remain valid and require no renderer-version change. Pixel, integration, timing and native checks
+remain required before this composition is accepted.
 
 With selected game artwork, MapBlockCoverage measures the same projected geometry, UVs and texture
 alpha used by the detail renderer. Full coverage stops the column walk; partial coverage retains

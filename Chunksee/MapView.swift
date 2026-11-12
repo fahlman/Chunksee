@@ -186,16 +186,16 @@ struct MapView: View {
         let fullResolution = map.needsFullResolution(displayScale: displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
-                    image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain, displayScale: displayScale,
+                    image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain,
                     shadow: { map.shadowImages[$0] }, detail: map.detailImages.mapValues(\.picture),
                     in: context, size: size)
-        drawOverlays(viewport: map.viewport, regions: visible, content: content, displayScale: displayScale, portalStatus: portalStatus,
+        drawOverlays(viewport: map.viewport, regions: visible, content: content, portalStatus: portalStatus,
                      in: context, size: size)
     }
 
     /// The screen and a bounded export draw every terrain tile through this path.
     static func drawTerrain(viewport: MapViewport, regions: [RegionPosition], image: (RegionPosition) -> MapTileImage?,
-                            input: MapDrawingInput, displayScale: CGFloat, shadow: (RegionPosition) -> CGImage? = { _ in nil },
+                            input: MapDrawingInput, shadow: (RegionPosition) -> CGImage? = { _ in nil },
                             detail: [ChunkPosition: MapTileImage] = [:],
                             increasedContrast: Bool? = nil, in context: GraphicsContext, size: CGSize) {
         // Crisp block edges when zoomed in; smoothing when zoomed out avoids shimmering.
@@ -206,145 +206,73 @@ struct MapView: View {
             // bounds: padding would paint over the previous region's close-up detail.
             let rect = viewport.scale < 1 ? bounds.insetBy(dx: -0.5, dy: -0.5) : bounds
             drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: input.lighting,
-                             protectsWater: input.protectsWater, displayScale: displayScale, increasedContrast: increasedContrast, in: context)
+                             protectsWater: input.protectsWater, increasedContrast: increasedContrast, in: context)
             if input.includesDetail {
                 drawDetail(viewport: viewport, region: region, images: detail, lighting: input.lighting,
-                           displayScale: displayScale, increasedContrast: increasedContrast, in: context, size: size)
+                           increasedContrast: increasedContrast, in: context, size: size)
             }
             // Finish each region before drawing the next. This keeps the
             // screen and streamed area export identical, without double-shading transparent detail.
             if input.shadowLight != nil, let mask = shadow(region) {
-                drawShadow(mask, rect: rect, interpolation: interpolation, displayScale: displayScale,
+                drawShadow(mask, rect: rect, interpolation: interpolation,
                            increasedContrast: increasedContrast, in: context)
             }
         }
     }
 
     static func drawShadow(_ mask: CGImage, rect: CGRect, interpolation: Image.Interpolation,
-                           displayScale: CGFloat, increasedContrast: Bool?, in context: GraphicsContext) {
+                           increasedContrast: Bool?, in context: GraphicsContext) {
         var shading = context
         let contrast = increasedContrast ?? (context.environment.colorSchemeContrast == .increased)
         shading.opacity = contrast ? 0.12 : 0.22
-        drawTilePixels(mask, rect: rect, interpolation: interpolation, displayScale: displayScale, in: shading)
+        drawTilePixels(mask, rect: rect, interpolation: interpolation, in: shading)
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
     static func drawDetail(viewport: MapViewport, region: RegionPosition, images: [ChunkPosition: MapTileImage],
-                           lighting: MapLighting?, displayScale: CGFloat, increasedContrast: Bool?, in context: GraphicsContext, size: CGSize) {
+                           lighting: MapLighting?, increasedContrast: Bool?, in context: GraphicsContext, size: CGSize) {
         guard viewport.scale >= MapDetailRenderer.minimumScale else { return }
         let bounds = CGRect(origin: .zero, size: size)
         for chunk in images.keys.filter({ $0.region == region }).sorted(by: { $0.x == $1.x ? $0.z < $1.z : $0.x < $1.x }) {
             guard let image = images[chunk], let rect = viewport.viewRect(for: chunk, in: size) else { continue }
             guard rect.intersects(bounds) else { continue }
             drawTerrainImage(image, rect: rect, interpolation: .none, lighting: lighting,
-                             protectsWater: false, displayScale: displayScale, increasedContrast: increasedContrast, in: context)
+                             protectsWater: false, increasedContrast: increasedContrast, in: context)
         }
     }
 
     /// Both terrain resolutions use one lighting treatment, including exported pictures.
     static func drawTerrainImage(_ image: MapTileImage, rect: CGRect, interpolation: Image.Interpolation,
-                                 lighting: MapLighting?, protectsWater: Bool, displayScale: CGFloat, increasedContrast: Bool?,
+                                 lighting: MapLighting?, protectsWater: Bool, increasedContrast: Bool?,
                                  in context: GraphicsContext) {
         var layer = context
         if let lighting, let normals = image.normals {
             layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
                 increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
         }
-        drawTilePixels(image.image, rect: rect, interpolation: interpolation, displayScale: displayScale, in: layer)
+        drawTilePixels(image.image, rect: rect, interpolation: interpolation, in: layer)
     }
 
     private static func drawTilePixels(_ image: CGImage, rect: CGRect,
-                                       interpolation: Image.Interpolation, displayScale: CGFloat, in context: GraphicsContext) {
+                                       interpolation: Image.Interpolation, in context: GraphicsContext) {
         switch interpolation {
         case .none:
-            // Export replay can report a 1x CGContext even when the destination is 2x.
-            // Use the caller's actual output scale for disjoint pixel ownership.
-            guard displayScale.isFinite, displayScale > 0, rect.width > 0, rect.height > 0 else { return }
-            func coverage(_ bounds: CGRect) -> CGRect {
-                let left = (bounds.minX * displayScale).rounded() / displayScale
-                let top = (bounds.minY * displayScale).rounded() / displayScale
-                return CGRect(x: left, y: top,
-                    width: (bounds.maxX * displayScale).rounded() / displayScale - left,
-                    height: (bounds.maxY * displayScale).rounded() / displayScale - top)
-            }
-            let owned = coverage(rect)
-            guard !owned.isEmpty else { return }
-            context.withCGContext { pixels in
-                pixels.setShouldAntialias(false)
-                pixels.interpolationQuality = .none
-                func draw(_ image: CGImage, in bounds: CGRect, clippedTo clip: CGRect) {
-                    pixels.saveGState()
-                    pixels.clip(to: clip)
-                    pixels.translateBy(x: bounds.minX, y: bounds.maxY)
-                    pixels.scaleBy(x: 1, y: -1)
-                    pixels.draw(image, in: CGRect(origin: .zero, size: bounds.size))
-                    pixels.restoreGState()
-                }
-                let halfPixel = 0.5 / displayScale
-                // Keep near-edge centers away from the rasterizer's edge precision too.
-                // Capping the margin at half a source texel preserves nearest sampling
-                // even when a fit-to-world overlay is smaller than one output pixel.
-                let toleranceX = min(1 / (64 * displayScale), rect.width / (2 * CGFloat(image.width)))
-                let toleranceY = min(1 / (64 * displayScale), rect.height / (2 * CGFloat(image.height)))
-                let centers = owned.insetBy(dx: halfPixel, dy: halfPixel)
-                if centers.minX > rect.minX + toleranceX, centers.maxX < rect.maxX - toleranceX,
-                   centers.minY > rect.minY + toleranceY, centers.maxY < rect.maxY - toleranceY {
-                    draw(image, in: rect, clippedTo: owned)
-                    return
-                }
-                // Only outer-edge pixels need clamping. Keep every other pixel on
-                // the original sampler, including internal texel ties.
-                // Pixel-aligned, disjoint bands paint translucent pixels only once.
-                let pixel = 1 / displayScale
-                func bands(low: CGFloat, high: CGFloat, imageLow: CGFloat, imageHigh: CGFloat,
-                           count: Int, tolerance: CGFloat) -> [(low: CGFloat, high: CGFloat, edge: Int?)] {
-                    var result: [(low: CGFloat, high: CGFloat, edge: Int?)] = []
-                    let left = low + halfPixel <= imageLow + tolerance
-                    // A one-pixel clip must still be painted only once if both ends qualify.
-                    let right = high - halfPixel >= imageHigh - tolerance && (!left || high - low > pixel)
-                    if left { result.append((low, low + pixel, 0)) }
-                    let start = low + (left ? pixel : 0), end = high - (right ? pixel : 0)
-                    if end > start { result.append((start, end, nil)) }
-                    if right { result.append((high - pixel, high, count - 1)) }
-                    return result
-                }
-                let columns = bands(low: owned.minX, high: owned.maxX, imageLow: rect.minX, imageHigh: rect.maxX,
-                                    count: image.width, tolerance: toleranceX)
-                let rows = bands(low: owned.minY, high: owned.maxY, imageLow: rect.minY, imageHigh: rect.maxY,
-                                 count: image.height, tolerance: toleranceY)
-                for y in rows {
-                    for x in columns {
-                        let clip = CGRect(x: x.low, y: y.low, width: x.high - x.low, height: y.high - y.low)
-                        let edgeX = x.edge != nil, edgeY = y.edge != nil
-                        let source = CGRect(x: x.edge ?? 0, y: y.edge ?? 0,
-                            width: edgeX ? 1 : image.width, height: edgeY ? 1 : image.height)
-                        let piece: CGImage
-                        if !edgeX && !edgeY { piece = image }
-                        else if let cropped = image.cropping(to: source) { piece = cropped }
-                        else {
-                            draw(image, in: rect, clippedTo: clip)
-                            continue
-                        }
-                        let bounds = CGRect(x: edgeX ? clip.minX - pixel : rect.minX,
-                            y: edgeY ? clip.minY - pixel : rect.minY,
-                            width: edgeX ? clip.width + 2 * pixel : rect.width,
-                            height: edgeY ? clip.height + 2 * pixel : rect.height)
-                        draw(piece, in: bounds, clippedTo: clip)
-                    }
-                }
-            }
+            // Let Canvas rasterize each complete image once at its actual output scale.
+            // Crisp neighboring images must not smooth their shared geometric edge.
+            context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect,
+                         style: FillStyle(antialiased: false))
         default:
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
         }
     }
 
-    static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent, displayScale: CGFloat,
+    static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent,
                              portalStatus: (NetherPortal) -> PortalLinkStatus?, in context: GraphicsContext, size: CGSize) {
         let bounds = CGRect(origin: .zero, size: size)
         if !content.heatMap.isEmpty {
             for region in visible {
                 guard let image = content.heatMap[region], let rect = viewport.viewRect(for: region, in: size) else { continue }
-                drawTilePixels(image, rect: rect, interpolation: .none, displayScale: displayScale, in: context)
+                drawTilePixels(image, rect: rect, interpolation: .none, in: context)
             }
         }
         if let (item, image, opacity) = content.inGameMap {
@@ -360,7 +288,7 @@ struct MapView: View {
         scene.drawBiomeAreas(in: context)
         for region in visible {
             if let image = content.slimeChunks[region], let rect = viewport.viewRect(for: region, in: size) {
-                drawTilePixels(image, rect: rect, interpolation: .none, displayScale: displayScale, in: context)
+                drawTilePixels(image, rect: rect, interpolation: .none, in: context)
             }
         }
         if content.showsGrid {

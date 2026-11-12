@@ -39,11 +39,11 @@ import Testing
                 let actual = Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
                     if mode == "shadow" {
                         MapView.drawShadow(image, rect: rect, interpolation: .none,
-                                           displayScale: scale, increasedContrast: false, in: context)
+                                           increasedContrast: false, in: context)
                     } else {
                         MapView.drawTerrainImage(MapTileImage(image, normals: normals), rect: rect, interpolation: .none,
                             lighting: mode == "lit" ? lighting : nil, protectsWater: false,
-                            displayScale: scale, increasedContrast: false, in: context)
+                            increasedContrast: false, in: context)
                     }
                 }
                 func render<V: View>(_ canvas: V) throws -> CGImage {

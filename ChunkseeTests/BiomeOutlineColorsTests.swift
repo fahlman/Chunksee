@@ -119,7 +119,7 @@ import Testing
         content.biomeColors = colors
         let viewport = MapViewport(center: CGPoint(x: 8, y: 8), scale: 4)
         let canvas = Canvas { context, size in
-            MapView.drawOverlays(viewport: viewport, regions: [], content: content, displayScale: 1,
+            MapView.drawOverlays(viewport: viewport, regions: [], content: content,
                                  portalStatus: { _ in nil }, in: context, size: size)
         }.frame(width: 100, height: 100).environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: canvas); renderer.scale = 1

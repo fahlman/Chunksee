@@ -127,7 +127,7 @@ import Testing
                             let input = drawingInput(shadows: shadows)
                             let actual = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                                 MapView.drawTerrain(viewport: viewport, regions: regions, image: { tiles[$0] },
-                                    input: input, displayScale: scale, shadow: { _ in shadows ? mask : nil }, increasedContrast: false,
+                                    input: input, shadow: { _ in shadows ? mask : nil }, increasedContrast: false,
                                     in: context, size: size)
                             }
                             try check(render(actual, scale: scale), reference: render(reference, scale: scale),
@@ -139,7 +139,7 @@ import Testing
         }
     }
 
-    @Test func clampedEdgesPreserveThePatternAndSingleAlphaBlend() throws {
+    @Test func crispEdgesPreserveThePatternAndSingleAlphaBlend() throws {
         let side = 128
         for (columns, rows) in [(2, 1), (1, 2), (2, 2)] {
             for alpha in [255, 128] {
@@ -163,7 +163,10 @@ import Testing
                         tiles.append((MapTileImage(try #require(whole.cropping(to: crop))), crop.origin))
                     }
                 }
-                for texel: CGFloat in [0.5, 1, 2, 3.25] {
+                // A small binary offset leaves the seam placements unchanged while
+                // keeping interior texel edges away from output pixel centers.
+                for baseTexel: CGFloat in [0.5, 1, 2, 3.25] {
+                    let texel = baseTexel + 1 / 128
                     for scale: CGFloat in [1, 2] {
                         for shift in edgeShifts(displayScale: scale) {
                             let seam = size.width / 2 + shift
@@ -171,6 +174,10 @@ import Testing
                                                  y: rows == 2 ? seam - CGFloat(side) * texel : size.height / 2 - CGFloat(side) * texel / 2)
                             let firstRect = CGRect(origin: origin, size: CGSize(width: CGFloat(side) * texel, height: CGFloat(side) * texel))
                             let wholeRect = CGRect(origin: origin, size: CGSize(width: CGFloat(width) * texel, height: CGFloat(height) * texel))
+                            try requireUnambiguousInteriorEdges(origin: origin.x, texels: width,
+                                seam: columns == 2 ? side : nil, texelSize: texel, scale: scale)
+                            try requireUnambiguousInteriorEdges(origin: origin.y, texels: height,
+                                seam: rows == 2 ? side : nil, texelSize: texel, scale: scale)
                             let reference = Canvas(opaque: false, rendersAsynchronously: false) { drawing, _ in
                                 drawing.draw(Image(decorative: whole, scale: 1).interpolation(.none), in: wholeRect)
                             }
@@ -178,7 +185,7 @@ import Testing
                                 for tile in tiles {
                                     let rect = firstRect.offsetBy(dx: tile.offset.x * texel, dy: tile.offset.y * texel)
                                     MapView.drawTerrainImage(tile.image, rect: rect, interpolation: .none, lighting: nil,
-                                        protectsWater: false, displayScale: scale, increasedContrast: false, in: drawing)
+                                        protectsWater: false, increasedContrast: false, in: drawing)
                                 }
                             }
                             let label = "pattern \(columns)x\(rows), alpha \(alpha), texel \(texel), display \(scale), shift \(shift)"
@@ -213,7 +220,7 @@ import Testing
                             }
                             let actual = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
                                 MapView.drawOverlays(viewport: viewport, regions: regions, content: content,
-                                    displayScale: scale, portalStatus: { _ in nil }, in: drawing, size: size)
+                                    portalStatus: { _ in nil }, in: drawing, size: size)
                             }
                             let reference = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
                                 for image in layers {
@@ -227,6 +234,20 @@ import Testing
                     }
                 }
             }
+        }
+    }
+
+    private func requireUnambiguousInteriorEdges(origin: CGFloat, texels: Int, seam: Int?,
+                                                 texelSize: CGFloat, scale: CGFloat) throws {
+        // The native whole-image reference is unambiguous only when an interior
+        // texel edge cannot choose either neighboring sample at a pixel center.
+        // Seam ties remain deliberate, with equal fixture colors on both sides.
+        for edge in 1..<texels where edge != seam {
+            let position = (origin + CGFloat(edge) * texelSize) * scale
+            guard position >= 0.5, position <= size.width * scale - 0.5 else { continue }
+            let center = floor(position) + 0.5
+            try #require(abs(position - center) > 1 / 512,
+                         "Interior texture edge is too close to a reference pixel center")
         }
     }
 
@@ -288,7 +309,7 @@ import Testing
                               scale: CGFloat, reference: CGImage, context: String) throws {
         let canvas = Canvas(opaque: false, rendersAsynchronously: false) { drawing, size in
             MapView.drawTerrain(viewport: viewport, regions: regions, image: { tiles[$0] }, input: input,
-                displayScale: scale, shadow: { _ in shadow }, detail: detail, increasedContrast: false, in: drawing, size: size)
+                shadow: { _ in shadow }, detail: detail, increasedContrast: false, in: drawing, size: size)
         }
         try check(render(canvas, scale: scale), reference: reference, context: "screen: \(context)")
         let side = Int(size.width * scale)

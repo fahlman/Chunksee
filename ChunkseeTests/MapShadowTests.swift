@@ -107,7 +107,7 @@ import Testing
             let input = MapDrawingInput(presentation: choices, heightScale: nil, savedLighting: nil)
             let view = Canvas { context, size in
                 MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
-                                    displayScale: 1, shadow: { _ in shadow }, increasedContrast: contrast, in: context, size: size)
+                                    shadow: { _ in shadow }, increasedContrast: contrast, in: context, size: size)
             }.frame(width: 16, height: 16)
             let renderer = ImageRenderer(content: view)
             let output = try #require(renderer.cgImage)
@@ -279,7 +279,7 @@ import Testing
             let view = Canvas { context, size in
                 MapView.drawTerrain(viewport: MapViewport(center: CGPoint(x: 0, y: 8), scale: scale),
                     regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) }, input: input,
-                    displayScale: 2, shadow: { _ in mask }, in: context, size: size)
+                    shadow: { _ in mask }, in: context, size: size)
             }.frame(width: 16, height: 8)
             let renderer = ImageRenderer(content: view); renderer.scale = 2
             let output = try ItemPictureFixture.pixels(#require(renderer.cgImage))

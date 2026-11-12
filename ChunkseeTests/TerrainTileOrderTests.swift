@@ -43,7 +43,7 @@ import Testing
             let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil)
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 MapView.drawTerrain(viewport: viewport, regions: order, image: { images[$0] }, input: input,
-                                    displayScale: 2, in: context, size: size)
+                                    in: context, size: size)
             }.frame(width: size.width, height: size.height)
             let context = try #require(MapImage.imageContext(width: 256, height: 256))
             try #require(MapImage.drawImageLayer(canvas, size: size, scale: 2, into: context))

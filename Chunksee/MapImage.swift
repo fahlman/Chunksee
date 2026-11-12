@@ -29,7 +29,7 @@ nonisolated struct MapImage: Sendable {
                                  contrast: contrast, shadow: map.shadowImages[region], detail: detail, into: destination) { return nil }
         }
         let overlays = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content, displayScale: scale,
+            MapView.drawOverlays(viewport: map.viewport, regions: visible, content: content,
                                  portalStatus: portalStatus, in: context, size: size)
         }
         .modifier(MapLegendOverlay(layers: content))
@@ -54,7 +54,7 @@ nonisolated struct MapImage: Sendable {
         guard needsShader else {
             let canvas = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                    input: input, displayScale: scale, shadow: { _ in shadow }, detail: detail,
+                                    input: input, shadow: { _ in shadow }, detail: detail,
                                     increasedContrast: contrast == .increased, in: context, size: size)
             }
             return drawImageLayer(canvas, size: size, scale: scale, into: destination)
@@ -72,7 +72,7 @@ nonisolated struct MapImage: Sendable {
                     var translated = context
                     translated.translateBy(x: -crop.minX, y: -crop.minY)
                     MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile },
-                                        input: input, displayScale: scale, shadow: { _ in shadow }, detail: detail,
+                                        input: input, shadow: { _ in shadow }, detail: detail,
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)
