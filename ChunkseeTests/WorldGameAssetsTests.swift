@@ -11,7 +11,7 @@ import Synchronization
     private enum PreparationResult: CaseIterable { case colors, colorFailure, noGame, gameFailure }
 
     @Test(arguments: PreparationResult.allCases)
-    private func colorJobsWaitForGameSelectionAndColorsThenDrainWithoutMoving(result: PreparationResult) async throws {
+    private func colorJobsUseAvailableColorsThenWaitForReplacementColorsWithoutMoving(result: PreparationResult) async throws {
         let game = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
@@ -29,6 +29,7 @@ import Synchronization
         names.minecraft.usesGameArtwork = false
         let library = try game.resources()
         let assets = AsyncReadGate<Result<GameResourceLibrary?, CocoaError>>()
+        let availableColors = AsyncReadGate<Void>()
         let colors = AsyncReadGate<Result<MapBiomeColors, CocoaError>>()
         let resources = try await WorldResources(snapshot: snapshot, names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
@@ -54,13 +55,16 @@ import Synchronization
             await resources.waitForRefresh()
             resources.readBiomeColors = { world, data, artwork, previous, reload in
                 guard data != nil else {
-                    return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
-                                                                   previous: previous, reload: reload)
+                    let value = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                        previous: previous, reload: reload)
+                    await availableColors.read("colors")
+                    return value
                 }
                 return try await colors.read("colors").get()
             }
             names.minecraft.choose(game.root)
             await assets.waitForRequest("selection")
+            await availableColors.waitForRequest("colors")
             let size = CGSize(width: 1, height: 1), viewport = map.viewport
             map.requestTiles(visibleIn: size, displayScale: 1)
             #expect(!resources.mapGameResources.colorsReady && map.isLoading)
@@ -76,6 +80,27 @@ import Synchronization
             #expect(height.style == .height && heightDrawings.withLock { $0 } == 1)
             #expect(map.isLoading && !idle && drawings.withLock { $0.isEmpty })
 
+            // The asset read is still held. Wait for the actual available-color publication,
+            // so the regression fails at readiness before waiting for a render it might block.
+            let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
+            defer { continuation.finish() }
+            withObservationTracking(options: [.didSet]) { _ = resources.biomeColors } onChange: { event in
+                event.cancel()
+                MainActor.assumeIsolated { continuation.yield(resources.biomeColors != nil) }
+                continuation.finish()
+            }
+            await availableColors.finish("colors", with: ())
+            var published = updates.makeAsyncIterator()
+            try #require(await published.next(isolation: #isolation) == true)
+            try #require(resources.mapGameResources.colorsReady)
+            await waiting.value; await map.waitForRenders()
+            #expect(idle && !map.isLoading && map.viewport == viewport)
+            #expect(drawings.withLock { $0.count } == 1)
+            let region = RegionPosition(x: 0, z: 0)
+            let early = try #require(map.tiles[region])
+            #expect(map.currentRenderer?.gameData == nil && map.currentRenderer?.biomeColors != nil)
+            let expectedDrawings = (result == .colors || result == .colorFailure) ? 2 : 1
+
             switch result {
             case .gameFailure:
                 await assets.finish("selection", with: .failure(CocoaError(.fileReadUnknown)))
@@ -84,9 +109,11 @@ import Synchronization
             case .colors, .colorFailure:
                 await assets.finish("selection", with: .success(library))
                 await colors.waitForRequest("colors")
+                idle = false
+                idleWait = Task.immediate { await map.waitUntilIdle(); idle = true }
                 #expect(resources.mapGameResources.data === library.data)
                 #expect(!resources.mapGameResources.colorsReady && map.isLoading && !idle)
-                #expect(drawings.withLock { $0.isEmpty })
+                #expect(drawings.withLock { $0.count } == 1)
                 if result == .colors {
                     let matching = try await library.data.biomeColors(in: resources.world, artwork: nil)
                     await colors.finish("colors", with: .success(matching))
@@ -95,17 +122,17 @@ import Synchronization
                 }
             }
             await resources.waitForRefresh()
-            await waiting.value; await map.waitForRenders()
+            await idleWait?.value; await map.waitForRenders()
             #expect(resources.mapGameResources.colorsReady && idle && !map.isLoading)
-            #expect(map.viewport == viewport && drawings.withLock { $0.count } == 1)
+            #expect(map.viewport == viewport && drawings.withLock { $0.count } == expectedDrawings)
             #expect(heightDrawings.withLock { $0 } == 1)
-            let region = RegionPosition(x: 0, z: 0)
             let actual = try #require(map.tiles[region])
             let renderer = try #require(map.currentRenderer)
             let expected = try #require(try await renderer.tile(for: region))
             #expect(actual.key == expected.key)
             #expect(actual.picture.image.dataProvider?.data as Data? == expected.full.image.dataProvider?.data as Data?)
             #expect((renderer.biomeColors != nil) == (result != .colorFailure))
+            if result == .noGame || result == .gameFailure { #expect(actual.image === early.image) }
 
             if result == .colorFailure {
                 // An autosave retries the failed color read, but its pending state must not
@@ -116,14 +143,14 @@ import Synchronization
                 #expect(!resources.mapGameResources.colorsReady)
                 #expect(map.tiles[region]?.image === actual.image)
                 #expect(!map.isLoading && map.viewport == viewport)
-                #expect(drawings.withLock { $0.count } == 1)
+                #expect(drawings.withLock { $0.count } == expectedDrawings)
                 await colors.finish("colors", with: .failure(CocoaError(.fileReadUnknown)))
                 await resources.waitForRefresh()
                 await map.waitUntilIdle(); await map.waitForRenders()
                 #expect(resources.mapGameResources.colorsReady)
                 #expect(map.tiles[region]?.image === actual.image)
                 #expect(!map.isLoading && map.viewport == viewport)
-                #expect(drawings.withLock { $0.count } == 1)
+                #expect(drawings.withLock { $0.count } == expectedDrawings)
                 #expect(heightDrawings.withLock { $0 } == 1)
             }
 
@@ -131,7 +158,7 @@ import Synchronization
             #expect(!resources.mapGameResources.colorsReady && map.isLoading)
             map.close()
             await map.waitUntilIdle()
-            #expect(!map.isLoading && drawings.withLock { $0.count } == 1)
+            #expect(!map.isLoading && drawings.withLock { $0.count } == expectedDrawings)
             let closingSession = WorldSession(resources: resources, renderTile: { _, _ in
                 closingDrawings.withLock { $0 += 1 }
                 return nil
@@ -147,6 +174,7 @@ import Synchronization
         map.close(); height.close(); resources.close()
         await idleWait?.value
         await assets.releaseAllAndFuture(with: .failure(CocoaError(.fileReadUnknown)))
+        await availableColors.releaseAllAndFuture(with: ())
         await colors.releaseAllAndFuture(with: .failure(CocoaError(.fileReadUnknown)))
         await resources.waitUntilClosed()
         #expect(closingDrawings.withLock { $0 } == 0)

@@ -199,12 +199,11 @@ final class WorldResources {
         // drawing as a completed no-game-files selection during that synchronous interval.
         guard !isClosed else { return .init(colorsReady: false, data: nil, artwork: nil, biomeColors: nil) }
         let colors = biomeColors
-        let selectingGame = assetLoader.source.generation != names.minecraft.generation ||
-            (assetLoader.value == nil && assetLoader.isPreparing)
         // A new game publication is observable before its dependent color request is installed.
-        // Readiness includes that mismatch, while completed empty/failed reads remain drawable.
+        // Wait for colors matching the available data, not for the pending game selection.
+        // Compatible retained colors and completed empty/failed reads remain drawable.
         let preparingColors = biomeLoader.source != biomeSource || (colors == nil && biomeLoader.isPreparing)
-        return MapGameResources(colorsReady: !selectingGame && !preparingColors,
+        return MapGameResources(colorsReady: !preparingColors,
                                 data: gameData, artwork: gameArtwork, biomeColors: colors)
     }
     var biomeColors: MapBiomeColors? {
