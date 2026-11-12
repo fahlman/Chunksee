@@ -172,7 +172,9 @@ private final class SidebarNativeDriver {
                 let label = node.accessibilityLabel?() ?? ""
                 let matchesTitle = label.contains(groupTitle)
                 matched = matched || matchesTitle
-                let value = Self.diagnosticValue(node)
+                let value = Self.diagnosticValue(node, named: "accessibilityValue")
+                let title = Self.diagnosticValue(node, named: "accessibilityTitle")
+                let identifier = Self.diagnosticValue(node, named: "accessibilityIdentifier")
                 let frame = node.accessibilityFrame?()
                 try Self.record([
                     "kind": "node", "row": position, "node": nodeIndex,
@@ -180,6 +182,10 @@ private final class SidebarNativeDriver {
                     "label": String(label.prefix(256)), "labelLength": label.count,
                     "value": String(value.text.prefix(256)), "valueLength": value.text.count,
                     "valueType": value.type, "matchesTitle": matchesTitle,
+                    "title": String(title.text.prefix(256)), "titleLength": title.text.count,
+                    "titleType": title.type,
+                    "identifier": String(identifier.text.prefix(256)), "identifierLength": identifier.text.count,
+                    "identifierType": identifier.type,
                     "frame": frame.map(NSStringFromRect) ?? "unavailable"
                 ])
             }
@@ -302,8 +308,8 @@ private final class SidebarNativeDriver {
         return object.perform(selector)?.takeUnretainedValue() as? String
     }
 
-    private static func diagnosticValue(_ node: AnyObject) -> (type: String, text: String) {
-        let selector = NSSelectorFromString("accessibilityValue")
+    private static func diagnosticValue(_ node: AnyObject, named name: String) -> (type: String, text: String) {
+        let selector = NSSelectorFromString(name)
         guard let object = node as? NSObject, object.responds(to: selector),
               let value = object.perform(selector)?.takeUnretainedValue() else { return ("absent", "") }
         let text: String
