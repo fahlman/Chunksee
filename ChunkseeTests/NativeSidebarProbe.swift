@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Darwin
@@ -84,6 +85,14 @@ struct NativeSidebarProbe {
             await map.waitUntilIdle()
             SidebarProbeTrace.event("initial map work finished; laying out before accessibility reads")
             window.contentView?.layoutSubtreeIfNeeded()
+            // Existing native accessibility tests use this request to materialize SwiftUI's tree.
+            let activation = await Task.detached {
+                var windows: CFTypeRef?
+                return AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()),
+                    kAXWindowsAttribute as CFString, &windows).rawValue
+            }.value
+            SidebarProbeTrace.event("accessibility request returned: status=\(activation)")
+            try #require(activation == AXError.success.rawValue)
             SidebarProbeTrace.event("locating native sidebar controls")
             let driver = try SidebarNativeDriver(window: window,
                 groupTitle: PlaceGroup.spawner.name(in: session.resources.gameNames))
