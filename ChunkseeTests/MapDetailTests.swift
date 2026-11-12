@@ -84,7 +84,7 @@ import Testing
                           readDetail: { _, _ in await gate.read(String(await numbers.next())) })
         defer { map.close() }
         let artwork = try fixture.library()
-        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: artwork.data, artwork: artwork, biomeColors: nil)
         let size = CGSize(width: 64, height: 64)
         map.viewport.scale = 4
         map.requestTiles(visibleIn: size)
@@ -133,7 +133,7 @@ import Testing
         let gameResources = TestGameResources()
         let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { chunk, _, _, _, _ in await gate.read("\(chunk.x),\(chunk.z)") })
-        gameResources.value = MapGameResources(data: assets.data, artwork: assets, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: assets.data, artwork: assets, biomeColors: nil)
         map.viewport.scale = 8
         let size = CGSize(width: 64, height: 64)
         map.requestTiles(visibleIn: size)
@@ -165,11 +165,11 @@ import Testing
         let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8),
                           renderDetail: { _, _, assets, _, _ in await gate.read(assets.identity.uuidString) })
         defer { map.close() }
-        gameResources.value = MapGameResources(data: first.data, artwork: first, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: first.data, artwork: first, biomeColors: nil)
         map.viewport.scale = 8
         map.requestTiles(visibleIn: CGSize(width: 64, height: 64))
         await gate.waitForRequest(first.identity.uuidString)
-        gameResources.value = MapGameResources(data: second.data, artwork: second, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: second.data, artwork: second, biomeColors: nil)
         await gate.waitForCancellation(first.identity.uuidString)
         await gate.waitForRequest(second.identity.uuidString)
         let old = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
@@ -191,7 +191,7 @@ import Testing
         let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: -8, y: -8))
         defer { map.close() }
         let artwork = try fixture.library()
-        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: artwork.data, artwork: artwork, biomeColors: nil)
         let size = CGSize(width: 128, height: 128)
         map.viewport.scale = 4
         map.requestTiles(visibleIn: size)
@@ -274,7 +274,7 @@ import Testing
                           cacheDirectory: root.appendingPathComponent("tiles"))
         defer { map.close() }
         let artwork = try fixture.library()
-        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: artwork.data, artwork: artwork, biomeColors: nil)
         savedLighting.value = try lighting(night: false)
         map.viewport.scale = 8
         let size = CGSize(width: 128, height: 128), chunk = ChunkPosition(x: -1, z: -1)
@@ -358,7 +358,7 @@ import Testing
         for x in [17, 49, 81] { #expect(ordinary[(65 * 128 + x) * 4] < 255) }
         #expect(ordinaryCopy != ordinaryContrastCopy)
         let assets = try fixture.library()
-        gameResources.value = MapGameResources(data: assets.data, artwork: assets, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: assets.data, artwork: assets, biomeColors: nil)
         await map.waitUntilIdle(); await map.waitForRenders()
         #expect(map.detailImages[chunk]?.picture === detail)
         // White detail over white terrain is unchanged before the shadow. Applying a mask to
@@ -387,7 +387,7 @@ import Testing
             renderDetail: { _, _, _, _, saved in await gate.read(saved ? "saved" : "daylight") })
         defer { map.close() }
         let artwork = try fixture.library()
-        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: artwork.data, artwork: artwork, biomeColors: nil)
         savedLighting.value = try lighting(night: true)
         map.viewport.scale = 8
         map.requestTiles(visibleIn: CGSize(width: 64, height: 64))

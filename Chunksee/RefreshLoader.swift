@@ -51,9 +51,16 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
         let task: Task<Void, Never>
     }
     @ObservationIgnored private var active: ActiveRead?
+    @ObservationIgnored private var replacementStarting = false
     var isReading: Bool {
         access(keyPath: \.active)
         return !isClosed && !work.isClosed && active != nil
+    }
+    /// Source delivery precedes task installation. Dependent work must also see that interval
+    /// as preparation, without mistaking a retained retry request for a running read.
+    var isPreparing: Bool {
+        access(keyPath: \.active)
+        return !isClosed && !work.isClosed && (active != nil || replacementStarting)
     }
     /// The accepted pass's input, distinct from any progress it has already published.
     var valueAtReadStart: Value? {
@@ -127,6 +134,8 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
             pending = firstRequest
         }
         self.isEnabled = isEnabled
+        replacementStarting = isEnabled
+        defer { replacementStarting = false }
         if let refresh { pending = merged(pending, refresh) }
         if replaced {
             // Publish source and its compatible value together. Observers may synchronously
@@ -205,6 +214,7 @@ final class RefreshLoader<Source: Equatable & Sendable, Request: Sendable, Value
     private func retireRead() {
         work.cancel()
         active = nil
+        replacementStarting = false
         retry = nil
     }
 

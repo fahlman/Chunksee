@@ -253,6 +253,7 @@ final class MapModel {
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     private func startQueued() {
+        guard !style.inputs.materialColors || gameResources.colorsReady else { return }
         while !isClosed, inFlight.count < regionConcurrency, !queue.isEmpty {
             let region = queue.removeFirst()
             guard let renderer = currentRenderer else { return }

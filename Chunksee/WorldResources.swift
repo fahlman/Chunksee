@@ -195,8 +195,17 @@ final class WorldResources {
     private var gameData: GameDataLibrary? { gameAssets?.data }
     private var gameArtwork: GameArtworkLibrary? { names.minecraft.artwork(for: gameAssets) }
     var mapGameResources: MapGameResources {
-        guard !isClosed else { return .unavailable }
-        return MapGameResources(data: gameData, artwork: gameArtwork, biomeColors: biomeColors)
+        // Closure is published before the world's work scopes close. It must not wake deferred
+        // drawing as a completed no-game-files selection during that synchronous interval.
+        guard !isClosed else { return .init(colorsReady: false, data: nil, artwork: nil, biomeColors: nil) }
+        let colors = biomeColors
+        let selectingGame = assetLoader.source.generation != names.minecraft.generation ||
+            (assetLoader.value == nil && assetLoader.isPreparing)
+        // A new game publication is observable before its dependent color request is installed.
+        // Readiness includes that mismatch, while completed empty/failed reads remain drawable.
+        let preparingColors = biomeLoader.source != biomeSource || (colors == nil && biomeLoader.isPreparing)
+        return MapGameResources(colorsReady: !selectingGame && !preparingColors,
+                                data: gameData, artwork: gameArtwork, biomeColors: colors)
     }
     var biomeColors: MapBiomeColors? {
         guard !isClosed, biomeLoader.source == biomeSource else { return nil }

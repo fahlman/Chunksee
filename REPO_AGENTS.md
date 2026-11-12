@@ -830,6 +830,14 @@ derives MapGameResources from its current data, artwork and biome-color publicat
 replacement clears old values before publishing the new token. MapBiomeColors owns compatibility:
 numeric colors from the same data source remain usable while artwork colors load, and available
 artwork colors require their matching artwork source. Game data remains available while colors load.
+WorldResources also derives color readiness from current game selection, the matching color source
+and the loader's preparation. A compatible retained color value is ready; a completed empty or
+failed read permits fallback drawing. MapModel keeps material-color regions queued while preparation
+is pending. Readiness participates in its existing observation identity, so completion wakes the
+queue without a viewport change, including failure without a color publication. Height remains
+independent. This scheduling state changes no renderer snapshot, persistent key or export rule.
+World closure remains unready until the owned maps close, so publishing closure cannot start a
+queued fallback render before their work scopes are stopped.
 Maps keep no separately editable resource triple, and WorldResources sends no manual resource updates. Map
 observation retains only live identities, not retired libraries; persistent cache keys still use
 the complete stable inputs. Artwork changes preserve data and synchronously retire affected
@@ -1372,7 +1380,10 @@ the retained value while retired reads drain. Incremental producers publish thro
 callback that uses the same admission and reentrancy checks as the final value. A rejected callback
 tells the producer to stop; an old final result is rejected independently. The loader exposes the
 accepted pass's starting value and activity for progress presentation, and its current handle for
-result waits; BackgroundWork remains the lifetime registry and complete drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
+result waits. Its preparation includes the synchronous source-publication interval before a new
+task is installed, under the same activity observation; retained retry demand is not preparation.
+Reentrant replacement, failure and closure cannot leave that interval active. BackgroundWork remains
+the lifetime registry and complete drain. The existing reread convenience uses one RefreshInvalidation case in this same implementation; lighting, night-lighting,
 language and heat-map consumers keep their existing contracts. Each loader declares whether an
 inactive read finishes or cancels: Time Spent keeps
 its progress, while optional night metadata cancels when no tab needs it. Canceling retains the last

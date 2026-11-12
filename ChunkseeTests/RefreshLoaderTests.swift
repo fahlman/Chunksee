@@ -7,6 +7,63 @@ import Testing
 
 @Suite(.isolatedStores)
 struct RefreshLoaderTests {
+    @Test(.timeLimit(.minutes(1))) func preparationSpansSourceDeliveryAndEndsAfterFailure() async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Result<Int, CocoaError>>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "old", initialValue: 1) { source, _ in try await gate.read(source).get() }
+        let delivered = Mutex(false), finished = Mutex(false)
+        withObservationTracking(options: [.didSet]) { _ = loader.source } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                #expect(loader.source == "new" && loader.value == nil)
+                #expect(loader.isPreparing && !loader.isReading)
+                delivered.withLock { $0 = true }
+            }
+        }
+        loader.request(source: "new", isEnabled: true, reread: false)
+        #expect(delivered.withLock { $0 } && loader.isPreparing && loader.isReading)
+        await gate.waitForRequest("new")
+        withObservationTracking(options: [.didSet]) { _ = loader.isPreparing } onChange: { event in
+            event.cancel()
+            MainActor.assumeIsolated {
+                #expect(!loader.isPreparing)
+                finished.withLock { $0 = true }
+            }
+        }
+        await gate.finish("new", with: .failure(CocoaError(.fileReadUnknown)))
+        await loader.waitUntilFinished()
+        #expect(finished.withLock { $0 } && !loader.isPreparing && loader.value == nil)
+        // A retained request for a disabled source is demand, not active preparation.
+        loader.request(source: "disabled", isEnabled: false, reread: true)
+        #expect(!loader.isPreparing && !loader.isReading)
+        loader.request(source: "disabled", isEnabled: true, reread: false)
+        await gate.waitForRequest("disabled")
+        #expect(loader.isPreparing)
+        await gate.finish("disabled", with: .success(2))
+        await loader.waitUntilFinished()
+        #expect(loader.value == 2 && !loader.isPreparing)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func preparationCannotOutliveAReentrantPreparedReplacementOrClosure(close: Bool) async {
+        let work = BackgroundWork(), gate = AsyncReadGate<Int>()
+        let loader = RefreshLoader(work: work, priority: .utility, whenInactive: .finish,
+                                   source: "old", initialValue: 1) { source, _ in await gate.read(source) }
+        loader.published = { [weak loader] _, current in
+            guard current.source == "intermediate", let loader else { return }
+            #expect(loader.isPreparing && !loader.isReading)
+            if close { loader.close() }
+            else { loader.replace(source: "prepared", value: 3) }
+            #expect(!loader.isPreparing)
+        }
+        loader.request(source: "intermediate", isEnabled: true, reread: true)
+        #expect(!loader.isPreparing && !loader.isReading)
+        #expect(loader.value == (close ? nil : 3))
+        #expect(await gate.requested.isEmpty)
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test(.timeLimit(.minutes(1)), arguments: [false, true])
     func activityObserversCanReplaceOrCloseWithoutRevivingRetiredWork(close: Bool) async {
         let work = BackgroundWork(), gate = AsyncReadGate<Int>()
@@ -264,11 +321,11 @@ struct RefreshLoaderTests {
             loader.request(source: "c", isEnabled: true, reread: true)
         }
         loader.request(source: "b", isEnabled: true, reread: false)
-        #expect(loader.source == "c" && loader.value == nil)
+        #expect(loader.source == "c" && loader.value == nil && loader.isPreparing)
         await gate.waitForRequest("c0"); await gate.finish("c0", with: 2)
         await gate.waitForRequest("c1"); await gate.finish("c1", with: 3)
         await loader.waitUntilFinished()
-        #expect(loader.source == "c" && loader.value == 3)
+        #expect(loader.source == "c" && loader.value == 3 && !loader.isPreparing)
         #expect(await gate.requested == ["c0", "c1"])
         loader.close(); work.close(); await work.waitUntilFinished()
     }

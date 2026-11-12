@@ -148,7 +148,7 @@ import Testing
         await gate.waitForRequest("fallback")
         let previousRenderer = (try requiredRenderer(map))
         let artwork = try fixture.library()
-        gameResources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+        gameResources.value = MapGameResources(colorsReady: true, data: artwork.data, artwork: artwork, biomeColors: nil)
         await gate.waitForRequest("assets")
         let good = try #require(CGImage.rgba([255, 0, 0, 255], width: 1, height: 1))
         await gate.finish("assets", with: try (try requiredRenderer(map)).fixtureTile(good, for: .init(x: 0, z: 0)))

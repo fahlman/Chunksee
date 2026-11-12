@@ -8,6 +8,128 @@ import Synchronization
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldGameAssetsTests {
+    private enum PreparationResult: CaseIterable { case colors, colorFailure, noGame, gameFailure }
+
+    @Test(arguments: PreparationResult.allCases)
+    private func colorJobsWaitForGameSelectionAndColorsThenDrainWithoutMoving(result: PreparationResult) async throws {
+        let game = try artworkFixture()
+        let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
+        let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+                                sections: [section], extra: ["yPos": .int(0)]))])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.usesGameArtwork = false
+        let library = try game.resources()
+        let assets = AsyncReadGate<Result<GameResourceLibrary?, CocoaError>>()
+        let colors = AsyncReadGate<Result<MapBiomeColors, CocoaError>>()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in try await assets.read("selection").get() })
+        let dimension = try #require(resources.world.dimension("overworld"))
+        let heightScale = try #require(MapHeightScale(settings: WorldDetails.read(resources.world).dimensionSettings[dimension.id]))
+        let drawings = Mutex<[MapGameResources.Identity]>([]), heightDrawings = Mutex(0), closingDrawings = Mutex(0)
+        let map = MapModel(definitions: { .unknown }, gameResources: { resources.mapGameResources },
+            savedLighting: { nil }, nightLighting: { nil }, work: resources.backgroundWork,
+            dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
+                drawings.withLock { $0.append(MapGameResources(colorsReady: true, data: renderer.gameData,
+                    artwork: renderer.gameArtwork, biomeColors: renderer.biomeColors).identity) }
+                return try await renderer.tile(for: region)
+            })
+        let height = MapModel(definitions: { .init(context: .unknown, heightScale: heightScale) },
+            gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
+            work: resources.backgroundWork, dimension: dimension, center: CGPoint(x: 8, y: 8),
+            renderTile: { renderer, region in
+                heightDrawings.withLock { $0 += 1 }
+                return try await renderer.tile(for: region)
+            })
+        var failure: (any Error)?
+        var idleWait: Task<Void, Never>?
+        do {
+            await resources.waitForRefresh()
+            resources.readBiomeColors = { world, data, artwork, previous, reload in
+                guard data != nil else {
+                    return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                   previous: previous, reload: reload)
+                }
+                return try await colors.read("colors").get()
+            }
+            names.minecraft.choose(game.root)
+            await assets.waitForRequest("selection")
+            let size = CGSize(width: 1, height: 1), viewport = map.viewport
+            map.requestTiles(visibleIn: size, displayScale: 1)
+            #expect(!resources.mapGameResources.colorsReady && map.isLoading)
+            #expect(drawings.withLock { $0.isEmpty })
+            var idle = false
+            let waiting = Task.immediate { await map.waitUntilIdle(); idle = true }
+            idleWait = waiting
+            #expect(!idle)
+            // Height has no material-color input and must remain usable during the same wait.
+            height.setStyle(.height)
+            height.requestTiles(visibleIn: size, displayScale: 1)
+            await height.waitUntilIdle(); await height.waitForRenders()
+            #expect(height.style == .height && heightDrawings.withLock { $0 } == 1)
+            #expect(map.isLoading && !idle && drawings.withLock { $0.isEmpty })
+
+            switch result {
+            case .gameFailure:
+                await assets.finish("selection", with: .failure(CocoaError(.fileReadUnknown)))
+            case .noGame:
+                await assets.finish("selection", with: .success(nil))
+            case .colors, .colorFailure:
+                await assets.finish("selection", with: .success(library))
+                await colors.waitForRequest("colors")
+                #expect(resources.mapGameResources.data === library.data)
+                #expect(!resources.mapGameResources.colorsReady && map.isLoading && !idle)
+                #expect(drawings.withLock { $0.isEmpty })
+                if result == .colors {
+                    let matching = try await library.data.biomeColors(in: resources.world, artwork: nil)
+                    await colors.finish("colors", with: .success(matching))
+                } else {
+                    await colors.finish("colors", with: .failure(CocoaError(.fileReadUnknown)))
+                }
+            }
+            await resources.waitForRefresh()
+            await waiting.value; await map.waitForRenders()
+            #expect(resources.mapGameResources.colorsReady && idle && !map.isLoading)
+            #expect(map.viewport == viewport && drawings.withLock { $0.count } == 1)
+            #expect(heightDrawings.withLock { $0 } == 1)
+            let region = RegionPosition(x: 0, z: 0)
+            let actual = try #require(map.tiles[region])
+            let renderer = try #require(map.currentRenderer)
+            let expected = try #require(try await renderer.tile(for: region))
+            #expect(actual.key == expected.key)
+            #expect(actual.picture.image.dataProvider?.data as Data? == expected.full.image.dataProvider?.data as Data?)
+            #expect((renderer.biomeColors != nil) == (result != .colorFailure))
+
+            names.minecraft.choose(game.root)
+            #expect(!resources.mapGameResources.colorsReady && map.isLoading)
+            map.close()
+            await map.waitUntilIdle()
+            #expect(!map.isLoading && drawings.withLock { $0.count } == 1)
+            let closingSession = WorldSession(resources: resources, renderTile: { _, _ in
+                closingDrawings.withLock { $0 += 1 }
+                return nil
+            })
+            let closingMap = try #require(closingSession.map)
+            closingMap.viewport.center = CGPoint(x: 8, y: 8)
+            closingMap.requestTiles(visibleIn: size, displayScale: 1)
+            #expect(closingMap.isLoading)
+            resources.close()
+            #expect(closingSession.isClosed && !closingMap.isLoading)
+            #expect(!resources.mapGameResources.colorsReady)
+        } catch { failure = error }
+        map.close(); height.close(); resources.close()
+        await idleWait?.value
+        await assets.releaseAllAndFuture(with: .failure(CocoaError(.fileReadUnknown)))
+        await colors.releaseAllAndFuture(with: .failure(CocoaError(.fileReadUnknown)))
+        await resources.waitUntilClosed()
+        #expect(closingDrawings.withLock { $0 } == 0)
+        names.minecraft.forget(); await names.minecraft.waitUntilIdle()
+        await library.data.close()
+        if let failure { throw failure }
+    }
+
     @Test func folderObservationSeesOnlyTheCompletedChoiceAndItsPermission() async throws {
         let first = try ItemPictureFixture(), second = try ItemPictureFixture()
         defer { first.remove(); second.remove() }
@@ -63,7 +185,7 @@ import Synchronization
         let drawings = Mutex<[MapGameResources.Identity]>([])
         let map = MapModel(definitions: { .unknown }, gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
             work: resources.backgroundWork, dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
-                let identity = MapGameResources(data: renderer.gameData, artwork: renderer.gameArtwork,
+                let identity = MapGameResources(colorsReady: true, data: renderer.gameData, artwork: renderer.gameArtwork,
                                                 biomeColors: renderer.biomeColors).identity
                 drawings.withLock { $0.append(identity) }
                 return try await renderer.tile(for: region)
@@ -458,6 +580,7 @@ import Synchronization
             resources.names.minecraft.usesGameArtwork = true
             await gate.waitForRequest("artwork")
             let pending = try requiredRenderer(map)
+            #expect(resources.mapGameResources.colorsReady)
             #expect(pending.gameArtwork != nil)
             #expect(resources.biomeColors?.sourceKey == numeric.sourceKey)
             #expect(resources.mapGameResources.biomeColors?.sourceKey == numeric.sourceKey)
@@ -641,6 +764,7 @@ import Synchronization
             }
             names.minecraft.choose(game.root)
             await gate.waitForRequest("0")
+            #expect(!resources.mapGameResources.colorsReady)
             let original = try #require(await names.minecraft.library())
             let originalArtwork = try #require(names.minecraft.artwork(for: original))
             let oldColors = try await original.data.biomeColors(in: resources.world, artwork: originalArtwork)
@@ -654,6 +778,7 @@ import Synchronization
             // A newly read archive under the same folder generation must be available before
             // its colors. A delayed read from the retired archive cannot reconnect it.
             await assetReads.publish(replacement, to: resources)
+            #expect(!resources.mapGameResources.colorsReady)
             for session in sessions {
                 #expect(try requiredRenderer(session.map).gameData === replacement.data)
                 #expect(try requiredRenderer(session.map).gameArtwork === replacementArtwork)
@@ -665,6 +790,7 @@ import Synchronization
             await gate.finish("1", with: current)
             await gate.finish("0", with: oldColors)
             await resources.waitForRefresh()
+            #expect(resources.mapGameResources.colorsReady)
             for session in sessions {
                 #expect(try requiredRenderer(session.map).gameData === replacement.data)
                 #expect(try requiredRenderer(session.map).biomeColors?.sourceKey == current.sourceKey)

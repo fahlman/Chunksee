@@ -20,24 +20,12 @@ struct MapWorkTests {
                                        settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: nil,
                                        watchWorld: { _, _ in nil })
         let colors = AsyncReadGate<Void>()
-        // Install the held reader before yielding to the initial refresh. Its real publication
-        // can replace a render; the test must finish each read it allows to start.
-        resources.readBiomeColors = { world, data, artwork, previous, reload in
-            let result = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
-                                                                  previous: previous, reload: reload)
-            await colors.read("initial")
-            return result
-        }
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>()
         let numbers = ReadNumbers()
         var failure: (any Error)?
         do {
-            await colors.waitForRequest("initial")
+            await resources.waitForRefresh()
             await resources.index.waitForIndex()
-            if !lateColors {
-                await colors.finish("initial", with: ())
-                await resources.waitForRefresh()
-            }
             let opening = try resources.opening()
             let tab = WorldSession(resources: resources, renderTile: { _, _ in
                 await render.read(String(await numbers.next()))
@@ -47,7 +35,24 @@ struct MapWorkTests {
             map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
             await render.waitForRequest("0")
             if lateColors {
-                await colors.finish("initial", with: ())
+                // Retire an already-running render with changed colors. The initial color read
+                // now finishes before drawing starts, so it must not be used to create the old job.
+                let file = url.appendingPathComponent("datapacks/ChunkseeTest/data/test/worldgen/biome/late.json")
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try JSONSerialization.data(withJSONObject: ["temperature": 0.8, "downfall": 0.4,
+                    "effects": ["water_color": 0x123456]]).write(to: file)
+                resources.readBiomeColors = { world, data, artwork, previous, reload in
+                    let result = try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                                          previous: previous, reload: reload)
+                    await colors.read("replacement")
+                    return result
+                }
+                resources.refreshDelay = .zero
+                resources.worldChanged([file])
+                await colors.waitForRequest("replacement")
+                #expect(resources.mapGameResources.colorsReady)
+                #expect(await render.requested == ["0"])
+                await colors.finish("replacement", with: ())
                 await resources.waitForRefresh()
                 await render.waitForCancellation("0")
                 await render.waitForRequest("1")
@@ -58,7 +63,7 @@ struct MapWorkTests {
             try #require(await render.requested == (lateColors ? ["0", "1"] : ["0"]))
             #expect(tab.isClosed && !resources.isClosed)
             // The last opening finishes after the tab detached. The common owner must retain
-            // both the current render and any render retired by the initial color publication.
+            // both the current render and any render retired by the later color publication.
             opening.finish()
             var finishedReads = false
             let draining = Task.immediate {
