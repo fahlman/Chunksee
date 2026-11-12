@@ -16,18 +16,23 @@ import Synchronization
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
             nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
-                                sections: [section], extra: ["yPos": .int(0)]))])
+                                sections: [section], extra: ["yPos": .int(0)]))],
+            dimensionSettings: ["minecraft:overworld": TestWorld.noiseDimension(
+                type: .string("minecraft:overworld"),
+                noise: .compound(["noise": .compound(["min_y": .int(-64), "height": .int(384)]),
+                                  "sea_level": .int(63)]))])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let snapshot = try await WorldSnapshot.read(root)
+        let dimension = try #require(snapshot.world.dimension("overworld"))
+        let heightScale = try #require(MapHeightScale(settings: snapshot.details.dimensionSettings[dimension.id]))
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
         names.minecraft.usesGameArtwork = false
         let library = try game.resources()
         let assets = AsyncReadGate<Result<GameResourceLibrary?, CocoaError>>()
         let colors = AsyncReadGate<Result<MapBiomeColors, CocoaError>>()
-        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+        let resources = try await WorldResources(snapshot: snapshot, names: names,
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
             watchWorld: { _, _ in nil }, readGameAssets: { _ in try await assets.read("selection").get() })
-        let dimension = try #require(resources.world.dimension("overworld"))
-        let heightScale = try #require(MapHeightScale(settings: WorldDetails.read(resources.world).dimensionSettings[dimension.id]))
         let drawings = Mutex<[MapGameResources.Identity]>([]), heightDrawings = Mutex(0), closingDrawings = Mutex(0)
         let map = MapModel(definitions: { .unknown }, gameResources: { resources.mapGameResources },
             savedLighting: { nil }, nightLighting: { nil }, work: resources.backgroundWork,
