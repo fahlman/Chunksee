@@ -24,6 +24,7 @@ struct TerrainCoverageProbe {
         let background = try tile(alpha: 1, background: true)
         var cases = 0
         var failures = Dictionary(uniqueKeysWithValues: Control.allCases.map { ($0, 0) })
+        var unchangedReferenceFailures = failures
         var screenFailures = 0
         for (columns, rows) in [(2, 1), (1, 2), (2, 2)] {
             for scale: CGFloat in [1, 2] {
@@ -59,23 +60,27 @@ struct TerrainCoverageProbe {
                                     protectsWater: false, increasedContrast: false, in: layer)
                             }
                         }
-                        let expected = try pixels(render(reference, scale: scale))
+                        let screenReference = try pixels(render(reference, scale: scale))
                         let screen = try pixels(render(drawing, scale: scale))
-                        Attachment.record(expected, named: identifier + "-reference.rgba")
+                        Attachment.record(screenReference, named: identifier + "-screen-reference.rgba")
                         Attachment.record(screen, named: identifier + "-screen.rgba")
-                        let screenDifference = zip(screen, expected).filter { $0 != $1 }.count
+                        try #require(screen.count == screenReference.count)
+                        let screenDifference = zip(screen, screenReference).filter { $0 != $1 }.count
                         if screenDifference != 0 { screenFailures += 1 }
                         let side = Int(size.width * scale)
+                        let unchangedReference = try export(reference, scale: scale, control: .unchanged)
                         for control in Control.allCases {
-                            // Allows-antialiasing is outside the graphics state. Each control gets
-                            // a fresh destination so its effect cannot escape to another case.
-                            let destination = try #require(MapImage.imageContext(width: side, height: side))
-                            control.apply(to: destination)
-                            try #require(MapImage.drawImageLayer(drawing, size: size, scale: scale, into: destination))
-                            let actual = try pixels(#require(destination.makeImage()))
-                            try #require(actual.count == expected.count && screen.count == expected.count)
+                            // Compare exports through the same route and control, as TerrainEdgeTests does.
+                            let expected: [UInt8]
+                            if control == .unchanged { expected = unchangedReference }
+                            else { expected = try export(reference, scale: scale, control: control) }
+                            let actual = try export(drawing, scale: scale, control: control)
+                            try #require(actual.count == expected.count && screen.count == expected.count
+                                         && unchangedReference.count == expected.count)
                             let differentBytes = zip(actual, expected).filter { $0 != $1 }.count
                             if differentBytes != 0 { failures[control, default: 0] += 1 }
+                            let differentFromUnchanged = zip(actual, unchangedReference).filter { $0 != $1 }.count
+                            if differentFromUnchanged != 0 { unchangedReferenceFailures[control, default: 0] += 1 }
                             let differing = stride(from: 0, to: actual.count, by: 4).filter {
                                 actual[$0..<($0 + 4)] != expected[$0..<($0 + 4)]
                             }
@@ -90,11 +95,15 @@ struct TerrainCoverageProbe {
                                 "control": control.rawValue, "width": side, "height": side,
                                 "screenDifferentBytes": screenDifference, "differentBytes": differentBytes,
                                 "differentPixels": differing.count, "samples": samples,
+                                "differentBytesAgainstUnchangedReference": differentFromUnchanged,
+                                "referenceDifferentBytesAgainstUnchangedReference": zip(expected, unchangedReference)
+                                    .filter { $0 != $1 }.count,
                             ]
                             let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
                             print("Terrain coverage probe: \(String(decoding: data, as: UTF8.self))")
                             Attachment.record(Array(data), named: identifier + "-" + control.rawValue + ".json")
-                            Attachment.record(actual, named: identifier + "-" + control.rawValue + ".rgba")
+                            Attachment.record(actual, named: identifier + "-" + control.rawValue + "-actual.rgba")
+                            Attachment.record(expected, named: identifier + "-" + control.rawValue + "-reference.rgba")
                         }
                     }
                 }
@@ -103,6 +112,9 @@ struct TerrainCoverageProbe {
         let summary: [String: Any] = [
             "cases": cases, "records": cases * Control.allCases.count, "screenFailures": screenFailures,
             "exportFailures": Dictionary(uniqueKeysWithValues: Control.allCases.map { ($0.rawValue, failures[$0, default: 0]) }),
+            "exportFailuresAgainstUnchangedReference": Dictionary(uniqueKeysWithValues: Control.allCases.map {
+                ($0.rawValue, unchangedReferenceFailures[$0, default: 0])
+            }),
         ]
         let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
         print("Terrain coverage probe summary: \(String(decoding: data, as: UTF8.self))")
@@ -110,7 +122,7 @@ struct TerrainCoverageProbe {
         try #require(cases == 36 && screenFailures == 0,
                      "The synthetic screen cases must match their unbroken references")
         try #require(failures[.unchanged, default: 0] > 0,
-                     "The unchanged export route must reproduce the seam before comparing controls")
+                     "The unchanged export pair must differ before comparing controls")
     }
 
     private func tile(alpha: CGFloat, background: Bool = false) throws -> MapTileImage {
@@ -127,8 +139,19 @@ struct TerrainCoverageProbe {
         return try #require(renderer.cgImage)
     }
 
+    private func export<V: View>(_ view: V, scale: CGFloat, control: Control) throws -> [UInt8] {
+        // Allows-antialiasing is outside the graphics state. Every drawing and reference
+        // gets a fresh destination so the setting cannot escape to another export.
+        let side = Int(size.width * scale)
+        let destination = try #require(MapImage.imageContext(width: side, height: side))
+        control.apply(to: destination)
+        try #require(MapImage.drawImageLayer(view, size: size, scale: scale, into: destination))
+        return try pixels(#require(destination.makeImage()))
+    }
+
     private func pixels(_ image: CGImage) throws -> [UInt8] {
         let normalized = try #require(MapImage.imageContext(width: image.width, height: image.height))
+        normalized.interpolationQuality = .none
         normalized.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return try ItemPictureFixture.pixels(#require(normalized.makeImage())).bytes
     }
