@@ -313,42 +313,51 @@ private final class SidebarNativeDriver {
         return try #require(matches.first)
     }
 
-    func perform(_ name: String, action: () throws -> Void, ready: () -> Bool) async throws {
+    func perform(_ name: String, action: () throws -> Void, ready: @escaping @MainActor () -> Bool) async throws {
         print("Sidebar probe action: \(name)")
         try await Self.afterUpdate(window, label: name, action: action, ready: ready)
         print("Sidebar probe observed: \(name), nativeRows=\(outline.numberOfRows), expanded=\(isExpanded), selectedRow=\(outline.selectedRow)")
     }
 
     static func afterUpdate(_ window: NSWindow, label: String = "window readiness",
-                            action: () throws -> Void = {}, ready: () -> Bool) async throws {
-        let (updates, updated) = AsyncStream.makeStream(of: Void.self)
-        let observer = NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification,
-            object: window, queue: .main) { _ in updated.yield(()) }
+                            action: () throws -> Void = {}, ready: @escaping @MainActor () -> Bool) async throws {
+        let (updates, updated) = AsyncStream.makeStream(of: ContinuousClock.Instant.self,
+            bufferingPolicy: .bufferingNewest(1))
+        // An inactive host can lay out its inspector without a window-update notification.
+        // Observe after other before-waiting observers so deferred UI work can finish first.
+        let observer = try #require(CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault,
+            CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max) { _, _ in
+                // Installed only on the main run loop; its synchronous callback has main-actor isolation.
+                MainActor.assumeIsolated {
+                    // A false predicate queues no work and cannot keep the run loop awake itself.
+                    if ready() { updated.yield(.now) }
+                }
+            })
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         var updateCount = 0
         var satisfied = false
         defer {
-            NotificationCenter.default.removeObserver(observer)
+            CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+            CFRunLoopObserverInvalidate(observer)
             updated.finish()
             SidebarProbeTrace.event("\(label) wait ended: updates=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
         }
+        let actionStart = ContinuousClock.now
         try action()
-        // An already-visible, appeared document need not emit another window update.
         satisfied = ready()
         if satisfied {
             SidebarProbeTrace.event("\(label) already ready after action")
+            SidebarProbeTrace.event("\(label) readiness elapsed: \(actionStart.duration(to: .now))")
             return
         }
-        window.viewsNeedDisplay = true
-        SidebarProbeTrace.event("\(label) awaiting native update")
-        for await _ in updates {
+        SidebarProbeTrace.event("\(label) awaiting UI readiness")
+        for await observedAt in updates {
             updateCount += 1
-            window.contentView?.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
             satisfied = ready()
-            if updateCount == 1 || satisfied {
-                SidebarProbeTrace.event("\(label) update: count=\(updateCount), ready=\(satisfied), visible=\(window.isVisible)")
+            if satisfied {
+                SidebarProbeTrace.event("\(label) readiness elapsed: \(actionStart.duration(to: observedAt))")
+                return
             }
-            if satisfied { return }
         }
         throw CancellationError()
     }
