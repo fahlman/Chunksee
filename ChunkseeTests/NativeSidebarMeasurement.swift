@@ -11,18 +11,30 @@ import Testing
 struct NativeSidebarMeasurement {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["CHUNKSEE_SIDEBAR_PREPARE"] != nil),
           .timeLimit(.minutes(2)))
-    func prepareFixture() throws {
+    func prepareFixture() async throws {
         let config = try SidebarMeasurementConfiguration.read(key: "CHUNKSEE_SIDEBAR_PREPARE")
         let output = try config.createOutput()
         // Prove this host can read the guard before spending either timed attempt.
         let idle = try SidebarMeasurementRecorder.inputIdleSeconds()
         print("Sidebar input guard available: idleSeconds=\(idle)")
+        // Use the same native document and activation path before either measured host.
+        let foregroundWorld = try SidebarProbeWorld.make(spawners: 31)
+        defer { try? FileManager.default.removeItem(at: foregroundWorld) }
+        try await SidebarProbeScenario.run(root: foregroundWorld, count: 31, mode: .foregroundPreparation)
         let generated = try SidebarProbeWorld.make(spawners: SidebarMeasurementInput.spawners)
         defer { try? FileManager.default.removeItem(at: generated) }
         let world = output.appendingPathComponent("world", directoryHint: .isDirectory)
         try FileManager.default.copyItem(at: generated, to: world)
         let manifest = try SidebarMeasurementInput.manifest(world)
         try JSONEncoder().encode(manifest).write(to: output.appendingPathComponent("fixture.json"), options: .withoutOverwriting)
+        let preparation: [String: Any] = [
+            "host": Bundle.main.bundleIdentifier ?? "", "pid": getpid(),
+            "foregroundVerified": true, "inputIdleSeconds": idle,
+            "uptimeNanoseconds": DispatchTime.now().uptimeNanoseconds,
+            "spawners": manifest.spawners,
+        ]
+        try JSONSerialization.data(withJSONObject: preparation, options: [.sortedKeys])
+            .write(to: output.appendingPathComponent("preparation.json"), options: .withoutOverwriting)
         // The external preparation step freezes this one input for both measured hosts.
         print("Sidebar fixture prepared: \(output.path), spawners=\(manifest.spawners), files=\(manifest.files.count)")
     }
@@ -31,7 +43,7 @@ struct NativeSidebarMeasurement {
           .timeLimit(.minutes(15)))
     func measureActions() async throws {
         let config = try SidebarMeasurementConfiguration.read(key: "CHUNKSEE_SIDEBAR_MEASURE")
-        let world = SidebarMeasurementInput.world
+        let world = try SidebarMeasurementInput.world()
         let expected = try JSONDecoder().decode(SidebarMeasurementInput.Manifest.self,
             from: Data(contentsOf: world.deletingLastPathComponent().appendingPathComponent("fixture.json")))
         try #require(expected.spawners == SidebarMeasurementInput.spawners)
@@ -39,7 +51,7 @@ struct NativeSidebarMeasurement {
         let recorder = try SidebarMeasurementRecorder(output: config.createOutput())
         defer { recorder.close() }
         do {
-            try await SidebarProbeScenario.run(root: world, count: expected.spawners, measurement: recorder)
+            try await SidebarProbeScenario.run(root: world, count: expected.spawners, mode: .measurement(recorder))
             try #require(try SidebarMeasurementInput.manifest(world) == expected)
             try recorder.complete()
         } catch {
@@ -59,14 +71,25 @@ private nonisolated struct SidebarMeasurementConfiguration: Decodable {
         guard Bundle.main.bundleIdentifier == "com.fahlsing.Chunksee.Tests",
               keys.contains(key), keys.filter({ environment[$0] != nil }).count == 1,
               let path = environment[key] else { throw SidebarMeasurementFailure.configuration }
-        return try JSONDecoder().decode(Self.self, from: Data(contentsOf: URL(filePath: path)))
+        let file = URL(filePath: path).standardizedFileURL
+        let prefix = "SidebarMeasurementConfiguration-"
+        guard file.deletingLastPathComponent() == (try SidebarMeasurementInput.caches()),
+              file.resolvingSymlinksInPath() == file,
+              file.pathExtension == "json", file.lastPathComponent.hasPrefix(prefix),
+              UUID(uuidString: String(file.deletingPathExtension().lastPathComponent.dropFirst(prefix.count))) != nil else {
+            throw SidebarMeasurementFailure.configuration
+        }
+        let properties = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard properties.isRegularFile == true, let size = properties.fileSize, size <= 4096 else {
+            throw SidebarMeasurementFailure.configuration
+        }
+        return try JSONDecoder().decode(Self.self, from: Data(contentsOf: file))
     }
 
     func createOutput() throws -> URL {
         let url = URL(filePath: output, directoryHint: .isDirectory).standardizedFileURL
         let prefix = "SidebarMeasurement-"
-        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
-              url.deletingLastPathComponent().resolvingSymlinksInPath() == caches.resolvingSymlinksInPath(),
+        guard url.deletingLastPathComponent().resolvingSymlinksInPath() == (try SidebarMeasurementInput.caches()),
               url.lastPathComponent.hasPrefix(prefix),
               UUID(uuidString: String(url.lastPathComponent.dropFirst(prefix.count))) != nil,
               !FileManager.default.fileExists(atPath: url.path) else { throw SidebarMeasurementFailure.configuration }
@@ -78,8 +101,17 @@ private nonisolated struct SidebarMeasurementConfiguration: Decodable {
 nonisolated enum SidebarMeasurementInput {
     static let spawners = 11_000
     // This path is populated once by the reviewed preparation step, never by either measured host.
-    static let world = URL(filePath: "/Users/ryan/Developer/Chunksee-runs/large-sidebar-group-evidence/measurement-input-1/world",
-                           directoryHint: .isDirectory)
+    static func world() throws -> URL {
+        try caches().appendingPathComponent("SidebarMeasurementInput-1", directoryHint: .isDirectory)
+            .appendingPathComponent("world", directoryHint: .isDirectory)
+    }
+
+    static func caches() throws -> URL {
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            throw SidebarMeasurementFailure.configuration
+        }
+        return caches.resolvingSymlinksInPath()
+    }
 
     nonisolated struct Manifest: Codable, Equatable, Sendable {
         let spawners: Int
@@ -113,7 +145,9 @@ nonisolated enum SidebarMeasurementInput {
     }
 }
 
-nonisolated enum SidebarMeasurementFailure: Error { case configuration, invalidClock, foreground, input, sequence }
+nonisolated enum SidebarMeasurementFailure: Error {
+    case configuration, invalidClock, foreground, foregroundTimedOut, input, sequence
+}
 
 nonisolated struct SidebarActionStamp: Sendable {
     let uptimeNanoseconds: UInt64
@@ -167,6 +201,37 @@ final class SidebarMeasurementRecorder {
     static func isForeground(_ window: NSWindow) -> Bool {
         NSApp.isActive && window.isKeyWindow && window.isMainWindow && window.isVisible
             && window.occlusionState.contains(.visible)
+    }
+
+    static func activate(_ window: NSWindow) async throws {
+        // SwiftUI has no activation/readiness API. AppKit may decline this request;
+        // the preparation entry proves it works before spending a measured attempt.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(10))
+        print("Sidebar foreground: requesting active, key, main, visible and unoccluded window; limit=10s")
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                defer { group.cancelAll() }
+                group.addTask { @MainActor in
+                    _ = try await SidebarNativeDriver.afterUpdate(window, label: "foreground readiness") {
+                        isForeground(window)
+                    }
+                }
+                group.addTask {
+                    try await clock.sleep(until: deadline)
+                    throw SidebarMeasurementFailure.foregroundTimedOut
+                }
+                _ = try await group.next()
+            }
+            guard clock.now <= deadline else { throw SidebarMeasurementFailure.foregroundTimedOut }
+            guard isForeground(window) else { throw SidebarMeasurementFailure.foreground }
+        } catch {
+            print("Sidebar foreground failed: \(error)")
+            throw error
+        }
+        print("Sidebar foreground verified")
     }
 
     func ready(window: NSWindow, spawners: Int, rows: Int) throws {

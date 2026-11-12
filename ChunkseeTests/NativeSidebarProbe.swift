@@ -17,13 +17,28 @@ struct NativeSidebarProbe {
         let root = try SidebarProbeWorld.make(spawners: count)
         SidebarProbeTrace.event("fixture created")
         defer { try? FileManager.default.removeItem(at: root) }
-        try await SidebarProbeScenario.run(root: root, count: count, measurement: nil)
+        try await SidebarProbeScenario.run(root: root, count: count, mode: .proof)
     }
 }
 
 /// Both fixture sizes exercise the same native document, actions and completion predicates.
 enum SidebarProbeScenario {
-    static func run(root: URL, count: Int, measurement: SidebarMeasurementRecorder?) async throws {
+    enum Mode {
+        case proof
+        case foregroundPreparation
+        case measurement(SidebarMeasurementRecorder)
+
+        var recorder: SidebarMeasurementRecorder? {
+            if case .measurement(let recorder) = self { recorder } else { nil }
+        }
+
+        var requiresForeground: Bool {
+            if case .proof = self { false } else { true }
+        }
+    }
+
+    static func run(root: URL, count: Int, mode: Mode) async throws {
+        let measurement = mode.recorder
         let dimension = try #require(try World(contentsOf: root).dimension("minecraft:overworld"))
             .documentURL(inWorldAt: root).resolvingSymlinksInPath()
         let model = AppModel(defaults: TestDefaults.make(), cacheRoot: nil)
@@ -83,21 +98,24 @@ enum SidebarProbeScenario {
             let window = try #require(native.windowControllers.first?.window)
             window.appearance = NSAppearance(named: .aqua)
             window.setContentSize(CGSize(width: 900, height: 650))
-            if measurement != nil {
+            if mode.requiresForeground {
                 window.title = "Chunksee Sidebar Comparison"
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate()
-            } else {
-                window.orderFront(nil)
             }
+            window.orderFront(nil)
             SidebarProbeTrace.event("window readiness entered: visible=\(window.isVisible), routingInstalled=\(session.routing.openDocument != nil)")
             try await SidebarNativeDriver.afterUpdate(window) {
                 window.isVisible && session.routing.openDocument != nil
-                    && (measurement == nil || SidebarMeasurementRecorder.isForeground(window))
             }
+            if mode.requiresForeground { try await SidebarMeasurementRecorder.activate(window) }
             SidebarProbeTrace.event("window ready; awaiting initial map work")
             await map.waitUntilIdle()
             SidebarProbeTrace.event("initial map work finished; laying out before accessibility reads")
+            if case .foregroundPreparation = mode {
+                try #require(SidebarMeasurementRecorder.isForeground(window))
+                print("Sidebar preparation: native document foreground verified after initial map work")
+                await close()
+                return
+            }
             window.contentView?.layoutSubtreeIfNeeded()
             // Existing native accessibility tests use this request to materialize SwiftUI's tree.
             let activation = await Task.detached {
