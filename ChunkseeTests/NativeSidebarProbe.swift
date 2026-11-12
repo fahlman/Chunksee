@@ -160,6 +160,7 @@ private final class SidebarNativeDriver {
             "windowKey": window.isKeyWindow, "appActive": NSApp.isActive
         ])
         try #require(rows.count <= 128, "The diagnostic permits at most 128 accessible rows")
+        SidebarDirectLookup.capture(rows: rows, outline: outline, groupTitle: groupTitle)
         var matches: [AnyObject] = []
         for (position, value) in rows.enumerated() {
             let row = value as AnyObject, index = row.accessibilityIndex?() ?? -1
@@ -347,6 +348,141 @@ private final class SidebarNativeDriver {
     }
 }
 
+/// Compare the two native read interfaces without changing the driver's original matcher.
+/// SwiftUI exposes no API for inspecting the backing outline's accessibility rows or cell views.
+private enum SidebarDirectLookup {
+    private enum Failure: Error { case budget(String), shape(String) }
+
+    private final class Reader {
+        let route: String
+        let clock = ContinuousClock()
+        let deadline: ContinuousClock.Instant
+        var reads = 0
+
+        init(route: String) {
+            self.route = route
+            deadline = clock.now.advanced(by: .seconds(30))
+        }
+
+        func record(_ values: [String: Any]) throws {
+            var fields = values
+            fields["route"] = route
+            let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+            SidebarProbeTrace.event("lookup diagnostic " + String(decoding: data, as: UTF8.self))
+        }
+
+        func read(_ node: AnyObject, selector name: String, argument: String? = nil) throws -> AnyObject? {
+            guard reads < 2_048, clock.now < deadline else { throw Failure.budget(route) }
+            reads += 1
+            let selector = NSSelectorFromString(name)
+            guard let object = node as? NSObject, object.responds(to: selector) else { return nil }
+            // These selectors all return Objective-C objects. Scalar and struct getters must
+            // use their typed APIs instead of perform(_:), which assumes an object return.
+            if let argument { return object.perform(selector, with: argument)?.takeUnretainedValue() }
+            return object.perform(selector)?.takeUnretainedValue()
+        }
+
+        func capture(_ root: AnyObject, row: Int, view: String, groupTitle: String) throws {
+            var pending = [(root, 0)], seen: Set<ObjectIdentifier> = [], matched = false
+            while let (node, depth) = pending.popLast() {
+                guard !seen.contains(ObjectIdentifier(node)) else { continue }
+                guard seen.count < 64, depth <= 8 else { throw Failure.budget("\(route) row \(row)") }
+                let position = seen.count
+                seen.insert(ObjectIdentifier(node))
+                let legacy = route == "legacy"
+                var names: [String] = []
+                if legacy, let raw = try read(node, selector: "accessibilityAttributeNames") {
+                    guard let advertised = raw as? [String] else { throw Failure.shape("attribute names") }
+                    guard advertised.count <= 64 else { throw Failure.budget("attribute names") }
+                    names = advertised
+                }
+                let fields = legacy
+                    ? ["role": kAXRoleAttribute, "title": kAXTitleAttribute,
+                       "description": kAXDescriptionAttribute, "value": kAXValueAttribute, "index": kAXIndexAttribute]
+                    : ["role": "accessibilityRole", "label": "accessibilityLabel",
+                       "title": "accessibilityTitle", "value": "accessibilityValue"]
+                var values: [String: Any] = [:]
+                var matches: [String: Bool] = [:]
+                for (field, name) in fields.sorted(by: { $0.key < $1.key }) {
+                    let raw: AnyObject?
+                    if legacy {
+                        raw = names.contains(name) ? try read(node, selector: "accessibilityAttributeValue:", argument: name) : nil
+                    } else {
+                        raw = try read(node, selector: name)
+                    }
+                    let text: String
+                    switch raw {
+                    case let value as String: text = value
+                    case let value as NSAttributedString: text = value.string
+                    case let value as NSNumber: text = value.stringValue
+                    default: text = ""
+                    }
+                    values[field] = ["text": String(text.prefix(256)), "length": text.count,
+                                     "type": raw.map { String(reflecting: Swift.type(of: $0)) } ?? "absent"]
+                    matches[field] = text.contains(groupTitle)
+                }
+                let matchesGroup = matches.values.contains(true)
+                matched = matched || matchesGroup
+                let selectors = legacy ? ["accessibilityAttributeNames", "accessibilityAttributeValue:"]
+                    : Array(fields.values) + ["accessibilityChildren"]
+                let support = Dictionary(uniqueKeysWithValues: selectors.map { name in
+                    (name, (node as? NSObject)?.responds(to: NSSelectorFromString(name)) == true)
+                })
+                try record(["kind": "direct-node", "row": row, "view": view, "node": position, "depth": depth,
+                            "objectClass": String(reflecting: Swift.type(of: node)), "attributeNames": names,
+                            "selectorSupport": support, "values": values, "matches": matches, "matchesGroup": matchesGroup])
+                let rawChildren: AnyObject?
+                if legacy {
+                    rawChildren = names.contains(kAXChildrenAttribute)
+                        ? try read(node, selector: "accessibilityAttributeValue:", argument: kAXChildrenAttribute) : nil
+                } else {
+                    rawChildren = try read(node, selector: "accessibilityChildren")
+                }
+                if let rawChildren {
+                    guard let children = rawChildren as? [Any] else { throw Failure.shape("children") }
+                    guard children.count <= 64 else { throw Failure.budget("children") }
+                    pending += children.reversed().map { ($0 as AnyObject, depth + 1) }
+                }
+            }
+            try record(["kind": "direct-row", "row": row, "view": view,
+                        "nodes": seen.count, "matchesGroup": matched])
+        }
+    }
+
+    static func capture(rows: [Any], outline: NSOutlineView, groupTitle: String) {
+        for route in ["legacy", "views"] {
+            let reader = Reader(route: route)
+            var complete = false
+            do {
+                try reader.record(["kind": "direct-start", "accessibleRows": rows.count,
+                                   "nativeRows": outline.numberOfRows, "attributeBudget": 2_048,
+                                   "deadlineSeconds": 30, "rowBudget": 128, "nodeBudgetPerRoot": 64, "depthLimit": 8])
+                guard rows.count <= 128, outline.numberOfRows <= 128 else { throw Failure.budget("rows") }
+                if route == "legacy" {
+                    for (row, node) in rows.enumerated() {
+                        try reader.capture(node as AnyObject, row: row, view: "accessibility", groupTitle: groupTitle)
+                    }
+                } else {
+                    for row in 0..<outline.numberOfRows {
+                        // Observe only views already made by the normal layout. A missing view
+                        // is a recorded fact, never permission to materialize another row.
+                        let views = [("row", outline.rowView(atRow: row, makeIfNecessary: false) as NSView?),
+                                     ("cell", outline.view(atColumn: 0, row: row, makeIfNecessary: false))]
+                        for (kind, view) in views {
+                            try reader.record(["kind": "direct-view", "row": row, "view": kind, "available": view != nil])
+                            if let view { try reader.capture(view, row: row, view: kind, groupTitle: groupTitle) }
+                        }
+                    }
+                }
+                complete = true
+            } catch {
+                try? reader.record(["kind": "direct-error", "error": String(describing: error)])
+            }
+            try? reader.record(["kind": "direct-complete", "complete": complete, "attributeReads": reader.reads])
+        }
+    }
+}
+
 /// Read-only diagnostic client. It never selects a row, expands a group or activates a window.
 private nonisolated enum SidebarAXLookup {
     nonisolated struct Capture: Sendable {
@@ -464,7 +600,19 @@ private nonisolated enum SidebarAXLookup {
         do {
             let app = AXUIElementCreateApplication(getpid())
             try reader.record(["kind": "ax-start", "windowTitle": windowTitle, "groupTitle": groupTitle,
+                               "processTrusted": AXIsProcessTrusted(),
                                "messagingTimeoutSeconds": 0.25, "deadlineSeconds": 30, "attributeBudget": 2_048])
+            for name in [kAXChildrenAttribute, kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+                let result = try reader.attribute(app, name)
+                var fields: [String: Any] = ["kind": "ax-application", "attribute": name, "status": result.status,
+                    "valueType": result.value.map { String(reflecting: Swift.type(of: $0)) } ?? "absent"]
+                if let elements = result.value as? [AXUIElement] {
+                    fields["elementCount"] = elements.count
+                } else if let value = result.value {
+                    fields["isAXElement"] = CFGetTypeID(value) == AXUIElementGetTypeID()
+                }
+                try reader.record(fields)
+            }
             let windows = try reader.elements(app, kAXWindowsAttribute, limit: 16, context: "application windows")
             var matching: [AXUIElement] = []
             for (position, window) in windows.enumerated() {
