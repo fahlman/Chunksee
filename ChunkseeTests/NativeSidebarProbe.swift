@@ -160,7 +160,6 @@ private final class SidebarNativeDriver {
             "windowKey": window.isKeyWindow, "appActive": NSApp.isActive
         ])
         try #require(rows.count <= 128, "The diagnostic permits at most 128 accessible rows")
-        SidebarDirectLookup.capture(rows: rows, outline: outline, groupTitle: groupTitle)
         var matches: [AnyObject] = []
         for (position, value) in rows.enumerated() {
             let row = value as AnyObject, index = row.accessibilityIndex?() ?? -1
@@ -197,6 +196,7 @@ private final class SidebarNativeDriver {
             if matched { matches.append(row) }
         }
         try Self.record(["kind": "lookup", "matches": matches.count])
+        SidebarDirectLookup.capture(rows: rows, outline: outline, groupTitle: groupTitle)
         try #require(matches.count == 1)
         let row = try #require(matches.first) as AnyObject
         groupRow = try #require(row.accessibilityIndex?())
