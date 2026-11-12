@@ -10,7 +10,6 @@ struct WorldView: View {
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.appearsActive) private var appearsActive
     @State private var sidebarDisclosure = SidebarDisclosure()
     /// A new request also reveals a selected row again after the user scrolls away or collapses it.
     @State private var sidebarRevealID = UUID()
@@ -225,11 +224,7 @@ struct WorldView: View {
         // The inspector adds its width to the navigation columns' minimum. The document scene
         // must forward that combined size instead of masking it with another outer frame.
         .frame(minWidth: Self.minimumContentSize.width)
-        .inspector(isPresented: inspectorShown) {
-            WorldInspector(session: session)
-                // Capped so a wide row can't push the inspector past the window's edge.
-                .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
-        }
+        .modifier(WorldInspectorPresentation(session: session))
         .frame(minHeight: Self.minimumContentSize.height)
         .focusedSceneValue(\.worldSession, session.commandTarget)
         .focusedSceneValue(\.focusSearch, session.commandTarget == nil ? nil : SearchFocusAction { isSearchFocused = true })
@@ -274,10 +269,6 @@ struct WorldView: View {
         }
     }
 
-    private var inspectorShown: Binding<Bool> {
-        Self.inspectorBinding(for: session, appearsActive: appearsActive)
-    }
-
     static func inspectorBinding(for session: WorldSession, appearsActive: Bool) -> Binding<Bool> {
         Binding { session.selection.isInspectorShown } set: {
             // Tab changes can send visibility to this binding before the scene activates.
@@ -287,6 +278,21 @@ struct WorldView: View {
         }
     }
 
+}
+
+/// Activation belongs to the inspector boundary, so changing windows does not add a new
+/// observation dependency to the whole sidebar and map body.
+private struct WorldInspectorPresentation: ViewModifier {
+    let session: WorldSession
+    @Environment(\.appearsActive) private var appearsActive
+
+    func body(content: Content) -> some View {
+        content.inspector(isPresented: WorldView.inspectorBinding(for: session, appearsActive: appearsActive)) {
+            WorldInspector(session: session)
+                // Capped so a wide row can't push the inspector past the window's edge.
+                .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
+        }
+    }
 }
 
 /// A player in the sidebar. Choosing one shows their details and, when it's known, their last

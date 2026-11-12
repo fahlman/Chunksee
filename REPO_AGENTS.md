@@ -690,8 +690,9 @@ separate from its map anchor; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
 current shared world data. It refers weakly to its document and retains no detail snapshot.
-WorldView's native inspector binding accepts presentation writes only while its SwiftUI
-`appearsActive` environment is true, with the existing closed-document and sheet guards. Tab
+A private inspector ViewModifier reads SwiftUI's `appearsActive` environment at the presentation
+boundary, keeping activation out of WorldView's sidebar/map body dependencies. Its native inspector
+binding accepts writes only while that value is true, with the existing closed-document and sheet guards. Tab
 reconciliation cannot change an inactive scene's retained choice through that binding. Its getter
 always reads SelectionModel; direct selection actions keep their own path and no activation state
 is copied into the model.
