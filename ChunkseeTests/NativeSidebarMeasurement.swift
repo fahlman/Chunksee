@@ -211,14 +211,16 @@ final class SidebarMeasurementRecorder {
         print("Sidebar foreground: requesting active, key, main, visible and unoccluded window; limit=10s")
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        // Share an isolated operation with the child; the window stays on the main actor.
+        let waitForForeground: @MainActor @Sendable () async throws -> Void = {
+            _ = try await SidebarNativeDriver.afterUpdate(window, label: "foreground readiness") {
+                isForeground(window)
+            }
+        }
         do {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 defer { group.cancelAll() }
-                group.addTask { @MainActor in
-                    _ = try await SidebarNativeDriver.afterUpdate(window, label: "foreground readiness") {
-                        isForeground(window)
-                    }
-                }
+                group.addTask { try await waitForForeground() }
                 group.addTask {
                     try await clock.sleep(until: deadline)
                     throw SidebarMeasurementFailure.foregroundTimedOut
