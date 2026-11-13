@@ -1,5 +1,6 @@
 import ChunkseeKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 

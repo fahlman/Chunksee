@@ -50,6 +50,12 @@ nonisolated enum TerrainComparisonFiles {
     }
 
     @concurrent static func snapshot(_ root: URL) async throws -> [String: Record] {
+        try readSnapshot(root)
+    }
+
+    /// The concurrent entry keeps file reads off the main actor. The synchronous
+    /// helper owns the directory iterator throughout; it never crosses an await.
+    private static func readSnapshot(_ root: URL) throws -> [String: Record] {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
         let attributes = try root.resourceValues(forKeys: keys)
         try #require(attributes.isDirectory == true && attributes.isSymbolicLink == false)

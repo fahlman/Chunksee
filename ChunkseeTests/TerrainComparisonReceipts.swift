@@ -97,7 +97,7 @@ enum TerrainComparisonReceipts {
         try #require(content.structures.isEmpty && content.places.isEmpty && content.creatures.isEmpty)
         try #require(content.players.isEmpty && content.hits.isEmpty && content.savedPlaces.isEmpty)
         try #require(content.biomeAreas.isEmpty && content.inGameMap == nil && content.border == nil)
-        try #require(!content.showsGrid && content.selection == nil)
+        try #require(!content.showsGrid && content.selectedItem == nil && content.highlighted.isEmpty)
         try #require(!content.ruler.isEnabled && content.ruler.start == nil && content.ruler.end == nil)
         try #require(!map.isLoading && map.unfinishedCacheWrites == 0)
         try #require(!session.heatMap.isLoading && !session.slimeChunks.isLoading)

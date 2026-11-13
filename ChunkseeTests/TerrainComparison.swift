@@ -134,7 +134,8 @@ struct TerrainComparison {
                     let object = try #require(JSONSerialization.jsonObject(with: receipt) as? [String: Any])
                     let counts = try #require(object["selectedLayerCounts"] as? [String: Int])
                     let map = try #require(session.map)
-                    if row.settings.gameArtwork && row.settings.style.inputs.detail && row.scale >= 8 {
+                    if row.settings.gameArtwork && row.settings.style.inputs.detail
+                        && row.scale >= Double(MapDetailRenderer.minimumScale) {
                         try Self.coverage((counts["detail"] ?? 0) > 0, "Missing close-up detail: " + row.id)
                     } else { try #require(counts["detail"] == 0) }
                     if row.settings.style == .height {
