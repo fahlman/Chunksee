@@ -326,11 +326,11 @@ import Testing
             for (scale, priority, expected) in [(CGFloat(1), MarkerLabelLayout.Priority.other, false),
                                                (2, .other, true), (0.0625, .selected, true)] {
                 let before = probe.calls
-                let renderer = ImageRenderer(content: Canvas { context, _ in
+                let canvas = Canvas { context, _ in
                     style.label(probe.name(), id: "fixture", priority: priority,
                                 at: CGPoint(x: 120, y: 30), scale: scale, in: context)?.draw(in: context)
-                }.frame(width: 240, height: 100))
-                _ = try #require(renderer.cgImage)
+                }.frame(width: 240, height: 100)
+                _ = try #require(MapImage.rasterizedImage(canvas, scale: 1))
                 #expect((probe.calls > before) == expected)
             }
         }

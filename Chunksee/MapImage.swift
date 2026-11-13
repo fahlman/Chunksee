@@ -76,9 +76,7 @@ nonisolated struct MapImage: Sendable {
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)
-                let renderer = ImageRenderer(content: canvas.environment(\.displayScale, scale))
-                renderer.scale = scale
-                guard let image = renderer.cgImage else { return false }
+                guard let image = rasterizedImage(canvas, scale: scale) else { return false }
                 // Canvas is top-left based; the destination bitmap context is bottom-left based.
                 let rect = CGRect(x: crop.minX * scale, y: (size.height - crop.maxY) * scale,
                                   width: crop.width * scale, height: crop.height * scale)
@@ -92,17 +90,30 @@ nonisolated struct MapImage: Sendable {
     /// Each layer controls its edge filtering. Terrain shaders use the bounded helper above.
     @MainActor
     static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
-        let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height)
-            .environment(\.displayScale, scale))
+        let renderer = imageRenderer(layer.frame(width: size.width, height: size.height), scale: scale)
         var drawn = false
-        renderer.render(rasterizationScale: scale) { _, draw in
+        renderer.render(rasterizationScale: renderer.scale) { _, draw in
             destination.saveGState()
-            destination.scaleBy(x: scale, y: scale)
+            destination.scaleBy(x: renderer.scale, y: renderer.scale)
             draw(destination)
             destination.restoreGState()
             drawn = true
         }
         return drawn
+    }
+
+    @MainActor
+    static func rasterizedImage<V: View>(_ layer: V, scale: CGFloat) -> CGImage? {
+        imageRenderer(layer, scale: scale).cgImage
+    }
+
+    /// Offscreen drawing must choose tile resolution and coverage on the output's pixel grid.
+    /// Bind both together here so neither rendering route can supply only one of them.
+    @MainActor
+    private static func imageRenderer<V: View>(_ layer: V, scale: CGFloat) -> ImageRenderer<some View> {
+        let renderer = ImageRenderer(content: layer.environment(\.displayScale, scale))
+        renderer.scale = scale
+        return renderer
     }
 
     static func imageContext(width: Int, height: Int) -> CGContext? {

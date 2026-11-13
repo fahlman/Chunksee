@@ -790,8 +790,10 @@ draws only retained tiles, and area export keeps its bounded tile window and sha
 Terrain, detail, shadows and the Time Spent and Slime Chunks region images share the native
 Canvas image-drawing helper described with close-up detail below. Crisp images keep their original
 rectangles for a single nearest-neighbor draw, while the helper clips coverage to shared output-pixel
-boundaries. The screen supplies its display scale; offscreen renderers set the environment to their
-actual output scale. There is no edge-image expansion or extra resampling. Zoomed-out filtering
+boundaries. The screen supplies its display scale through the Canvas environment. MapImage's
+single offscreen renderer factory binds the output scale and environment together for both
+rasterization routes and map test helpers. Tile-resolution selection and pixel coverage read
+that same context environment. There is no edge-image expansion or extra resampling. Zoomed-out filtering
 and the saved terrain/normal images are unchanged. The edge regression checks cover both rendering
 routes, exact and near-tie placement, shadow/overlay opacity, tile corners and a nonuniform texture grid.
 RegionTileRenderer resolves material access for its style, including direct renderer calls, before

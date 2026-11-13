@@ -122,8 +122,7 @@ import Testing
             MapView.drawOverlays(viewport: viewport, regions: [], content: content,
                                  portalStatus: { _ in nil }, in: context, size: size)
         }.frame(width: 100, height: 100).environment(\.colorScheme, scheme)
-        let renderer = ImageRenderer(content: canvas); renderer.scale = 1
-        let image = try #require(renderer.cgImage)
+        let image = try #require(MapImage.rasterizedImage(canvas, scale: 1))
         Attachment.record(image, named: "game-biome-outline-\(scheme)", as: .png)
         let pixels = try ItemPictureFixture.pixels(image)
         #expect(pixels.color(50, 50) == [38, 0, 0, 38]) // Existing 15% area fill uses the game red.

@@ -284,10 +284,7 @@ import Testing
     }
 
     private func render<V: View>(_ canvas: V, scale: CGFloat) throws -> CGImage {
-        let renderer = ImageRenderer(content: canvas.frame(width: size.width, height: size.height)
-            .environment(\.displayScale, scale))
-        renderer.scale = scale
-        return try #require(renderer.cgImage)
+        try #require(MapImage.rasterizedImage(canvas.frame(width: size.width, height: size.height), scale: scale))
     }
 
     private func reference(base: MapTileImage, detail: MapTileImage?, shadow: CGImage?, scale: CGFloat) throws -> CGImage {

@@ -47,10 +47,7 @@ import Testing
                     }
                 }
                 func render<V: View>(_ canvas: V) throws -> CGImage {
-                    let renderer = ImageRenderer(content: canvas.frame(width: size.width, height: size.height)
-                        .environment(\.displayScale, scale))
-                    renderer.scale = scale
-                    return try #require(renderer.cgImage)
+                    try #require(MapImage.rasterizedImage(canvas.frame(width: size.width, height: size.height), scale: scale))
                 }
                 func pixels(_ image: CGImage) throws -> Data {
                     let context = try #require(MapImage.imageContext(width: image.width, height: image.height))

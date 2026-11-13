@@ -74,7 +74,7 @@ struct MapView: View {
 
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
+            Self.drawMap(map, content: content, portalStatus: portalStatus, in: context, size: size)
         }
         .background(.background.secondary)
         .onGeometryChange(for: CGSize.self, of: \.size) { size = $0 }
@@ -182,8 +182,8 @@ struct MapView: View {
     /// Draws visible tiles, then overlays. Image creation uses the same resolved terrain input
     /// and drawing primitives, with its bounded shader rasterizer for Copy and area export.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
-                        displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
-        let fullResolution = map.needsFullResolution(displayScale: displayScale)
+                        in context: GraphicsContext, size: CGSize) {
+        let fullResolution = map.needsFullResolution(displayScale: context.environment.displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain,
