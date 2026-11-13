@@ -789,10 +789,13 @@ streamed area export and legends consume it without rebuilding lighting or style
 draws only retained tiles, and area export keeps its bounded tile window and shader rasterizer.
 Terrain, detail, shadows and the Time Spent and Slime Chunks region images share the native
 Canvas image-drawing helper described with close-up detail below. Crisp images keep their original
-rectangles for a single nearest-neighbor draw, while the helper clips coverage to shared output-pixel
-boundaries. The screen supplies its display scale through the Canvas environment. MapImage's
+rectangles for a single nearest-neighbor draw. Native drawing clips to that rectangle. Only the
+CGContext callback in `MapImage.drawImageLayer`, used by Copy/Share and nonshader export layers,
+clips coverage to shared output-pixel boundaries: the callback can paint a fractional edge twice,
+while native drawing already shares it. An extra pixel clip on native drawing can leave a gap
+near a pixel-center tie. The screen supplies its display scale through the Canvas environment. MapImage's
 single offscreen renderer factory binds the output scale and environment together for both
-rasterization routes and map test helpers. Tile-resolution selection and pixel coverage read
+rasterization routes and map test helpers. Tile-resolution selection and callback pixel coverage read
 that same context environment. There is no edge-image expansion or extra resampling. Zoomed-out filtering
 and the saved terrain/normal images are unchanged. The edge regression checks cover both rendering
 routes, exact and near-tie placement, shadow/overlay opacity, tile corners and a nonuniform texture grid.
@@ -2248,10 +2251,14 @@ threshold. No new controls, localization keys, file access, asset copy or world 
 At one point per block or above, terrain regions use their exact bounds so a neighbor's base
 cannot cover existing close-up detail. Base, detail, shadows, Time Spent and Slime Chunks share
 one native Canvas image-drawing helper. It transforms each nearest-neighbor image's bounds into
-output pixels and assigns coverage by pixel centers, with an exact tie owned by
-the tile starting there. It transforms that clip back into drawing coordinates and uses
-`FillStyle(antialiased: false)` for the clip and single image draw. The image rectangle stays
-unchanged, preserving its texture sampling grid. Screen and offscreen contexts supply their actual
+output pixels only on the CGContext callback route selected by `MapImage.drawImageLayer`
+(Copy/Share and nonshader export layers). That route assigns coverage by pixel centers, with an
+exact tie owned by the tile starting there, then transforms the clip back into drawing coordinates.
+Native drawing clips to the image's own rectangle instead. The callback can paint a fractional
+edge twice, while native drawing already shares it; imposing the callback's extra pixel clip on
+native drawing can leave a gap near a pixel-center tie. Both routes use
+`FillStyle(antialiased: false)` for the clip and single image draw, with the image rectangle
+unchanged to preserve its texture sampling grid. Screen and offscreen contexts supply their actual
 output scale through the environment; there are no cropped edge bands or Core Graphics clips.
 SwiftUI also retains the lighting filters, opacity and unchanged world-to-view transform used
 by markers and normals.
