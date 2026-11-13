@@ -14,9 +14,9 @@ import Testing
                               : [.init(x: 0, z: -1), .init(x: 0, z: 0)]
         }
 
-        func viewport(zoom: CGFloat, shift: CGFloat) -> MapViewport {
-            let center = self == .vertical ? CGPoint(x: -shift / zoom, y: 256)
-                                          : CGPoint(x: 256, y: -shift / zoom)
+        func viewport(zoom: CGFloat, shift: CGFloat, crossShift: CGFloat) -> MapViewport {
+            let center = self == .vertical ? CGPoint(x: -shift / zoom, y: 256 - crossShift / zoom)
+                                          : CGPoint(x: 256 - crossShift / zoom, y: -shift / zoom)
             return MapViewport(center: center, scale: zoom)
         }
     }
@@ -26,7 +26,7 @@ import Testing
         let pixel = try ItemPictureFixture.pixels(image).color(0, 0)
         try #require(pixel == [178, 0, 0, 178])
         for join in Join.allCases {
-            try checkJoins([image, image], join: join, reference: image, uniform: true, layer: \.heatMap)
+            try checkJoins([image, image], join: join, uniform: true, layer: \.heatMap)
         }
     }
 
@@ -41,9 +41,7 @@ import Testing
             return try #require(HeatMap.image(fromTicks: ticks))
         }
         for join in Join.allCases {
-            // One image containing both regions has no composited edge between them.
-            let reference = try joinedImage(images, join: join)
-            try checkJoins(images, join: join, reference: reference, uniform: false, layer: \.heatMap)
+            try checkJoins(images, join: join, uniform: false, layer: \.heatMap)
         }
     }
 
@@ -58,17 +56,16 @@ import Testing
                 return World.isSlimeChunk(x: 16, z: -1, seed: seed) && World.isSlimeChunk(x: 16, z: 0, seed: seed)
             })
             let images = try join.regions.map { try #require(SlimeChunks.image(region: $0, seed: seed)) }
-            let reference = try joinedImage(images, join: join)
             let first = try ItemPictureFixture.pixels(images[0])
             let second = try ItemPictureFixture.pixels(images[1])
             let leftAlpha = join == .vertical ? first.color(31, 16)[3] : first.color(16, 31)[3]
             let rightAlpha = join == .vertical ? second.color(0, 16)[3] : second.color(16, 0)[3]
             try #require(leftAlpha == SlimeChunks.pixel.alpha && rightAlpha == SlimeChunks.pixel.alpha)
-            try checkJoins(images, join: join, reference: reference, uniform: false, layer: \.slimeChunks)
+            try checkJoins(images, join: join, uniform: false, layer: \.slimeChunks)
         }
     }
 
-    private func checkJoins(_ images: [CGImage], join: Join, reference: CGImage, uniform: Bool,
+    private func checkJoins(_ images: [CGImage], join: Join, uniform: Bool,
                             layer: WritableKeyPath<MapContent, [RegionPosition: CGImage]>) throws {
         try #require(images.count == 2 && images.allSatisfy { $0.width == 32 && $0.height == 32 })
         let input = MapDrawingInput(presentation: MapPresentation(), heightScale: nil, savedLighting: nil)
@@ -80,59 +77,114 @@ import Testing
             let side = min(32, 512 * zoom)
             let size = CGSize(width: side, height: side)
             for displayScale: CGFloat in [1, 2] {
-                for shift: CGFloat in [0, 0.25, 0.5] {
-                    let viewport = join.viewport(zoom: zoom, shift: shift)
+                // Keep the exact/quarter/half-pixel joins. The extra phase puts both
+                // axes between source-pixel boundaries, requiring one exact sample.
+                let phases: [(CGFloat, CGFloat)] = [(0, 0), (0.25, 0), (0.5, 0)]
+                    + (uniform ? [] : [(0.125, 0.125)])
+                for (shift, crossShift) in phases {
+                    let viewport = join.viewport(zoom: zoom, shift: shift, crossShift: crossShift)
                     let visible = viewport.visibleRegions(in: size, among: Set(join.regions))
                     try #require(visible.count == 2)
-                    let first = try #require(viewport.viewRect(for: join.regions[0], in: size))
-                    let second = try #require(viewport.viewRect(for: join.regions[1], in: size))
-                    let referenceRect = uniform ? CGRect(origin: .zero, size: size) : first.union(second)
+                    let references: [CGImage]
+                    if uniform {
+                        references = [images[0]]
+                    } else {
+                        let grid = try nearestReferences(images, join: join, viewport: viewport,
+                                                         size: size, scale: displayScale)
+                        references = grid.images
+                        if crossShift != 0 { try #require(!grid.hasTies && references.count == 1) }
+                    }
                     for background in [Color.clear, Color(red: 0.2, green: 0.3, blue: 0.6)] {
                         let actual = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(background))
                             MapView.drawOverlays(viewport: viewport, regions: visible, content: content,
                                 portalStatus: { _ in nil }, in: context, size: size)
                         }
-                        let expected = Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(background))
-                            context.draw(Image(decorative: reference, scale: 1).interpolation(.none), in: referenceRect)
+                        let expected = references.map { reference in
+                            Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+                                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(background))
+                                context.draw(Image(decorative: reference, scale: 1).interpolation(.none),
+                                             in: CGRect(origin: .zero, size: size))
+                            }
                         }
-                        let expectedPixels = try pixels(render(expected, size: size, scale: displayScale))
+                        let expectedPixels = try expected.map { try pixels(render($0, size: size, scale: displayScale)) }
                         let screen = try pixels(render(actual, size: size, scale: displayScale))
                         let destination = try #require(MapImage.imageContext(width: Int(side * displayScale),
                                                                             height: Int(side * displayScale)))
-                        let referenceDestination = try #require(MapImage.imageContext(width: Int(side * displayScale),
-                                                                                     height: Int(side * displayScale)))
                         try #require(MapImage.drawImageLayer(actual, size: size, scale: displayScale, into: destination))
-                        // Each route is compared with one unbroken reference image
-                        // drawn through that route, keeping its sampling rules intact.
-                        try #require(MapImage.drawImageLayer(expected, size: size, scale: displayScale,
-                                                            into: referenceDestination))
+                        let expectedExported = try expected.map { reference in
+                            let target = try #require(MapImage.imageContext(width: Int(side * displayScale),
+                                                                          height: Int(side * displayScale)))
+                            try #require(MapImage.drawImageLayer(reference, size: size, scale: displayScale, into: target))
+                            return try pixels(#require(target.makeImage()))
+                        }
                         let exportedImage = try #require(destination.makeImage())
                         let exported = try pixels(exportedImage)
-                        let expectedExported = try pixels(#require(referenceDestination.makeImage()))
-                        let context = "\(join.rawValue), zoom \(zoom), display \(displayScale), shift \(shift), background \(background)"
-                        #expect(screen == expectedPixels, "screen: \(context)")
-                        #expect(exported == expectedExported, "export: \(context)")
+                        let context = "\(join.rawValue), zoom \(zoom), display \(displayScale), shift \(shift), cross \(crossShift), background \(background)"
+                        let screenMismatches = try mismatches(screen, allowed: expectedPixels, width: exportedImage.width)
+                        let exportMismatches = try mismatches(exported, allowed: expectedExported, width: exportedImage.width)
+                        #expect(screenMismatches.isEmpty, "screen: \(context)")
+                        #expect(exportMismatches.isEmpty, "export: \(context)")
                     }
                 }
             }
         }
     }
 
-    private func joinedImage(_ images: [CGImage], join: Join) throws -> CGImage {
-        try #require(images.count == 2 && images.allSatisfy { $0.width == 32 && $0.height == 32 })
+    private func nearestReferences(_ images: [CGImage], join: Join, viewport: MapViewport,
+                                   size: CGSize, scale: CGFloat) throws -> (images: [CGImage], hasTies: Bool) {
+        // A stretched joined image is not a reliable oracle at exact nearest-sample
+        // ties: it can pick a different neighbor from the separate tiles.
+        // Choose the owning region in world coordinates, then only its nearest texels.
+        // Build output-sized images so reference rendering introduces no sampling ties.
         let parts = try images.map { try ItemPictureFixture.pixels($0) }
-        let width = join == .vertical ? 64 : 32
-        let height = join == .vertical ? 32 : 64
-        var bytes: [UInt8] = []
+        let width = Int(size.width * scale), height = Int(size.height * scale)
+        var choices = Array(repeating: [UInt8](), count: 4)
+        var hasTies = false
+        func nearest(_ coordinate: CGFloat, lowerOnTie: Bool) -> Int {
+            let cell = coordinate.rounded(.down)
+            let index = Int(cell) - (lowerOnTie && coordinate == cell ? 1 : 0)
+            return min(31, max(0, index))
+        }
         for y in 0..<height {
             for x in 0..<width {
-                let region = join == .vertical ? x / 32 : y / 32
-                bytes.append(contentsOf: parts[region].color(x % 32, y % 32))
+                let worldX = viewport.center.x + ((CGFloat(x) + 0.5) / scale - size.width / 2) / viewport.scale
+                let worldZ = viewport.center.y + ((CGFloat(y) + 0.5) / scale - size.height / 2) / viewport.scale
+                let region = RegionPosition(x: Int((worldX / 512).rounded(.down)),
+                                            z: Int((worldZ / 512).rounded(.down)))
+                let source = parts[try #require(join.regions.firstIndex(of: region))]
+                let sourceX = (worldX - CGFloat(region.x) * 512) / 16
+                let sourceY = (worldZ - CGFloat(region.z) * 512) / 16
+                let xs = [nearest(sourceX, lowerOnTie: true), nearest(sourceX, lowerOnTie: false)]
+                let ys = [nearest(sourceY, lowerOnTie: true), nearest(sourceY, lowerOnTie: false)]
+                hasTies = hasTies || xs[0] != xs[1] || ys[0] != ys[1]
+                for choice in 0..<4 {
+                    choices[choice].append(contentsOf: source.color(xs[choice % 2], ys[choice / 2]))
+                }
             }
         }
-        return try #require(CGImage.rgba(bytes, width: width, height: height))
+        var seen = Set<[UInt8]>()
+        let references = try choices.filter { seen.insert($0).inserted }.map {
+            try #require(CGImage.rgba($0, width: width, height: height))
+        }
+        return (references, hasTies)
+    }
+
+    private struct PixelMismatch {
+        let x: Int
+        let y: Int
+        let actual: [UInt8]
+        let allowed: [[UInt8]]
+    }
+
+    private func mismatches(_ actual: [UInt8], allowed references: [[UInt8]], width: Int) throws -> [PixelMismatch] {
+        try #require(!references.isEmpty && references.allSatisfy { $0.count == actual.count })
+        return stride(from: 0, to: actual.count, by: 4).compactMap { offset in
+            let pixel = Array(actual[offset..<offset + 4])
+            let allowed = references.map { Array($0[offset..<offset + 4]) }
+            guard !allowed.contains(pixel) else { return nil }
+            return PixelMismatch(x: offset / 4 % width, y: offset / 4 / width, actual: pixel, allowed: allowed)
+        }
     }
 
     private func render<V: View>(_ canvas: V, size: CGSize, scale: CGFloat) throws -> CGImage {
