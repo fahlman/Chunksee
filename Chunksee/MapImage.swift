@@ -4,6 +4,10 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension EnvironmentValues {
+    @Entry var mapUsesCGContext = false
+}
+
 /// A PNG of the map as shown, to copy or share. The sandbox allows only read-only access to
 /// files the user picks, so there's no save panel (Ryan's decision, fahlman/Chunksee#89).
 nonisolated struct MapImage: Sendable {
@@ -90,7 +94,10 @@ nonisolated struct MapImage: Sendable {
     /// Each layer controls its edge filtering. Terrain shaders use the bounded helper above.
     @MainActor
     static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
-        let renderer = imageRenderer(layer.frame(width: size.width, height: size.height), scale: scale)
+        // The CGContext callback covers fractional image edges differently from native
+        // drawing. Only this entry point requests the shared tile coverage adaptation.
+        let renderer = imageRenderer(layer.frame(width: size.width, height: size.height)
+            .environment(\.mapUsesCGContext, true), scale: scale)
         var drawn = false
         renderer.render(rasterizationScale: renderer.scale) { _, draw in
             destination.saveGState()

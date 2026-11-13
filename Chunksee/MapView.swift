@@ -257,20 +257,25 @@ struct MapView: View {
                                        interpolation: Image.Interpolation, in context: GraphicsContext) {
         switch interpolation {
         case .none:
-            // The export route can cover a fractional edge twice. Give adjacent tiles
-            // one shared pixel boundary while leaving their texture sampling unchanged.
-            // Map transforms only translate/scale; offscreen renderers supply their output scale.
-            let scale = context.environment.displayScale
-            let toPixels = context.transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            let pixels = rect.applying(toPixels)
-            // A pixel belongs to the tile containing its center; an exact tie belongs
-            // to the tile starting there. The same edge gets the same boundary on either side.
-            let minX = (pixels.minX - 0.5).rounded(.up), maxX = (pixels.maxX - 0.5).rounded(.up)
-            let minY = (pixels.minY - 0.5).rounded(.up), maxY = (pixels.maxY - 0.5).rounded(.up)
-            let coverage = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            var coverage = Path(rect)
+            if context.environment.mapUsesCGContext {
+                // The CGContext callback can cover a fractional edge twice. Native
+                // drawing already shares that edge: an extra pixel clip can cut a gap
+                // where its image and our clip resolve a near-center tie differently.
+                // Keep texture sampling unchanged and adapt only callback coverage.
+                let scale = context.environment.displayScale
+                let toPixels = context.transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                let pixels = rect.applying(toPixels)
+                // A pixel belongs to the tile containing its center; an exact tie
+                // belongs to the tile starting there. Neighbors share this boundary.
+                let minX = (pixels.minX - 0.5).rounded(.up), maxX = (pixels.maxX - 0.5).rounded(.up)
+                let minY = (pixels.minY - 0.5).rounded(.up), maxY = (pixels.maxY - 0.5).rounded(.up)
+                let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                coverage = Path(bounds).applying(toPixels.inverted())
+            }
             var layer = context
             let crisp = FillStyle(antialiased: false)
-            layer.clip(to: Path(coverage).applying(toPixels.inverted()), style: crisp)
+            layer.clip(to: coverage, style: crisp)
             layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect, style: crisp)
         default:
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
