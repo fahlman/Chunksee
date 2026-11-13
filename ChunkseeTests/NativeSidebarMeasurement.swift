@@ -236,14 +236,12 @@ final class SidebarMeasurementRecorder {
             print("Sidebar foreground failed: \(error); active=\(NSApp.isActive), key=\(window.isKeyWindow), main=\(window.isMainWindow), visible=\(window.isVisible), unoccluded=\(window.occlusionState.contains(.visible))")
             throw error
         }
-        print("Sidebar foreground verified")
+        let windows = NSApp.windows
+        print("Sidebar foreground verified: windows=\(windows.count), visibleWindows=\(windows.filter { $0.isVisible }.count), documents=\(NSDocumentController.shared.documents.count)")
     }
 
     private static func requestHostOpening() async throws {
         try Task.checkCancellation()
-        guard Bundle.main.bundleIdentifier == "com.fahlsing.Chunksee.Tests" else {
-            throw SidebarMeasurementFailure.configuration
-        }
         let bundleURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
