@@ -204,15 +204,18 @@ final class SidebarMeasurementRecorder {
     }
 
     static func activate(_ window: NSWindow) async throws {
-        // SwiftUI has no activation/readiness API. AppKit may decline this request;
-        // the preparation entry proves it works before spending a measured attempt.
+        // SwiftUI has no activation/readiness API. A workspace opening request uses
+        // the system's cooperative activation path, which may still decline focus.
+        // Preparation proves the whole path before spending a measured attempt.
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(10))
-        print("Sidebar foreground: requesting active, key, main, visible and unoccluded window; limit=10s")
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        print("Sidebar foreground: opening this test host, then requiring active, key, main, visible and unoccluded window; total limit=10s")
         // Share an isolated operation with the child; the window stays on the main actor.
         let waitForForeground: @MainActor @Sendable () async throws -> Void = {
+            try await requestHostOpening()
+            try Task.checkCancellation()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
             _ = try await SidebarNativeDriver.afterUpdate(window, label: "foreground readiness") {
                 isForeground(window)
             }
@@ -230,10 +233,49 @@ final class SidebarMeasurementRecorder {
             guard clock.now <= deadline else { throw SidebarMeasurementFailure.foregroundTimedOut }
             guard isForeground(window) else { throw SidebarMeasurementFailure.foreground }
         } catch {
-            print("Sidebar foreground failed: \(error)")
+            print("Sidebar foreground failed: \(error); active=\(NSApp.isActive), key=\(window.isKeyWindow), main=\(window.isMainWindow), visible=\(window.isVisible), unoccluded=\(window.occlusionState.contains(.visible))")
             throw error
         }
         print("Sidebar foreground verified")
+    }
+
+    private static func requestHostOpening() async throws {
+        try Task.checkCancellation()
+        guard Bundle.main.bundleIdentifier == "com.fahlsing.Chunksee.Tests" else {
+            throw SidebarMeasurementFailure.configuration
+        }
+        let bundleURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.addsToRecentItems = false
+        configuration.allowsRunningApplicationSubstitution = false
+        configuration.createsNewApplicationInstance = false
+        configuration.promptsUserIfNeeded = false
+        // Unlike an uncancellable continuation, the stream ends when the deadline
+        // cancels its consumer. A late callback only finishes this discarded stream;
+        // it cannot start the readiness wait or any measured action.
+        let (opened, completion) = AsyncThrowingStream.makeStream(of: NSRunningApplication.self)
+        defer { completion.finish() }
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { app, error in
+            if let error {
+                completion.finish(throwing: error)
+            } else if let app {
+                completion.yield(app)
+                completion.finish()
+            } else {
+                completion.finish(throwing: SidebarMeasurementFailure.foreground)
+            }
+        }
+        var result = opened.makeAsyncIterator()
+        let app = try await result.next()
+        try Task.checkCancellation()
+        guard let app, app.isEqual(NSRunningApplication.current),
+              app.processIdentifier == getpid(),
+              app.bundleIdentifier == Bundle.main.bundleIdentifier,
+              app.bundleURL?.resolvingSymlinksInPath() == bundleURL else {
+            throw SidebarMeasurementFailure.foreground
+        }
+        print("Sidebar foreground opening completed for current host: pid=\(app.processIdentifier)")
     }
 
     func ready(window: NSWindow, spawners: Int, rows: Int) throws {
