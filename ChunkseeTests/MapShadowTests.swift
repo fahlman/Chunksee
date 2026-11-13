@@ -109,7 +109,7 @@ import Testing
                 MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
                                     shadow: { _ in shadow }, increasedContrast: contrast, in: context, size: size)
             }.frame(width: 16, height: 16)
-            let renderer = ImageRenderer(content: view)
+            let renderer = ImageRenderer(content: view.environment(\.displayScale, 1))
             let output = try #require(renderer.cgImage)
             return try ItemPictureFixture.pixels(output).color(8, 8)
         }
@@ -281,7 +281,7 @@ import Testing
                     regions: [.init(x: -1, z: 0), region], image: { _ in MapTileImage(image) }, input: input,
                     shadow: { _ in mask }, in: context, size: size)
             }.frame(width: 16, height: 8)
-            let renderer = ImageRenderer(content: view); renderer.scale = 2
+            let renderer = ImageRenderer(content: view.environment(\.displayScale, 2)); renderer.scale = 2
             let output = try ItemPictureFixture.pixels(#require(renderer.cgImage))
             for x in 0..<32 { #expect(output.color(x, 8) == output.color(2, 8)) }
         }

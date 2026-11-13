@@ -284,7 +284,8 @@ import Testing
     }
 
     private func render<V: View>(_ canvas: V, scale: CGFloat) throws -> CGImage {
-        let renderer = ImageRenderer(content: canvas.frame(width: size.width, height: size.height))
+        let renderer = ImageRenderer(content: canvas.frame(width: size.width, height: size.height)
+            .environment(\.displayScale, scale))
         renderer.scale = scale
         return try #require(renderer.cgImage)
     }

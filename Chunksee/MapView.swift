@@ -257,11 +257,20 @@ struct MapView: View {
                                        interpolation: Image.Interpolation, in context: GraphicsContext) {
         switch interpolation {
         case .none:
-            // Image edge filtering alone does not constrain the CGContext export route.
-            // Give neighboring crisp layers separate coverage without moving their texels.
+            // The export route can cover a fractional edge twice. Give adjacent tiles
+            // one shared pixel boundary while leaving their texture sampling unchanged.
+            // Map transforms only translate/scale; offscreen renderers supply their output scale.
+            let scale = context.environment.displayScale
+            let toPixels = context.transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            let pixels = rect.applying(toPixels)
+            // A pixel belongs to the tile containing its center; an exact tie belongs
+            // to the tile starting there. The same edge gets the same boundary on either side.
+            let minX = (pixels.minX - 0.5).rounded(.up), maxX = (pixels.maxX - 0.5).rounded(.up)
+            let minY = (pixels.minY - 0.5).rounded(.up), maxY = (pixels.maxY - 0.5).rounded(.up)
+            let coverage = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
             var layer = context
             let crisp = FillStyle(antialiased: false)
-            layer.clip(to: Path(rect), style: crisp)
+            layer.clip(to: Path(coverage).applying(toPixels.inverted()), style: crisp)
             layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect, style: crisp)
         default:
             context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)

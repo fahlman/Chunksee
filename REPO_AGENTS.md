@@ -788,9 +788,10 @@ lighting facts; MapContent captures that value with its overlays. Screen drawing
 streamed area export and legends consume it without rebuilding lighting or style rules. Copy still
 draws only retained tiles, and area export keeps its bounded tile window and shader rasterizer.
 Terrain, detail, shadows and the Time Spent and Slime Chunks region images share the native
-Canvas image-drawing helper described with close-up detail below. Crisp images use their original
-rectangles for both a non-antialiased clip and a single nearest-neighbor draw. SwiftUI owns the
-output scale; there is no separate pixel rounding or edge-image expansion. Zoomed-out filtering
+Canvas image-drawing helper described with close-up detail below. Crisp images keep their original
+rectangles for a single nearest-neighbor draw, while the helper clips coverage to shared output-pixel
+boundaries. The screen supplies its display scale; offscreen renderers set the environment to their
+actual output scale. There is no edge-image expansion or extra resampling. Zoomed-out filtering
 and the saved terrain/normal images are unchanged. The edge regression checks cover both rendering
 routes, exact and near-tie placement, shadow/overlay opacity, tile corners and a nonuniform texture grid.
 RegionTileRenderer resolves material access for its style, including direct renderer calls, before
@@ -2244,10 +2245,12 @@ threshold. No new controls, localization keys, file access, asset copy or world 
 
 At one point per block or above, terrain regions use their exact bounds so a neighbor's base
 cannot cover existing close-up detail. Base, detail, shadows, Time Spent and Slime Chunks share
-one native Canvas image-drawing helper. Each nearest-neighbor image clips its own context to the
-original image rectangle with `FillStyle(antialiased: false)`, then uses that same fill style for
-the single image draw. This makes coverage explicit in the shared owner while SwiftUI handles
-the actual output scale; there are no separately cropped edge bands or Core Graphics clips.
+one native Canvas image-drawing helper. It transforms each nearest-neighbor image's bounds into
+output pixels and assigns coverage by pixel centers, with an exact tie owned by
+the tile starting there. It transforms that clip back into drawing coordinates and uses
+`FillStyle(antialiased: false)` for the clip and single image draw. The image rectangle stays
+unchanged, preserving its texture sampling grid. Screen and offscreen contexts supply their actual
+output scale through the environment; there are no cropped edge bands or Core Graphics clips.
 SwiftUI also retains the lighting filters, opacity and unchanged world-to-view transform used
 by markers and normals.
 Zoomed-out terrain retains the existing filtered drawing and half-point padding. The patterned

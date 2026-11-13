@@ -76,7 +76,7 @@ nonisolated struct MapImage: Sendable {
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)
-                let renderer = ImageRenderer(content: canvas)
+                let renderer = ImageRenderer(content: canvas.environment(\.displayScale, scale))
                 renderer.scale = scale
                 guard let image = renderer.cgImage else { return false }
                 // Canvas is top-left based; the destination bitmap context is bottom-left based.
@@ -92,7 +92,8 @@ nonisolated struct MapImage: Sendable {
     /// Each layer controls its edge filtering. Terrain shaders use the bounded helper above.
     @MainActor
     static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
-        let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height))
+        let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height)
+            .environment(\.displayScale, scale))
         var drawn = false
         renderer.render(rasterizationScale: scale) { _, draw in
             destination.saveGState()
