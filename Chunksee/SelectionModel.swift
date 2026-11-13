@@ -30,6 +30,8 @@ final class SelectionModel {
     var isInspectorShown: Bool {
         get { inspector != nil }
         set {
+            InspectorBindingTrace.record("selection.visibility.request", session: source, requested: newValue)
+            defer { InspectorBindingTrace.record("selection.visibility.result", session: source, requested: newValue) }
             guard let source, !source.isClosed else { return }
             if newValue, selectedItem.flatMap(resolve) == nil, inGameMapOverlay == nil {
                 select(.worldInfo)
@@ -151,6 +153,7 @@ final class SelectionModel {
 
     /// Every input path changes this identity. Overlay retention is independent of the row.
     private func select(_ item: SidebarItem?, height: Int? = nil, preservingGlobalRows: Bool = false) {
+        defer { InspectorBindingTrace.record("selection.select.result", session: source) }
         guard let source, !source.isClosed else { return }
         if item == nil, preservingGlobalRows {
             if selectedItem == .worldInfo || selectedItem == .storage { return }

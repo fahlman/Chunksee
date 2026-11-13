@@ -271,10 +271,18 @@ struct WorldView: View {
 
     static func inspectorBinding(for session: WorldSession, appearsActive: Bool) -> Binding<Bool> {
         Binding { session.selection.isInspectorShown } set: {
+            InspectorBindingTrace.record("binding.request", session: session,
+                                         requested: $0, appearsActive: appearsActive)
             // Tab changes can send visibility to this binding before the scene activates.
             // Only the active scene may turn that presentation write into a choice.
-            guard appearsActive else { return }
+            guard appearsActive else {
+                InspectorBindingTrace.record("binding.rejected", session: session,
+                                             requested: $0, appearsActive: appearsActive)
+                return
+            }
             session.commandTarget?.selection.isInspectorShown = $0
+            InspectorBindingTrace.record("binding.result", session: session,
+                                         requested: $0, appearsActive: appearsActive)
         }
     }
 
