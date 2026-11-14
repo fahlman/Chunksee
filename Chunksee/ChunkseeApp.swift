@@ -5,7 +5,6 @@ import SwiftUI
 struct ChunkseeApp: App {
     @NSApplicationDelegateAdaptor(ReadOnlyDocumentMenus.self) private var documentMenus
     @State private var model: AppModel
-    @FocusedValue(\.worldSession) private var focusedSession
 
     init() {
         let model = AppModel(defaults: .standard, cacheRoot: TileCache.root)
@@ -14,16 +13,11 @@ struct ChunkseeApp: App {
     }
 
     var body: some Scene {
-        WorldDocumentScene { configuration in
+        WorldDocumentScene(isTerminating: { documentMenus.isTerminating }) { configuration in
             WorldDocument(configuration: configuration, model: model)
-        }
-        .onChange(of: focusedSession?.viewID) {
-            focusedSession?.becameActive(isTerminating: documentMenus.isTerminating)
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
-            SidebarCommands()
-            InspectorCommands()
             WorldCommands(minecraft: model.names.minecraft)
             HelpCommands()
         }
@@ -41,9 +35,17 @@ struct ChunkseeApp: App {
 }
 #endif
 
-/// The app and isolated document-window tests use the same scene and sizing rules.
+/// App and document-window tests share sizing, focused-document activation and column commands.
 struct WorldDocumentScene: Scene {
+    let isTerminating: @MainActor () -> Bool
     let makeDocument: @MainActor (URLDocumentConfiguration) throws -> WorldDocument
+    @FocusedValue(\.worldSession) private var focusedSession
+
+    init(isTerminating: @escaping @MainActor () -> Bool,
+         makeDocument: @escaping @MainActor (URLDocumentConfiguration) throws -> WorldDocument) {
+        self.isTerminating = isTerminating
+        self.makeDocument = makeDocument
+    }
 
     var body: some Scene {
         DocumentGroup { (document: WorldDocument) in
@@ -53,5 +55,12 @@ struct WorldDocumentScene: Scene {
         }
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 1200, height: 800)
+        .onChange(of: focusedSession?.viewID) {
+            focusedSession?.becameActive(isTerminating: isTerminating())
+        }
+        .commands {
+            SidebarCommands()
+            InspectorCommands()
+        }
     }
 }

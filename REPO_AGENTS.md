@@ -928,8 +928,11 @@ Export uses the same current map. Tile renderer version 6 keys cutaways by Y and
 plus the latest cutaway per region, rather than every slider intermediate. Slider limits come from
 the saved dimension type, including custom definitions, without changing terrain or roof behavior.
 
-The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
-remember its selection immediately. Native tab/window focus does not change a session's dimension;
+WorldDocumentScene observes SwiftUI's focused scene session to prioritize that world's front dimension
+and remember its selection immediately. The app and native window tests share that activation and
+the standard sidebar and inspector commands. Each entry point supplies the termination query explicitly;
+the isolated test host supplies false because it does not run the app's termination flow.
+Native tab/window focus does not change a session's dimension;
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.
 SwiftUI ScenePhase has no Quit event. The existing NSApplicationDelegate hook exposes the early
 termination query so focus changes while AppKit closes tabs cannot overwrite the last front tab.
@@ -1800,7 +1803,8 @@ can add room when it opens. The 420-point height minimum follows the inspector, 
 original window height instead of adding the navigation chrome twice. The document scene must
 not put another minimum-width frame around the loaded view: that masks the columns' combined
 minimum and lets them overflow. Only the opening placeholder has its own 640-by-420 frame.
-The app and regression tests share WorldDocumentScene. Tests open real document windows with
+The app and regression tests share WorldDocumentScene, including focused-document activation and
+the sidebar and inspector commands. Tests open real document windows with
 synthetic files, shrink first to small and medium widths, then show World Info and a location
 inspector, with and without the newer-world banner. They verify the columns fit before any
 test-driven resize, hide the inspector, shrink again and invoke native Zoom. A disposable second
