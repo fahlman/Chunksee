@@ -97,6 +97,99 @@ import Testing
         await close()
     }
 
+    @Test func applyFailuresPublishTheirErrorAndPreserveLoadedSessions() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(World(contentsOf: root).dimension("minecraft:overworld"))
+            .documentURL(inWorldAt: root).resolvingSymlinksInPath()
+        let defaults = TestDefaults.make()
+        let model = AppModel(defaults: defaults, cacheRoot: nil)
+        let (documents, created) = AsyncStream.makeStream(of: WorldDocument.self)
+        defer { created.finish() }
+        var iterator = documents.makeAsyncIterator()
+        var natives: [NSDocument] = []
+        var owners: [WorldDocument] = []
+        try #require(TestDocumentWindows.makeDocument == nil)
+        TestDocumentWindows.makeDocument = { configuration in
+            let document = WorldDocument(configuration: configuration, model: model)
+            owners.append(document)
+            created.yield(document)
+            return document
+        }
+        defer { TestDocumentWindows.makeDocument = nil }
+        func close() async {
+            natives.forEach { $0.close() }
+            NSDocumentController.shared.document(for: dimension)?.close()
+            for owner in owners {
+                owner.session?.close()
+                await owner.session?.waitUntilClosed()
+            }
+            await model.names.minecraft.waitUntilIdle()
+        }
+        // A snapshot read before the document moved takes apply's coordinated reread path.
+        func displacedSnapshot() async throws -> DimensionSnapshot {
+            DimensionSnapshot(source: .snapshot(try await WorldSnapshot.read(root)),
+                folder: .init(id: UUID(), url: root, legacyPath: nil), dimensionID: "minecraft:overworld",
+                documentURL: root.appendingPathComponent("previous-dimension-location"))
+        }
+        do {
+            do {
+                let (native, reused) = try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+                natives.append(native)
+                #expect(!reused)
+            } catch {
+                #expect(!(error is CancellationError))
+            }
+            let failed = try #require(await iterator.next())
+            for await _ in Observations<Void, Never>.untilFinished({
+                failed.openingFailure == nil ? .next(()) : .finish
+            }) {}
+            try #require(failed.configuration.fileURL?.resolvingSymlinksInPath() == dimension)
+            try #require(failed.session == nil)
+
+            // The host captures the document value even when macOS discards its failed window.
+            // Apply error reporting must not depend on native restoration retaining that window.
+            let cancelledSnapshot = try await displacedSnapshot()
+            _ = failed.makeReader()
+            let cancelled = Task { try await failed.apply(snapshot: .dimension(cancelledSnapshot), previous: nil) }
+            cancelled.cancel()
+            await #expect(throws: CancellationError.self) { try await cancelled.value }
+            #expect(failed.openingFailure == nil && failed.session == nil)
+
+            let displaced = try await displacedSnapshot()
+            _ = failed.makeReader()
+            await #expect(throws: WorldOpenError.needsWorldFolder) {
+                try await failed.apply(snapshot: .dimension(displaced), previous: nil)
+            }
+            #expect(failed.openingFailure == WorldOpenError.needsWorldFolder.localizedDescription)
+            #expect(failed.session == nil)
+
+            natives.forEach { $0.close() }
+            NSDocumentController.shared.document(for: dimension)?.close()
+            try model.worldFolders.remember(root)
+            let (native, reused) = try await NSDocumentController.shared.openDocument(withContentsOf: dimension, display: true)
+            natives.append(native)
+            #expect(!reused)
+            let opened = try #require(await iterator.next())
+            for await _ in Observations<Void, Never>.untilFinished({
+                opened.session == nil && opened.openingFailure == nil ? .next(()) : .finish
+            }) {}
+            let session = try #require(opened.session)
+            #expect(opened.openingFailure == nil)
+            defaults.removeObject(forKey: "worldFolderBookmarks")
+            let unreadableReplacement = try await displacedSnapshot()
+            await #expect(throws: WorldOpenError.needsWorldFolder) {
+                try await opened.apply(snapshot: .dimension(unreadableReplacement), previous: nil)
+            }
+            #expect(opened.openingFailure == nil && opened.session === session)
+            #expect(!session.resources.isClosed)
+        } catch {
+            await close()
+            throw error
+        }
+        await close()
+    }
+
     @Test(arguments: [false, true], [CGFloat(640), 900])
     func inspectorFitsAndZoomsAfterShrinking(_ showsNotice: Bool, _ width: CGFloat) async throws {
         try await checkWindow(width: width, showsNotice: showsNotice, opensInspector: true, tabbed: true)

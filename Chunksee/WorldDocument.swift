@@ -261,20 +261,31 @@ final class WorldDocument: ReadableDocument {
             guard let self else { return false }
             return self.session == nil
         }, reportFailure: { [weak self] source, error in
-            guard !Task.isCancelled, let self, self.applyGeneration == generation, self.session == nil else { return }
-            if let currentURL = self.configuration.fileURL,
-               currentURL.standardizedFileURL != source.standardizedFileURL { return }
-            // SwiftUI can retain a restored window after its reader throws, without applying a
-            // snapshot or presenting an error. Preserve native rejection and make that state visible.
-            self.openingFailure = error.localizedDescription
+            self?.reportFailure(error, from: source, generation: generation)
         })
+    }
+
+    private func reportFailure(_ error: any Error, from source: URL, generation: UUID) {
+        guard !(error is CancellationError), !Task.isCancelled,
+              applyGeneration == generation, session == nil else { return }
+        if let currentURL = configuration.fileURL,
+           currentURL.standardizedFileURL != source.standardizedFileURL { return }
+        // SwiftUI can retain a restored window after reading or applying throws. Preserve the
+        // native error and make that state visible without replacing a newer or loaded session.
+        openingFailure = error.localizedDescription
     }
 
     func apply(snapshot: sending FolderSnapshot, previous: sending FolderSnapshot?) async throws {
         let generation = UUID()
         applyGeneration = generation
         switch snapshot {
-        case .dimension(let dimension): try await replaceSession(dimension, generation: generation)
+        case .dimension(let dimension):
+            let source = configuration.fileURL ?? dimension.documentURL
+            do { try await replaceSession(dimension, generation: generation) }
+            catch {
+                reportFailure(error, from: source, generation: generation)
+                throw error
+            }
         case .world(let dimensions):
             try Task.checkCancellation()
             worldDimensions = dimensions
