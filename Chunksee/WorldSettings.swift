@@ -18,7 +18,7 @@ final class WorldSettings {
         key = "worldSettings." + id.uuidString
     }
 
-    private var stored: [String: Any] { defaults.dictionary(forKey: key) ?? ["version": 2] }
+    private var stored: [String: Any] { defaults.dictionary(forKey: key) ?? [:] }
 
     var lastDimension: String? { stored["dimension"] as? String }
 
@@ -44,7 +44,7 @@ final class WorldSettings {
             self.presentation = presentation
         }
 
-        private enum CodingKeys: String, CodingKey { case version, viewport, presentation }
+        private enum CodingKeys: String, CodingKey { case viewport, presentation }
 
         init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -54,7 +54,6 @@ final class WorldSettings {
 
         func encode(to encoder: any Encoder) throws {
             var values = encoder.container(keyedBy: CodingKeys.self)
-            try values.encode(1, forKey: .version)
             try values.encode(presentation, forKey: .presentation)
             if let viewport {
                 try values.encode([viewport.center.x, viewport.center.y, viewport.scale], forKey: .viewport)
@@ -104,7 +103,6 @@ final class WorldSettings {
         var records = saved["mapPresentations"] as? [String: Any] ?? [:]
         records[dimension] = data
         saved["mapPresentations"] = records
-        saved["version"] = 2
         defaults.set(saved, forKey: key)
     }
 

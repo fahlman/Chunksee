@@ -588,7 +588,7 @@ older scan envelopes.
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
 | `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s annotation actions and ruler, portal calculations and native draft controls; WorldSession.sheet owns the drafts, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks that follow folder moves |
+| `WorldSettings.swift`, `WorldFolders.swift` | One per-world presentation store keyed by bookmark identity; read-only world bookmarks that follow folder moves |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `MapImage.swift`, `MapImageExport.swift`, `MapExportPlan.swift`, `MapExportModel.swift`, `MapExportView.swift` | Shared image rasterization/PNG encoding, checked area/scale planning, one dimension's cancellable image request, and native Copy/Share options |
@@ -1307,7 +1307,7 @@ without a mappable position keep selectable rows for their details. Any player m
 dimension shows its player, including a death or respawn point of somebody listed in another
 dimension or with no current position; it selects a row only when this dimension lists them.
 
-WorldSettings owns one versioned preference record per world, containing one Codable map record
+WorldSettings owns one preference record per world, containing one Codable map record
 per dimension, the front dimension, version notices and saved places. WorldFolders associates a persistent UUID with each
 read-only bookmark in its existing registry; the opening reader resolves it off-main and passes
 the identity to WorldSettings. The resolved bookmark URL retains security scope; canonical paths
