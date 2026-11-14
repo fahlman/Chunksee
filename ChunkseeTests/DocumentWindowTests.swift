@@ -129,7 +129,7 @@ import Testing
         // A snapshot read before the document moved takes apply's coordinated reread path.
         func displacedSnapshot() async throws -> DimensionSnapshot {
             DimensionSnapshot(source: .snapshot(try await WorldSnapshot.read(root)),
-                folder: .init(id: UUID(), url: root, legacyPath: nil), dimensionID: "minecraft:overworld",
+                folder: .init(id: UUID(), url: root), dimensionID: "minecraft:overworld",
                 documentURL: root.appendingPathComponent("previous-dimension-location"))
         }
         do {

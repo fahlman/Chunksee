@@ -270,9 +270,10 @@ belongs to the code that produces its output.
 - There is one copy of the latest-result rule, of each setting's default, and of each style's
   inputs.
 - A step that moves a rule to its owner deletes the code it replaces in the same PR.
-- **Kept as they are, not revalidated:** document opening and bookmarks, preference migration,
-  online-name consent, and memory and export budgets. A step that touches them proves it preserves
-  them.
+- **Kept as they are, not revalidated:** document opening and bookmarks, online-name consent,
+  and memory and export budgets. A step that touches them proves it preserves them.
+  Ryan retired conversions of earlier Chunksee settings on 2026-11-14 (#566). Reading older
+  Minecraft save formats remains supported independently of app preferences.
 
 ### Rebuilding steps
 
@@ -322,10 +323,12 @@ Each step is split into independently reviewable, behavior-preserving PRs.
    - **e.** The naming service, covering every kind.
      **Done when:** no view or search builds its own name, and no names argument has a default. The
      user's language preference, per-key English fallback and literal custom names are preserved.
-6. **Map presentation**, in two PRs: first the one saved record with its migration, then the
+6. **Map presentation**, in two PRs: first the one saved record, then the
    drawing input and declared style inputs.
-   - **Done when:** old preference fixtures reopen with their choices intact, chosen Height
+   - **Done when:** current preference fixtures reopen with their choices intact, chosen Height
      survives missing height metadata, and #470 is closed.
+   - **History:** this step originally required old preferences to migrate with their choices
+     intact. That conversion was delivered, then retired by Ryan's decision on #566.
 7. **Window state:** one selection, visibility and derived-highlight value, and one sheet value.
    **Done when:** #474 is closed, showing the inspector again keeps the selected row, and every
    kind of selection highlights the same way whether the inspector is shown or hidden.
@@ -417,11 +420,9 @@ WorldDefinitions owns the catalog and immutable readers carry it into cached reg
 Pack or selected-game changes replace those projections through the existing definition refresh;
 the region facts cache and terrain tiles do not contain these presentation groups.
 LayerVisibility uses SavedGroupVisibility for structure, place and creature group persistence.
-It records both shown and hidden choices, giving absent groups their declared defaults. The one
-migration policy interprets each shown-only list against its fixed historical preference schema;
-those schemas never grow with new groups or Minecraft content. WorldSettings upgrades only the
-opened dimension's unversioned map record, retaining its viewport and other choices. Subsequent
-reads use the explicit record. Mob-type and biome IDs remain opt-in sets with no default-shown
+It records both shown and hidden choices, giving absent groups their declared defaults. Earlier
+shown-only lists are no longer decoded, and no historical group lists remain. Reading a map
+record leaves its saved bytes untouched. Mob-type and biome IDs remain opt-in sets with no default-shown
 members; their runtime catalogs and the live map's set-based visibility inputs are unchanged.
 Strongholds use a door rather than a visibility eye, Trial Chambers use stacked rooms rather
 than the Slime Chunks grid. Other Places use the native more symbol for uncategorized block entities.
@@ -587,7 +588,7 @@ older scan envelopes.
 | `ItemDetails.swift` | Native inspector dispatch for every selected item, shared simple-location forms and search-match context; existing feature views retain their detailed forms |
 | `MapAnnotations.swift`, `PortalPlan.swift`, `PortalPlanView.swift` | One dimension’s annotation actions and ruler, portal calculations and native draft controls; WorldSession.sheet owns the drafts, with live access to the world’s shared SavedPlaces store |
 | `SavedPlaces.swift`, `SavedPlaceViews.swift` | Local per-world annotations and native naming/sidebar controls |
-| `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks and one-time legacy import |
+| `WorldSettings.swift`, `WorldFolders.swift` | One versioned per-world presentation store keyed by bookmark identity; read-only world bookmarks that follow folder moves |
 | `MapRuler.swift`, `MapContextMenu.swift` | Block-distance measurement, shared SwiftUI saved-place/map commands, NSHostingMenu presentation and the narrow pasteboard boundary; every Copy Coordinates entry shares one X/Y/Z action |
 | `RegionTileRenderer.swift` | Rendering a region (512×512 blocks) into a top-down image, off the main actor |
 | `MapImage.swift`, `MapImageExport.swift`, `MapExportPlan.swift`, `MapExportModel.swift`, `MapExportView.swift` | Shared image rasterization/PNG encoding, checked area/scale planning, one dimension's cancellable image request, and native Copy/Share options |
@@ -777,7 +778,7 @@ restoration and WorldSettings use that owner. Its `chosenStyle` survives missing
 `style` derives the picture that can currently be shown. Persistence and document rereads keep the
 choice, while menus, legends, rendering and export use the shown style. Height returns when its
 scale becomes available. Choosing Normal while it is the temporary fallback replaces the saved
-Height choice. The earlier separate style preference migrates into the presentation record. A shown-style change cancels obsolete renders and clears
+Height choice. A shown-style change cancels obsolete renders and clears
 pixels, while retaining the viewport, cutaway height, named columns and pending coordinate reads.
 TileCache version 15 separates each style's Surface/latest-cutaway entries; Height keys include
 MapHeightScale's saved build bounds and optional sea level. Switching styles retains the other
@@ -1312,12 +1313,10 @@ read-only bookmark in its existing registry; the opening reader resolves it off-
 the identity to WorldSettings. The resolved bookmark URL retains security scope; canonical paths
 are only comparisons, never replacements for that access URL. Native folder moves keep that UUID;
 separately opened copies get their own, and unresolved bookmarks retain their identity. No identifier is written into a world.
-Opening settings imports the former path-keyed worldSettings/mapView/mapLayers/savedPlaces once,
-using the current path and the bookmark's original path even after a rename while closed. Legacy
-move collisions keep source view choices and destination annotation names, as before. Thereafter
-no settings relocation is needed. WorldResources shares this owner; SavedPlaces owns live annotations,
-and MapModel owns each dimension's live MapPresentation. Annotation JSON is encoded only for annotation edits or
-legacy move merging, never for viewport/layer saves. AppModel registers both shared resources and
+Settings stay at that UUID when a world moves; no preference relocation or merging is needed.
+WorldResources shares this owner; SavedPlaces owns live annotations, and MapModel owns each
+dimension's live MapPresentation. Annotation JSON is encoded only for annotation edits, never for
+viewport/layer saves. AppModel registers both shared resources and
 pending reads by that folder ID. A move or reread admits one new WorldReadSource, replacing file
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads
 retire; BackgroundWork drains their accepted work before releasing the old access. Compatible
@@ -1337,25 +1336,29 @@ front dimension. A dimension without a map retains the same value in the session
 state, transferring it to MapModel when its source appears; it never keeps a parallel fallback copy
 beside a loaded map. Existing loaded maps retain their choices across source removal and return.
 
-WorldSettings migrates a dimension's separate view/depth/style/filter/lighting/blending/shadow/layer
-fields on first use, then removes only those obsolete entries. Other dimensions migrate independently.
-Old app-wide layer preferences seed a new dimension once. Missing or unreadable choices retain the
-current defaults without discarding readable siblings, structure visibility preserves explicit hidden
-choices and defaults for new groups, and block filters still normalize IDs through their owner.
+WorldSettings reads only the current ID-keyed record and its per-dimension map presentations.
+It no longer imports path-keyed settings, separate map fields, app-wide layer choices or shown-only
+group lists. An unconverted choice uses its current default; existing current-format choices stay
+unchanged. Missing or unreadable choices default independently of readable siblings, and block filters
+still normalize IDs through their owner. Reading a record does not rewrite it or retire old keys.
 Appearance filters remain transient and are excluded from encoding. Saved-place bytes, front-dimension
-state, version notices and the existing path/bookmark migration policy remain separate and unchanged.
-The API now reads `mapPresentation(for:)` and saves a complete presentation (with an explicit viewport
-when navigation saves); the old field getters, optional field-by-field save and layer dictionaries
-are retained only as private migration decoding, not writable control interfaces.
+state and version notices stay separate. The API reads `mapPresentation(for:)` and saves a complete
+presentation, with an explicit viewport when navigation saves.
+
+WorldFolders stores only each world's ID and read-only bookmark. The old bare bookmark-array importer
+and retained legacy path are removed. Resolving and refreshing current bookmarks still follows folder
+moves, retains unavailable records, gives copies their own identity and preserves security scope.
+AppModel no longer deletes the old window model's preference keys at launch. Online-name consent and
+Minecraft save-format readers are unchanged by this removal (#566).
 
 Layer controls are remembered separately for each world's dimension tab (Ryan, 2026-10-17,
 fahlman/Chunksee#170): structures, places, creatures, biomes, hidden players, saved places, grid and Time Spent.
-Saved Places defaults to shown for new and older settings. Hiding its pins keeps the sidebar
+Saved Places defaults to shown when the current record has no choice. Hiding its pins keeps the sidebar
 list and annotations; creating or visiting one reveals them in its dimension, while renaming leaves
 visibility unchanged. MapAnnotations owns editor commits and their shared reveal path. MapContent applies
 the flag once for drawing, picking, accessibility and export.
-Existing app-wide preferences seed a new scope once; later tab changes never write the old keys
-or another dimension's entry. Native world moves migrate every dimension's saved controls.
+Each dimension saves only its own choices. Native world moves retain every dimension's saved controls
+through the bookmark's unchanged world ID.
 MapPresentation includes a typed LayerVisibility value for every overlay choice. HeatMapLayer and
 SlimeChunkLayer observe their visibility from that value alongside their reader or seed; neither
 keeps an editable flag or persistence reference. HeatMapLayer holds that document's reader as the

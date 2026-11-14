@@ -28,8 +28,11 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make(), id = UUID()
-        // An existing dimension with no border choice keeps the previously always-shown border.
-        defaults.set(["layers": ["minecraft:overworld": ["showsGrid": true]]], forKey: "worldSettings." + id.uuidString)
+        // A missing border choice uses its default without losing the saved grid choice.
+        let record = try JSONSerialization.data(withJSONObject:
+            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]])
+        defaults.set(["version": 2, "mapPresentations": ["minecraft:overworld": record]],
+                     forKey: "worldSettings." + id.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)
             let prepared = try await WorldPreparation.read(WorldSnapshot.read(url), minecraft: names.minecraft)

@@ -65,41 +65,24 @@ enum StructureTagFixture {
     @Test func savedVisibilityKeepsChoicesAndGivesNewGroupsTheirDefaults() throws {
         let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
         let key = "worldSettings." + id.uuidString
-        defaults.set(["layers": [dimension: ["shownStructureGroups": ["village", "mineshaft", "other"]]]], forKey: key)
         let settings = WorldSettings(id: id, defaults: defaults)
-        var restored = settings.mapPresentation(for: dimension)
-        #expect(restored.overlays.structures == [.village, .mineshaft, .other, .abandonedCamp])
-        #expect(defaults.dictionary(forKey: key)?["layers"] == nil)
+        var choices = MapPresentation()
+        choices.overlays.structures = [.village, .mineshaft, .other, .abandonedCamp]
+        settings.save(choices, for: dimension)
+        var restored = WorldSettings(id: id, defaults: defaults).mapPresentation(for: dimension)
+        #expect(restored.overlays.structures == choices.overlays.structures)
         restored.overlays.structures.remove(.abandonedCamp)
         restored.overlays.structures.insert(.stronghold)
         settings.save(restored, for: dimension)
         #expect(settings.mapPresentation(for: dimension).overlays.structures == [.village, .mineshaft, .other, .stronghold])
         #expect(settings.mapPresentation(for: "minecraft:the_nether").overlays.structures.contains(.abandonedCamp))
 
-        // Missing groups in either the historical dictionary or the new record use their default.
-        let choices: [String: Bool] = ["village": false, "mineshaft": true]
-        let payloads: [[String: Any]] = [
-            ["layers": [dimension: ["structureVisibility": choices]]],
-            ["mapPresentations": [dimension: try JSONSerialization.data(withJSONObject:
-                ["presentation": ["overlays": ["structures": choices]]])]]
-        ]
-        for payload in payloads {
-            defaults.set(payload, forKey: key)
-            let newer = settings.mapPresentation(for: dimension).overlays
-            #expect(!newer.structures.contains(.village) && newer.structures.contains(.mineshaft))
-            #expect(newer.structures.contains(.abandonedCamp) && !newer.structures.contains(.netherFossil))
-        }
-    }
-
-    @Test func oldGlobalVisibilityMigratesOncePerDimension() {
-        let defaults = TestDefaults.make()
-        defaults.set([String](), forKey: "shownStructureGroups")
-        let settings = WorldSettings(id: UUID(), defaults: defaults)
-        var restored = settings.mapPresentation(for: "minecraft:overworld")
-        #expect(restored.overlays.structures == [.abandonedCamp])
-        restored.overlays.structures.remove(.abandonedCamp)
-        settings.save(restored, for: "minecraft:overworld")
-        #expect(settings.mapPresentation(for: "minecraft:overworld").overlays.structures.isEmpty)
+        let record = try JSONSerialization.data(withJSONObject: ["version": 1,
+            "presentation": ["overlays": ["structures": ["village": false, "mineshaft": true]]]])
+        defaults.set(["version": 2, "mapPresentations": [dimension: record]], forKey: key)
+        let newer = settings.mapPresentation(for: dimension).overlays
+        #expect(!newer.structures.contains(.village) && newer.structures.contains(.mineshaft))
+        #expect(newer.structures.contains(.abandonedCamp) && !newer.structures.contains(.netherFossil))
     }
 
     @Test func livePackChangesReclassifyCachedStructuresWithoutLosingTheirIdentity() async throws {
