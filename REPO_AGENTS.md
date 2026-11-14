@@ -617,7 +617,7 @@ older scan envelopes.
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
 | `MapDrawingInput.swift` | Resolved terrain presentation shared by the screen, Copy/Share, area export and their legends |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
-| `ContentView.swift`, `MapView.swift` | SwiftUI views |
+| `ContentView.swift`, `MapView.swift` | SwiftUI views; ContentView's small AppKit attachment lets inspector writes query their owning window when SwiftUI's captured appearance state is stale (see SelectionModel) |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types and resolved creature list routes, each dimension view's expanded groups and revealing a map marker's ancestors |
@@ -936,7 +936,8 @@ termination query so focus changes while AppKit closes tabs cannot overwrite the
 Before returning the normal immediate reply, the app's existing termination hook asks AppModel
 to save every live dimension's current viewport/depth through WorldResources. This flushes the
 one-second viewport debounce without waiting for document deinitialization or changing the
-front dimension. No world files are written; native termination and restoration remain AppKit's. No tab/window focus bridge is used.
+front dimension. No world files are written; native termination and restoration remain AppKit's.
+The inspector's write-time owning-window query is the only focus bridge (see SelectionModel).
 
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
