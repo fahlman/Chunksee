@@ -78,8 +78,8 @@ import Testing
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         defer { first.close(); second.close() }
         await first.search.waitForIndex(); await second.search.waitForIndex()
-        let inspector = WorldView.inspectorBinding(for: first, appearsActive: true)
-        let otherInspector = WorldView.inspectorBinding(for: second, appearsActive: true)
+        let inspector = WorldView.inspectorBinding(for: first) { true }
+        let otherInspector = WorldView.inspectorBinding(for: second) { true }
         let presentations: [(WorldSession) -> Void] = [
             { $0.presentSheet(.coordinates) },
             { $0.presentSheet(.imageExport) },
@@ -121,7 +121,7 @@ import Testing
     }
 
     @Test(arguments: [true, false])
-    func inactiveInspectorWritesPreserveEachWindowsSelection(sharedWorld: Bool) async throws {
+    func retainedInspectorBindingChecksTheCurrentWindowAtEachWrite(sharedWorld: Bool) async throws {
         let roots = try (0..<(sharedWorld ? 1 : 2)).map { _ in try TestWorld.make(chunks: []) }
         defer { for root in roots { try? FileManager.default.removeItem(at: root) } }
         let firstResources = try await resources(roots[0])
@@ -131,45 +131,52 @@ import Testing
         defer { first.close(); second.close() }
         try #require(first.viewID != second.viewID && first.selectedDimensionID == second.selectedDimensionID)
         try #require((first.resources === second.resources) == sharedWorld)
-        let activeFirst = WorldView.inspectorBinding(for: first, appearsActive: true)
-        let inactiveFirst = WorldView.inspectorBinding(for: first, appearsActive: false)
-        let activeSecond = WorldView.inspectorBinding(for: second, appearsActive: true)
-        let inactiveSecond = WorldView.inspectorBinding(for: second, appearsActive: false)
+        var currentWindow: UUID? = first.viewID
+        let firstBinding = WorldView.inspectorBinding(for: first) { currentWindow == first.viewID }
+        let secondBinding = WorldView.inspectorBinding(for: second) { currentWindow == second.viewID }
 
         first.selection.choose(.storage)
-        try #require(activeFirst.wrappedValue && !activeSecond.wrappedValue)
-        inactiveFirst.wrappedValue = false
-        inactiveSecond.wrappedValue = true
-        #expect(activeFirst.wrappedValue && first.selection.sidebarSelection == .storage)
-        #expect(!activeSecond.wrappedValue && second.selection.sidebarSelection == nil)
+        try #require(firstBinding.wrappedValue && !secondBinding.wrappedValue)
+        // Both bindings were created while the first window was current. They must
+        // use subsequent activity, including an inactive app, without being rebuilt.
+        currentWindow = nil
+        firstBinding.wrappedValue = false
+        secondBinding.wrappedValue = true
+        #expect(firstBinding.wrappedValue && first.selection.sidebarSelection == .storage)
+        #expect(!secondBinding.wrappedValue && second.selection.sidebarSelection == nil)
         #expect(second.selection.sidebarRevealRequest == nil)
 
         // Deliberate Hide retains the selected identity; an inactive Show cannot override it.
-        activeFirst.wrappedValue = false
-        inactiveFirst.wrappedValue = true
-        #expect(!activeFirst.wrappedValue && first.selection.sidebarSelection == .storage)
-        activeSecond.wrappedValue = true
-        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        currentWindow = first.viewID
+        firstBinding.wrappedValue = false
+        currentWindow = second.viewID
+        firstBinding.wrappedValue = true
+        #expect(!firstBinding.wrappedValue && first.selection.sidebarSelection == .storage)
+        secondBinding.wrappedValue = true
+        #expect(secondBinding.wrappedValue && second.selection.sidebarSelection == .worldInfo)
         let previousReveal = try #require(second.selection.sidebarRevealRequest)
-        activeSecond.wrappedValue = true
+        secondBinding.wrappedValue = true
         #expect(second.selection.sidebarRevealRequest != previousReveal)
-        inactiveSecond.wrappedValue = false
-        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        currentWindow = first.viewID
+        secondBinding.wrappedValue = false
+        #expect(secondBinding.wrappedValue && second.selection.sidebarSelection == .worldInfo)
 
-        activeFirst.wrappedValue = true
+        firstBinding.wrappedValue = true
         #expect(first.selection.inspector == .storage && first.selection.sidebarSelection == .storage)
-        activeFirst.wrappedValue = false
+        firstBinding.wrappedValue = false
+        currentWindow = nil
         first.selection.choose(.storage)
-        #expect(inactiveFirst.wrappedValue && first.selection.sidebarSelection == .storage)
-        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        #expect(firstBinding.wrappedValue && first.selection.sidebarSelection == .storage)
+        #expect(secondBinding.wrappedValue && second.selection.sidebarSelection == .worldInfo)
 
         first.close()
         await first.waitUntilClosed()
-        let closedVisibility = activeFirst.wrappedValue
+        let closedVisibility = firstBinding.wrappedValue
         let closedSelection = first.selection.sidebarSelection
-        for shown in [true, false] { activeFirst.wrappedValue = shown }
-        #expect(activeFirst.wrappedValue == closedVisibility && first.selection.sidebarSelection == closedSelection)
-        #expect(activeSecond.wrappedValue && second.selection.sidebarSelection == .worldInfo)
+        currentWindow = first.viewID
+        for shown in [true, false] { firstBinding.wrappedValue = shown }
+        #expect(firstBinding.wrappedValue == closedVisibility && first.selection.sidebarSelection == closedSelection)
+        #expect(secondBinding.wrappedValue && second.selection.sidebarSelection == .worldInfo)
         second.close()
         await second.waitUntilClosed()
     }

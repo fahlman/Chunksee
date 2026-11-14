@@ -1,4 +1,5 @@
 import Accessibility
+import AppKit
 import ChunkseeKit
 import ChunkseeIndex
 import SwiftUI
@@ -269,30 +270,60 @@ struct WorldView: View {
         }
     }
 
-    static func inspectorBinding(for session: WorldSession, appearsActive: Bool) -> Binding<Bool> {
+    static func inspectorBinding(for session: WorldSession,
+                                 acceptsPresentationChange: @escaping () -> Bool) -> Binding<Bool> {
         Binding { session.selection.isInspectorShown } set: {
-            // Tab changes can send visibility to this binding before the scene activates.
-            // Only the active scene may turn that presentation write into a choice.
-            guard appearsActive else { return }
+            // A retained binding can receive native reconciliation writes after another tab
+            // becomes main. Query its window now, rather than capturing an appearance value.
+            guard acceptsPresentationChange() else { return }
             session.commandTarget?.selection.isInspectorShown = $0
         }
     }
 
 }
 
-/// Activation belongs to the inspector boundary, so changing windows does not add a new
-/// observation dependency to the whole sidebar and map body.
+/// The native window query stays at the inspector boundary; SelectionModel owns visibility.
 private struct WorldInspectorPresentation: ViewModifier {
     let session: WorldSession
-    @Environment(\.appearsActive) private var appearsActive
+    @State private var window = InspectorWindow()
 
     func body(content: Content) -> some View {
-        content.inspector(isPresented: WorldView.inspectorBinding(for: session, appearsActive: appearsActive)) {
+        content.inspector(isPresented: WorldView.inspectorBinding(for: session) {
+            window.acceptsPresentationChange
+        }) {
             WorldInspector(session: session)
                 // Capped so a wide row can't push the inspector past the window's edge.
                 .inspectorColumnWidth(min: 320, ideal: 340, max: 420)
         }
+        .background {
+            InspectorWindowReader(reference: window)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
+}
+
+/// SwiftUI's appearance preference can outlive native tab activation. Keep only a weak
+/// attachment to query AppKit's current document window; no activity or visibility is cached.
+private final class InspectorWindow {
+    weak var view: NSView?
+
+    var acceptsPresentationChange: Bool {
+        NSApp.isActive && view?.window?.isMainWindow == true
+    }
+}
+
+private struct InspectorWindowReader: NSViewRepresentable {
+    let reference: InspectorWindow
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        reference.view = view
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) { reference.view = view }
 }
 
 /// A player in the sidebar. Choosing one shows their details and, when it's known, their last
