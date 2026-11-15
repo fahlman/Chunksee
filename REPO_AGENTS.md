@@ -62,7 +62,12 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
   - Product, repository, project and app target: `Chunksee`.
   - Unit test target: `ChunkseeTests`.
   - Bundle identifier: `com.fahlsing.Chunksee`.
-- **Distribution:** local builds only. No release or distribution process is approved.
+- **Distribution:** Ryan approved GitHub releases on 2026-11-15 (#568). The first follows
+  completed foundation work and Ryan's test list, before Metal (#477). The repository stays
+  private; updates are manual. TestFlight (#138) is deferred and App Store (#74) stays on hold.
+  Follow [RELEASING.md](RELEASING.md) for the exact archive, Developer ID export, notarization,
+  verification and publication commands. Claude must approve each source PR and the release
+  candidate before publication. Agents never launch the release's real bundle ID.
 - **Signing owner:** Automatic signing with team `PUT2KYMV2W`, the same team as Euchre.
 - **Sandbox:** App Sandbox and hardened runtime are on.
 - **Entitlements:**
@@ -1765,7 +1770,11 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   Unregister and remove only that test copy afterwards.
 - **Automated GitHub checks:** none, because Ryan's projects run no hosted macOS CI. This was
   recorded on 2026-10-09.
-- **Releases:** no release or distribution process is approved. Builds are local only.
+- **Releases:** use [RELEASING.md](RELEASING.md) and the recorded approval on #568. Ordinary
+  build/test commands never publish. Release archives use a separate DerivedData directory
+  from tests, the ordinary app target in Release, and the published Kit pin. The Developer ID
+  export must retain the existing entitlements, pass notarization and all recorded signature,
+  Gatekeeper and stapled-ticket checks before its zip is attached to a GitHub release.
 
 ## Toolchain and platforms
 
