@@ -9,6 +9,11 @@ import Testing
     private let neutral = #"{"slots":["any"],"effects":{}}"#
     private let changesHealth = #"{"slots":["head"],"effects":{"minecraft:attributes":[{"id":"test:health","attribute":"minecraft:max_health","amount":4,"operation":"add_value"}]}}"#
 
+    private actor Scans {
+        private(set) var count = 0
+        func record() { count += 1 }
+    }
+
     private func write(_ text: String, to file: URL) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: file, options: .atomic)
@@ -35,11 +40,12 @@ import Testing
         return root
     }
 
-    private func resources(_ root: URL, assetReads: TestGameAssets? = nil) async throws -> WorldResources {
+    private func resources(_ root: URL, assetReads: TestGameAssets? = nil,
+                           readRegion: @escaping RegionReader.Read = RegionReader.scan) async throws -> WorldResources {
         let defaults = TestDefaults.make()
         let result = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root.appendingPathComponent("test-cache"),
-            watchWorld: { _, _ in nil }, readGameAssets: { minecraft in
+            watchWorld: { _, _ in nil }, readRegion: readRegion, readGameAssets: { minecraft in
                 if let assetReads { return try await assetReads.read(minecraft) }
                 return try await minecraft.readLibrary()
             })
@@ -54,34 +60,60 @@ import Testing
         let player = try #require(resources.players.first)
         let creature = try #require(resources.index.index.dimensions["minecraft:overworld"]?.creatures.first?.creature)
         #expect(player.health == 17 && creature.health == 17)
-        #expect(player.maxHealth == value && creature.maxHealth == value)
-        #expect(resources.readers.values.allSatisfy { $0.scanOptions.enchantments == resources.details.definitions.enchantments })
+        let enchantments = resources.details.definitions.enchantments
+        #expect(player.maximumHealth(enchantments: enchantments) == value)
+        #expect(creature.maximumHealth(enchantments: enchantments) == value)
     }
 
-    @Test func initialPlayersAndScansUseTheSameCustomPackDefinitions() async throws {
+    @Test func definitionChangesResolveCachedHealthWithoutReadingRegionsAgain() async throws {
         let root = try fixture(enchantment: "test:ward")
         defer { try? FileManager.default.removeItem(at: root) }
         let definition = root.appendingPathComponent("datapacks/ChunkseeTest/data/test/enchantment/ward.json")
         try write(neutral, to: definition)
-        let resources = try await resources(root)
+        let scans = Scans()
+        let read: RegionReader.Read = { dimension, region, options in
+            await scans.record()
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        }
+        let resources = try await resources(root, readRegion: read)
         defer { resources.close() }
         try await expectHealth(20, in: resources)
         let before = try #require(resources.readers["minecraft:overworld"])
         let dimension = await before.dimension
         let key = ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: .init(before.scanOptions))
+        let savedCreature = try #require(resources.index.index.dimensions[dimension.id]?.creatures.first?.creature)
+        #expect(await scans.count == 1)
         try write(changesHealth, to: definition)
         resources.worldChanged([definition])
         try await expectHealth(nil, in: resources)
         let after = try #require(resources.readers["minecraft:overworld"])
-        #expect(before !== after)
-        #expect(key != ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: .init(after.scanOptions)))
+        #expect(before === after)
+        #expect(key == ScanCache.Key(dimension: dimension, region: .init(x: 0, z: 0), options: .init(after.scanOptions)))
+        #expect(resources.index.index.dimensions[dimension.id]?.creatures.first?.creature == savedCreature)
+        #expect(await scans.count == 1)
         try write("malformed", to: definition)
         resources.worldChanged([definition])
         try await expectHealth(nil, in: resources)
+        #expect(resources.readers[dimension.id] === before)
+        #expect(await scans.count == 1)
         try FileManager.default.removeItem(at: definition)
         resources.worldChanged([definition])
         try await expectHealth(nil, in: resources)
+        #expect(resources.readers[dimension.id] === before)
+        #expect(await scans.count == 1)
         resources.close(); await resources.waitUntilClosed()
+
+        let reopened = try await self.resources(root, readRegion: read)
+        defer { reopened.close() }
+        try await expectHealth(nil, in: reopened)
+        #expect(reopened.index.index.dimensions[dimension.id]?.creatures.first?.creature == savedCreature)
+        #expect(await scans.count == 1)
+        try write(neutral, to: definition)
+        reopened.worldChanged([definition])
+        try await expectHealth(20, in: reopened)
+        #expect(reopened.index.index.dimensions[dimension.id]?.creatures.first?.creature == savedCreature)
+        #expect(await scans.count == 1)
+        reopened.close(); await reopened.waitUntilClosed()
     }
 
     @Test func installedGameChangesReachHiddenWorldsAndPackOverridesWin() async throws {
@@ -274,13 +306,13 @@ import Testing
         let resources = try await resources(root)
         defer { resources.close() }
         let original = resources.playerSnapshot, definitions = resources.details.definitions
-        resources.readPlayers = { _, _ in nil }
+        resources.readPlayers = { _ in nil }
         try write(changesHealth, to: definition)
         resources.worldChanged([definition])
         await resources.waitForRefresh()
         #expect(resources.playerSnapshot === original && resources.details.definitions == definitions)
         try await expectHealth(20, in: resources)
-        resources.readPlayers = { await WorldResources.readPlayers($0, enchantments: $1) }
+        resources.readPlayers = { await WorldResources.readPlayers($0) }
         resources.worldChanged([definition])
         try await expectHealth(nil, in: resources)
         resources.close(); await resources.waitUntilClosed()

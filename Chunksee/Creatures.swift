@@ -94,6 +94,7 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
     @ViewBuilder var location: Location
 
     var body: some View {
+        let maximum = creature.maximumHealth(enchantments: session.details.definitions.enchantments)
         Section {
             LabeledContent("Kind", value: gameNames.entity(creature.id))
             location
@@ -107,9 +108,9 @@ struct CreatureDetailSections<Header: View, Location: View>: View {
         } header: {
             header
         }
-        if HealthPresentation(health: creature.health, maximum: creature.maxHealth).isAvailable {
+        if HealthPresentation(health: creature.health, maximum: maximum).isAvailable {
             Section("Status") {
-                HealthRow(health: creature.health, maximum: creature.maxHealth)
+                HealthRow(health: creature.health, maximum: maximum)
             }
         }
         if let equipment = creature.equipment {

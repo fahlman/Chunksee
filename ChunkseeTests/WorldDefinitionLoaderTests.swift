@@ -47,7 +47,7 @@ import Testing
         let definitions = AsyncReadGate<WorldDefinitions>()
         let players = AsyncReadGate<[PlayerInfo]?>(), numbers = ReadNumbers()
         loader.readDefinitions = { _, _ in await definitions.read("definitions") }
-        loader.readPlayers = { _, _ in await players.read(String(await numbers.next())) }
+        loader.readPlayers = { _ in await players.read(String(await numbers.next())) }
         loader.refreshPlayers()
         await players.waitForRequest("0")
         loader.refreshPlayers()
@@ -63,7 +63,7 @@ import Testing
         updated.possibleBiomes = ["minecraft:overworld": ["example:changed"]]
         await definitions.finish("definitions", with: updated)
         await players.waitForRequest("1")
-        // The player interpretation is still in flight: neither half of the next pair is visible.
+        // The coalesced player read is still in flight: neither half of the next pair is visible.
         #expect(loader.snapshot.players.first?.position?.x == 10)
         #expect(loader.value?.definitions == fixture.initial)
         await players.finish("1", with: [player(20)])
@@ -89,7 +89,7 @@ import Testing
         let definitions = AsyncReadGate<Result<WorldDefinitions, CocoaError>>()
         let players = AsyncReadGate<[PlayerInfo]?>()
         loader.readDefinitions = { _, _ in try await definitions.read("definitions").get() }
-        loader.readPlayers = { _, _ in await players.read("players") }
+        loader.readPlayers = { _ in await players.read("players") }
         let original = loader.snapshot
         let initialSource = loader.value?.source, generation = UUID()
         loader.refreshDefinitions(gameSource: .init(generation: generation, selection: .loaded(nil)))
@@ -126,7 +126,7 @@ import Testing
         defer { fixture.close(); fixture.remove() }
         let gate = AsyncReadGate<WorldDefinitions>(), numbers = ReadNumbers()
         loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
-        loader.readPlayers = { _, _ in [] }
+        loader.readPlayers = { _ in [] }
         let initialPlayers = loader.snapshot, initialSource = loader.value?.source
         loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await gate.waitForRequest("0")
@@ -167,7 +167,7 @@ import Testing
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<WorldDefinitions>(), players = AsyncReadGate<[PlayerInfo]?>()
         loader.readDefinitions = { _, library in await definitions.read(library?.sourceKey ?? "none") }
-        loader.readPlayers = { _, _ in await players.read("players") }
+        loader.readPlayers = { _ in await players.read("players") }
         let original = loader.snapshot
         let initialSource = WorldGameDataSource(generation: fixture.generation, selection: .loaded(first)).identity
         let generation = replacingGeneration ? UUID() : fixture.generation
@@ -209,7 +209,7 @@ import Testing
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<WorldDefinitions>()
         loader.readDefinitions = { _, _ in await definitions.read("definitions") }
-        loader.readPlayers = { _, _ in [] }
+        loader.readPlayers = { _ in [] }
         let original = loader.snapshot, initial = loader.value
         loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await definitions.waitForRequest("definitions")
@@ -253,7 +253,7 @@ import Testing
         let different = try #require(try WorldDefinitions.read(addedWorld, assets: nil).dimensionSettings["example:added"])
         let gate = AsyncReadGate<WorldDefinitions>(), numbers = ReadNumbers()
         loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
-        loader.readPlayers = { _, _ in [] }
+        loader.readPlayers = { _ in [] }
         var changed = fixture.initial
         changed.dimensionSettings["minecraft:overworld"] = different
         let updated = changed

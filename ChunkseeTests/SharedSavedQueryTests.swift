@@ -299,7 +299,7 @@ import Testing
             "Inventory": .list([.compound(["id": .string("minecraft:diamond"), "count": .int(7)])]),
         ]), lastSaved: player.lastSaved)
         resources.refreshDelay = .zero
-        resources.readPlayers = { _, _ in [updated] }
+        resources.readPlayers = { _ in [updated] }
         resources.worldChanged([resources.world.playerDataDirectory.appendingPathComponent("\(player.uuid).dat")])
         await resources.waitForRefresh()
         #expect(resources.playerSnapshot !== originalPlayers)

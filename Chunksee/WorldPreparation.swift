@@ -42,7 +42,7 @@ struct WorldPreparation {
     nonisolated static func readingGameData(_ snapshot: WorldSnapshot, library: GameDataLibrary) async throws -> WorldSnapshot {
         var details = snapshot.details
         details.definitions = try await library.definitions(in: snapshot.world)
-        let players = snapshot.world.players(enchantments: details.definitions.enchantments)
+        let players = snapshot.world.players()
         try Task.checkCancellation()
         return WorldSnapshot(access: snapshot.access, world: snapshot.world, dimensions: snapshot.dimensions,
                              dimensionDocuments: snapshot.dimensionDocuments, players: players, details: details)

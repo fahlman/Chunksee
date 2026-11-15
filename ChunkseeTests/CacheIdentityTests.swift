@@ -145,16 +145,18 @@ extension RegionTileRenderer {
         map.close(); await map.waitForRenders()
     }
 
-    @Test func scanIdentitiesCoverEnchantmentDefinitionsAndIgnoreInsertionOrder() throws {
+    @Test func scanIdentitiesIgnoreEnchantmentDefinitionsAndKeepReaderContractInvalidation() throws {
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let neutral = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{}}"#.utf8)))
         let health = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{"minecraft:attributes":[{"id":"test:health","attribute":"minecraft:max_health","amount":4,"operation":"add_value"}]}}"#.utf8)))
-        let first = RegionScanOptions(blockIDs: Set(["minecraft:stone", "minecraft:dirt"]),
-                                      enchantments: Dictionary(uniqueKeysWithValues: [("test:a", neutral), ("test:b", health)]))
-        let reordered = RegionScanOptions(blockIDs: Set(["minecraft:dirt", "minecraft:stone"]),
-                                          enchantments: Dictionary(uniqueKeysWithValues: [("test:b", health), ("test:a", neutral)]))
+        var definitions = WorldDefinitions(enchantments: Dictionary(uniqueKeysWithValues: [("test:a", neutral), ("test:b", health)]))
+        var first = RegionReader.options(definitions: definitions)
+        first.blockIDs = Set(["minecraft:stone", "minecraft:dirt"])
+        definitions.enchantments = Dictionary(uniqueKeysWithValues: [("test:b", health), ("test:a", neutral)])
+        var reordered = RegionReader.options(definitions: definitions)
+        reordered.blockIDs = Set(["minecraft:dirt", "minecraft:stone"])
         let region = RegionPosition(x: 0, z: 0)
         let key = ScanCache.Key(dimension: dimension, region: region, options: .init(first))
         let otherOrder = ScanCache.Key(dimension: dimension, region: region, options: .init(reordered))
@@ -162,8 +164,13 @@ extension RegionTileRenderer {
         let cache = ScanCache(directory: root.appendingPathComponent("scans"))
         cache.store(try dimension.scan(region: region, options: first), key: key)
         #expect(ScanCache(directory: cache.directory).load(otherOrder)?.options == first)
+        definitions.enchantments["test:a"] = health
+        var newDefinitions = RegionReader.options(definitions: definitions)
+        newDefinitions.blockIDs = first.blockIDs
+        let sameKey = ScanCache.Key(dimension: dimension, region: region, options: .init(newDefinitions))
+        #expect(sameKey == key && cache.load(sameKey)?.options == first)
         var changed = first
-        changed.enchantments["test:a"] = health
+        changed.height = 384
         #expect(cache.load(.init(dimension: dimension, region: region, options: .init(changed))) == nil)
         for field in ["revision", "generatedFacts", "dependencies"] {
             var changed = key

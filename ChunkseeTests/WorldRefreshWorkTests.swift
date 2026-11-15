@@ -22,11 +22,11 @@ struct WorldRefreshWorkTests {
         let gate = AsyncReadGate<[PlayerInfo]>(), scheduling = AsyncReadGate<Void>()
         resources.waitBeforeRefresh = { _ in await scheduling.read("save") }
         let file = url.appendingPathComponent("level.dat")
-        resources.readPlayers = { _, _ in await gate.read("older") }
+        resources.readPlayers = { _ in await gate.read("older") }
         resources.worldChanged([file])
         await scheduling.waitForRequest("save"); await scheduling.finish("save", with: ())
         await gate.waitForRequest("older")
-        resources.readPlayers = { _, _ in await gate.read("newer") }
+        resources.readPlayers = { _ in await gate.read("newer") }
         resources.worldChanged([file])
         await scheduling.waitForRequest("save", count: 2)
         resources.close()
@@ -52,7 +52,7 @@ struct WorldRefreshWorkTests {
         let unrelated = AsyncReadGate<Void>(), players = AsyncReadGate<[PlayerInfo]>()
         resources.backgroundWork.start(priority: .utility) { await unrelated.read("other") }
         await unrelated.waitForRequest("other")
-        resources.readPlayers = { _, _ in await players.read("players") }
+        resources.readPlayers = { _ in await players.read("players") }
         resources.worldChanged([url.appendingPathComponent("level.dat")])
         await players.waitForRequest("players")
         await players.finish("players", with: [])

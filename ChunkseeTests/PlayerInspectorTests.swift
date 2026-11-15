@@ -212,14 +212,14 @@ import Testing
         defer { session.close() }
         session.selection.inspector = .player(owner)
         let old = try #require(session.players.first { $0.uuid == owner })
-        #expect(old.maxHealth == 20 && old.activeEffects.isEmpty)
+        #expect(old.maximumHealth(enchantments: [:]) == 20 && old.activeEffects.isEmpty)
         try save(health: 28, effects: [.compound(["id": .string("minecraft:health_boost"), "amplifier": .byte(2), "duration": .int(1200)])], healthBoost: 12)
         session.resources.refreshDelay = .zero
         session.resources.worldChanged([file])
         await session.resources.waitForRefresh()
         let current = try #require(session.players.first { $0.uuid == owner })
         #expect(session.selection.inspector == .player(owner))
-        #expect(current.health == 28 && current.maxHealth == 32 && current.activeEffects.first?.level == 3)
+        #expect(current.health == 28 && current.maximumHealth(enchantments: [:]) == 32 && current.activeEffects.first?.level == 3)
         #expect(current.mainHandItem?.durability?.remaining == 1500)
         #expect(old.health == 20 && old.activeEffects.isEmpty)
         session.close()

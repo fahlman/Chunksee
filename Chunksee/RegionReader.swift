@@ -53,8 +53,7 @@ actor RegionReader {
     nonisolated static func options(context: MapSurfaceContext = .unknown,
                                     definitions: WorldDefinitions = .init()) -> RegionScanOptions {
         RegionScanOptions(blockIDs: definitions.notableBlocks.blockIDs,
-                          biomeSampleY: context.biomeSampleY, height: context.buildHeight,
-                          enchantments: definitions.enchantments)
+                          biomeSampleY: context.biomeSampleY, height: context.buildHeight)
     }
 
     @concurrent

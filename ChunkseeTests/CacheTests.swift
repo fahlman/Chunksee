@@ -161,9 +161,9 @@ import Testing
 
         let reader = RegionReader(dimension: dimension, cache: cache)
         let creatures = try #require(await reader.facts(region)).creatures
-        #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maxHealth == 10)
+        #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maximumHealth(enchantments: [:]) == 10)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.creatures
-        #expect(saved?.first?.maxHealth == 10)
+        #expect(saved?.first?.maximumHealth(enchantments: [:]) == 10)
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 

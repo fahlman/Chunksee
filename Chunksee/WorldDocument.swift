@@ -66,7 +66,7 @@ nonisolated struct WorldSnapshot: Sendable {
             }
             let details = WorldDetails.read(world)
             let snapshot = WorldSnapshot(access: access, world: world, dimensions: dimensions, dimensionDocuments: documents,
-                                         players: world.players(enchantments: details.definitions.enchantments), details: details)
+                                         players: world.players(), details: details)
             try Task.checkCancellation()
             return snapshot
         } catch is CancellationError {
