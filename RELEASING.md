@@ -34,8 +34,12 @@ Use a clean, committed `main` checkout with the Kit pin already released. In #56
   Ryan supplies credentials through `xcrun notarytool store-credentials chunksee-notary` in his
   Terminal. Never put passwords, private keys or tokens in commands, source, logs or GitHub.
 
-Run each stage deliberately in a Bash shell from the repository root. Stop on failure and keep
-its evidence; do not repeat a submission or overwrite a release to hide a failed attempt.
+Run each stage deliberately in the same Bash shell from the repository root; later stages use
+the variables established earlier. Each block enables error handling again, so a fresh shell
+fails on missing values instead of using empty paths or hiding a failed pipeline. To resume in
+a new shell, restore the exact values from the retained release evidence before continuing.
+Stop on failure and keep its evidence; do not repeat a submission or overwrite a release to
+hide a failed attempt.
 Replace `APPROVED_MAIN_COMMIT` with the approved full commit before starting:
 
 ```sh
@@ -69,10 +73,13 @@ If several valid identities exist, confirm which one Xcode selected in the expor
 Never proceed with an expired certificate or a different team. A nonzero Xcode setup status is
 recorded; the actual required build and test still decide whether the source passes.
 
-When valid exact-candidate results do not already exist, run these required checks. The test
-command uses `ChunkseeTestHost`, never the real app container. Keep test products separate:
+When valid exact-candidate results do not already exist, run the required commands owned by
+REPO_AGENTS.md's "Build and test" section, with `-derivedDataPath`, `-resultBundlePath` and
+`-onlyUsePackageVersionsFromResolvedFile` added to isolate and retain release evidence. The
+test command uses `ChunkseeTestHost`, never the real app container. Keep test products separate:
 
 ```sh
+set -euo pipefail
 xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=macOS' \
     -configuration Release -derivedDataPath "$release_dir/check-build" \
     -onlyUsePackageVersionsFromResolvedFile build 2>&1 | tee "$release_dir/build.log"
@@ -89,8 +96,12 @@ Recheck the reservation and runtime ownership before the archive. Use a fresh De
 directory, with no `ENABLE_TESTABILITY` override or test-host condition. Never run tests in it.
 Inspect the build log/request to confirm the ordinary app target and shipping Release settings.
 Do not use `script/build_and_run.sh`: agents must not launch `com.fahlsing.Chunksee`.
+The first use of the Developer ID private key may display a macOS permission prompt. Ryan
+must answer it himself; if it appears, stop and tell him what is waiting. Agents do not approve
+system prompts.
 
 ```sh
+set -euo pipefail
 xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'generic/platform=macOS' \
     -configuration Release -derivedDataPath "$release_dir/archive-build" \
     -archivePath "$release_dir/Chunksee.xcarchive" \
@@ -104,7 +115,20 @@ test "$(plutil -extract CFBundleShortVersionString raw -o - "$release_app/Conten
 test "$(plutil -extract CFBundleVersion raw -o - "$release_app/Contents/Info.plist")" = "$release_build"
 codesign --verify --deep --strict --verbose=2 "$release_app" 2>&1 | tee "$release_dir/signature-before-notary.txt"
 codesign --display --verbose=4 "$release_app" 2> "$release_dir/signature-details.txt"
-codesign --display --entitlements - "$release_app" > "$release_dir/exported-entitlements.plist" 2> "$release_dir/entitlements.log"
+codesign --display --entitlements - --xml "$release_app" > "$release_dir/exported-entitlements.plist" 2> "$release_dir/entitlements.log"
+plutil -lint "$release_dir/exported-entitlements.plist"
+for entitlement in \
+    'com\.apple\.security\.app-sandbox' \
+    'com\.apple\.security\.files\.user-selected\.read-only' \
+    'com\.apple\.security\.files\.bookmarks\.app-scope' \
+    'com\.apple\.security\.network\.client'; do
+    test "$(plutil -extract "$entitlement" raw -o - "$release_dir/exported-entitlements.plist")" = true
+done
+if plutil -extract 'com\.apple\.security\.get-task-allow' raw -o - \
+    "$release_dir/exported-entitlements.plist"; then
+    printf '%s\n' 'Unexpected debugging entitlement in the exported app.' >&2
+    exit 1
+fi
 test -z "$(git status --porcelain)"
 test "$(git rev-parse HEAD)" = "$release_commit"
 ```
@@ -114,6 +138,8 @@ hardened runtime and a secure timestamp are required. Compare the exported entit
 `Chunksee/Chunksee.entitlements`: sandbox, selected files read-only, app-scoped bookmarks and
 outgoing network access remain enabled. Signing identity entitlements may be added by Xcode;
 debugging (`get-task-allow`), broader file access or other capability changes are not permitted.
+Keep the XML entitlement file and record each entitlement check's exit with the release evidence;
+the final extraction must fail because `get-task-allow` is absent, even if its value would be false.
 Check any nested executable code as part of signature verification; never repair a failed export
 by applying an ad hoc signature. Keep the archive, dSYMs and export records.
 
@@ -123,6 +149,7 @@ This stage uploads the exported app to Apple. Use only the keychain profile name
 save the submission ID and query that same submission until its status is terminal:
 
 ```sh
+set -euo pipefail
 ditto -c -k --keepParent "$release_app" "$release_dir/notarization.zip"
 xcrun notarytool submit "$release_dir/notarization.zip" --keychain-profile chunksee-notary \
     --output-format plist > "$release_dir/notary-submit.plist"
@@ -136,6 +163,7 @@ another upload. If submission output was lost, recover its ID from notarization 
 deciding whether another upload is needed.
 
 ```sh
+set -euo pipefail
 notary_status_file=$(mktemp "$release_dir/notary-status.XXXXXX")
 xcrun notarytool info "$notary_id" --keychain-profile chunksee-notary \
     --output-format plist > "$notary_status_file"
@@ -146,6 +174,7 @@ Only an **Accepted** status permits the next stage. Retrieve and inspect Apple's
 an accepted submission. Keep rejected submissions and their logs with the issue that owns the fix.
 
 ```sh
+set -euo pipefail
 test "$(plutil -extract status raw -o - "$notary_status_file")" = Accepted
 xcrun notarytool log "$notary_id" --keychain-profile chunksee-notary "$release_dir/notary-log.json"
 xcrun stapler staple "$release_app" 2>&1 | tee "$release_dir/staple.txt"
@@ -175,6 +204,7 @@ For the first release, explain installation and the first-launch point in the se
 Use file arguments so newlines and literal text survive the CLI.
 
 ```sh
+set -euo pipefail
 git fetch origin main --tags
 test -z "$(git status --porcelain)"
 test "$(git rev-parse HEAD)" = "$release_commit"
@@ -189,6 +219,7 @@ gh release create "$release_tag" --repo fahlman/Chunksee --verify-tag --draft \
 Inspect the draft's tag, notes and attachments against the approved record, then publish it:
 
 ```sh
+set -euo pipefail
 gh release edit "$release_tag" --repo fahlman/Chunksee --draft=false
 gh release view "$release_tag" --repo fahlman/Chunksee --json url,tagName,isDraft,assets \
     > "$release_dir/published-release.json"
