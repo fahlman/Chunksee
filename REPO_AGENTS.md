@@ -103,11 +103,16 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.88.0`, resolved to `0.88.0` (`4b8e4b9795e0e71a785a4f25b58786af23d0b2fc`).
+  minor" from `0.89.0`, resolved to `0.89.0` (`0a00b819667d74d2a3d4aaf05523d89581dfc8ee`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.89.0 retains typed saved health inputs and resolves maximum health against the
+    current enchantment definitions. Creature and player details use its explicit
+    `maximumHealth(enchantments:)` query. Readers no longer take definitions, so changing
+    enchantments keeps region readers and scan caches. RegionFacts revision 35 rebuilds
+    older saved facts once; later definition changes reuse those inputs without a region read.
   - Kit 0.88.0 supplies Minecraft-derived villager defaults and retains the original
     VillagerData through `Villager.savedData`. Names, search and map labels consume that
     interpretation directly; the app adds no fallback parsing or default table. A missing
