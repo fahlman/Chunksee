@@ -40,10 +40,6 @@ final class AppModel {
         self.cacheRoot = cacheRoot
         self.readWorld = readWorld
         self.readRegion = readRegion
-        // The old window model's bookmarks cannot serve native document restoration.
-        for key in ["openWorlds", "recentWorlds", "lastWorldBookmark"] {
-            defaults.removeObject(forKey: key)
-        }
         names = PlayerNames(defaults: defaults)
         savedSearches = SavedSearches(defaults: defaults)
         worldFolders = WorldFolders(defaults: defaults)

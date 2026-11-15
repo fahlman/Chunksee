@@ -7,19 +7,14 @@ nonisolated final class WorldFolders: Sendable {
     struct Folder: Sendable {
         let id: UUID
         let url: URL
-        /// Retained until settings can import the old path, even if the bookmark was refreshed.
-        let legacyPath: String?
     }
 
     private struct Record {
         let id: UUID
         var bookmark: Data
-        let legacyPath: String?
 
         var stored: [String: Any] {
-            var value: [String: Any] = ["id": id.uuidString, "bookmark": bookmark]
-            value["legacyPath"] = legacyPath
-            return value
+            ["id": id.uuidString, "bookmark": bookmark]
         }
     }
 
@@ -43,11 +38,11 @@ nonisolated final class WorldFolders: Sendable {
                 records[index].record.bookmark = bookmark
             } else {
                 index = records.count
-                records.append((Record(id: UUID(), bookmark: bookmark, legacyPath: world.standardizedFileURL.path), world))
+                records.append((Record(id: UUID(), bookmark: bookmark), world))
             }
             defaults.set(records.map { $0.record.stored }, forKey: Self.key)
             let record = records[index].record
-            return Folder(id: record.id, url: world, legacyPath: record.legacyPath)
+            return Folder(id: record.id, url: world)
         }
     }
 
@@ -64,24 +59,18 @@ nonisolated final class WorldFolders: Sendable {
                 guard let url else { continue }
                 let parent = url.resolvingSymlinksInPath().path
                 guard path.hasPrefix(parent + "/"), parent.count > parentLength else { continue }
-                found = Folder(id: record.id, url: url, legacyPath: record.legacyPath)
+                found = Folder(id: record.id, url: url)
                 parentLength = parent.count
             }
             return found
         }
     }
 
-    /// Import the previous bookmark array in place. The bookmark's stored path is available
-    /// without resolving it, including when the world moved while the app was closed.
     private func records() -> [Record] {
         (defaults.array(forKey: Self.key) ?? []).compactMap { value in
-            if let bookmark = value as? Data {
-                return Record(id: UUID(), bookmark: bookmark,
-                              legacyPath: URL.resourceValues(forKeys: [.pathKey], fromBookmarkData: bookmark)?.path)
-            }
             guard let value = value as? [String: Any], let id = value["id"] as? String,
                   let id = UUID(uuidString: id), let bookmark = value["bookmark"] as? Data else { return nil }
-            return Record(id: id, bookmark: bookmark, legacyPath: value["legacyPath"] as? String)
+            return Record(id: id, bookmark: bookmark)
         }
     }
 
