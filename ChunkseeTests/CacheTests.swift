@@ -262,7 +262,7 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct CacheRootTests {
-    @Test func oldLayoutsAreRemovedOnceBeforeCurrentSlotsAreWritten() throws {
+    @Test func oldLayoutsAreRemovedOnceBeforeCurrentSlotsAreWritten() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("CacheLayout-\(UUID())")
         defer { try? FileManager.default.removeItem(at: folder) }
         let old = folder.appendingPathComponent("old-dimension/scans/facts.0.0.old-json.lzfse")
@@ -276,8 +276,12 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("storage-layout-\(CacheArchive.storageVersion)").path))
         let current = folder.appendingPathComponent("current-slot")
         try Data("new cache".utf8).write(to: current)
-        try CacheArchive.prepare(worldFolder: folder)
+        let oldDate = Date(timeIntervalSince1970: 1_000)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: folder.path)
+        await WorldResources.prepareCache(folder: folder)
         #expect(try Data(contentsOf: current) == Data("new cache".utf8))
+        let preparedDate = try #require(try FileManager.default.attributesOfItem(atPath: folder.path)[.modificationDate] as? Date)
+        #expect(preparedDate > oldDate)
     }
 
     @Test(.timeLimit(.minutes(1))) func startupLayoutGatesReadsButPruningDoesNot() async throws {

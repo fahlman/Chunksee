@@ -456,11 +456,12 @@ final class WorldResources {
         // Failure leaves the marker absent so a later opening can try again. Cache failures
         // never prevent reading the world; each envelope still validates its complete key.
         try? CacheArchive.prepare(worldFolder: folder)
+        guard !Task.isCancelled else { return }
+        // Another opening can prune while this world's readers start.
+        TileCache.markUsed(worldFolder: folder)
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
-        guard !Task.isCancelled else { return }
-        TileCache.markUsed(worldFolder: folder)
         guard !Task.isCancelled else { return }
         TileCache.prune(root: root, limit: 1 << 30, keeping: folder)
     }

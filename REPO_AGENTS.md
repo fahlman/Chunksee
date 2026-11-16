@@ -823,9 +823,9 @@ It validates the complete key identity. Each payload owner validates its facts, 
 versus detail kind; pixels, heights, water and detail remain packed Data. A late old write can
 cause a miss, never a hit for a newer key. Stores replace only their slot and never enumerate
 the directory. World-owned startup maintenance
-discards the previous layout once, then writes a completion marker. Region reads, block counts
-and map renders await only that preparation task. Marking the folder used and pruning other
-worlds follow in independent background work; closing drains both tasks through BackgroundWork.
+discards the previous layout once, writes a completion marker and marks the world folder used.
+Region reads, block counts and map renders await only that preparation task. Pruning other
+worlds follows in independent background work; closing drains both tasks through BackgroundWork.
 The existing world-level LRU pruning keeps its owner. Storage changes leave renderer version 38
 unchanged because the drawing output is unchanged. Storage/layout revision 2 unifies the
 pre-release envelopes and names the cleanup marker; it does not alter Kit's interpretation.
