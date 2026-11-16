@@ -104,7 +104,7 @@ import Testing
                     return y == 0 ? 1 : y == 3 || y == 5 ? 3 : y < 5 ? 2 : 0
                 })
             return TestWorld.ChunkSpec(x: x, z: 0, nbt: Fixtures.chunk(x: x, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: [section], extra: ["yPos": .int(0)]))
         }
         let url = try TestWorld.make(chunks: chunks), fixture = try waterFixture(alpha: 192)
         defer { fixture.remove(); try? FileManager.default.removeItem(at: url) }
@@ -200,7 +200,7 @@ import Testing
             if lightOnly { sections.append(.compound(["Y": .int(1)])) }
             sections.append(Fixtures.section(y: 2, palette: [.string("minecraft:water")]))
             let spec = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
             let url = try TestWorld.make(chunks: [spec])
             defer { try? FileManager.default.removeItem(at: url) }
             let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
@@ -289,7 +289,7 @@ import Testing
                     })
             }
             return TestWorld.ChunkSpec(x: x, z: 0, nbt: Fixtures.chunk(x: x, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         }
         return try TestWorld.make(chunks: chunks)
     }

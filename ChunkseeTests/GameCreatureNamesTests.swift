@@ -230,7 +230,7 @@ import Testing
             entity("minecraft:cat", number: 5, fields: ["Owner": .intArray([10, 20, 30, 40])]),
         ]
         try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
-        let chunk = NBT.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Position": .intArray([0, 0]), "Entities": .list(entities)])
+        let chunk = NBT.compound(["DataVersion": .int(Int32(5023)), "Position": .intArray([0, 0]), "Entities": .list(entities)])
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)]))
             .write(to: dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca"))
         let defaults = TestDefaults.make(), players = PlayerNames(defaults: TestDefaults.make())

@@ -640,7 +640,7 @@ import Testing
         }
         if malformedBlock { section["BlockLight"] = .byteArray([0]) }
         if sky { section["SkyLight"] = .byteArray(Array(repeating: -1, count: 2048)) }
-        return .init(x: chunkX, z: 0, nbt: Fixtures.chunk(x: chunkX, z: 0, dataVersion: SaveVersion.java26_3,
+        return .init(x: chunkX, z: 0, nbt: Fixtures.chunk(x: chunkX, z: 0, dataVersion: 5023,
             sections: [.compound(section)], extra: ["isLightOn": .byte(valid ? 1 : 0), "yPos": .int(0)]))
     }
 }

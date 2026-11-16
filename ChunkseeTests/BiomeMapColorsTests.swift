@@ -1070,7 +1070,7 @@ import Testing
         let biomeCells = perBlock ? indices(biomes) : (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in biomes(x * 4, y * 4, z * 4) } } }
         let section = Fixtures.section(y: 0, palette: palette, indices: indices(blocks),
             biomes: biomeIDs, biomeIndices: biomeCells, biomeBits: biomeBits)
-        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: perBlock ? SaveVersion.perBlockBiomes : SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
+        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: perBlock ? 5119 : 5023, sections: [section], extra: ["yPos": .int(0)]))
     }
 
     private func world(chunks: [TestWorld.ChunkSpec] = [], seed: Int64? = nil) throws -> URL {

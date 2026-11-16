@@ -257,7 +257,7 @@ import Testing
     }
 
     @Test func summaryAndTableShareReadableStatistics() throws {
-        let records = PlayerRecords(statistics: PlayerStatistics(dataVersion: SaveVersion.java26_3, values: [
+        let records = PlayerRecords(statistics: PlayerStatistics(dataVersion: 5023, values: [
             "minecraft:custom": ["minecraft:play_time": 72_000, "minecraft:mob_kills": 3, "minecraft:deaths": 1,
                                  "minecraft:walk_one_cm": 250_000, "minecraft:crouch_one_cm": 25,
                                  "minecraft:damage_taken": 155, "mod:walk_one_cm": 999],

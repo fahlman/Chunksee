@@ -19,7 +19,7 @@ import Testing
                                         indices: blocks, biomes: ["minecraft:plains"])
         let chunks = [[ground, unusedStone], [neighbor], [unusedStone]].enumerated().map { index, sections in
             TestWorld.ChunkSpec(x: index, z: 0, nbt: Fixtures.chunk(x: index, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         }
         let url = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: url) }

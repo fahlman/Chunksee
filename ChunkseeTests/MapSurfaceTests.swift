@@ -7,7 +7,7 @@ import Testing
 @Suite(.isolatedStores) struct MapSurfaceTests {
     @Test func uniformWaterRunsKeepTheSameDepthInPixelsAndHover() async throws {
         let water = NBT.string("minecraft:water")
-        let gapped = Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3, sections: [
+        let gapped = Fixtures.chunk(x: 0, z: 0, dataVersion: 5023, sections: [
             Fixtures.section(y: 0, palette: [water]),
             .compound(["Y": .int(1)]),
             Fixtures.section(y: 2, palette: [water]),
