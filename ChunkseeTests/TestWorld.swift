@@ -6,6 +6,7 @@ import ChunkseeKitTestSupport
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
+@testable import struct ChunkseeTestHost.BiomeArea
 
 /// Tests that need a readable dimension fail at their call site if its renderer is absent.
 func requiredRenderer(_ map: MapModel?, sourceLocation: SourceLocation = #_sourceLocation) throws -> RegionTileRenderer {
@@ -104,7 +105,7 @@ nonisolated enum TestWorld {
 
 // Small scene fixtures use the same shared aggregation and native projection as the index.
 extension BiomePresentation {
-    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [ChunkseeTestHost.BiomeArea] {
+    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
         areas(from: ChunkseeIndex.BiomeArea.connected(in: biomes))
     }
 }
