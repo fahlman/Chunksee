@@ -196,9 +196,11 @@ final class BlockCountHarness {
                 return saved
             })
         defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
-        // The real index must publish the saved terrain change before the count store retries.
+        // Finish the initial index publication before demand, so only the explicit rebuild
+        // below can queue a recount after the failed read.
         let reader = RegionReader(dimension: h.dimension, cache: .off)
         h.index.include([reader], firstDimension: h.dimension.id)
+        await h.index.waitForIndex()
         let region = RegionPosition(x: 0, z: 0)
         h.counts.setDemand([try h.point(8)])
         await entered.waitForRequest("old")
