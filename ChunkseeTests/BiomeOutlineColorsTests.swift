@@ -137,7 +137,8 @@ import Testing
         try pack(at: root, grass: 0xff0000)
         let folder = root.appendingPathComponent("datapacks/outline")
         let tag = folder.appendingPathComponent("data/minecraft/tags/worldgen/biome/is_ocean.json")
-        try write(ItemPictureFixture.json(["values": ["test:land"]]), to: tag)
+        // No game jar is selected, so this fixture must define the complete tag.
+        try write(ItemPictureFixture.json(["replace": true, "values": ["test:land"]]), to: tag)
         let defaults = TestDefaults.make()
         let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
             savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
