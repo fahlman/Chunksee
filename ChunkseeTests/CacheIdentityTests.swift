@@ -84,8 +84,8 @@ extension RegionTileRenderer {
             for owner in ["terrain", "assets", "light"] {
                 var changed = key
                 switch owner {
-                case "terrain": changed.inputs.terrain = try changing(key.inputs.terrain, field: field)
-                case "assets": changed.inputs.assets = try changing(#require(key.inputs.assets), field: field)
+                case "terrain": changed.inputs.terrain = try CacheArchiveFixture.changing(key.inputs.terrain, field: field)
+                case "assets": changed.inputs.assets = try CacheArchiveFixture.changing(#require(key.inputs.assets), field: field)
                 default:
                     var light = try #require(key.inputs.nightLight)
                     light.interpretation = try CacheArchiveFixture.changing(light.interpretation, field: field)
@@ -138,7 +138,7 @@ extension RegionTileRenderer {
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let oldTerrain = try changing(Chunk.interpretationVersion, field: "generatedFacts")
+        let oldTerrain = try CacheArchiveFixture.changing(Chunk.interpretationVersion, field: "generatedFacts")
         let directory = root.appendingPathComponent("tiles")
         let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             cacheDirectory: directory, writeCache: { _ in Issue.record("Incompatible pixels started a cache write") },
