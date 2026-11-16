@@ -15,7 +15,8 @@ import Testing
         second.captureBlockOrigin { BlockSearchAnchor(point: east, playerID: nil) }
         first.text = query; second.text = query
         await first.waitForSearch(); await second.waitForSearch()
-        for (model, expectedX) in [(first, 8.0), (second, 3512.0)] {
+        let windows: [(SearchModel, CGFloat)] = [(first, 8), (second, 3512)]
+        for (model, expectedX) in windows {
             let listed = model.listedHits(for: query) { $0 == h.dimension.id }
             #expect(listed.total == 220 && listed.rows.count == 200)
             #expect(listed.rows.first?.position?.x == expectedX)
@@ -28,7 +29,7 @@ import Testing
         first.saveSearch()
         first.text = ""; second.text = ""
         await first.waitForSearch(); await second.waitForSearch()
-        for (model, expectedX) in [(first, 8.0), (second, 3512.0)] {
+        for (model, expectedX) in windows {
             let saved = model.listedHits(for: query) { $0 == h.dimension.id }
             #expect(saved.total == 220 && saved.rows.count == 200)
             #expect(saved.rows.first?.position?.x == expectedX)
