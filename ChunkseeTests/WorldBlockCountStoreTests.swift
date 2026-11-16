@@ -208,8 +208,11 @@ final class BlockCountHarness {
         await h.counts.waitForCounts()
         #expect(h.counts.snapshot.dimensions[h.dimension.id]?.coverage(of: region, matching: h.counts.catalog.blockIDs) == .failed)
         #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions[region]?.counts == nil)
+        let beforeRefresh = h.index.snapshot
         h.index.rebuild(firstDimension: h.dimension.id)
-        await h.index.waitForIndex(); await h.counts.waitForCounts()
+        await h.index.waitForIndex()
+        #expect(h.index.snapshot !== beforeRefresh)
+        await h.counts.waitForCounts()
         let result = try #require(h.counts.snapshot.dimensions[h.dimension.id])
         #expect(result.coverage(of: region, matching: h.counts.catalog.blockIDs) == .complete)
         #expect(result.regions[region]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 17)
