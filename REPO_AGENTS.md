@@ -103,11 +103,17 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.89.0`, resolved to `0.89.0` (`0a00b819667d74d2a3d4aaf05523d89581dfc8ee`).
+  minor" from `0.90.0`, resolved to `0.90.0` (`cc446deb5601d046d972ec951ea0bbbdca716fcc`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.90.0 supplies compact RegionFacts revision 36, filtered biome/structure pieces,
+    independent terrain-only block counts with revision 1, dynamic ore groups, nearest-first
+    count queries and canonical property-list identities. Core readers no longer count blocks;
+    the world's demand-driven count store owns that work. The app uses new plist envelopes and
+    preference keys without migrating old JSON records. Renderer interpretation remains 38;
+    storage has its own version. The coordinated app adoption rebuilds caches once.
   - Kit 0.89.0 retains typed saved health inputs and resolves maximum health against the
     current enchantment definitions. Creature and player details use its explicit
     `maximumHealth(enchantments:)` query. Readers no longer take definitions, so changing
