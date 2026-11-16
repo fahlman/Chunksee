@@ -103,11 +103,16 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.88.0`, resolved to `0.88.0` (`4b8e4b9795e0e71a785a4f25b58786af23d0b2fc`).
+  minor" from `0.89.0`, resolved to `0.89.0` (`0a00b819667d74d2a3d4aaf05523d89581dfc8ee`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.89.0 retains typed saved health inputs and resolves maximum health against the
+    current enchantment definitions. Creature and player details use its explicit
+    `maximumHealth(enchantments:)` query. Readers no longer take definitions, so changing
+    enchantments keeps region readers and scan caches. RegionFacts revision 35 rebuilds
+    older saved facts once; later definition changes reuse those inputs without a region read.
   - Kit 0.88.0 supplies Minecraft-derived villager defaults and retains the original
     VillagerData through `Villager.savedData`. Names, search and map labels consume that
     interpretation directly; the app adds no fallback parsing or default table. A missing
@@ -527,13 +532,17 @@ replace the separate performance acceptance check.
 WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
 jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
 by WorldPreparation. Each resource category remains independently available. A failed
-player refresh retains the previous coherent definitions/player snapshot until the next save. Initial player reads, later player reads and region scans use
-its same enchantment dictionary. It also supplies dimension settings, possible biome associations,
-trading definitions and the shared NotableBlock.Catalog. Current health and other saved facts stay
+player refresh retains the previous coherent definitions/player snapshot until the next save.
+Player reads and region scans retain saved health inputs without enchantment definitions. The
+shared creature and player detail views call Kit's `maximumHealth(enchantments:)` with this
+publication's current dictionary, including for carried creatures. It also supplies dimension
+settings, possible biome associations, trading definitions and the shared NotableBlock.Catalog.
+Current health and other saved facts stay
 available when maximum health cannot be established.
 
 Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
-definition demand dominates player-only demand. A failed dependent player read keeps coherent
+definition demand dominates player-only demand and still includes the player read, so a merged
+save cannot lose updated players. A failed player read in that combined refresh keeps coherent
 facts and retries the stronger request on the next external demand; independent saved facts
 continue through WorldInfoSnapshot. Replacing game inputs cancels obsolete reads while retaining
 the completed definition/player facts until their coherent replacement is ready. Those retained
@@ -563,13 +572,15 @@ cancels obsolete renders/coordinate reads, and replaces region readers only when
 inputs change. RegionReader.Inputs owns the scan options and notable-block/structure-group
 catalogs used by each reader. WorldResources compares that value and uses one factory for opening,
 new dimensions and replacement. Leaf membership, trades, possible-biome lists and other unconsumed
-definition facts cannot discard readers or the index. Their scan options include enchantments and
-tag-derived block IDs; each shared index uses the same catalog. Old index passes cannot publish
-into the replacement generation. Heat maps rebind to
-the new reader, and retired readers/loaders drain under the world's BackgroundWork owner.
+definition facts cannot discard readers or the index. Enchantment changes likewise keep the
+reader, region cache key and saved health inputs; current maximum health is resolved without a
+region reread. Scan options include tag-derived block IDs and dimension sampling/height choices;
+each shared index uses the same catalog. Old index passes cannot publish into the replacement
+generation. Heat maps rebind to the new reader, and retired readers/loaders drain under the world's
+BackgroundWork owner.
 Tile renderer version 27 invalidates the previous interpretation. Source/color and surface keys
-continue to distinguish their own inputs; the published Kit's RegionFacts version 20 invalidates
-older scan envelopes.
+continue to distinguish their own inputs; Kit's whole RegionFacts interpretation version
+invalidates older scan envelopes, including those that stored a resolved maximum health.
 
 | File | Owns |
 |---|---|
@@ -762,8 +773,10 @@ Cache identity (#471) adopts Kit's complete terrain, light, assets and region-fa
 `TileCache.Inputs` owns the immutable drawing inputs; `Key` adds the source file and sampled
 neighbors, including missing files. Kit's stable whole-value encoder supplies disk identities.
 `rendererVersion` covers only app drawing. Biome definitions, seed and colormap pixels receive
-stable identities once per immutable publication; scan options include the complete enchantment
-definitions and are prepared once per RegionReader. ScanCache still retains one envelope per region.
+stable identities once per immutable publication; scan options are prepared once per RegionReader
+and exclude health's definition-only inputs. ScanCache retains typed saved health inputs in its
+one envelope per region. Reopening with changed enchantment definitions reuses that envelope and
+resolves the result against the newly loaded definitions.
 
 MapModel retains keyed ordinary, preview and close-up images. Prepared-image keys add the height
 scale and saved-lighting preparation to the unlit surface key; clock angles remain drawing inputs

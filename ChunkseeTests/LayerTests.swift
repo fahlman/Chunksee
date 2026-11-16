@@ -257,11 +257,11 @@ enum StructureTestWorld {
         let pet = try #require(session.presentation.selectedIndex.creatures.first)
         #expect(pet.creature.health == 8 && !FileManager.default.fileExists(atPath: oldFile.path))
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
-        #expect(pet.creature.maxHealth == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
+        #expect(pet.creature.maximumHealth(enchantments: [:]) == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
         let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: .init(try #require(session.resources.readers[dimension.id]).scanOptions)))?.creatures
         #expect(cached?.first?.health == 8)
-        #expect(cached?.first?.maxHealth == 40 && cached?.first?.appearance == pet.creature.appearance)
+        #expect(cached?.first?.maximumHealth(enchantments: [:]) == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))
         #expect(session.selection.highlighted == [.row(.creature(pet.id)), .row(.mobCreature(pet.id))])
         try save(health: 4)

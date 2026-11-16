@@ -847,11 +847,11 @@ final class WorldResources {
         }
     }
 
-    @concurrent nonisolated static func readPlayers(_ world: World, enchantments: [String: EnchantmentDefinition]) async -> [PlayerInfo]? {
+    @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo]? {
         // World keeps its opening level.dat snapshot, including the single-player fallback.
         // Reopen through Kit so a save updates that record too. An unreadable save must not
         // clear the last good players; a successful read with no players does clear them.
         guard !Task.isCancelled, let current = try? World(contentsOf: world.url) else { return nil }
-        return current.players(enchantments: enchantments)
+        return current.players()
     }
 }

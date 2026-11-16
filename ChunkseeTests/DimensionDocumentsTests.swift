@@ -489,7 +489,7 @@ import Testing
         resources.refreshDelay = .zero
         let gate = AsyncReadGate<[PlayerInfo]>()
         let reads = ReadCounter()
-        resources.readPlayers = { _, _ in await gate.read("read\(await reads.next())") }
+        resources.readPlayers = { _ in await gate.read("read\(await reads.next())") }
         let uuid = UUID()
         func player(atX x: Double) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),

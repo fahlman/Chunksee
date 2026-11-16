@@ -122,7 +122,7 @@ import Testing
         map.loadTopBlocks(at: CGPoint(x: 8, y: 8))
         await map.waitUntilIdle(); await map.waitForTopBlocks()
         let tile = try #require(map.tiles[region]), viewport = map.viewport, top = map.topBlock(at: CGPoint(x: 8, y: 8))
-        resources.readPlayers = { _, _ in Issue.record("Clock-only saves must not read players"); return nil }
+        resources.readPlayers = { _ in Issue.record("Clock-only saves must not read players"); return nil }
         resources.readBiomeColors = { _, _, _, _, _ in Issue.record("Clock-only saves must not read biomes"); throw CancellationError() }
         let updated = try lighting(sun: 60)
         resources.readLighting = { _, _ in ["minecraft:overworld": updated] }
@@ -146,7 +146,7 @@ import Testing
         let gate = AsyncReadGate<[String: MapLighting]>(), numbers = ReadNumbers()
         let playerGate = AsyncReadGate<[PlayerInfo]?>()
         resources.readLighting = { _, _ in await gate.read(String(await numbers.next())) }
-        resources.readPlayers = { _, _ in await playerGate.read("players") }
+        resources.readPlayers = { _ in await playerGate.read("players") }
         let file = url.appendingPathComponent("data/world_clocks.dat")
         resources.worldChanged([file]); await gate.waitForRequest("0")
         // Player entry is after refreshLighting in the actual file-change pass, proving each

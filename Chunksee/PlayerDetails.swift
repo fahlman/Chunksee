@@ -96,7 +96,8 @@ struct PlayerDetailView: View {
                 }
             }
             Section("Status") {
-                HealthRow(health: player.health, maximum: player.maxHealth)
+                HealthRow(health: player.health,
+                          maximum: player.maximumHealth(enchantments: session.details.definitions.enchantments))
                 if let absorption = player.absorption, absorption > 0, let text = HealthPresentation.hearts(absorption, locale: locale) {
                     SavedStatusRow("Absorption") { Text(text) }
                 }

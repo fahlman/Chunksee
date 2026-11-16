@@ -60,7 +60,7 @@ import Testing
         #expect(gray.position == CGPoint(x: -8.7, y: 2.2) && gray.creature.y == 70.75)
         #expect(gray.creature.owner == owner && gray.carrier == carrier)
         #expect(gray.creature.health == 6)
-        #expect(gray.creature.maxHealth == 6)
+        #expect(gray.creature.maximumHealth(enchantments: [:]) == 6)
         #expect(gray.creature.appearance?.variant == "minecraft:gray")
         #expect(first.presentation.linkedPets(to: owner).map(\.id) == [gray.id])
         #expect(second.presentation.linkedPets(to: carrier).isEmpty)
@@ -105,7 +105,7 @@ import Testing
                 pendingPosition.withLock { $0 = position }
             }
         }
-        session.resources.readPlayers = { _, _ in [updated] }
+        session.resources.readPlayers = { _ in [updated] }
         session.resources.refreshDelay = .zero
         session.resources.worldChanged([session.world.playerDataDirectory.appendingPathComponent("\(carrier.uuidString).dat")])
         await session.resources.waitForRefresh()

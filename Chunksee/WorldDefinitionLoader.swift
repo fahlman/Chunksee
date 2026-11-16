@@ -2,8 +2,9 @@ import ChunkseeKit
 import Foundation
 import Observation
 
-/// Definitions and players interpreted with them have one publication. Independent saved facts
-/// belong to WorldInfoSnapshot and never wait for this dependent pair.
+/// Definitions and saved players publish together so coalesced saves retain their player refresh.
+/// Health resolves from saved inputs against this snapshot. Independent world facts belong to
+/// WorldInfoSnapshot.
 @Observable
 final class WorldDefinitionLoader: PlayerSnapshotSource {
     nonisolated struct Facts: Sendable {
@@ -46,12 +47,12 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
     }
 
     typealias ReadDefinitions = @Sendable (World, GameDataLibrary?) async throws -> WorldDefinitions
-    typealias ReadPlayers = @Sendable (World, [String: EnchantmentDefinition]) async -> [PlayerInfo]?
+    typealias ReadPlayers = @Sendable (World) async -> [PlayerInfo]?
 
     /// The production operations and injected test operations are captured once per pass.
     private final class Reads {
         var definitions: ReadDefinitions = { try await WorldResources.readDefinitions($0, library: $1) }
-        var players: ReadPlayers = { await WorldResources.readPlayers($0, enchantments: $1) }
+        var players: ReadPlayers = { await WorldResources.readPlayers($0) }
     }
 
     private let loader: RefreshLoader<Source, Request, Facts>
@@ -90,7 +91,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                 guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
                 let updated = try await readDefinitions(source.world.world, library)
                 try Task.checkCancellation()
-                guard let players = await readPlayers(source.world.world, updated.enchantments) else {
+                guard let players = await readPlayers(source.world.world) else {
                     throw CancellationError()
                 }
                 try Task.checkCancellation()
@@ -98,7 +99,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
                     previous: previous))
             case .players:
                 guard let previous,
-                      let players = await readPlayers(source.world.world, previous.definitions.enchantments) else {
+                      let players = await readPlayers(source.world.world) else {
                     throw CancellationError()
                 }
                 try Task.checkCancellation()
