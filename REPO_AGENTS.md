@@ -783,6 +783,11 @@ the complete terrain file stamp, counted-ID coverage and block-count interpretat
 edits and regrouping already counted IDs do not recount palettes; newly requested IDs require
 coverage. Successful empty, unsearched and failed regions remain distinct. Changed terrain and
 retired world sources cannot publish stale completions.
+Kit's per-folder discovery status distinguishes successful absence from unreadable folders.
+The core index retains its previous dimension if any terrain/entity/POI listing fails; counts,
+heat images and map region refreshes retain their previous state on a failed terrain listing.
+Successful empty or missing listings still remove contributions. Heat reads reuse their captured
+available set instead of independently listing the same folder again.
 Biome sampling uses MapSurfaceContext's middle generation plane for known ceiling dimensions,
 with the shared surface sample elsewhere. Vanilla Nether metadata gives Y64; the saved mapping
 also supports remapped/custom dimension IDs. Kit owns biome usage, section counts/heights,

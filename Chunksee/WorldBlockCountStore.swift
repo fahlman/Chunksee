@@ -118,7 +118,9 @@ final class WorldBlockCountStore {
             }
             guard !points.isEmpty else { continue }
             try Task.checkCancellation()
-            let regions = Set(dimension.regionFiles(.terrain).map { RegionPosition(x: $0.x, z: $0.z) })
+            let listing = dimension.readRegionFiles(.terrain)
+            guard listing.isComplete else { continue }
+            let regions = Set(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
             available[dimension.id] = regions
             let currentStamps = Dictionary(uniqueKeysWithValues: regions.map {
                 ($0, BlockCountSnapshot.Stamp(file: CacheKey.fileStamp(for: dimension.regionURL(.terrain, at: $0))))

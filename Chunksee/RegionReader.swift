@@ -58,20 +58,26 @@ actor RegionReader {
         try dimension.scan(region: region, options: options)
     }
 
-    nonisolated var availableRegions: Set<RegionPosition> {
-        Set(ChunkseeKit.Dimension.Folder.allCases.flatMap { dimension.regionFiles($0) }
-            .map { RegionPosition(x: $0.x, z: $0.z) })
+    /// A failed source listing cannot prove any retained region has disappeared.
+    nonisolated var availableRegions: Set<RegionPosition>? {
+        var regions = Set<RegionPosition>()
+        for folder in ChunkseeKit.Dimension.Folder.allCases {
+            let listing = dimension.readRegionFiles(folder)
+            guard listing.isComplete else { return nil }
+            regions.formUnion(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
+        }
+        return regions
     }
 
     /// One value per saved terrain region, for layers such as Time Spent.
     @concurrent
-    nonisolated func everyRegion<T: Sendable>(_ read: @escaping @Sendable (RegionReader, RegionPosition) async -> T)
+    nonisolated func everyRegion<T: Sendable>(in regions: Set<RegionPosition>,
+                                             _ read: @escaping @Sendable (RegionReader, RegionPosition) async -> T)
         async -> [(region: RegionPosition, value: T)] {
         guard !Task.isCancelled, await !isClosed else { return [] }
         return await withTaskGroup(of: (RegionPosition, T).self) { group in
-            for file in dimension.regionFiles() {
+            for region in regions {
                 guard !Task.isCancelled else { break }
-                let region = RegionPosition(x: file.x, z: file.z)
                 group.addTask {
                     let value = await read(self, region)
                     return (region, value)

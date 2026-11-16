@@ -61,6 +61,36 @@ final class BlockCountHarness {
 }
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldBlockCountStoreTests {
+    @Test func failedFolderDiscoveryRetainsCountsUntilRecoveryOrDeletion() async throws {
+        let h = try BlockCountHarness(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
+        defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
+        let near = try h.point(8), far = try h.point(520), region = RegionPosition(x: 0, z: 0)
+        h.counts.setDemand([near])
+        await h.counts.waitForCounts()
+        let initial = h.counts.snapshot
+        #expect(initial.dimensions[h.dimension.id]?.regions[region]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 5)
+        let directory = h.dimension.regionDirectory
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        h.counts.setDemand([far])
+        await h.counts.waitForCounts()
+        let retained = h.counts.snapshot
+        #expect(retained.dimensions[h.dimension.id]?.regions[region]?.counts == initial.dimensions[h.dimension.id]?.regions[region]?.counts)
+        #expect(retained.stamps == initial.stamps)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try Data(TestWorld.regionFile([BlockSearchFixture.chunk(x: 0, count: 17)]))
+            .write(to: h.dimension.regionURL(at: region), options: .atomic)
+        h.counts.setDemand([near])
+        await h.counts.waitForCounts()
+        #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions[region]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 17)
+        try FileManager.default.removeItem(at: directory)
+        h.counts.setDemand([far])
+        await h.counts.waitForCounts()
+        #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions.isEmpty == true)
+        #expect(h.counts.snapshot.stamps[h.dimension.id]?.isEmpty == true)
+        h.close(); await h.finish()
+    }
+
     @Test func ordinaryIndexFinishesBeforeTerrainCountingStarts() async throws {
         let root = try TestWorld.make(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
         defer { try? FileManager.default.removeItem(at: root) }

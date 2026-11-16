@@ -194,6 +194,35 @@ import Testing
         await reader.close()
     }
 
+    @Test(arguments: ChunkseeKit.Dimension.Folder.allCases)
+    func failedFolderDiscoveryRetainsTheIndexAndHeat(folder: ChunkseeKit.Dimension.Folder) async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let directory = dimension.directory(folder)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let reader = RegionReader(dimension: dimension, cache: .off)
+        let initial = await DimensionContent.read(reader, previous: nil, change: .all)
+        let heat = await HeatMap.images(reader, previous: [:])
+        #expect(initial.containers.count == 1 && heat.count == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        for change in [RegionChange.all, .regions([.init(x: 0, z: 0)])] {
+            let retained = await DimensionContent.read(reader, previous: initial, change: change)
+            #expect(retained.containers == initial.containers && retained.storage == initial.storage)
+            #expect(Set(retained.regions.keys) == Set(initial.regions.keys))
+        }
+        #expect(await HeatMap.images(reader, previous: heat).count == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        let recovered = await DimensionContent.read(reader, previous: initial, change: .all)
+        #expect(recovered.containers == initial.containers)
+        // Actual terrain-folder removal, unlike failed discovery, removes its contributions.
+        try FileManager.default.removeItem(at: dimension.regionDirectory)
+        #expect(await DimensionContent.read(reader, previous: recovered, change: .all).regions.isEmpty)
+        #expect(await HeatMap.images(reader, previous: heat).isEmpty)
+        await reader.close()
+    }
+
     @Test(.timeLimit(.minutes(1))) func aSaveDuringTheReadDoesNotPersistThatSnapshot() async throws {
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
