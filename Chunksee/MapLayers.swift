@@ -88,7 +88,8 @@ struct LayerGroups<Marker: MapLayerMarker>: View {
                     // The collection owns the same identity used by selection and scrolling.
                     // An inner .id adds a dynamic row-list transformation for every marker.
                     ForEach(nearestFirst(byGroup[group] ?? []).map { (id: item($0), marker: $0) }, id: \.id) { row in
-                        Group {
+                        // Conditional labels still contribute exactly one native List row.
+                        VStack(alignment: .leading, spacing: 0) {
                             if let creature = row.marker as? CreatureMarker {
                                 MobLocationLabel(marker: creature)
                             } else {
