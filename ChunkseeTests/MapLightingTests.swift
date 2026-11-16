@@ -151,7 +151,7 @@ import Testing
         resources.worldChanged([file]); await gate.waitForRequest("0")
         // Player entry is after refreshLighting in the actual file-change pass, proving each
         // request reached the lighting loader while its first read was held. Release each
-        // player read so the definition loader can start the next sequential pass.
+        // player read so its loader can start the next sequential pass.
         resources.worldChanged([file, resources.world.playerDataDirectory])
         await playerGate.waitForRequest("players")
         await playerGate.finish("players", with: nil)

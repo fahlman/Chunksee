@@ -36,13 +36,6 @@ nonisolated struct WorldDetails: Sendable {
         return String(localized: "In about \(minutes) of play", locale: locale)
     }
 
-    /// Reads every file it can; one that's missing or unreadable leaves its field empty.
-    static func read(_ world: World) -> WorldDetails {
-        WorldDetails(definitions: (try? WorldDefinitions.read(world, assets: nil)) ?? WorldDefinitions(),
-                     info: WorldInfoSnapshot.read(world, dimensions: world.dimensions()).value,
-                     mapSnapshot: WorldMapSnapshot.read(world).value)
-    }
-
     /// Minecraft's clock starts each day at 6:00 in the morning; 1,000 ticks make an hour.
     static func clockTime(ofDayTicks ticks: Int) -> (hour: Int, minute: Int) {
         let inDay = ((ticks % 24_000) + 24_000) % 24_000

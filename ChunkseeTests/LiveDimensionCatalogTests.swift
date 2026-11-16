@@ -96,7 +96,7 @@ import Testing
             #expect(resources.dimensions.map(\.id) == ["minecraft:overworld", "minecraft:the_nether"])
             #expect(resources.readers["minecraft:the_nether"] != nil)
             #expect(resources.dimensionDocuments[folder.resolvingSymlinksInPath().path] == "minecraft:the_nether")
-            // Including a dimension also refreshes definitions and players. Settle that
+            // Including a dimension also refreshes definitions. Settle that
             // publication before taking the baseline for a later repeated document opening.
             await resources.waitForRefresh()
             await resources.index.waitForIndex()

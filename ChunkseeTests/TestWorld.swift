@@ -101,6 +101,17 @@ nonisolated enum TestWorld {
     }
 }
 
+// Focused tests without installed game files compose the same readers directly. Production
+// defers definitions until WorldPreparation knows which library to use.
+extension WorldDetails {
+    nonisolated static func read(_ world: World) -> WorldDetails {
+        let dimensions = world.dimensions()
+        return WorldDetails(definitions: (try? WorldDefinitions.read(world, dimensions: dimensions, assets: nil)) ?? WorldDefinitions(),
+                            info: WorldInfoSnapshot.read(world, dimensions: dimensions).value,
+                            mapSnapshot: WorldMapSnapshot.read(world).value)
+    }
+}
+
 // Focused model tests open synthetic worlds directly; production goes through DocumentGroup's
 // reader. Both paths use the real bookmark identity and settings owner, with explicit stores.
 extension WorldSession {

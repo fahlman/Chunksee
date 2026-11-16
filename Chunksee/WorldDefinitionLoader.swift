@@ -2,23 +2,20 @@ import ChunkseeKit
 import Foundation
 import Observation
 
-/// Definitions and saved players publish together so coalesced saves retain their player refresh.
-/// Health resolves from saved inputs against this snapshot. Independent world facts belong to
-/// WorldInfoSnapshot.
+/// Definitions publish independently of saved players. Health resolves the saved inputs against
+/// this snapshot; a failed player read must not hold back a successful definition refresh.
 @Observable
-final class WorldDefinitionLoader: PlayerSnapshotSource {
+final class WorldDefinitionLoader {
     nonisolated struct Facts: Sendable {
         var definitions: WorldDefinitions
-        let players: PlayerSnapshot
         let enchantmentNames: GameNames.Enchantments
-        /// The game source of the completed definition/player read, retained during replacement.
+        /// The game source of the completed definition read, retained during replacement.
         /// Prepared new dimensions may extend settings before the next complete read.
         let source: WorldGameDataSource.Identity
 
-        init(definitions: WorldDefinitions, players: PlayerSnapshot, source: WorldGameDataSource.Identity,
+        init(definitions: WorldDefinitions, source: WorldGameDataSource.Identity,
              previous: Self?) {
             self.definitions = definitions
-            self.players = players
             self.source = source
             enchantmentNames = (previous?.enchantmentNames ?? .empty).replacing(with: definitions.enchantments)
         }
@@ -36,78 +33,43 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         var preparedDimensions: [String: DimensionInput]
     }
 
-    nonisolated private enum Request: Sendable {
-        case players
-        case definitions
-
-        func merging(_ newer: Self) -> Self {
-            if case .definitions = newer { return newer }
-            return self
-        }
-    }
-
     typealias ReadDefinitions = @Sendable (World, GameDataLibrary?) async throws -> WorldDefinitions
-    typealias ReadPlayers = @Sendable (World) async -> [PlayerInfo]?
 
     /// The production operations and injected test operations are captured once per pass.
     private final class Reads {
         var definitions: ReadDefinitions = { try await WorldResources.readDefinitions($0, library: $1) }
-        var players: ReadPlayers = { await WorldResources.readPlayers($0) }
     }
 
-    private let loader: RefreshLoader<Source, Request, Facts>
+    private let loader: RefreshLoader<Source, RefreshInvalidation, Facts>
     private let reads: Reads
-    private let emptyPlayers = PlayerSnapshot([])
     @ObservationIgnored var published: @MainActor (Facts?) -> Void = { _ in }
 
     var value: Facts? { loader.value }
-    var snapshot: PlayerSnapshot { value?.players ?? emptyPlayers }
     var work: BackgroundWork.Scope { loader.work }
     var isClosed: Bool { loader.isClosed }
     var readDefinitions: ReadDefinitions {
         get { reads.definitions }
         set { reads.definitions = newValue }
     }
-    var readPlayers: ReadPlayers {
-        get { reads.players }
-        set { reads.players = newValue }
-    }
 
     init(world: WorldReadSource, work: BackgroundWork, gameSource: WorldGameDataSource,
-         dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions,
-         players: [PlayerInfo]) {
+         dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions) {
         let reads = Reads()
         self.reads = reads
         let source = Source(game: gameSource, world: world,
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
-        let initial = Facts(definitions: definitions, players: PlayerSnapshot(players), source: source.game.identity, previous: nil)
-        loader = RefreshLoader(partialRead: { source, request, previous in
-            let readDefinitions = await reads.definitions, readPlayers = await reads.players
+        let initial = Facts(definitions: definitions, source: source.game.identity, previous: nil)
+        loader = RefreshLoader(partialRead: { source, _, previous in
+            let readDefinitions = await reads.definitions
             try Task.checkCancellation()
-            switch request {
-            case .definitions:
-                guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
-                let updated = try await readDefinitions(source.world.world, library)
-                try Task.checkCancellation()
-                guard let players = await readPlayers(source.world.world) else {
-                    throw CancellationError()
-                }
-                try Task.checkCancellation()
-                return .complete(Facts(definitions: updated, players: PlayerSnapshot(players), source: source.game.identity,
-                    previous: previous))
-            case .players:
-                guard let previous,
-                      let players = await readPlayers(source.world.world) else {
-                    throw CancellationError()
-                }
-                try Task.checkCancellation()
-                return .complete(Facts(definitions: previous.definitions,
-                    players: PlayerSnapshot(players), source: previous.source, previous: previous))
-            }
+            guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
+            let updated = try await readDefinitions(source.world.world, library)
+            try Task.checkCancellation()
+            return .complete(Facts(definitions: updated, source: source.game.identity, previous: previous))
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
-            firstRequest: .definitions, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
+            firstRequest: .refresh, merge: { _, newer in newer }, retainingValue: { value, previous, current in
                 guard previous.world == current.world else { return nil }
                 var retained = value
                 // An unread unknown would discard reader caches and the user's Height choice.
@@ -126,13 +88,13 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
     }
 
     func replaceWorld(_ world: WorldReadSource, gameSource: WorldGameDataSource,
-                      dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions, players: [PlayerInfo]) {
+                      dimensions: [ChunkseeKit.Dimension], definitions: WorldDefinitions) {
         let source = Source(game: gameSource, world: world,
             preparedDimensions: Dictionary(uniqueKeysWithValues: dimensions.map {
                 ($0.id, DimensionInput(settings: definitions.dimensionSettings[$0.id]))
             }))
         loader.replace(source: source,
-            value: Facts(definitions: definitions, players: PlayerSnapshot(players), source: gameSource.identity, previous: nil))
+            value: Facts(definitions: definitions, source: gameSource.identity, previous: nil))
     }
 
     func refreshDefinitions(gameSource: WorldGameDataSource) {
@@ -154,11 +116,7 @@ final class WorldDefinitionLoader: PlayerSnapshotSource {
         guard !isClosed else { return }
         // An unread selection cannot yet say which definitions are missing. Source
         // replacement and late-publication rejection belong to the shared loader.
-        loader.request(source: source, isEnabled: source.game.selection.isLoaded, refresh: .definitions)
-    }
-
-    func refreshPlayers() {
-        loader.request(source: loader.source, isEnabled: loader.source.game.selection.isLoaded, refresh: .players)
+        loader.request(source: source, isEnabled: source.game.selection.isLoaded, refresh: .refresh)
     }
 
     func close() { loader.close() }

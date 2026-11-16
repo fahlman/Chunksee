@@ -162,6 +162,11 @@ actor GameDataLibrary {
         return try WorldDefinitions.read(world, assets: assets)
     }
 
+    func definitions(in world: World, dimensions: [ChunkseeKit.Dimension]) throws -> WorldDefinitions {
+        try checkAvailable()
+        return try WorldDefinitions.read(world, dimensions: dimensions, assets: assets)
+    }
+
     func lighting(in world: World) throws -> [String: MapLighting] {
         try checkAvailable()
         return try MapLighting.read(in: world, assets: assets)

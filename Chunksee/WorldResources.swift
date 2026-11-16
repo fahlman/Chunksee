@@ -54,6 +54,7 @@ final class WorldResources {
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
+    private let playerLoader: WorldPlayerLoader
     @ObservationIgnored private var gameResourceObservation: ModelObservation?
     @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { [weak self] source, _, previous in
@@ -95,7 +96,7 @@ final class WorldResources {
         guard !isClosed else { return }
         mapLoader.request(source: WorldMapSource(worldSource: readSource), isEnabled: true, refresh: .refresh)
     }
-    var playerRoster: any PlayerSnapshotSource { definitionLoader }
+    var playerRoster: any PlayerSnapshotSource { playerLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
     private let makeReader: (WorldReadSource, ChunkseeKit.Dimension, WorldDefinitions) -> RegionReader
@@ -233,9 +234,9 @@ final class WorldResources {
     @ObservationIgnored var waitBeforeRefresh: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     @ObservationIgnored private var isRefreshScheduled = false
     /// Reads the world's player files off the main actor; tests substitute a controlled read.
-    var readPlayers: WorldDefinitionLoader.ReadPlayers {
-        get { definitionLoader.readPlayers }
-        set { definitionLoader.readPlayers = newValue }
+    var readPlayers: WorldPlayerLoader.ReadPlayers {
+        get { playerLoader.readPlayers }
+        set { playerLoader.readPlayers = newValue }
     }
     @ObservationIgnored var readHeadingBlock: @Sendable (ChunkseeKit.Dimension, BlockPosition) async throws -> BlockState? = {
         try await WorldResources.readBlock($0, at: $1)
@@ -273,8 +274,10 @@ final class WorldResources {
         let definitionLoader = WorldDefinitionLoader(world: readSource, work: backgroundWork,
             gameSource: .init(generation: prepared.source.generation, selection: .loaded(prepared.library?.data)),
             dimensions: snapshot.dimensions,
-            definitions: snapshot.details.definitions, players: snapshot.players)
+            definitions: snapshot.details.definitions)
         self.definitionLoader = definitionLoader
+        let playerLoader = WorldPlayerLoader(world: readSource, work: backgroundWork, players: snapshot.players)
+        self.playerLoader = playerLoader
         assetLoader = RefreshLoader(work: backgroundWork, priority: .utility, whenInactive: .finish,
             source: prepared.source, initialValue: GameAssetSelection(library: prepared.library)
         ) { [minecraft = names.minecraft] source, _ in
@@ -302,7 +305,7 @@ final class WorldResources {
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
-        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: definitionLoader)
+        index = WorldIndexStore(readers: readers, work: backgroundWork, firstDimension: firstDimension, playerRoster: playerLoader)
         definitionLoader.published = { [weak self] current in
             self?.adoptDefinitions(current)
         }
@@ -381,9 +384,10 @@ final class WorldResources {
                            value: snapshot.details.info)
         mapLoader.replace(source: WorldMapSource(worldSource: readSource), value: snapshot.details.mapSnapshot)
         playerRecords.replaceWorld(readSource)
+        playerLoader.replaceWorld(readSource, players: snapshot.players)
         definitionLoader.replaceWorld(readSource,
             gameSource: .init(generation: prepared.source.generation, selection: .loaded(prepared.library?.data)),
-            dimensions: snapshot.dimensions, definitions: snapshot.details.definitions, players: snapshot.players)
+            dimensions: snapshot.dimensions, definitions: snapshot.details.definitions)
         assetLoader.replace(source: prepared.source, value: GameAssetSelection(library: prepared.library))
         guard !isClosed else { return }
         for session in sessions.values.compactMap(\.value) { session.replaceWorldSource() }
@@ -693,6 +697,7 @@ final class WorldResources {
         infoLoader.close()
         mapLoader.close()
         definitionLoader.close()
+        playerLoader.close()
         playerRecords.close()
         let readers = Array(readers.values), index = index
         let access = access
@@ -813,7 +818,7 @@ final class WorldResources {
 
     /// Waits for active and coalesced refresh passes, without waiting for unrelated world work.
     func waitForRefresh() async {
-        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, infoLoader.work, mapLoader.work, assetLoader.work, languageLoader.work])
+        await backgroundWork.waitUntilFinished(in: [refreshWork, biomeLoader.work, nightLightingLoader.work, lightingLoader.work, definitionLoader.work, playerLoader.work, infoLoader.work, mapLoader.work, assetLoader.work, languageLoader.work])
         await playerRecords.waitUntilFinished()
         await index.waitForProjection()
     }
@@ -840,11 +845,8 @@ final class WorldResources {
         }
         if lightingChanged { refreshLighting() }
         if worldDataChanged { refreshInfo(); refreshMaps(); playerRecords.refresh() }
-        if biomesChanged {
-            refreshDefinitions()
-        } else if playersChanged {
-            definitionLoader.refreshPlayers()
-        }
+        if biomesChanged { refreshDefinitions() }
+        if playersChanged { playerLoader.refresh() }
     }
 
     @concurrent nonisolated static func readPlayers(_ world: World) async -> [PlayerInfo]? {

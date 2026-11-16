@@ -210,8 +210,8 @@ Each layer depends only on layers above it in this list, through their public in
      the source keeps nothing incompatible. Refreshing the same player keeps their records;
      selecting another clears them.
    - **Independent where independent:** independent parts publish on their own; game data doesn't
-     wait for biome colors. Only related values publish together, such as definitions with the
-     players that depend on them, or the index with its player projection.
+     wait for biome colors. Only related values publish together, such as definitions with their
+     enchantment names, or the index with its player projection.
    - **Views observe:** sessions and views read the snapshot; nothing pushes values into maps by
      hand. No refresh depends on a visible view receiving a change.
    - **Per-window requests stay per window:** the world owns keyed shared results, never one global
@@ -529,27 +529,24 @@ CHUNKSEE_LIFETIME_WORLD and CHUNKSEE_LIFETIME_GAME environment paths select evid
 for the same correctness check. Weak-reference assertions do not measure memory footprint or
 replace the separate performance acceptance check.
 
-WorldDefinitionLoader owns one WorldDefinitions/player publication, loaded off-main through Kit with the selected
-jar and the world's enabled packs. Opening uses the available game and world-pack facts supplied
-by WorldPreparation. Each resource category remains independently available. A failed
-player refresh retains the previous coherent definitions/player snapshot until the next save.
-Player reads and region scans retain saved health inputs without enchantment definitions. The
-shared creature and player detail views call Kit's `maximumHealth(enchantments:)` with this
-publication's current dictionary, including for carried creatures. It also supplies dimension
-settings, possible biome associations, trading definitions and the shared NotableBlock.Catalog.
-Current health and other saved facts stay
-available when maximum health cannot be established.
+WorldDefinitionLoader owns one WorldDefinitions publication, loaded off-main through Kit with the
+selected jar and the world's enabled packs. WorldPlayerLoader independently owns the saved players.
+Player reads and region scans retain saved health inputs without enchantment definitions. The shared
+creature and player detail views call Kit's `maximumHealth(enchantments:)` with the current definition
+dictionary, including for carried creatures. Definitions also supply dimension settings, possible
+biome associations, trading definitions and the shared NotableBlock.Catalog. Current health and
+other saved facts stay available when maximum health cannot be established.
 
-Definition and player reads use the shared RefreshLoader. Saves coalesce into a following pass;
-definition demand dominates player-only demand and still includes the player read, so a merged
-save cannot lose updated players. A failed player read in that combined refresh keeps coherent
-facts and retries the stronger request on the next external demand; independent saved facts
-continue through WorldInfoSnapshot. Replacing game inputs cancels obsolete reads while retaining
-the completed definition/player facts until their coherent replacement is ready. Those retained
-facts carry the producing game generation and library identity; they are never relabeled as
-the new source. This producer's compatible projection retains the completed scale and reader
-inputs instead of publishing an unread unknown. MapModel owns the retained style choice.
-Retired in-flight results still cannot publish.
+Both owners use the shared RefreshLoader. Saves coalesce within each owner into a following pass;
+a save that changes both requests both loaders. A failed player refresh keeps its last good player
+snapshot while successful definitions advance, and a definition failure does not delay players.
+A successful empty player read clears the roster. Game discovery, replacement and pack-only changes
+never reread players; world rereads and moves replace their saved source and reject late results.
+Replacing game inputs cancels obsolete definition reads while retaining completed definitions until
+the replacement is ready. Retained definitions carry their producing game generation and library
+identity; they are never relabeled as the new source. This producer's compatible projection retains
+the completed scale and reader inputs instead of publishing an unread unknown. MapModel owns the
+retained style choice. Both loaders close and drain through BackgroundWork.
 The definition input distinguishes a game selection still loading from a completed selection
 with no library. Loading cancels old reads immediately, but queues the
 replacement read until discovery completes; failed discovery retains the coherent facts. A
@@ -586,7 +583,7 @@ invalidates older scan envelopes, including those that stored a resolved maximum
 |---|---|
 | `ChunkseeApp.swift`, `WorldDocument.swift`, `DocumentWindowTitle.swift` | A URL-based read-only `DocumentGroup` of dimension folders; opening a world folder as its dimensions, remembered world-folder access, opening metadata, document lifetime/moves, and native display names |
 | `AppModel.swift` | App-wide player names/saved searches, pending metadata reads and open-world resources shared by persistent world-folder identity |
-| `WorldResources.swift`, `WorldPreparation.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
+| `WorldResources.swift`, `WorldPreparation.swift`, `WorldPlayerLoader.swift`, `PlayerSnapshot.swift`, `WorldIndexStore.swift` | One world's file access, coherent opening game definitions/players, readers, metadata, observable player roster and immutable publications, shared index, file watcher, startup cache maintenance, pending document-opening handles and jumps; the last session/opening drains reads and maintenance before relinquishing access |
 | `WorldSession.swift` | Composes one dimension document’s feature models and owns document lifetime and per-window state, preserving those models across world-source replacement |
 | `WorldSheet.swift` | The single per-document sheet value and native SwiftUI presenter; carries annotation drafts or a handle to shared player records |
 | `DimensionPresentation.swift` | Live context for dimension labels, listing rules, index/biome/player/map/portal presentation and linked pets, computed from the existing owners |
@@ -728,9 +725,12 @@ the last canceled requester cancels it, and generations protect a replacement re
 completion. There is no separate completed metadata cache or timeout. Closing all sessions and
 openings drains the world's work, and reopening rereads it. File access is never released through
 a sibling's raw token. Metadata and resolved dimension-document paths are read off-main.
-Before constructing region readers, WorldPreparation loads the selected game library and interprets
-the opening definitions and dependent players together. A source change during this read discards
-the retired result and prepares the current source; cancellation cannot publish late work. AppModel
+WorldSnapshot reads saved players and enumerates dimensions once; World Info reuses that dimension
+list. Before constructing region readers, WorldPreparation loads the selected game library and reads
+the composed definitions once, reusing those dimensions and saved players. With no game library it
+reads the world's available definitions at that same boundary, without a discarded preliminary read.
+A source change during preparation discards the retired definitions and reads the current source;
+cancellation cannot publish late work. AppModel
 rechecks for a shared open world after awaiting preparation. Initial readers therefore use the same
 complete scan options as later unchanged refreshes and reopens, preserving the region-facts cache.
 Preparation does not wait for biome colors or artwork, and removing the game folder retains the
@@ -1277,7 +1277,7 @@ An unnamed account uses PlayerPresentation's shared Player/short-ID label; an un
 without a player record adds localized absence context to that same label. Known names and the
 single-player You pronoun retain their existing precedence.
 
-WorldResources owns one observable PlayerRoster for all dimension searches and inspectors. Each
+WorldResources owns one observable WorldPlayerLoader for all dimension searches and inspectors. Each
 accepted read publishes one immutable PlayerSnapshot there; searches observe that snapshot
 instead of receiving pushed assignments in every tab. SearchSources still compares snapshot
 identity, so query edits never traverse saved player NBT. Shared saved queries continue to reuse
@@ -1296,7 +1296,7 @@ keeps its primary counts and 100-meter travel cutoff; the complete table retains
 
 WorldGameDataSource owns equality for a selected game-data source: folder generation and
 loading/loaded library selection. WorldResources derives that value for the definition loader
-and record store; neither redeclares its fields or comparison. Completed definition/player facts
+and record store; neither redeclares its fields or comparison. Completed definition facts
 retain its derived compact Identity, without retaining a retired library just for provenance.
 
 PlayerRecordStore owns the world's requested player records through one RefreshLoader per UUID.
