@@ -109,11 +109,16 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.90.0`, resolved to `0.90.0` (`cc446deb5601d046d972ec951ea0bbbdca716fcc`).
+  minor" from `0.91.0`, resolved to `0.91.0` (`c416e73da5b3a2e85e3a64dfc3137cc011f86e1d`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.91.0 supplies full matching chunk/group totals alongside the nearest limited rows,
+    and distinguishes failed region-folder discovery from a complete empty listing. Search
+    headings keep the full total; refreshes retain the index, heat map, drawn tiles and block
+    counts when their source folder cannot be listed. Saved-fact interpretation versions stay
+    unchanged, so this follow-up adds no cache rebuild beyond the coordinated adoption below.
   - Kit 0.90.0 supplies compact RegionFacts revision 36, filtered biome/structure pieces,
     independent terrain-only block counts with revision 1, dynamic ore groups, nearest-first
     count queries and canonical property-list identities. Core readers no longer count blocks;
