@@ -729,6 +729,8 @@ WorldSnapshot reads saved players and enumerates dimensions once; World Info reu
 list. Before constructing region readers, WorldPreparation loads the selected game library and reads
 the composed definitions once, reusing those dimensions and saved players. With no game library it
 reads the world's available definitions at that same boundary, without a discarded preliminary read.
+WorldDefinitions owns this library-or-save source choice for both opening and refresh. Refreshes
+reopen the world and supply its current dimension catalog to that same reader.
 A source change during preparation discards the retired definitions and reads the current source;
 cancellation cannot publish late work. AppModel
 rechecks for a shared open world after awaiting preparation. Initial readers therefore use the same

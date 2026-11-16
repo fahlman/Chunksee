@@ -13,13 +13,24 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
     var trading: TradingDefinitions?
     var water: GameTag?
 
+    /// Opening and refresh share the same source choice. The caller supplies its current
+    /// dimension catalog so opening can reuse the folders it already enumerated.
+    @concurrent
+    static func read(_ world: World, dimensions: [ChunkseeKit.Dimension],
+                     library: GameDataLibrary?) async throws -> Self {
+        try Task.checkCancellation()
+        let definitions: Self
+        if let library { definitions = try await library.definitions(in: world, dimensions: dimensions) }
+        else { definitions = try read(world, dimensions: dimensions, assets: nil) }
+        try Task.checkCancellation()
+        return definitions
+    }
+
     static func read(_ world: World, assets: GameAssets?) throws -> Self {
         try Task.checkCancellation()
         return try read(world, dimensions: world.dimensions(), assets: assets)
     }
 
-    /// Opening already enumerated the saved dimension folders. Refreshes use the entry point
-    /// above to discover the current catalog instead of reusing an older opening list.
     static func read(_ world: World, dimensions: [ChunkseeKit.Dimension], assets: GameAssets?) throws -> Self {
         try Task.checkCancellation()
         var result = Self()

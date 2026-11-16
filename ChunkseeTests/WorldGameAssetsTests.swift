@@ -551,7 +551,7 @@ import Synchronization
         await resources.waitForRefresh()
         let offAgain = try await rendered()
         #expect(offAgain.detail == nil && offAgain.heights == off.heights)
-        #expect(try await library.data.definitions(in: resources.world) == definitions)
+        #expect(try await WorldResources.readDefinitions(resources.world, library: library.data) == definitions)
         #expect(offAgain.cacheWrite?.key == offKey)
         #expect(reads.withLock { $0 } == readsAtSwitch)
         resources.close(); await resources.waitUntilClosed()

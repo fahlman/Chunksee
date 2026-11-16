@@ -15,7 +15,7 @@ struct WorldPreparation {
     }
 
     static func read(_ snapshot: WorldSnapshot, minecraft: MinecraftResources,
-                     readDefinitions: @escaping ReadDefinitions = readingDefinitions) async throws -> Self {
+                     readDefinitions: @escaping ReadDefinitions = WorldDefinitions.read(_:dimensions:library:)) async throws -> Self {
         while true {
             try Task.checkCancellation()
             let source = WorldGameAssetSource(generation: minecraft.generation)
@@ -39,16 +39,5 @@ struct WorldPreparation {
                 throw error
             }
         }
-    }
-
-    @concurrent
-    nonisolated static func readingDefinitions(_ world: World, dimensions: [ChunkseeKit.Dimension],
-                                               library: GameDataLibrary?) async throws -> WorldDefinitions {
-        try Task.checkCancellation()
-        let definitions: WorldDefinitions
-        if let library { definitions = try await library.definitions(in: world, dimensions: dimensions) }
-        else { definitions = try WorldDefinitions.read(world, dimensions: dimensions, assets: nil) }
-        try Task.checkCancellation()
-        return definitions
     }
 }

@@ -550,11 +550,7 @@ final class WorldResources {
     @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> WorldDefinitions {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        let definitions: WorldDefinitions
-        if let library { definitions = try await library.definitions(in: current) }
-        else { definitions = try WorldDefinitions.read(current, assets: nil) }
-        try Task.checkCancellation()
-        return definitions
+        return try await WorldDefinitions.read(current, dimensions: current.dimensions(), library: library)
     }
 
     private func refreshBiomeColors(reload: Bool) {
