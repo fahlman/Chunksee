@@ -33,7 +33,6 @@ actor RegionReader {
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
     nonisolated let inputs: Inputs
-    nonisolated var scanOptions: RegionScanOptions { inputs.options }
     private nonisolated let cacheOptions: ScanCache.Options
     nonisolated var notableBlocks: NotableBlock.Catalog { inputs.notableBlocks }
     nonisolated var structureGroups: StructureGroup.Catalog { inputs.structureGroups }
@@ -104,8 +103,6 @@ actor RegionReader {
         guard !isClosed, !Task.isCancelled else { return nil }
         return value
     }
-
-    func inhabitedTimes(_ region: RegionPosition) async -> [Int] { await facts(region)?.inhabitedTimes ?? [] }
 
     /// Refuses queued requests and drains both cache reads and in-flight scans.
     func close() async {

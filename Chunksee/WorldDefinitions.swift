@@ -26,11 +26,6 @@ nonisolated struct WorldDefinitions: Sendable, Equatable {
         return definitions
     }
 
-    static func read(_ world: World, assets: GameAssets?) throws -> Self {
-        try Task.checkCancellation()
-        return try read(world, dimensions: world.dimensions(), assets: assets)
-    }
-
     static func read(_ world: World, dimensions: [ChunkseeKit.Dimension], assets: GameAssets?) throws -> Self {
         try Task.checkCancellation()
         var result = Self()

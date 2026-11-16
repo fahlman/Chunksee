@@ -42,7 +42,7 @@ import Testing
                 #expect(tile.full.image.dataProvider?.data as Data? == Data(expectedPixels))
                 let reader = RegionReader(dimension: dimension,
                                           cache: ScanCache(forWorldAt: worldURL, dimensionID: dimension.id, root: root))
-                let times = await reader.inhabitedTimes(region)
+                let times = try #require(await reader.facts(region)).inhabitedTimes
                 await reader.close()
                 #expect(times.first == time)
             }

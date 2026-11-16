@@ -39,10 +39,6 @@ nonisolated enum BiomePresentation {
 
     /// Presents the shared index's areas as world-space paths. Every area is kept, down to a
     /// single chunk; names, colors and surface/cave membership remain presentation choices.
-    static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
-        areas(from: ChunkseeIndex.BiomeArea.connected(in: biomes))
-    }
-
     static func areas(from areas: [ChunkseeIndex.BiomeArea]) -> [BiomeArea] {
         areas.compactMap { area -> BiomeArea? in
             guard let origin = area.representative.blockOrigin else { return nil }

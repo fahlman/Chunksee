@@ -1,10 +1,12 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import ChunkseeKitTestSupport
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
+@testable import struct ChunkseeTestHost.BiomeArea
 
 /// Tests that need a readable dimension fail at their call site if its renderer is absent.
 func requiredRenderer(_ map: MapModel?, sourceLocation: SourceLocation = #_sourceLocation) throws -> RegionTileRenderer {
@@ -98,6 +100,21 @@ nonisolated enum TestWorld {
             let position = ChunkPosition(x: chunk.x, z: chunk.z)
             return Fixtures.RegionChunk(localX: position.localX, localZ: position.localZ, nbt: chunk.nbt, timestamp: 0)
         })
+    }
+}
+
+// Small scene fixtures use the same shared aggregation and native projection as the index.
+extension BiomePresentation {
+    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
+        areas(from: ChunkseeIndex.BiomeArea.connected(in: biomes))
+    }
+}
+
+// Focused fixtures discover their dimensions before using the production definition reader.
+extension WorldDefinitions {
+    nonisolated static func read(_ world: World, assets: GameAssets?) throws -> Self {
+        try Task.checkCancellation()
+        return try read(world, dimensions: world.dimensions(), assets: assets)
     }
 }
 

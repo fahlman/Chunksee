@@ -1758,6 +1758,10 @@ before rebuilding and opening the new bundle. `--debug` explicitly selects Debug
   `ChunkseeKit` and `ChunkseeIndex`; shared fixture code is confined to the isolated test host.
   Player fixtures keep their original NBT inputs for file writes through Fixtures.writeGzippedNBT;
   neither the app nor its tests read raw save data back from PlayerInfo.
+  Synthetic player rosters, biome/definition fixture composition and retired cache record encoders
+  belong to ChunkseeTests. Opening tests await the real read/cancellation and resource lifetimes rather
+  than shipping a count accessor for private pending-request bookkeeping. The sibling-cancellation
+  test enters the main-actor model with immediate tasks so all requests join before cancellation.
 - **Required checks:** `build` and `test` must both pass on the commit you publish, resolving
   ChunkseeKit from its pinned tag. A local package override doesn't prove a change.
 - **Launch smoke check:** build, then `open` the app from DerivedData. Confirm it keeps running

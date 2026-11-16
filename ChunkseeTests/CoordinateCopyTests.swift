@@ -341,7 +341,7 @@ import Testing
         var old = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                  pieces: [("piece", [-10, -60, -20, -1, -41, -11])]))
         old.y = nil
-        let previous = try TestWorld.legacyCache([old], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
+        let previous = try TestWorld.legacyCache([LegacyStructureMarker(old)], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
                                                 directory: #require(cache.directory))
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await TestWorld.index(reader).structures

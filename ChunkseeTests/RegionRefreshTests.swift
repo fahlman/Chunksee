@@ -141,7 +141,8 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let old = try TestWorld.legacyCache([Int](repeating: 0, count: 1024), name: "inhabitedTimes.0.0.unchanged.v14", directory: root)
         let reader = RegionReader(dimension: dimension, cache: cache)
-        #expect(await reader.inhabitedTimes(region)[3 * 32 + 2] == 7200)
+        let times = try #require(await reader.facts(region)).inhabitedTimes
+        #expect(times[3 * 32 + 2] == 7200)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))
         #expect(saved?.inhabitedTimes[3 * 32 + 2] == 7200)
         #expect(!FileManager.default.fileExists(atPath: old.path))

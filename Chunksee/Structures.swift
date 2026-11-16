@@ -139,7 +139,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
 }
 
 /// One structure on the map.
-nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
+nonisolated struct StructureMarker: Identifiable, Equatable, Sendable {
     var id: String
     var structureID: String
     var group: StructureGroup

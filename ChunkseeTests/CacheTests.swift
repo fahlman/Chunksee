@@ -184,7 +184,7 @@ import Testing
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        let data = try encoder.encode([oldMarker])
+        let data = try encoder.encode([LegacyStructureMarker(oldMarker)])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let reader = RegionReader(dimension: dimension, cache: cache)
         let index = await TestWorld.index(reader)
@@ -215,7 +215,8 @@ import Testing
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         let reader = RegionReader(dimension: dimension, cache: cache)
         #expect(await TestWorld.index(reader).biomeAreas.map(\.chunkCount) == [4])
-        #expect(await reader.inhabitedTimes(RegionPosition(x: 0, z: 0)).count == 1024)
+        let times = try #require(await reader.facts(RegionPosition(x: 0, z: 0))).inhabitedTimes
+        #expect(times.count == 1024)
         #expect(await TestWorld.index(reader).biomes.count == 4)
         #expect(await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).biomeAreas.isEmpty)
     }
