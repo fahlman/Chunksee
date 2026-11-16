@@ -93,8 +93,8 @@ import Observation
         #expect(!session.presentation.selectedIndex.structures.contains { $0.position == CGPoint(x: -266, y: 71.5) })
         session.search.text = "structure: jungle pyramid"
         await session.search.waitForSearch()
-        #expect(session.search.results.count == 1)
-        #expect(session.search.results.first?.position == CGPoint(x: 37, y: 5))
+        #expect(session.search.matches(for: session.search.text).hits.count == 1)
+        #expect(session.search.matches(for: session.search.text).hits.first?.position == CGPoint(x: 37, y: 5))
     }
 }
 
@@ -352,9 +352,9 @@ enum StructureTestWorld {
         session.search.text = "summer"
         await session.search.waitForIndex()
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == [summer.name(in: session.resources.gameNames)])
-        #expect(session.search.results.first?.detail(in: session.resources.gameNames) == "Wolf")
-        #expect(session.search.results.first?.source == .layer(.creature(.pet), markerID: summer.id))
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: session.resources.gameNames) } == [summer.name(in: session.resources.gameNames)])
+        #expect(session.search.matches(for: session.search.text).hits.first?.detail(in: session.resources.gameNames) == "Wolf")
+        #expect(session.search.matches(for: session.search.text).hits.first?.source == .layer(.creature(.pet), markerID: summer.id))
     }
 }
 
@@ -380,7 +380,7 @@ enum StructureTestWorld {
         #expect(!PlaceGroup.spawner.isShownByDefault)   // thousands in a typical world
         session.search.text = "place:zombie spawner"
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Zombie Spawner"])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: session.resources.gameNames) } == ["Zombie Spawner"])
     }
 }
 
@@ -467,7 +467,7 @@ enum StructureTestWorld {
         #expect(MapContent(session: session).biomeDescription(at: CGPoint(x: -1, y: 0)) == nil)
         session.search.text = "biome:deep dark"
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.title(in: session.resources.gameNames) } == ["Deep Dark"])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: session.resources.gameNames) } == ["Deep Dark"])
     }
 
     @Test func unfinishedChunksPlaceholderBiomesAreIgnored() async throws {

@@ -56,22 +56,22 @@ import Testing
         second.captureBlockOrigin { BlockSearchAnchor(point: far, playerID: nil) }
         first.text = saved; second.text = saved
         await first.waitForSearch(); await second.waitForSearch()
-        #expect(first.results.first?.position == CGPoint(x: 8, y: 8))
-        #expect(second.results.first?.position == CGPoint(x: 520, y: 8))
-        #expect(first.results(for: saved).first?.position != second.results(for: saved).first?.position)
+        #expect(first.matches(for: first.text).hits.first?.position == CGPoint(x: 8, y: 8))
+        #expect(second.matches(for: second.text).hits.first?.position == CGPoint(x: 520, y: 8))
+        #expect(first.matches(for: saved).hits.first?.position != second.matches(for: saved).hits.first?.position)
         #expect(await log.calls.count == 2)
 
         center = far // A new viewport/selection is not a new search.
         h.index.rebuild(firstDimension: h.dimension.id)
         await h.index.waitForIndex(); await first.waitForSearch()
-        #expect(first.results.first?.position == CGPoint(x: 8, y: 8))
+        #expect(first.matches(for: first.text).hits.first?.position == CGPoint(x: 8, y: 8))
         first.text = "block:diamond"
         await first.waitForSearch()
-        #expect(first.results.first?.position == CGPoint(x: 520, y: 8))
-        #expect(first.results(for: saved).first?.position == CGPoint(x: 8, y: 8))
+        #expect(first.matches(for: first.text).hits.first?.position == CGPoint(x: 520, y: 8))
+        #expect(first.matches(for: saved).hits.first?.position == CGPoint(x: 8, y: 8))
         #expect(await log.calls.count == 2)
         first.cancel(); await first.waitForTasks()
-        #expect(second.results.first?.position == CGPoint(x: 520, y: 8))
+        #expect(second.matches(for: second.text).hits.first?.position == CGPoint(x: 520, y: 8))
         second.cancel(); await second.waitForTasks()
         h.close(); await h.finish()
     }
@@ -90,17 +90,17 @@ import Testing
         model.captureBlockOrigin { selected }
         model.text = "block: diamond"
         await model.waitForSearch()
-        #expect(model.results.first?.position?.x == 8)
+        #expect(model.matches(for: model.text).hits.first?.position?.x == 8)
         selected = BlockSearchAnchor(point: try h.point(520), playerID: otherID)
         h.players.publish([player(id, x: 1032), player(otherID, x: 8)])
         await model.waitForSearch()
-        #expect(model.results.first?.position?.x == 1032)
+        #expect(model.matches(for: model.text).hits.first?.position?.x == 1032)
         h.players.publish([player(id, x: 8, dimension: "minecraft:the_nether"), player(otherID, x: 520)])
         await model.waitForSearch()
-        #expect(model.results.first?.position?.x == 1032)
+        #expect(model.matches(for: model.text).hits.first?.position?.x == 1032)
         h.players.publish([])
         await model.waitForSearch()
-        #expect(model.results.first?.position?.x == 1032)
+        #expect(model.matches(for: model.text).hits.first?.position?.x == 1032)
         model.cancel(); h.close(); await h.finish()
     }
 
@@ -114,14 +114,14 @@ import Testing
         map.viewport = MapViewport(center: CGPoint(x: 8, y: 8), scale: 1)
         session.search.text = "block: diamond"
         await session.search.waitForSearch()
-        let initial = session.search.results.map(\.id)
-        let farther = try #require(session.search.results.last)
+        let initial = session.search.matches(for: session.search.text).hits.map(\.id)
+        let farther = try #require(session.search.matches(for: session.search.text).hits.last)
         session.selection.choose(.hit(query: session.search.text, id: farther.id))
         map.viewport = MapViewport(center: CGPoint(x: 520, y: 8), scale: 8)
         session.search.rebuild(firstDimension: session.selectedDimensionID)
         await session.search.waitForIndex(); await session.search.waitForSearch()
-        #expect(session.search.results.map(\.id) == initial)
-        #expect(session.search.results.first?.position?.x == 8)
+        #expect(session.search.matches(for: session.search.text).hits.map(\.id) == initial)
+        #expect(session.search.matches(for: session.search.text).hits.first?.position?.x == 8)
         session.close(); await session.resources.waitUntilClosed()
     }
 
@@ -132,17 +132,17 @@ import Testing
         model.captureBlockOrigin { BlockSearchAnchor(point: point, playerID: nil) }
         model.text = "block: diamond"
         await model.waitForSearch()
-        #expect(model.results.first?.title(in: .unavailable) == "Diamond Ores")
+        #expect(model.matches(for: model.text).hits.first?.title(in: .unavailable) == "Diamond Ores")
         h.counts.setCatalog(try h.catalog(ores: ["minecraft:diamond_ore", "minecraft:deepslate_diamond_ore"]))
         // Catalog publication immediately retires the old grouped result, before reranking.
-        #expect(model.results.isEmpty)
+        #expect(model.matches(for: model.text).hits.isEmpty)
         await model.waitForSearch()
-        #expect(model.results.first?.title(in: .unavailable) == "Diamond Ore")
+        #expect(model.matches(for: model.text).hits.first?.title(in: .unavailable) == "Diamond Ore")
         h.counts.setCatalog(NotableBlock.Catalog(tags: [:]))
         #expect(!model.hasOreDefinitions(for: model.text))
         #expect(model.hasOreDefinitions(for: "item:diamond"))
         await model.waitForSearch()
-        #expect(model.results.isEmpty)
+        #expect(model.matches(for: model.text).hits.isEmpty)
         model.cancel(); h.close(); await h.finish()
     }
 }

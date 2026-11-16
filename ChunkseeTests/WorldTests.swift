@@ -72,8 +72,8 @@ import Testing
                                    savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil)
         session.search.text = "diamond"
         await session.search.waitForSearch()
-        let unknown = try #require(session.search.results.first { $0.source == .inventory(unknownID) })
-        let local = try #require(session.search.results.first { $0.source == .inventory(localID) })
+        let unknown = try #require(session.search.matches(for: session.search.text).hits.first { $0.source == .inventory(unknownID) })
+        let local = try #require(session.search.matches(for: session.search.text).hits.first { $0.source == .inventory(localID) })
         #expect(unknown.position == nil && unknown.dimension == nil && unknown.y == nil && unknown.count == 3)
         #expect(local.position == CGPoint(x: -8.7, y: 4.6) && local.dimension == "minecraft:overworld" && local.y == 63)
         let viewport = session.map?.viewport
@@ -99,10 +99,10 @@ import Testing
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults), gameNames: { .unavailable })
         search.text = "diamond"
         await search.waitForSearch()
-        #expect(Set(search.results.map { $0.title(in: .unavailable) }) == ["Your inventory", "Your ender chest"])
+        #expect(Set(search.matches(for: search.text).hits.map { $0.title(in: .unavailable) }) == ["Your inventory", "Your ender chest"])
         await names.lookUp([uuid])
         await search.waitForSearch()
-        #expect(Set(search.results.map { $0.title(in: .unavailable) }) == ["You’s inventory", "You’s ender chest"])
+        #expect(Set(search.matches(for: search.text).hits.map { $0.title(in: .unavailable) }) == ["You’s inventory", "You’s ender chest"])
         await search.closeTestWorld()
     }
 
@@ -139,16 +139,16 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "block:diamond"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
-        #expect(session.search.results.count == 1)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
+        #expect(session.search.matches(for: session.search.text).hits.count == 1)
         #expect(hit.title(in: .unavailable) == "Diamond Ores" && hit.detail(in: .unavailable) == "5 blocks · Y 0 to 15" && hit.count == 5)
         #expect(hit.position == CGPoint(x: 24, y: -8) && hit.source == .block(.diamond))
         session.search.text = "block:spawner"
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.title(in: .unavailable) } == ["Spawner"])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: .unavailable) } == ["Spawner"])
         session.search.text = "block:ancient debris"
         await session.search.waitForSearch()
-        #expect(session.search.results.isEmpty)
+        #expect(session.search.matches(for: session.search.text).hits.isEmpty)
     }
 
     @Test func blockSearchRanksNearestBeforeTheSidebarLimit() throws {
@@ -221,16 +221,16 @@ import Testing
         #expect(session.resources.gameNames.storedItems(session.presentation.selectedIndex.storage).map(\.name) == ["Golden Apple"])
         session.search.text = "golden apple"
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.detail(in: .unavailable) } == ["2 Golden Apple"])
-        session.selection.choose(.hit(query: session.search.text, id: session.search.results[0].id))
-        #expect(session.selection.highlighted == [.searchHit(session.search.results[0].id)])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.detail(in: .unavailable) } == ["2 Golden Apple"])
+        session.selection.choose(.hit(query: session.search.text, id: session.search.matches(for: session.search.text).hits[0].id))
+        #expect(session.selection.highlighted == [.searchHit(session.search.matches(for: session.search.text).hits[0].id)])
         #expect(session.map?.viewport.center == CGPoint(x: 3.5, y: 4.5))
         session.search.text = "orchard"
         await session.search.waitForSearch()
-        #expect(session.search.results.map { $0.title(in: .unavailable) } == ["Sign"])
-        #expect(session.search.results.map { $0.detail(in: .unavailable) } == ["Orchard"])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: .unavailable) } == ["Sign"])
+        #expect(session.search.matches(for: session.search.text).hits.map { $0.detail(in: .unavailable) } == ["Orchard"])
         session.search.text = ""
-        #expect(session.search.results.isEmpty)
+        #expect(session.search.matches(for: session.search.text).hits.isEmpty)
         #expect(MapContent(session: session).hits.isEmpty)
 
         // A saved search keeps its results pinned on the map after the search bar is cleared, and
@@ -446,7 +446,7 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "biome:plains"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         #expect(session.visibility.biomes.isEmpty)
         session.selection.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.biomes == [BiomeGroup(id: "minecraft:plains")])

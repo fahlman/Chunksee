@@ -32,9 +32,9 @@ struct SearchWorkTests {
         await gate.waitForRequest("you")
         await gate.finish("you", with: ["saved": .all([hit("You")])])
         await model.waitForSearch()
-        #expect(model.results(for: "saved").map(\.id) == ["You"])
+        #expect(model.matches(for: "saved").hits.map(\.id) == ["You"])
         identity.uuid = nil
-        #expect(model.results(for: "saved").isEmpty)
+        #expect(model.matches(for: "saved").hits.isEmpty)
         await gate.waitForRequest("other")
         identity.uuid = uuid
         await gate.waitForRequest("you", count: 2)
@@ -42,7 +42,7 @@ struct SearchWorkTests {
         await gate.finish("other", with: ["saved": .all([hit("Retired name")])])
         await gate.finish("you", with: ["saved": .all([hit("Current You")])])
         await model.waitForSearch()
-        #expect(model.results(for: "saved").map(\.id) == ["Current You"])
+        #expect(model.matches(for: "saved").hits.map(\.id) == ["Current You"])
         await model.closeTestWorld()
         work.close(); await work.waitUntilFinished()
     }
@@ -70,7 +70,7 @@ struct SearchWorkTests {
         #expect(!drained) // The replaced query is still finishing after cancellation.
         await gate.finish("old", with: ["old": .all([hit("Obsolete")])])
         await closing.value
-        #expect(drained && !model.isSearching && model.results.isEmpty)
+        #expect(drained && !model.isSearching && model.matches(for: model.text).hits.isEmpty)
         model.text = "after"
         await model.waitForSearch()
         #expect(await gate.requested == ["old", "current"])
@@ -101,10 +101,10 @@ struct SearchWorkTests {
         #expect(!drained)
         await gate.finish("0", with: ["query": .all([hit("Discarded")])])
         await closing.value // The sibling query remains held.
-        #expect(drained && first.results.isEmpty && second.isSearching)
+        #expect(drained && first.matches(for: first.text).hits.isEmpty && second.isSearching)
         await gate.finish("1", with: ["query": .all([hit("Kept")])])
         await second.waitForSearch()
-        #expect(second.results.map(\.id) == ["Kept"])
+        #expect(second.matches(for: second.text).hits.map(\.id) == ["Kept"])
         second.cancel()
         queries.close()
         await queries.waitForTasks()

@@ -29,12 +29,12 @@ import Testing
         for model in [first, second, third] { await model.waitForSearch() }
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         for model in [first, second, third] {
-            #expect(model.results(for: "saved").map(\.id) == ["Shared"])
+            #expect(model.matches(for: "saved").hits.map(\.id) == ["Shared"])
         }
 
         let later = document()
         await later.waitForSearch()
-        #expect(later.results(for: "saved").map(\.id) == ["Shared"])
+        #expect(later.matches(for: "saved").hits.map(\.id) == ["Shared"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
 
         first.text = "diamond"
@@ -67,10 +67,10 @@ import Testing
         first.cancel()
         // This must finish while the shared pass remains blocked at the gate.
         await first.waitForTasks()
-        #expect(first.results(for: "saved").isEmpty && !first.isSearching)
+        #expect(first.matches(for: "saved").hits.isEmpty && !first.isSearching)
         await gate.finish("saved", with: ["saved": .all([hit("Shared")])])
         await second.waitForSearch()
-        #expect(second.results(for: "saved").map(\.id) == ["Shared"])
+        #expect(second.matches(for: "saved").hits.map(\.id) == ["Shared"])
         #expect(await gate.requested == ["saved"])
         second.cancel()
         await second.waitForTasks()
@@ -97,7 +97,7 @@ import Testing
         saved.remove(id)
         await model.waitForSearch()
         await gate.waitForCancellation("saved")
-        #expect(model.results(for: "saved").isEmpty)
+        #expect(model.matches(for: "saved").hits.isEmpty)
         model.cancel()
         await model.waitForTasks()
         queries.close()
@@ -107,7 +107,7 @@ import Testing
         #expect(!drained)
         await gate.finish("saved", with: ["saved": .all([hit("Obsolete")])])
         await closing.value
-        #expect(drained && model.results(for: "saved").isEmpty)
+        #expect(drained && model.matches(for: "saved").hits.isEmpty)
     }
 
     @Test func removingASavedQueryKeepsAnActiveTypedWaiterAndDoesNotCacheItAfterwards() async throws {
@@ -126,7 +126,7 @@ import Testing
         let current = Task.immediate { await model.waitForSearch() }
         await gate.finish("saved", with: ["saved": .all([hit("Still Wanted")])])
         await current.value
-        #expect(model.results.map(\.id) == ["Still Wanted"])
+        #expect(model.matches(for: model.text).hits.map(\.id) == ["Still Wanted"])
         model.text = ""
         await model.waitForSearch()
         saved.add("saved")
@@ -135,7 +135,7 @@ import Testing
         await gate.releaseAllAndFuture(with: ["saved": .all([hit("New Pass")])])
         await again.value
         #expect(await gate.requested == ["saved", "saved"])
-        #expect(model.results(for: "saved").map(\.id) == ["New Pass"])
+        #expect(model.matches(for: "saved").hits.map(\.id) == ["New Pass"])
         await model.closeTestWorld()
     }
 
@@ -168,7 +168,7 @@ import Testing
         await gate.finish("1", with: ["saved": .all([hit("Obsolete")])])
         for model in [first, second, later] {
             await model.waitForTasks()
-            #expect(model.results(for: "saved").map(\.id) == ["New"])
+            #expect(model.matches(for: "saved").hits.map(\.id) == ["New"])
             model.cancel()
         }
         queries.close()
@@ -208,8 +208,8 @@ import Testing
         await gate.finish("second-2", with: ["query": .all([hit("Current")])])
         await first.waitForTasks()
         await second.waitForSearch()
-        #expect(first.results.isEmpty)
-        #expect(second.results.map(\.id) == ["Current"])
+        #expect(first.matches(for: first.text).hits.isEmpty)
+        #expect(second.matches(for: second.text).hits.map(\.id) == ["Current"])
         #expect(Set(await gate.requested) == ["first-1", "second-1", "second-2"])
         await first.closeTestWorld()
         await second.closeTestWorld()
@@ -237,12 +237,12 @@ import Testing
         for model in [first, second] { await model.waitForSearch() }
         await names.lookUp([uuid])
         await gate.waitForRequest("Known")
-        #expect(first.results(for: "saved").map(\.id) == ["Previous"])
-        #expect(second.results(for: "saved").map(\.id) == ["Previous"])
+        #expect(first.matches(for: "saved").hits.map(\.id) == ["Previous"])
+        #expect(second.matches(for: "saved").hits.map(\.id) == ["Previous"])
         await gate.finish("Known", with: ["saved": .all([hit("Known")])])
         for model in [first, second] {
             await model.waitForSearch()
-            #expect(model.results(for: "saved").map(\.id) == ["Known"])
+            #expect(model.matches(for: "saved").hits.map(\.id) == ["Known"])
             model.cancel()
             await model.waitForTasks()
         }
@@ -279,13 +279,13 @@ import Testing
             #expect(session.search.playerSnapshot === originalPlayers)
             await session.search.waitForIndex()
             await session.search.waitForSearch()
-            let found = session.search.results(for: "diamond")
+            let found = session.search.matches(for: "diamond").hits
             #expect(found.count == 1 && found.first?.source == .inventory(player.uuid))
             #expect(found.first?.count == 4 && found.first?.dimension == "minecraft:the_nether")
         }
 
         let overworld = sessions[0], nether = sessions[1]
-        let sharedHit = try #require(nether.search.results(for: "diamond").first)
+        let sharedHit = try #require(nether.search.matches(for: "diamond").hits.first)
         nether.selection.choose(.hit(query: "diamond", id: sharedHit.id))
         overworld.selection.choose(.worldInfo)
         #expect(nether.selection.highlighted.contains(.searchHit(sharedHit.id)) && overworld.selection.highlighted.isEmpty)
@@ -308,7 +308,7 @@ import Testing
         for session in sessions {
             #expect(session.search.playerSnapshot === resources.playerSnapshot)
             await session.search.waitForSearch()
-            let found = session.search.results(for: "diamond")
+            let found = session.search.matches(for: "diamond").hits
             #expect(found.count == 1 && found.first?.count == 7 && found.first?.source == .inventory(player.uuid))
         }
         resources.close()
@@ -337,7 +337,7 @@ import Testing
             if step == 3 { players.publish([PlayerInfo(uuid: other, nbt: playerData, lastSaved: date)]) }
             for model in [first, second] {
                 await model.waitForSearch()
-                #expect(model.results(for: "saved").map(\.id) == ["Result"])
+                #expect(model.matches(for: "saved").hits.map(\.id) == ["Result"])
             }
         }
         #expect(await gate.requested == ["0", "1", "2", "3"])
@@ -358,7 +358,7 @@ import Testing
         await gate.waitForRequest("saved")
         model.queryStore.close()
         await pending.value
-        #expect(model.results(for: "saved").isEmpty)
+        #expect(model.matches(for: "saved").hits.isEmpty)
         await gate.waitForCancellation("saved")
         var drained = false
         let closing = Task.immediate { await model.queryStore.waitForTasks(); drained = true }
@@ -369,7 +369,7 @@ import Testing
         let after = SearchModel(queryStore: model.queryStore)
         after.text = "saved"
         await after.waitForSearch()
-        #expect(after.results.isEmpty && !after.isSearching)
+        #expect(after.matches(for: after.text).hits.isEmpty && !after.isSearching)
         #expect(await gate.requested == ["saved"])
         await model.closeTestWorld()
     }

@@ -31,7 +31,6 @@ final class SearchModel {
     var isIndexing: Bool { indexStore.isIndexing }
     var isSearching: Bool { handle.isSearching }
     var isActive: Bool { handle.isActive }
-    var results: [SearchHit] { handle.results }
     private var savedSearches: SavedSearches { queryStore.savedSearches }
 
     init(queryStore: WorldQueryStore) {
@@ -39,9 +38,8 @@ final class SearchModel {
         handle = queryStore.acquire()
     }
 
-    func results(for query: String) -> [SearchHit] {
-        guard !handle.isClosed else { return [] }
-        return query == text ? results : handle.results(for: query)
+    func matches(for query: String) -> SearchMatches {
+        query == text ? handle.matches : handle.matches(for: query)
     }
 
     func captureBlockOrigin(using capture: @escaping @MainActor () -> BlockSearchAnchor?) {
@@ -53,7 +51,7 @@ final class SearchModel {
 
     /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
     func listedHits(for query: String, where belongsToDimension: (String?) -> Bool) -> (rows: ArraySlice<SearchHit>, total: Int) {
-        let matches = query == text ? handle.matches : handle.matches(for: query)
+        let matches = self.matches(for: query)
         let hits = matches.hits.filter { belongsToDimension($0.dimension) }
         switch matches {
         case .all:

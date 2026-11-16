@@ -336,11 +336,7 @@ final class WorldQueryStore {
         return value.sources.gameNamesID == gameNames().identity && value.sources.singleplayerUUID == singleplayerUUID()
     }
 
-    func results(for query: String) -> [SearchHit] {
-        matches(for: query).hits
-    }
-
-    private func matches(for query: String) -> SearchMatches {
+    func matches(for query: String) -> SearchMatches {
         guard savedSearches.contains(query), let value = shared[query]?.loader.value, canDisplay(value) else { return .all([]) }
         return value.matches
     }
@@ -440,7 +436,6 @@ final class WorldQueryStore {
                 owner?.isSearchingSaved == true || window.savedBlocks.values.contains { $0.isReading } ||
                 (!window.origins.isEmpty && owner?.blockCounts?.isReading == true))
         }
-        var results: [SearchHit] { matches.hits }
         var matches: SearchMatches {
             guard !isClosed, isActive, let value = window.loader.value, owner?.canDisplay(value) == true else { return .all([]) }
             return value.matches
@@ -456,10 +451,6 @@ final class WorldQueryStore {
             guard !isClosed else { return }
             window.captureOrigin = capture
             owner?.refresh()
-        }
-
-        func results(for query: String) -> [SearchHit] {
-            matches(for: query).hits
         }
 
         func matches(for query: String) -> SearchMatches {

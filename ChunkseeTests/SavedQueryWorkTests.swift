@@ -26,7 +26,7 @@ struct SavedQueryWorkTests {
         await gate.finish("saved", with: ["saved": .all([])])
         await pending.value
         await closing.value
-        #expect(drained && !model.isSearching && model.results(for: "saved").isEmpty)
+        #expect(drained && !model.isSearching && model.matches(for: "saved").hits.isEmpty)
         model.text = "after"
         await model.waitForSearch()
         #expect(await gate.requested == ["saved"])
@@ -42,7 +42,7 @@ struct SavedQueryWorkTests {
         await gate.waitForRequest("second")
         first.queryStore.close()
         await firstWaiter.value
-        #expect(!first.isSearching && first.results(for: "saved").isEmpty)
+        #expect(!first.isSearching && first.matches(for: "saved").hits.isEmpty)
         await gate.waitForCancellation("first")
         var drained = false
         let closing = Task.immediate { await first.queryStore.waitForTasks(); drained = true }
