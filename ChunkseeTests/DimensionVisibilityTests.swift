@@ -13,9 +13,9 @@ import Testing
                                                 withIntermediateDirectories: true)
         let defaults = TestDefaults.make(), worldID = UUID()
         // A missing choice defaults independently of the other current-format choices.
-        let record = try JSONSerialization.data(withJSONObject:
-            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]])
-        defaults.set(["version": 2, "mapPresentations": ["minecraft:overworld": record]],
+        let record = try PropertyListSerialization.data(fromPropertyList:
+            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]], format: .binary, options: 0)
+        defaults.set(["version": 2, "mapPresentations.plist": ["minecraft:overworld": record]],
                      forKey: "worldSettings." + worldID.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)

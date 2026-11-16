@@ -757,11 +757,11 @@ ChunkseeKit's normal prediction. The prediction footer appears only with an actu
 
 `RegionReader` delegates the terrain/entity/POI traversal to Kit's `Dimension.scan`. It stores
 one `RegionFacts` envelope per region, validating all three file fingerprints, scan options,
-`RegionFacts.interpretationVersion` and `ScanCache.transformVersion`. Old per-part entries are
-ignored and removed after a successful replacement. Scans request the app's notable block IDs;
-the complete envelope uses Foundation JSON under LZFSE compression (transform version 2),
-including nonfinite saved numbers. Binary-plist decoding was the dominant measured cache-read
-cost in the first migration; the storage codec does not change the facts or their ownership.
+`RegionFacts.interpretationVersion` and `ScanCache.transformVersion`. Scan caches use one stable
+region slot containing a binary property-list envelope under LZFSE compression. The envelope
+validates its storage version and the complete key identity before returning facts, including
+nonfinite saved numbers. Scans currently request the app's notable block IDs; the coordinated
+Kit adoption will move those counts to the independent count reader (#576).
 Biome sampling uses MapSurfaceContext's middle generation plane for known ceiling dimensions,
 with the shared surface sample elsewhere. Vanilla Nether metadata gives Y64; the saved mapping
 also supports remapped/custom dimension IDs. Kit owns biome usage, section counts/heights,
@@ -784,6 +784,16 @@ stable identities once per immutable publication; scan options are prepared once
 and exclude health's definition-only inputs. ScanCache retains typed saved health inputs in its
 one envelope per region. Reopening with changed enchantment definitions reuses that envelope and
 resolves the result against the newly loaded definitions.
+
+Tile slots are bounded by region, style, Surface/latest-cutaway, unfiltered/latest-filtered,
+ordinary/night and tile/detail kind. Each binary property-list envelope validates its own
+storage version, kind and complete key identity; its pixels, heights, water and detail remain
+packed Data. A late old write can cause a miss, never a hit for a newer key. Atomic stores
+replace only their slot and never enumerate the directory. World-owned startup maintenance
+discards the previous layout once, then writes a completion marker. Region reads and map
+renders await that registered maintenance task; closing drains it through BackgroundWork.
+The existing world-level LRU pruning keeps its owner. Storage changes leave renderer version 38
+unchanged because the drawing output is unchanged.
 
 MapModel retains keyed ordinary, preview and close-up images. Prepared-image keys add the height
 scale and saved-lighting preparation to the unlit surface key; clock angles remain drawing inputs
@@ -1340,7 +1350,9 @@ are only comparisons, never replacements for that access URL. Native folder move
 separately opened copies get their own, and unresolved bookmarks retain their identity. No identifier is written into a world.
 Settings stay at that UUID when a world moves; no preference relocation or merging is needed.
 WorldResources shares this owner; SavedPlaces owns live annotations, and MapModel owns each
-dimension's live MapPresentation. Annotation JSON is encoded only for annotation edits, never for
+dimension's live MapPresentation. Annotations and per-dimension map records use binary property
+lists under new keys; SavedSearches does the same. The previous JSON stores are ignored without
+conversion. Annotation data is encoded only for annotation edits, never for
 viewport/layer saves. AppModel registers both shared resources and
 pending reads by that folder ID. A move or reread admits one new WorldReadSource, replacing file
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads

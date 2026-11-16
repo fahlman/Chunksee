@@ -84,12 +84,18 @@ final class WorldSession {
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) }) {
         self.resources = resources
-        self.renderTile = renderTile
+        let renderAfterPreparation: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile? = {
+            [weak resources] renderer, region in
+            guard let resources else { throw CancellationError() }
+            try await resources.waitForCachePreparation()
+            return try await renderTile(renderer, region)
+        }
+        self.renderTile = renderAfterPreparation
         let selected = dimensionID ?? resources.defaultDimensionID
         let choices = resources.settings.mapPresentation(for: selected)
         search = SearchModel(queryStore: resources.queryStore)
         selectedDimensionID = selected
-        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderTile)
+        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderAfterPreparation)
         mapState = initialMap.map(MapState.loaded) ?? .unavailable(choices)
         navigation = MapNavigation(map: initialMap)
         observeMapPresentation()

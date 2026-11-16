@@ -28,6 +28,20 @@ extension ScanCache {
     }
 }
 
+/// Damaged archives retain a valid outer codec so tests reach payload validation too.
+nonisolated enum CacheArchiveFixture {
+    static func read(_ file: URL) throws -> [String: Any] {
+        let archive = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
+        #expect(archive.starts(with: Data("bplist00".utf8)))
+        return try #require(PropertyListSerialization.propertyList(from: archive, format: nil) as? [String: Any])
+    }
+
+    static func write(_ entry: [String: Any], to file: URL) throws {
+        let archive = try PropertyListSerialization.data(fromPropertyList: entry, format: .binary, options: 0)
+        try ((archive as NSData).compressed(using: .lzfse) as Data).write(to: file)
+    }
+}
+
 extension RegionTileRenderer {
     /// Controlled asynchronous results retain the source and choices of their actual request.
     nonisolated func fixtureTile(_ image: CGImage, for region: RegionPosition) throws -> RenderedTile {
@@ -77,7 +91,8 @@ extension RegionTileRenderer {
                     light.interpretation = try changing(light.interpretation, field: field)
                     changed.inputs.nightLight = light
                 }
-                #expect(changed.fileName != key.fileName)
+                #expect(changed.fileName == key.fileName)
+                #expect(try InterpretationKey.identity(of: changed) != InterpretationKey.identity(of: key))
                 #expect(reopened.load(changed) == nil)
                 #expect(reopened.load(key) != nil)
             }

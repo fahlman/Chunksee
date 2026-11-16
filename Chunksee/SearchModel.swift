@@ -89,15 +89,19 @@ final class SavedSearches {
     }
 
     private(set) var all: [Search] {
-        didSet { if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: Self.key) } }
+        didSet {
+            let encoder = PropertyListEncoder()
+            encoder.outputFormat = .binary
+            if let data = try? encoder.encode(all) { defaults.set(data, forKey: Self.key) }
+        }
     }
 
     private let defaults: UserDefaults
-    private static let key = "savedSearches"
+    private static let key = "savedSearches.plist"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        all = defaults.data(forKey: Self.key).flatMap { try? JSONDecoder().decode([Search].self, from: $0) } ?? []
+        all = defaults.data(forKey: Self.key).flatMap { try? PropertyListDecoder().decode([Search].self, from: $0) } ?? []
     }
 
     func contains(_ query: String) -> Bool { all.contains { $0.query == query } }

@@ -39,14 +39,17 @@ actor RegionReader {
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
     private let read: Read
+    private let cachePreparation: Task<Void, Never>?
 
     init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
-         inputs: Inputs = .init(), read: @escaping Read = RegionReader.scan) {
+         inputs: Inputs = .init(), cachePreparation: Task<Void, Never>? = nil,
+         read: @escaping Read = RegionReader.scan) {
         self.dimension = dimension
         self.cache = cache
         self.inputs = inputs
         cacheOptions = ScanCache.Options(inputs.options)
         self.read = read
+        self.cachePreparation = cachePreparation
     }
 
     nonisolated static func options(context: MapSurfaceContext = .unknown,
@@ -87,6 +90,7 @@ actor RegionReader {
     }
 
     func facts(_ region: RegionPosition) async -> RegionFacts? {
+        await cachePreparation?.value
         guard !isClosed, !Task.isCancelled else { return nil }
         let key = ScanCache.Key(dimension: dimension, region: region, options: cacheOptions)
         let task: Task<RegionFacts, Error>

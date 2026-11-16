@@ -109,28 +109,29 @@ import Testing
         let directory = try #require(cache.directory)
         let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
         let compressed = try Data(contentsOf: file)
-        let data = try (compressed as NSData).decompressed(using: .lzfse) as Data
-        let original = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        for invalid in ["transform", "interpretation", "fingerprint", "dimension", "options"] {
+        let original = try CacheArchiveFixture.read(file)
+        for invalid in ["storage", "interpretation", "identity", "dimension", "options"] {
             var entry = original
             var saved = try #require(entry["facts"] as? [String: Any])
             switch invalid {
-            case "transform": entry["transformVersion"] = ScanCache.transformVersion - 1
+            case "storage": entry["storageVersion"] = -1
             case "interpretation":
                 var version = try #require(saved["version"] as? [String: Any])
                 version["revision"] = -1
                 saved["version"] = version
-            case "fingerprint": entry["fingerprint"] = "different"
+            case "identity": entry["identity"] = "different"
             case "dimension": saved["dimension"] = "minecraft:the_nether"
             default: saved["biomeSampleY"] = 64
             }
             entry["facts"] = saved
-            let invalidData = try JSONSerialization.data(withJSONObject: entry)
-            try ((invalidData as NSData).compressed(using: .lzfse) as Data).write(to: file)
+            try CacheArchiveFixture.write(entry, to: file)
             #expect(cache.load(key) == nil)
         }
         try compressed.write(to: file)
         #expect(cache.load(key)?.containers.count == 1)
+        var transformed = key
+        transformed.transform += 1
+        #expect(cache.load(transformed) == nil)
     }
 
     @Test func cachePreservesIntegerLimitsAndNonfiniteSavedNumbers() async throws {

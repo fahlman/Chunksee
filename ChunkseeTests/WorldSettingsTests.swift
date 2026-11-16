@@ -28,7 +28,8 @@ import Testing
                       presentation: secondChoices, for: nether, selected: nether)
         settings.savePlaces([place])
         let key = "worldSettings." + folder.id.uuidString
-        let places = try #require(defaults.dictionary(forKey: key)?["places"] as? Data)
+        let places = try #require(defaults.dictionary(forKey: key)?["places.plist"] as? Data)
+        #expect(places.starts(with: Data("bplist00".utf8)))
         defaults.set(false, forKey: "showsGrid")
         defaults.set("app-wide sentinel", forKey: "playerNamesSentinel")
         let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(url), names: PlayerNames(defaults: defaults),
@@ -46,7 +47,7 @@ import Testing
         first.map?.viewport.center = CGPoint(x: 123, y: -456)
         first.saveView()
         second.visibility.showsGrid = true
-        #expect((defaults.dictionary(forKey: "worldSettings." + resources.settings.worldID.uuidString)?["places"] as? Data) == places)
+        #expect((defaults.dictionary(forKey: "worldSettings." + resources.settings.worldID.uuidString)?["places.plist"] as? Data) == places)
         #expect(defaults.string(forKey: "playerNamesSentinel") == "app-wide sentinel" && !defaults.bool(forKey: "showsGrid"))
         let reopened = WorldSettings(id: resources.settings.worldID, defaults: defaults)
         #expect(reopened.lastDimension == nether && reopened.savedPlaces == [place])
@@ -94,13 +95,36 @@ import Testing
     @Test func unreadableCurrentAnnotationsAreRetainedWhileOtherSettingsChange() {
         let defaults = TestDefaults.make(), id = UUID()
         let raw = Data("unreadable saved annotation payload".utf8)
-        defaults.set(["version": 2, "places": raw], forKey: "worldSettings." + id.uuidString)
+        defaults.set(["version": 2, "places.plist": raw], forKey: "worldSettings." + id.uuidString)
         let settings = WorldSettings(id: id, defaults: defaults)
         #expect(settings.savedPlaces.isEmpty)
         var choices = settings.mapPresentation(for: "minecraft:overworld")
         choices.overlays.showsGrid = true
         settings.save(MapViewport(), presentation: choices, for: "minecraft:overworld", selected: nil)
         let stored = defaults.dictionary(forKey: "worldSettings." + id.uuidString)
-        #expect(stored?["places"] as? Data == raw && stored?["version"] as? Int == 2)
+        #expect(stored?["places.plist"] as? Data == raw && stored?["version"] as? Int == 2)
+    }
+
+    @Test func previousJSONStoresAreIgnoredAndNewPropertyListsReopen() throws {
+        let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
+        let oldPlaces = try JSONEncoder().encode([SavedPlace(name: "Old", dimension: dimension, x: 1, z: 2)])
+        let oldSearches = try JSONEncoder().encode([SavedSearches.Search(query: "item:old")])
+        let oldView = Data(#"{"viewport":[1,2,4],"presentation":{"overlays":{"showsGrid":true}}}"#.utf8)
+        let key = "worldSettings." + id.uuidString
+        defaults.set(["places": oldPlaces, "mapPresentations": [dimension: oldView], "dimension": dimension,
+                      "shownVersionNotices": ["already shown"]], forKey: key)
+        defaults.set(oldSearches, forKey: "savedSearches")
+        let settings = WorldSettings(id: id, defaults: defaults), searches = SavedSearches(defaults: defaults)
+        #expect(settings.savedPlaces.isEmpty && settings.viewport(for: dimension) == nil && searches.all.isEmpty)
+        #expect(!settings.mapPresentation(for: dimension).overlays.showsGrid)
+        #expect(settings.lastDimension == dimension && settings.hasShownVersionNotice("already shown"))
+        let place = SavedPlace(name: "New", dimension: dimension, x: 3, z: 4)
+        settings.savePlaces([place])
+        searches.add("item:new")
+        #expect(WorldSettings(id: id, defaults: defaults).savedPlaces == [place])
+        #expect(SavedSearches(defaults: defaults).all == searches.all)
+        #expect(try #require(defaults.data(forKey: "savedSearches.plist")).starts(with: Data("bplist00".utf8)))
+        #expect(defaults.data(forKey: "savedSearches") == oldSearches)
+        #expect(defaults.dictionary(forKey: key)?["places"] as? Data == oldPlaces)
     }
 }

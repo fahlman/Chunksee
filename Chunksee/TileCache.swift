@@ -42,6 +42,16 @@ nonisolated struct TileCache: Sendable {
     /// 38: packed retained layers preserve close-up detail within the existing memory budget.
     static let rendererVersion = 38
 
+    /// Storage layout changes do not change the renderer's interpretation of a world.
+    private static let storageVersion = 1
+    private enum Kind: String, Codable { case tile, detail }
+    private struct Entry: Codable {
+        let storageVersion: Int
+        let identity: String
+        let kind: Kind
+        let payload: Data
+    }
+
     let directory: URL
 
     struct Inputs: Hashable, Sendable, Encodable {
@@ -86,13 +96,12 @@ nonisolated struct TileCache: Sendable {
         var biomeFiles: [RegionTileRenderer.BiomeFile]?
 
         var fileName: String? {
-            guard let identity = try? InterpretationKey.identity(of: self) else { return nil }
-            return "\(prefix)\(identity).v\(inputs.renderer).lzfse"
+            "\(prefix)tile.plist.lzfse"
         }
 
         var regionPrefix: String { "r.\(region.x).\(region.z)." }
         var prefix: String { "\(regionPrefix)\(inputs.style.rawValue).\(inputs.cutawayY == nil ? "surface" : "cutaway").\(inputs.filterKey == nil ? "all" : "filtered").\(inputs.nightLight == nil ? "ordinary" : "night")." }
-        var detailFileName: String? { fileName.map { $0 + ".detail" } }
+        var detailFileName: String? { "\(prefix)detail.plist.lzfse" }
     }
 
     /// The folder for one world's tiles: `Tiles/<hash of the world's path>`, under `root`.
@@ -140,6 +149,21 @@ nonisolated struct TileCache: Sendable {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: worldFolder.path)
     }
 
+    /// The world owner awaits this once before starting cache readers or writers. Old layouts
+    /// are discarded, not converted. A marker is written only after cleanup succeeds.
+    static func prepare(worldFolder: URL) throws {
+        let manager = FileManager.default
+        let marker = worldFolder.appendingPathComponent("storage-layout-\(storageVersion)")
+        guard !manager.fileExists(atPath: marker.path) else { return }
+        try Task.checkCancellation()
+        try manager.createDirectory(at: worldFolder, withIntermediateDirectories: true)
+        for old in try manager.contentsOfDirectory(at: worldFolder, includingPropertiesForKeys: nil) {
+            try Task.checkCancellation()
+            try manager.removeItem(at: old)
+        }
+        try Data().write(to: marker, options: .atomic)
+    }
+
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, inputs: Inputs,
                     biomeFiles: [RegionTileRenderer.BiomeFile]?) -> Key? {
@@ -149,9 +173,7 @@ nonisolated struct TileCache: Sendable {
 
     func load(_ key: Key) -> RegionTileRenderer.Canvas? {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard let name = key.fileName,
-              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-              let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
+        guard let bytes = loadPayload(key, kind: .tile),
               bytes.count == count * (key.inputs.nightLight == nil ? 9 : 10) else { return nil }
         let water = bytes[(count * 8)..<(count * 9)]
         let light = key.inputs.nightLight == nil ? nil : Array(bytes[(count * 9)...])
@@ -169,9 +191,7 @@ nonisolated struct TileCache: Sendable {
     func loadDetail(_ key: Key) -> MapSurfaceDetail.Surface? {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
         let offset = count * (key.inputs.nightLight == nil ? 4 : 5)
-        guard let name = key.detailFileName,
-              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-              let bytes = try? (data as NSData).decompressed(using: .lzfse) as Data,
+        guard let bytes = loadPayload(key, kind: .detail),
               bytes.count >= offset, bytes.count <= offset + MapSurfaceDetail.maximumEncodedBytes,
               let detail = MapSurfaceDetail.decoded(Data(bytes[offset...])) else { return nil }
         let light = key.inputs.nightLight == nil ? nil : Array(bytes[(count * 4)..<offset])
@@ -184,17 +204,14 @@ nonisolated struct TileCache: Sendable {
 
     func storeDetail(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard let name = key.detailFileName,
-              case .game = key.inputs.gameSource.artwork, key.inputs.colorSource != nil, key.inputs.style.inputs.detail,
+        guard case .game = key.inputs.gameSource.artwork, key.inputs.colorSource != nil, key.inputs.style.inputs.detail,
               (key.inputs.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count),
               surface.heights.count == count, let detail = surface.detail.encoded() else { return }
         var bytes = Data(capacity: count * (key.inputs.nightLight == nil ? 4 : 5) + detail.count)
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         if let light = surface.nightLight { bytes.append(contentsOf: light) }
         bytes.append(detail)
-        guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? compressed.write(to: directory.appendingPathComponent(name), options: .atomic)
+        storePayload(bytes, key: key, kind: .detail)
     }
 
     /// Keeps Surface and the latest cutaway per region/style, each with an unfiltered image and
@@ -202,8 +219,7 @@ nonisolated struct TileCache: Sendable {
     /// disabling a filter preserves the ordinary tile. Failures only cost a re-render.
     func store(_ surface: RegionTileRenderer.Canvas, for key: Key) {
         let count = RegionTileRenderer.side * RegionTileRenderer.side
-        guard let fileName = key.fileName,
-              surface.pixels.count == count * 4, surface.heights.count == count,
+        guard surface.pixels.count == count * 4, surface.heights.count == count,
               surface.isWater.count == count,
               (key.inputs.nightLight == nil ? surface.nightLight == nil : surface.nightLight?.count == count) else { return }
         var bytes = Data(capacity: count * (key.inputs.nightLight == nil ? 9 : 10))
@@ -211,16 +227,31 @@ nonisolated struct TileCache: Sendable {
         surface.heights.map(\.littleEndian).withUnsafeBytes { bytes.append(contentsOf: $0) }
         bytes.append(contentsOf: surface.isWater.map { $0 ? UInt8(1) : 0 })
         if let light = surface.nightLight { bytes.append(contentsOf: light) }
-        guard let compressed = try? (bytes as NSData).compressed(using: .lzfse) as Data else { return }
-        let fileManager = FileManager.default
-        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let detailName = fileName + ".detail"
-        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        where (name.hasPrefix(key.prefix) && name != fileName && name != detailName)
-            || (name.hasPrefix(key.regionPrefix) && !name.hasSuffix(".v\(Self.rendererVersion).lzfse")
-                && !name.hasSuffix(".v\(Self.rendererVersion).lzfse.detail")) {
-            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
-        }
-        try? compressed.write(to: directory.appendingPathComponent(fileName), options: .atomic)
+        storePayload(bytes, key: key, kind: .tile)
+    }
+
+    private func loadPayload(_ key: Key, kind: Kind) -> Data? {
+        guard let identity = try? InterpretationKey.identity(of: key),
+              let name = kind == .tile ? key.fileName : key.detailFileName,
+              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
+              let archive = try? (data as NSData).decompressed(using: .lzfse) as Data,
+              let entry = try? PropertyListDecoder().decode(Entry.self, from: archive),
+              entry.storageVersion == Self.storageVersion, entry.identity == identity,
+              entry.kind == kind else { return nil }
+        return entry.payload
+    }
+
+    private func storePayload(_ payload: Data, key: Key, kind: Kind) {
+        guard let identity = try? InterpretationKey.identity(of: key),
+              let name = kind == .tile ? key.fileName : key.detailFileName else { return }
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let entry = Entry(storageVersion: Self.storageVersion, identity: identity, kind: kind, payload: payload)
+        guard let archive = try? encoder.encode(entry),
+              let compressed = try? (archive as NSData).compressed(using: .lzfse) as Data else { return }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try compressed.write(to: directory.appendingPathComponent(name), options: .atomic)
+        } catch { return }
     }
 }
