@@ -350,7 +350,12 @@ final class MapModel {
         invalidateDetail(in: affected, keepingImages: true)
         let removed = affected.subtracting(availableRegions)
         invalidateDetail(in: removed, keepingImages: false)
-        for region in removed { detailSurfaces[region] = nil }
+        for region in removed {
+            tiles[region] = nil
+            previews[region] = nil
+            detailSurfaces[region] = nil
+        }
+        stale.subtract(removed)
         if !affected.isDisjoint(with: shadowSources) { invalidateShadows() }
         failed.subtract(affected)
         forgetTopBlocks(in: regions)

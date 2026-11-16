@@ -507,6 +507,7 @@ import Testing
         map.requestTiles(visibleIn: CGSize(width: 32, height: 32))
         await map.waitUntilIdle()
         let before = try #require(map.tiles[region])
+        let preview = try #require(map.previews[region])
         let directory = dimension.regionDirectory
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: directory.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
@@ -515,12 +516,13 @@ import Testing
             map.regionsChanged(change)
             await map.waitUntilIdle()
             #expect(map.availableRegions == [region] && map.tiles[region] === before)
+            #expect(map.previews[region] === preview)
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         try FileManager.default.removeItem(at: dimension.regionURL(at: region))
         map.regionsChanged()
         await map.waitUntilIdle()
-        #expect(map.availableRegions.isEmpty && map.tiles.isEmpty)
+        #expect(map.availableRegions.isEmpty && map.tiles.isEmpty && map.previews.isEmpty)
         map.close(); work.close(); await work.waitUntilFinished()
     }
 
