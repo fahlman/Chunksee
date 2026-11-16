@@ -9,7 +9,7 @@ final class WorldDefinitionLoader {
     nonisolated struct Facts: Sendable {
         var definitions: WorldDefinitions
         let enchantmentNames: GameNames.Enchantments
-        /// The game source of the completed definition read, retained during replacement.
+        /// The game source that supplied these facts, retained during replacement.
         /// Prepared new dimensions may extend settings before the next complete read.
         let source: WorldGameDataSource.Identity
 
@@ -33,11 +33,11 @@ final class WorldDefinitionLoader {
         var preparedDimensions: [String: DimensionInput]
     }
 
-    typealias ReadDefinitions = @Sendable (World, GameDataLibrary?) async throws -> WorldDefinitions
+    typealias ReadDefinitions = @Sendable (World, GameDataLibrary?, WorldDefinitions?) async throws -> RefreshRead<WorldDefinitions>
 
     /// The production operations and injected test operations are captured once per pass.
     private final class Reads {
-        var definitions: ReadDefinitions = { try await WorldResources.readDefinitions($0, library: $1) }
+        var definitions: ReadDefinitions = { try await WorldResources.readDefinitions($0, library: $1, retaining: $2) }
     }
 
     private let loader: RefreshLoader<Source, RefreshInvalidation, Facts>
@@ -65,9 +65,16 @@ final class WorldDefinitionLoader {
             let readDefinitions = await reads.definitions
             try Task.checkCancellation()
             guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
-            let updated = try await readDefinitions(source.world.world, library)
+            let compatible = previous?.source == source.game.identity ? previous?.definitions : nil
+            let updated = try await readDefinitions(source.world.world, library, compatible)
             try Task.checkCancellation()
-            return .complete(Facts(definitions: updated, source: source.game.identity, previous: previous))
+            if !updated.isComplete, let previous, previous.source != source.game.identity {
+                // A partial replacement cannot mix old categories into a new source identity.
+                // Retain the coherent old snapshot until the replacement succeeds.
+                return .partial(previous)
+            }
+            let facts = Facts(definitions: updated.value, source: source.game.identity, previous: previous)
+            return updated.isComplete ? .complete(facts) : .partial(facts)
         }, work: work, priority: .utility, whenInactive: .finish, source: source, initialValue: initial,
             firstRequest: .refresh, merge: { _, newer in newer }, retainingValue: { value, previous, current in
                 guard previous.world == current.world else { return nil }

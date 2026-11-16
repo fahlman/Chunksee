@@ -28,20 +28,30 @@ nonisolated struct MapBiomeColors: Sendable {
     let sampler: BiomeSampler?
     private let colors: [String: Biome]
     private let definitions: [String: BiomeDefinition]
-    private let waterBiomes: Set<String>
+    private let waterBiomes: RefreshRead<Set<String>>
+    var isComplete: Bool { waterBiomes.isComplete }
 
     static func read(in world: World, source: GameResourceSource, assets: GameAssets?,
-                     colorMaps: [Identifier: ItemTexture] = [:]) throws -> Self {
+                     colorMaps: [Identifier: ItemTexture] = [:], retaining previous: Self? = nil) throws -> Self {
         let definitions = try world.biomeDefinitions(assets: assets)
-        let tags = (try? world.tags(for: ["minecraft:is_ocean", "minecraft:is_river"],
-                                   in: "worldgen/biome", assets: assets)) ?? [:]
+        let water: RefreshRead<Set<String>>
+        do {
+            let tags = try world.tags(for: ["minecraft:is_ocean", "minecraft:is_river"],
+                                      in: "worldgen/biome", assets: assets)
+            water = .complete(Set(tags.values.flatMap { $0.members.map(\.id) }))
+        } catch let error as CancellationError { throw error }
+        catch {
+            // The world loader admits only this world's previous snapshot. Tags depend on
+            // game data, so an artwork toggle may retain them but a new game source may not.
+            water = .partial(previous?.source.data == source.data ? previous?.waterBiomes.value ?? [] : [])
+        }
         try Task.checkCancellation()
         return try Self(world: world, source: source, definitions: definitions,
-                        colorMaps: colorMaps, waterBiomes: Set(tags.values.flatMap { $0.members.map(\.id) }))
+                        colorMaps: colorMaps, waterBiomes: water)
     }
 
     init(world: World, source: GameResourceSource, definitions: [String: BiomeDefinition],
-         colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String> = []) throws {
+         colorMaps: [Identifier: ItemTexture], waterBiomes: RefreshRead<Set<String>> = .complete([])) throws {
         let seed = try world.seed()
         // Keep Kit's complete definitions in the identity. Compute this once at publication,
         // rather than enumerating its current fields or encoding the catalog for every tile.
@@ -54,7 +64,7 @@ nonisolated struct MapBiomeColors: Sendable {
     }
 
     private init(source: GameResourceSource, catalog: String, pictures: String?, seed: Int64?, dataVersion: Int?, enabledPacks: [String],
-                 definitions: [String: BiomeDefinition], colorMaps: [Identifier: ItemTexture], waterBiomes: Set<String>) {
+                 definitions: [String: BiomeDefinition], colorMaps: [Identifier: ItemTexture], waterBiomes: RefreshRead<Set<String>>) {
         self.seed = seed
         sampler = seed.map(BiomeSampler.init(seed:))
         sourceKey = Key(source: source, catalog: catalog, colorMaps: pictures)
@@ -86,7 +96,7 @@ nonisolated struct MapBiomeColors: Sendable {
         guard let id = Identifier(name)?.description, let biome = colors[id],
               let point = MapCoordinates(point: position) else { return nil }
         let rgb: UInt32?
-        if waterBiomes.contains(id) { rgb = biome.color(.water, x: point.x, z: point.z) }
+        if waterBiomes.value.contains(id) { rgb = biome.color(.water, x: point.x, z: point.z) }
         else {
             // Explicit overrides still work without artwork. If both land colormaps are
             // unavailable, use this definition's known water color before inventing a hash.
@@ -98,7 +108,8 @@ nonisolated struct MapBiomeColors: Sendable {
     }
 
     func matchesMetadata(_ world: World, source: GameResourceSource) throws -> Bool {
-        guard self.source == source, dataVersion == world.level.dataVersion,
+        // A partial tag read must reach the files again even when level.dat is unchanged.
+        guard isComplete, self.source == source, dataVersion == world.level.dataVersion,
               enabledPacks == world.level.enabledDataPacks else { return false }
         return seed == (try world.seed())
     }

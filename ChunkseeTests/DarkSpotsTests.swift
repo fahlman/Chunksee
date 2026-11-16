@@ -289,9 +289,9 @@ import Testing
         let gate = AsyncReadGate<[String: MonsterSpawnLight]>(), changes = AsyncReadGate<Void>()
         await changes.releaseAllAndFuture(with: ())
         resources.readNightLighting = { _, _ in await gate.read("rules") }
-        resources.readDefinitions = { world, library in
+        resources.readDefinitions = { world, library, previous in
             await changes.read("pack")
-            return try await WorldResources.readDefinitions(world, library: library)
+            return try await WorldResources.readDefinitions(world, library: library, retaining: previous)
         }
         first.setDarkSpots(true); await gate.waitForRequest("rules")
         second.setDarkSpots(true)

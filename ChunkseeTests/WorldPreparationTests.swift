@@ -74,7 +74,7 @@ import Testing
             await definitions.record()
             #expect((library != nil) == useGameFiles)
             #expect(dimensions.map(\.id) == snapshot.dimensions.map(\.id))
-            return try await WorldDefinitions.read(world, dimensions: dimensions, library: library)
+            return try await WorldDefinitions.read(world, dimensions: dimensions, library: library).value
         }
         #expect(counts.withLock { $0.dimensions } == 1)
         #expect(counts.withLock { $0.players } == 1)
@@ -169,12 +169,12 @@ import Testing
         minecraft.choose(old.root)
         let library = try #require(await minecraft.library()), snapshot = try await WorldSnapshot.read(root)
         defer { snapshot.access.release() }
-        let retired = try await WorldDefinitions.read(snapshot.world, dimensions: snapshot.dimensions, library: library.data)
+        let retired = try await WorldDefinitions.read(snapshot.world, dimensions: snapshot.dimensions, library: library.data).value
         let gate = AsyncReadGate<WorldDefinitions>()
         let task = Task {
             try await WorldPreparation.read(snapshot, minecraft: minecraft) { world, dimensions, data in
                 if data?.identity == library.identity { return await gate.read("retired") }
-                return try await WorldDefinitions.read(world, dimensions: dimensions, library: data)
+                return try await WorldDefinitions.read(world, dimensions: dimensions, library: data).value
             }
         }
         await gate.waitForRequest("retired")

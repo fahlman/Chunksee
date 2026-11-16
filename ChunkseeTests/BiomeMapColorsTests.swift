@@ -385,10 +385,10 @@ import Testing
         let gate = AsyncReadGate<Void>(), numbers = ReadNumbers(), requests = ColorRequests()
         let delivered = AsyncReadGate<Void>()
         await delivered.releaseAllAndFuture(with: ())
-        resources.readDefinitions = { world, data in
+        resources.readDefinitions = { world, data, previous in
             // Definitions start after the color request is delivered by this file refresh.
             await delivered.read("notification")
-            return try await WorldResources.readDefinitions(world, library: data)
+            return try await WorldResources.readDefinitions(world, library: data, retaining: previous)
         }
         resources.readBiomeColors = { world, data, artwork, previous, reload in
             await requests.append(reload)

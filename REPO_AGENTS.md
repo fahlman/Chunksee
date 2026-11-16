@@ -542,6 +542,11 @@ a save that changes both requests both loaders. A failed player refresh keeps it
 snapshot while successful definitions advance, and a definition failure does not delay players.
 A successful empty player read clears the roster. Game discovery, replacement and pack-only changes
 never reread players; world rereads and moves replace their saved source and reject late results.
+Definition reads return RefreshRead and retain failed categories only from the same source while
+publishing independently readable categories. Successful nil/empty reads remove the old facts;
+cancellation still propagates. A partial replacement keeps the old coherent snapshot with its
+original provenance until a complete replacement read succeeds. Partial reads remain pending for
+the next external request through RefreshLoader, without an automatic retry loop.
 Replacing game inputs cancels obsolete definition reads while retaining completed definitions until
 the replacement is ready. Retained definitions carry their producing game generation and library
 identity; they are never relabeled as the new source. This producer's compatible projection retains
@@ -2161,7 +2166,10 @@ generation and actual data/artwork identities. Metadata requests retain the read
 pack-content requests dominate when same-source notifications coalesce. A running pass publishes
 progress before one merged follow-up, without restarting on every save. Failure keeps coherent
 colors and preserves forced-read demand for the next request without a retry loop; successful
-empty definitions clear removed colors. Artwork replacement under the same data/generation
+empty definitions clear removed colors. Failed ocean/river tag reads retain same-source membership
+while readable biome colors advance. MapBiomeColors carries that tag read's partial status through
+the loader and disables metadata reuse until a successful read, including a successful empty tag.
+Artwork replacement under the same data/generation
 synchronously projects the publication to numeric colors without reading images. Any other
 source replacement clears it and rejects retired work. The computed accessor guards the live
 world/loader source; it, MapGameResources and direct renderer callers all use MapBiomeColors'
