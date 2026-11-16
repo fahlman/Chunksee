@@ -1099,7 +1099,10 @@ saved-query results. Starting a query captures the selected player UUID in that 
 otherwise the map center. A player anchor follows only that UUID's published position and keeps
 its last point when the player disappears or changes dimension. A map-center anchor stays fixed;
 panning, selecting a result and zooming never recapture it. Kit ranks the complete retained
-count set by distance and stable ties before applying the 200-result sidebar/map limit. Catalog,
+count set by distance and stable ties before applying SearchModel's single 200-result limit.
+Its full matching chunk/group-row total travels with the nearest rows through typed and saved
+query publications, so headings retain the total and display does not truncate those rows again.
+Ordinary full results use the same limit after dimension filtering. Catalog,
 origin and world replacement retire incompatible results; completed count progress reranks the
 same query without another palette read. "Searching farther away…" is a list state, never an
 item caption. Missing ore definitions have their own explanation while explicit groups remain

@@ -21,7 +21,7 @@ nonisolated struct SearchSources: Equatable, Sendable {
 /// queries share raw counts and keep their captured search point in each window.
 @Observable
 final class WorldQueryStore {
-    typealias Results = [String: [SearchHit]]
+    typealias Results = [String: SearchMatches]
     typealias Read = @Sendable (SearchRequest) async -> Results
     let index: WorldIndexStore
     let savedSearches: SavedSearches
@@ -75,14 +75,14 @@ final class WorldQueryStore {
     nonisolated fileprivate final class Value: Sendable {
         let query: String
         let sources: SearchSources
-        let hits: [SearchHit]
+        let matches: SearchMatches
         let blockWorld: WorldReadSource?
         let blockCatalog: NotableBlock.Catalog?
         let blockPoint: BlockSearchPoint?
         init(source: Source, results: Results) {
             query = source.query
             sources = source.context.key
-            hits = results[source.query] ?? []
+            matches = results[source.query] ?? .all([])
             blockWorld = source.blocks?.counts.world
             blockCatalog = source.blocks?.catalog
             blockPoint = source.blocks?.point
@@ -337,8 +337,12 @@ final class WorldQueryStore {
     }
 
     func results(for query: String) -> [SearchHit] {
-        guard savedSearches.contains(query), let value = shared[query]?.loader.value, canDisplay(value) else { return [] }
-        return value.hits
+        matches(for: query).hits
+    }
+
+    private func matches(for query: String) -> SearchMatches {
+        guard savedSearches.contains(query), let value = shared[query]?.loader.value, canDisplay(value) else { return .all([]) }
+        return value.matches
     }
 
     private var isSearchingSaved: Bool {
@@ -436,9 +440,10 @@ final class WorldQueryStore {
                 owner?.isSearchingSaved == true || window.savedBlocks.values.contains { $0.isReading } ||
                 (!window.origins.isEmpty && owner?.blockCounts?.isReading == true))
         }
-        var results: [SearchHit] {
-            guard !isClosed, isActive, let value = window.loader.value, owner?.canDisplay(value) == true else { return [] }
-            return value.hits
+        var results: [SearchHit] { matches.hits }
+        var matches: SearchMatches {
+            guard !isClosed, isActive, let value = window.loader.value, owner?.canDisplay(value) == true else { return .all([]) }
+            return value.matches
         }
 
         fileprivate init(id: UUID, window: Window, owner: WorldQueryStore) {
@@ -454,12 +459,16 @@ final class WorldQueryStore {
         }
 
         func results(for query: String) -> [SearchHit] {
-            guard !isClosed, let owner else { return [] }
+            matches(for: query).hits
+        }
+
+        func matches(for query: String) -> SearchMatches {
+            guard !isClosed, let owner else { return .all([]) }
             if SearchQuery(query).filter == .block {
-                guard let value = window.savedBlocks[query]?.value, owner.canDisplay(value) else { return [] }
-                return value.hits
+                guard let value = window.savedBlocks[query]?.value, owner.canDisplay(value) else { return .all([]) }
+                return value.matches
             }
-            return owner.results(for: query)
+            return owner.matches(for: query)
         }
 
         func isSearchingFarther(for query: String) -> Bool {

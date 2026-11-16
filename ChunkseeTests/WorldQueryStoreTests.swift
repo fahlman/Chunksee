@@ -16,7 +16,7 @@ import Testing
                 await reads.read(query)
                 let hit = SearchHit(id: query, dimension: nil, position: .zero,
                     y: 64, content: .sign(kind: "minecraft:sign", lines: [query]))
-                return [query: [hit]]
+                return [query: .all([hit])]
             }, gameNames: { .unavailable })
         await model.waitForIndex()
         model.text = "first"
@@ -47,11 +47,11 @@ import Testing
             singleplayerUUID: { nil }, firstDimension: nil, savedSearches: saved,
             execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
-        await gate.finish("saved", with: ["saved": [hit("Saved")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Saved")])])
         await model.waitForSearch()
         model.text = "first"
         await gate.waitForRequest("first")
-        await gate.finish("first", with: ["first": [hit("First")]])
+        await gate.finish("first", with: ["first": .all([hit("First")])])
         await model.waitForSearch()
         model.text = "saved"
         #expect(model.results.map(\.id) == ["Saved"] && !model.isSearching)
@@ -127,13 +127,13 @@ import Testing
             singleplayerUUID: { nil }, gameNames: { .unavailable },
             execute: { await gate.read(String($0.players[0].experienceLevel!)) })
         await gate.waitForRequest("1")
-        await gate.finish("1", with: ["saved": [hit("First")]])
+        await gate.finish("1", with: ["saved": .all([hit("First")])])
         await store.waitForTasks()
         #expect(store.results(for: "saved").map(\.id) == ["First"])
         players.publish([player(2)])
         await gate.waitForRequest("2")
         #expect(store.results(for: "saved").map(\.id) == ["First"])
-        await gate.finish("2", with: ["saved": [hit("Second")]])
+        await gate.finish("2", with: ["saved": .all([hit("Second")])])
         await store.waitForTasks()
         let window = SearchModel(queryStore: store)
         await window.waitForSearch()

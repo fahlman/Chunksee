@@ -15,6 +15,7 @@ nonisolated struct SearchRequest: Sendable {
 /// Per-window controls over the world's published search results. Views never scan a world.
 @Observable
 final class SearchModel {
+    nonisolated static let rowLimit = 200
     let queryStore: WorldQueryStore
     private let handle: WorldQueryStore.Handle
     var text: String {
@@ -52,8 +53,14 @@ final class SearchModel {
 
     /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
     func listedHits(for query: String, where belongsToDimension: (String?) -> Bool) -> (rows: ArraySlice<SearchHit>, total: Int) {
-        let hits = results(for: query).filter { belongsToDimension($0.dimension) }
-        return (hits.prefix(200), hits.count)
+        let matches = query == text ? handle.matches : handle.matches(for: query)
+        let hits = matches.hits.filter { belongsToDimension($0.dimension) }
+        switch matches {
+        case .all:
+            return (hits.prefix(Self.rowLimit), hits.count)
+        case .nearest(_, let total, let dimension):
+            return (hits[...], belongsToDimension(dimension) ? total : 0)
+        }
     }
 
     var visibleSearchQueries: [String] {

@@ -19,7 +19,7 @@ struct SearchWorkTests {
 
     @Test(.timeLimit(.minutes(1))) func savedQueriesUseTheCurrentSingleplayerIdentityAndRejectRetiredLabels() async {
         let work = BackgroundWork(), defaults = TestDefaults.make(), uuid = UUID()
-        let identity = PlayerIdentity(uuid), gate = AsyncReadGate<[String: [SearchHit]]>()
+        let identity = PlayerIdentity(uuid), gate = AsyncReadGate<WorldQueryStore.Results>()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let roster = PlayerRoster([PlayerInfo(uuid: uuid, nbt: .compound([:]))])
@@ -30,7 +30,7 @@ struct SearchWorkTests {
                                 gameNames: { .unavailable })
         await model.waitForIndex()
         await gate.waitForRequest("you")
-        await gate.finish("you", with: ["saved": [hit("You")]])
+        await gate.finish("you", with: ["saved": .all([hit("You")])])
         await model.waitForSearch()
         #expect(model.results(for: "saved").map(\.id) == ["You"])
         identity.uuid = nil
@@ -39,8 +39,8 @@ struct SearchWorkTests {
         identity.uuid = uuid
         await gate.waitForRequest("you", count: 2)
         await gate.waitForCancellation("other")
-        await gate.finish("other", with: ["saved": [hit("Retired name")]])
-        await gate.finish("you", with: ["saved": [hit("Current You")]])
+        await gate.finish("other", with: ["saved": .all([hit("Retired name")])])
+        await gate.finish("you", with: ["saved": .all([hit("Current You")])])
         await model.waitForSearch()
         #expect(model.results(for: "saved").map(\.id) == ["Current You"])
         await model.closeTestWorld()
@@ -49,7 +49,7 @@ struct SearchWorkTests {
 
     @Test(.timeLimit(.minutes(1))) func ownerClosureDrainsReplacedQueriesAndRejectsLateResults() async {
         let work = BackgroundWork(), defaults = TestDefaults.make()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]),
                                 names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                 firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
@@ -65,10 +65,10 @@ struct SearchWorkTests {
         var drained = false
         let closing = Task.immediate { await model.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("current", with: ["current": [hit("Late")]])
+        await gate.finish("current", with: ["current": .all([hit("Late")])])
         await model.waitForSearch()
         #expect(!drained) // The replaced query is still finishing after cancellation.
-        await gate.finish("old", with: ["old": [hit("Obsolete")]])
+        await gate.finish("old", with: ["old": .all([hit("Obsolete")])])
         await closing.value
         #expect(drained && !model.isSearching && model.results.isEmpty)
         model.text = "after"
@@ -80,7 +80,7 @@ struct SearchWorkTests {
 
     @Test(.timeLimit(.minutes(1))) func closingOneSearchDrainsOnlyItsQueries() async {
         let work = BackgroundWork(), defaults = TestDefaults.make()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
         let players = PlayerRoster([])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
@@ -99,10 +99,10 @@ struct SearchWorkTests {
         var drained = false
         let closing = Task.immediate { await first.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("0", with: ["query": [hit("Discarded")]])
+        await gate.finish("0", with: ["query": .all([hit("Discarded")])])
         await closing.value // The sibling query remains held.
         #expect(drained && first.results.isEmpty && second.isSearching)
-        await gate.finish("1", with: ["query": [hit("Kept")]])
+        await gate.finish("1", with: ["query": .all([hit("Kept")])])
         await second.waitForSearch()
         #expect(second.results.map(\.id) == ["Kept"])
         second.cancel()

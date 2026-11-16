@@ -219,18 +219,36 @@ nonisolated struct SearchHit: Identifiable, Equatable, Sendable {
     }
 }
 
+/// One query publication preserves full totals when its rows were limited before display.
+nonisolated enum SearchMatches: Sendable {
+    case all([SearchHit])
+    /// The library has already ranked and limited these rows within one dimension.
+    case nearest([SearchHit], total: Int, dimension: String)
+
+    var hits: [SearchHit] {
+        switch self {
+        case .all(let hits), .nearest(let hits, _, _): hits
+        }
+    }
+}
+
 /// Builds the search index and answers searches against it: item names, custom names, book
 /// titles, authors and pages, sign text, and creatures' names; or, with a `LayerFilter`, one
 /// sidebar layer's markers.
 nonisolated enum WorldSearch {
     /// All scans and sorting for a query run on the concurrent executor, using one snapshot.
     @concurrent
-    static func execute(_ request: SearchRequest) async -> [String: [SearchHit]] {
-        var results: [String: [SearchHit]] = [:]
-        for query in request.queries {
+    static func execute(_ request: SearchRequest) async -> WorldQueryStore.Results {
+        var results: WorldQueryStore.Results = [:]
+        for text in request.queries {
             guard !Task.isCancelled else { return [:] }
-            results[query] = search(query, in: request.index, players: request.players, gameNames: request.gameNames, blocks: request.blocks) {
-                request.playerNames[$0.uuid] ?? GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: nil, knownName: nil)
+            let query = SearchQuery(text)
+            if query.filter == .block {
+                results[text] = blockMatches(request.blocks, query: query, gameNames: request.gameNames)
+            } else {
+                results[text] = .all(search(text, in: request.index, players: request.players, gameNames: request.gameNames) {
+                    request.playerNames[$0.uuid] ?? GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: nil, knownName: nil)
+                })
             }
         }
         return results
@@ -246,7 +264,7 @@ nonisolated enum WorldSearch {
         case .place: hits = layerHits(index.places, query: query, gameNames: gameNames, y: { $0.y }, content: SearchHit.Content.place)
         case .creature, .pet, .villager: hits = creatureHits(index.creatures, filter: filter, query: query, gameNames: gameNames)
         case .trade: hits = tradeHits(index.creatures, query: query, gameNames: gameNames)
-        case .block: return blockHits(blocks, query: query, gameNames: gameNames)
+        case .block: return blockMatches(blocks, query: query, gameNames: gameNames).hits
         case .biome:
             hits = layerHits(index.biomeAreas, query: query, gameNames: gameNames) {
                 .biome(markerID: $0.id, group: $0.group, chunkCount: $0.chunkCount)
@@ -255,18 +273,20 @@ nonisolated enum WorldSearch {
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }
 
-    /// Rank the running window's dimension before applying the sidebar/map's 200-row limit.
+    /// Rank the running window's dimension before applying the sidebar/map's row limit.
     /// The pin sits at the chunk's center; the detail gives the height range to dig.
-    private static func blockHits(_ input: BlockQueryInput?, query: SearchQuery, gameNames: GameNames) -> [SearchHit] {
-        guard let input, let index = input.counts.dimensions[input.point.dimension] else { return [] }
+    private static func blockMatches(_ input: BlockQueryInput?, query: SearchQuery, gameNames: GameNames) -> SearchMatches {
+        guard let input, let index = input.counts.dimensions[input.point.dimension] else { return .all([]) }
         let groups = Set(input.catalog.groups.filter { query.matches($0.searchText(in: input.catalog, gameNames: gameNames)) })
-        return index.nearestDeposits(matching: groups, using: input.catalog, from: input.point.origin, limit: 200).compactMap { entry in
+        let matches = index.matchingDeposits(matching: groups, using: input.catalog, from: input.point.origin,
+                                            limit: SearchModel.rowLimit)
+        let hits = matches.nearest.map { entry in
             let dimension = input.point.dimension, chunk = entry.chunk, deposit = entry.deposit
-            guard let origin = chunk.blockOrigin else { return nil }
             return SearchHit(id: "\(dimension)@\(deposit.block.id)@\(chunk.x),\(chunk.z)",
-                             dimension: dimension, position: CGPoint(x: origin.x + 8, y: origin.z + 8), y: deposit.minY,
+                             dimension: dimension, position: chunk.blockOrigin.map { CGPoint(x: $0.x + 8, y: $0.z + 8) }, y: deposit.minY,
                              content: .block(deposit))
         }
+        return .nearest(hits, total: matches.totalCount, dimension: input.point.dimension)
     }
 
     /// Villagers and traders with a trade matching every word (in an item's name or id, or an

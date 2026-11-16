@@ -6,6 +6,38 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct BlockQueryTests {
+    @Test func nearestRowsKeepFullTotalsInTypedAndSavedSearches() async throws {
+        let h = try BlockCountHarness(chunks: (0..<220).map { BlockSearchFixture.chunk(x: $0, count: $0 + 1) })
+        defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
+        let query = "block:diamond", west = try h.point(8), east = try h.point(219 * 16 + 8)
+        let first = SearchModel(queryStore: h.queries), second = SearchModel(queryStore: h.queries)
+        first.captureBlockOrigin { BlockSearchAnchor(point: west, playerID: nil) }
+        second.captureBlockOrigin { BlockSearchAnchor(point: east, playerID: nil) }
+        first.text = query; second.text = query
+        await first.waitForSearch(); await second.waitForSearch()
+        for (model, expectedX) in [(first, 8.0), (second, 3512.0)] {
+            let listed = model.listedHits(for: query) { $0 == h.dimension.id }
+            #expect(listed.total == 220 && listed.rows.count == 200)
+            #expect(listed.rows.first?.position?.x == expectedX)
+            #expect(CountedText.label("Search Results", count: listed.total, shown: listed.rows.count,
+                                     locale: Locale(identifier: "en_US")) == "Search Results (first 200 of 220)")
+            #expect(model.pinnedHits { $0 == h.dimension.id }.map(\.id) == listed.rows.map(\.id))
+            let elsewhere = model.listedHits(for: query) { $0 == "minecraft:the_nether" }
+            #expect(elsewhere.total == 0 && elsewhere.rows.isEmpty)
+        }
+        first.saveSearch()
+        first.text = ""; second.text = ""
+        await first.waitForSearch(); await second.waitForSearch()
+        for (model, expectedX) in [(first, 8.0), (second, 3512.0)] {
+            let saved = model.listedHits(for: query) { $0 == h.dimension.id }
+            #expect(saved.total == 220 && saved.rows.count == 200)
+            #expect(saved.rows.first?.position?.x == expectedX)
+            #expect(model.pinnedHits { $0 == h.dimension.id }.map(\.id) == saved.rows.map(\.id))
+        }
+        first.cancel(); second.cancel(); h.close(); await h.finish()
+        #expect(first.listedHits(for: query) { _ in true }.total == 0)
+    }
+
     @Test func windowsShareCountsButSavedAndTypedSearchesKeepTheirOwnOrigins() async throws {
         let log = BlockReadLog()
         let h = try BlockCountHarness(chunks: [0, 32].map { BlockSearchFixture.chunk(x: $0, count: 3) },

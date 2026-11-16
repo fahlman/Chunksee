@@ -19,13 +19,13 @@ import Testing
         let players = PlayerRoster([])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
             singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.queries[0]) })
         func document() -> SearchModel { SearchModel(queryStore: queries) }
         let first = document(), second = document(), third = document()
         await gate.waitForRequest("saved")
-        await gate.releaseAllAndFuture(with: ["saved": [hit("Shared")]])
+        await gate.releaseAllAndFuture(with: ["saved": .all([hit("Shared")])])
         for model in [first, second, third] { await model.waitForSearch() }
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         for model in [first, second, third] {
@@ -57,7 +57,7 @@ import Testing
         let players = PlayerRoster([])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
             singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.queries[0]) })
         func document() -> SearchModel { SearchModel(queryStore: queries) }
@@ -68,7 +68,7 @@ import Testing
         // This must finish while the shared pass remains blocked at the gate.
         await first.waitForTasks()
         #expect(first.results(for: "saved").isEmpty && !first.isSearching)
-        await gate.finish("saved", with: ["saved": [hit("Shared")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Shared")])])
         await second.waitForSearch()
         #expect(second.results(for: "saved").map(\.id) == ["Shared"])
         #expect(await gate.requested == ["saved"])
@@ -89,7 +89,7 @@ import Testing
         let players = PlayerRoster([])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let queries = WorldQueryStore(index: index, work: work, names: PlayerNames(defaults: defaults), savedSearches: saved,
             singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.queries[0]) })
         let model = SearchModel(queryStore: queries)
@@ -105,7 +105,7 @@ import Testing
         var drained = false
         let closing = Task.immediate { await queries.waitForTasks(); await index.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("saved", with: ["saved": [hit("Obsolete")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Obsolete")])])
         await closing.value
         #expect(drained && model.results(for: "saved").isEmpty)
     }
@@ -116,7 +116,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let id = try #require(saved.all.first?.id)
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let model = makeSearch(readers: [], work: work, playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                 firstDimension: nil, savedSearches: saved,
                                 execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
@@ -124,7 +124,7 @@ import Testing
         model.text = "saved"
         saved.remove(id)
         let current = Task.immediate { await model.waitForSearch() }
-        await gate.finish("saved", with: ["saved": [hit("Still Wanted")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Still Wanted")])])
         await current.value
         #expect(model.results.map(\.id) == ["Still Wanted"])
         model.text = ""
@@ -132,7 +132,7 @@ import Testing
         saved.add("saved")
         let again = Task.immediate { await model.waitForSearch() }
         await gate.waitForRequest("saved")
-        await gate.releaseAllAndFuture(with: ["saved": [hit("New Pass")]])
+        await gate.releaseAllAndFuture(with: ["saved": .all([hit("New Pass")])])
         await again.value
         #expect(await gate.requested == ["saved", "saved"])
         #expect(model.results(for: "saved").map(\.id) == ["New Pass"])
@@ -150,7 +150,7 @@ import Testing
         let players = PlayerRoster([player(1)])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
             singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read(String($0.players[0].experienceLevel!)) })
         func document() -> SearchModel { SearchModel(queryStore: queries) }
@@ -158,14 +158,14 @@ import Testing
         await gate.waitForRequest("1")
         players.publish([player(2)])
         await gate.waitForRequest("2")
-        await gate.finish("2", with: ["saved": [hit("New")]])
+        await gate.finish("2", with: ["saved": .all([hit("New")])])
         for model in [first, second] { await model.waitForSearch() }
         let later = document()
         await later.waitForSearch()
         await first.waitForSearch()
         #expect(await gate.requested.filter { $0 == "1" }.count == 1)
         #expect(await gate.requested.filter { $0 == "2" }.count == 1)
-        await gate.finish("1", with: ["saved": [hit("Obsolete")]])
+        await gate.finish("1", with: ["saved": .all([hit("Obsolete")])])
         for model in [first, second, later] {
             await model.waitForTasks()
             #expect(model.results(for: "saved").map(\.id) == ["New"])
@@ -181,7 +181,7 @@ import Testing
         let work = BackgroundWork()
         let defaults = TestDefaults.make(), uuid = UUID()
         let names = PlayerNames(defaults: defaults), saved = SavedSearches(defaults: defaults)
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         func player(_ revision: Int32) -> PlayerInfo {
             PlayerInfo(uuid: uuid, nbt: .compound(["XpLevel": .int(revision)]))
         }
@@ -203,9 +203,9 @@ import Testing
         players.publish([player(2)])
         await gate.waitForRequest("second-2")
         await gate.waitForCancellation("second-1")
-        await gate.finish("first-1", with: ["query": [hit("Obsolete")]])
-        await gate.finish("second-1", with: ["query": [hit("Obsolete")]])
-        await gate.finish("second-2", with: ["query": [hit("Current")]])
+        await gate.finish("first-1", with: ["query": .all([hit("Obsolete")])])
+        await gate.finish("second-1", with: ["query": .all([hit("Obsolete")])])
+        await gate.finish("second-2", with: ["query": .all([hit("Current")])])
         await first.waitForTasks()
         await second.waitForSearch()
         #expect(first.results.isEmpty)
@@ -227,19 +227,19 @@ import Testing
         let players = PlayerRoster([player])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let queries = WorldQueryStore(index: index, work: work, names: names, savedSearches: saved,
             singleplayerUUID: { nil }, gameNames: { .unavailable }, execute: { await gate.read($0.gameNames.player($0.playerNames[uuid]!)) })
         func document() -> SearchModel { SearchModel(queryStore: queries) }
         let first = document(), second = document()
         await gate.waitForRequest(unknown)
-        await gate.finish(unknown, with: ["saved": [hit("Previous")]])
+        await gate.finish(unknown, with: ["saved": .all([hit("Previous")])])
         for model in [first, second] { await model.waitForSearch() }
         await names.lookUp([uuid])
         await gate.waitForRequest("Known")
         #expect(first.results(for: "saved").map(\.id) == ["Previous"])
         #expect(second.results(for: "saved").map(\.id) == ["Previous"])
-        await gate.finish("Known", with: ["saved": [hit("Known")]])
+        await gate.finish("Known", with: ["saved": .all([hit("Known")])])
         for model in [first, second] {
             await model.waitForSearch()
             #expect(model.results(for: "saved").map(\.id) == ["Known"])
@@ -324,7 +324,7 @@ import Testing
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
         let gate = AsyncReadGate<WorldQueryStore.Results>()
-        await gate.releaseAllAndFuture(with: ["saved": [hit("Result")]])
+        await gate.releaseAllAndFuture(with: ["saved": .all([hit("Result")])])
         let index = WorldIndexStore(readers: [], work: work, firstDimension: nil, playerRoster: players)
         await index.waitForIndex()
         let queries = WorldQueryStore(index: index, work: work, names: PlayerNames(defaults: defaults), savedSearches: saved,
@@ -363,7 +363,7 @@ import Testing
         var drained = false
         let closing = Task.immediate { await model.queryStore.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("saved", with: ["saved": [hit("Late")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Late")])])
         await closing.value
         #expect(drained)
         let after = SearchModel(queryStore: model.queryStore)

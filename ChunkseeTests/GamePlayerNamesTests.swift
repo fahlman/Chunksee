@@ -56,7 +56,7 @@ import Testing
             let names: [UUID: GameNames.PlayerName] = expected.singleplayer == nil && expected.known == nil ? [:] : [uuid: name]
             let results = await WorldSearch.execute(SearchRequest(queries: ["diamond"], index: .overworld(DimensionContent()),
                 players: [player], playerNames: names, gameNames: .unavailable))
-            let hits = try #require(results["diamond"])
+            let hits = try #require(results["diamond"]).hits
             #expect(hits.map { $0.title(in: .unavailable) } == [expected.ender, expected.inventory])
             #expect(hits.map(\.source) == [.enderChest(uuid), .inventory(uuid)] && hits.map(\.count) == [2, 1])
             #expect(hits.first?.position == nil && hits.last?.position == player.position.map { CGPoint(x: $0.x, y: $0.z) })
