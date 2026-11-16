@@ -109,6 +109,14 @@ extension BiomePresentation {
     }
 }
 
+// Focused fixtures discover their dimensions before using the production definition reader.
+extension WorldDefinitions {
+    nonisolated static func read(_ world: World, assets: GameAssets?) throws -> Self {
+        try Task.checkCancellation()
+        return try read(world, dimensions: world.dimensions(), assets: assets)
+    }
+}
+
 // Focused tests without installed game files compose the same readers directly. Production
 // defers definitions until WorldPreparation knows which library to use.
 extension WorldDetails {
