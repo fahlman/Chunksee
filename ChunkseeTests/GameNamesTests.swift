@@ -113,11 +113,32 @@ enum GameNameFixture {
     @Test func translatedBlockSearchMatchesTheDisplayedNameAndStillAcceptsIDs() async throws {
         let names = try await GameNameFixture.names("fr_FR")
         let blocks = try BlockSearchFixture.input([BlockSearchFixture.chunk(x: 0, count: 4)])
-        for query in ["block:diamants", "block:minecraft:diamond_ore"] {
+        for query in ["block:diamants", "block:minerai de diamant", "block:minecraft:diamond_ore"] {
             let found = WorldSearch.search(query, in: SearchIndex(), players: [], gameNames: names, blocks: blocks) { _ in .named("") }
             #expect(found.map { $0.title(in: names) } == ["Diamants du pack"])
             #expect(found.first?.count == 4)
         }
+    }
+
+    @Test func unnamedOreGroupsMatchEveryMembersTranslatedBlockName() async throws {
+        let game = try ItemPictureFixture(extraFiles: [
+            "assets/minecraft/lang/en_us.json": ItemPictureFixture.json(["language.code": "en_us"]),
+            "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json([
+                "language.code": "fr_fr",
+                "block.minecraft.diamond_ore": "Minerai de diamant",
+                "block.minecraft.deepslate_diamond_ore": "Diamant des abîmes",
+            ]),
+        ])
+        defer { game.remove() }
+        let library = try game.library()
+        let names = GameNames(await library.data.language("fr_FR", minecraftDirectory: game.root))
+        let blocks = try BlockSearchFixture.input([BlockSearchFixture.chunk(x: 0, count: 4)])
+        for query in ["block:minerai de diamant", "block:diamant des abîmes", "block:minecraft:diamond_ore"] {
+            let found = WorldSearch.search(query, in: SearchIndex(), players: [], gameNames: names, blocks: blocks) { _ in .named("") }
+            #expect(found.map { $0.title(in: names) } == ["Diamond Ores"])
+            #expect(found.first?.count == 4)
+        }
+        await library.close()
     }
 
     @Test func openWorldObservesLanguageChangesReplacementRemovalAndRechoice() async throws {

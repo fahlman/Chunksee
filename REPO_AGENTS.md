@@ -2402,7 +2402,8 @@ and pictures from the earlier JSON numeric/member interpretation.
 Effects, merchant ranks, statistics, notable-block search labels,
 game modes and difficulty use the game’s keys. Statistics retain their saved values and Kit-owned
 units. Ore-tag group names use the game's `tag.block` key, then its readable identifier; direct
-block groups use the block name. Membership comes from Kit's composed `minecraft:ores` catalog,
+block groups use the block name. Search also matches every member's translated block name,
+including groups without a translated tag name. Membership comes from Kit's composed `minecraft:ores` catalog,
 with the explicitly approved individual groups and separate Nether Gold. The game supplies no structure or cat-variant
 names, so their fallback preserves ID word order. Loot-table labels derive from saved paths, with
 no special renames. Old-format guidance uses the saved version name, when available, without a

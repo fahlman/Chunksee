@@ -127,6 +127,7 @@ extension GameNames {
     }
 
     nonisolated func notableBlockSearchText(_ block: NotableBlock, in catalog: NotableBlock.Catalog?) -> String {
-        ([notableBlock(block), block.resourceID] + (catalog?.ids(for: block) ?? []).sorted()).joined(separator: " ")
+        let ids = (catalog?.ids(for: block) ?? []).sorted()
+        return ([notableBlock(block), block.resourceID] + ids + ids.map { self.block($0) }).joined(separator: " ")
     }
 }
