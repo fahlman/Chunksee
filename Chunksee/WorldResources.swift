@@ -204,15 +204,17 @@ final class WorldResources {
         return biomeLoader.value?.available(for: GameResourceSource(data: gameData, artwork: gameArtwork))
     }
     @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
+        partialRead: { [weak self] source, request, previous in
+            guard let read = await self?.readBiomeColors else { throw CancellationError() }
+            let colors = try await read(source.world.world, source.data, source.artwork, previous, request == .contents)
+            return colors.isComplete ? .complete(colors) : .partial(colors)
+        },
         work: backgroundWork, priority: nil, whenInactive: .finish, source: biomeSource,
         firstRequest: .metadata, merge: { $0.merging($1) }, retainingValue: { value, previous, current in
             guard previous.world == current.world, previous.generation == current.generation, previous.data === current.data else { return nil }
             return value.removingArtwork()
         }
-    ) { [weak self] source, request, previous in
-        guard let read = await self?.readBiomeColors else { throw CancellationError() }
-        return try await read(source.world.world, source.data, source.artwork, previous, request == .contents)
-    }
+    )
     nonisolated private enum BiomeRequest: Equatable, Sendable {
         case metadata, contents
         func merging(_ other: Self) -> Self { self == .contents || other == .contents ? .contents : .metadata }
@@ -547,10 +549,11 @@ final class WorldResources {
         index.replace(readers: readers, firstDimension: activeDimensionID)
     }
 
-    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?) async throws -> WorldDefinitions {
+    @concurrent nonisolated static func readDefinitions(_ world: World, library: GameDataLibrary?,
+                                                       retaining previous: WorldDefinitions? = nil) async throws -> RefreshRead<WorldDefinitions> {
         try Task.checkCancellation()
         let current = try World(contentsOf: world.url)
-        return try await WorldDefinitions.read(current, dimensions: current.dimensions(), library: library)
+        return try await WorldDefinitions.read(current, dimensions: current.dimensions(), library: library, retaining: previous)
     }
 
     private func refreshBiomeColors(reload: Bool) {
@@ -565,8 +568,8 @@ final class WorldResources {
         let current = try World(contentsOf: world.url)
         let source = GameResourceSource(data: data, artwork: artwork)
         if !reload, let previous, try previous.matchesMetadata(current, source: source) { return previous }
-        if let data { return try await data.biomeColors(in: current, artwork: artwork) }
-        return try MapBiomeColors.read(in: current, source: source, assets: nil)
+        if let data { return try await data.biomeColors(in: current, artwork: artwork, retaining: previous) }
+        return try MapBiomeColors.read(in: current, source: source, assets: nil, retaining: previous)
     }
 
     /// Optional gameplay light metadata is shared by all interested dimension tabs. Ordinary

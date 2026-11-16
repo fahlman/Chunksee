@@ -256,12 +256,12 @@ import Testing
         defer { resources.close() }
         let savedPlayers = resources.playerSnapshot
         resources.readPlayers = { _ in Issue.record("Game changes must not reread saved players"); return nil }
-        let blank = try await WorldResources.readDefinitions(resources.world, library: nil)
-        let known = try await WorldResources.readDefinitions(resources.world, library: first.data)
+        let blank = try await WorldResources.readDefinitions(resources.world, library: nil).value
+        let known = try await WorldResources.readDefinitions(resources.world, library: first.data).value
         let gate = AsyncReadGate<WorldDefinitions>()
-        resources.readDefinitions = { _, library in
-            guard let library else { return blank }
-            return await gate.read(library.identity == first.identity ? "older" : library.identity == second.identity ? "newer" : "closing")
+        resources.readDefinitions = { _, library, _ in
+            guard let library else { return .complete(blank) }
+            return .complete(await gate.read(library.identity == first.identity ? "older" : library.identity == second.identity ? "newer" : "closing"))
         }
 
         await assetReads.publish(first, to: resources)
@@ -339,7 +339,7 @@ import Testing
             "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
             "Pos": .list([.double(30), .double(64), .double(0)])
         ]))
-        resources.readDefinitions = { _, _ in throw CocoaError(.fileReadUnknown) }
+        resources.readDefinitions = { _, _, _ in throw CocoaError(.fileReadUnknown) }
         resources.readPlayers = { _ in [changed] }
         resources.worldChanged([root.appendingPathComponent("level.dat")])
         await resources.waitForRefresh()
@@ -378,5 +378,78 @@ import Testing
         #expect(resources.players.first?.position?.x == 40)
         resources.close(); await resources.waitUntilClosed()
         await names.minecraft.waitUntilIdle()
+    }
+
+    @Test func failedDimensionMetadataRetainsItsScaleWhileOtherDefinitionsAdvance() async throws {
+        let root = try TestWorld.make(chunks: [], dimensionSettings: [
+            "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"),
+                                                           noise: .string("minecraft:overworld"))
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let enchantment = root.appendingPathComponent("datapacks/ChunkseeTest/data/test/enchantment/ward.json")
+        try write(neutral, to: enchantment)
+        let world = try World(contentsOf: root), dimensions = world.dimensions()
+        let original = try WorldDefinitions.read(world, dimensions: dimensions, assets: nil)
+        #expect(original.isComplete && !original.value.dimensionSettings.isEmpty)
+        let metadata = root.appendingPathComponent("data/minecraft/world_gen_settings.dat")
+        try write("interrupted saved-data write", to: metadata)
+        #expect(throws: (any Error).self) { try world.dimensionSettings(assets: nil) }
+        try write(changesHealth, to: enchantment)
+        let partial = try WorldDefinitions.read(world, dimensions: dimensions, assets: nil, retaining: original.value)
+        #expect(!partial.isComplete)
+        #expect(partial.value.dimensionSettings == original.value.dimensionSettings)
+        #expect(partial.value.enchantments["test:ward"]?.hasMaximumHealthModifier == true)
+        try FileManager.default.removeItem(at: metadata)
+        let removed = try WorldDefinitions.read(world, dimensions: dimensions, assets: nil, retaining: partial.value)
+        #expect(removed.isComplete && removed.value.dimensionSettings.isEmpty)
+    }
+
+    @Test func failedBlockTagsRetainReadersWhileIndependentDefinitionsAdvance() async throws {
+        let root = try fixture(enchantment: "test:ward")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pack = root.appendingPathComponent("datapacks/ChunkseeTest")
+        let enchantment = pack.appendingPathComponent("data/test/enchantment/ward.json")
+        let tag = pack.appendingPathComponent("data/minecraft/tags/block/diamond_ores.json")
+        try write(neutral, to: enchantment)
+        let scans = Scans()
+        let read: RegionReader.Read = { dimension, region, options in
+            await scans.record()
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        }
+        let resources = try await resources(root, readRegion: read)
+        defer { resources.close() }
+        await resources.waitForRefresh()
+        let original = resources.details.definitions
+        let reader = try #require(resources.readers["minecraft:overworld"])
+        let dimension = await reader.dimension
+        let region = RegionPosition(x: 0, z: 0)
+        let key = ScanCache.Key(dimension: dimension, region: region, options: .init(reader.inputs.options))
+        let count = await scans.count
+        #expect(original.notableBlocks.blockIDs.contains("minecraft:diamond_ore"))
+
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: tag.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path) }
+        #expect(throws: (any Error).self) {
+            try resources.world.tags(for: ["minecraft:diamond_ores"], in: "block", assets: nil)
+        }
+        try write(changesHealth, to: enchantment)
+        resources.worldChanged([pack])
+        await resources.waitForRefresh(); await resources.index.waitForIndex()
+        let partial = resources.details.definitions
+        #expect(partial.enchantments["test:ward"]?.hasMaximumHealthModifier == true)
+        #expect(partial.notableBlocks == original.notableBlocks)
+        let retained = try #require(resources.readers[dimension.id])
+        #expect(retained === reader)
+        #expect(ScanCache.Key(dimension: dimension, region: region, options: .init(retained.inputs.options)) == key)
+        #expect(await scans.count == count)
+
+        // The same source gets a new demand. A now-readable empty tag removes its old members.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path)
+        try write(#"{"replace":true,"values":[]}"#, to: tag)
+        resources.worldChanged([pack])
+        await resources.waitForRefresh(); await resources.index.waitForIndex()
+        #expect(!resources.details.definitions.notableBlocks.blockIDs.contains("minecraft:diamond_ore"))
+        #expect(resources.readers[dimension.id] !== reader)
+        resources.close(); await resources.waitUntilClosed()
     }
 }

@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
@@ -38,7 +39,7 @@ import Testing
         let fixture = try Fixture(), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<WorldDefinitions>(), numbers = ReadNumbers()
-        loader.readDefinitions = { _, _ in await definitions.read(String(await numbers.next())) }
+        loader.readDefinitions = { _, _, _ in .complete(await definitions.read(String(await numbers.next()))) }
         let source = WorldGameDataSource(generation: fixture.generation, selection: .loaded(nil))
         loader.refreshDefinitions(gameSource: source)
         await definitions.waitForRequest("0")
@@ -67,7 +68,7 @@ import Testing
         let fixture = try Fixture(), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<Result<WorldDefinitions, CocoaError>>()
-        loader.readDefinitions = { _, _ in try await definitions.read("definitions").get() }
+        loader.readDefinitions = { _, _, _ in .complete(try await definitions.read("definitions").get()) }
         let initialSource = loader.value?.source, generation = UUID()
         let source = WorldGameDataSource(generation: generation, selection: .loaded(nil))
         loader.refreshDefinitions(gameSource: source)
@@ -86,11 +87,15 @@ import Testing
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 
-    @Test func returningToAnEarlierGameSourceRejectsBothRetiredReadsAndCloseDrainsTheLastRead() async throws {
+    @Test(arguments: [false, true])
+    func returningToAnEarlierGameSourceRejectsBothRetiredReadsAndCloseDrainsTheLastRead(partial: Bool) async throws {
         let fixture = try Fixture(), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let gate = AsyncReadGate<WorldDefinitions>(), numbers = ReadNumbers()
-        loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
+        loader.readDefinitions = { _, _, _ in
+            let value = await gate.read(String(await numbers.next()))
+            return partial ? .partial(value) : .complete(value)
+        }
         let initialSource = loader.value?.source
         loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await gate.waitForRequest("0")
@@ -129,7 +134,7 @@ import Testing
         let fixture = try Fixture(library: first), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<WorldDefinitions>()
-        loader.readDefinitions = { _, library in await definitions.read(library?.sourceKey ?? "none") }
+        loader.readDefinitions = { _, library, _ in .complete(await definitions.read(library?.sourceKey ?? "none")) }
         let initialSource = WorldGameDataSource(generation: fixture.generation, selection: .loaded(first)).identity
         let generation = replacingGeneration ? UUID() : fixture.generation
         let nextSource = WorldGameDataSource(generation: generation, selection: .loaded(second)).identity
@@ -162,7 +167,7 @@ import Testing
         let fixture = try Fixture(), loader = fixture.loader
         defer { fixture.close(); fixture.remove() }
         let definitions = AsyncReadGate<WorldDefinitions>()
-        loader.readDefinitions = { _, _ in await definitions.read("definitions") }
+        loader.readDefinitions = { _, _, _ in .complete(await definitions.read("definitions")) }
         let initial = loader.value
         loader.refreshDefinitions(gameSource: .init(generation: fixture.generation, selection: .loaded(nil)))
         await definitions.waitForRequest("definitions")
@@ -203,7 +208,7 @@ import Testing
         let opening = try #require(fixture.initial.dimensionSettings["minecraft:overworld"])
         let different = try #require(try WorldDefinitions.read(addedWorld, assets: nil).dimensionSettings["example:added"])
         let gate = AsyncReadGate<WorldDefinitions>(), numbers = ReadNumbers()
-        loader.readDefinitions = { _, _ in await gate.read(String(await numbers.next())) }
+        loader.readDefinitions = { _, _, _ in .complete(await gate.read(String(await numbers.next()))) }
         var changed = fixture.initial
         changed.dimensionSettings["minecraft:overworld"] = different
         let updated = changed
@@ -225,6 +230,36 @@ import Testing
         await loader.work.waitUntilFinished()
         #expect(loader.value?.definitions == changed)
         #expect(loader.value?.source.generation == generation)
+        fixture.close(); await fixture.work.waitUntilFinished()
+    }
+
+    @Test func aPartialReplacementKeepsThePreviousFactsAndTheirSourceUntilACompleteRead() async throws {
+        let fixture = try Fixture(), loader = fixture.loader
+        defer { fixture.close(); fixture.remove() }
+        let original = try #require(loader.value)
+        let tag = fixture.root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/diamond_ores.json")
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: tag.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path) }
+        let source = WorldGameDataSource(generation: UUID(), selection: .loaded(nil))
+        let reads = ReadNumbers()
+        loader.readDefinitions = { world, library, previous in
+            #expect(previous == nil)
+            let pass = await reads.next()
+            let result = try await WorldResources.readDefinitions(world, library: library, retaining: previous)
+            #expect(result.isComplete == (pass > 0))
+            return result
+        }
+        loader.refreshDefinitions(gameSource: source)
+        await loader.work.waitUntilFinished()
+        #expect(loader.value?.source == original.source)
+        #expect(loader.value?.definitions == original.definitions)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path)
+        try Data(#"{"replace":true,"values":[]}"#.utf8).write(to: tag)
+        loader.refreshDefinitions(gameSource: source)
+        await loader.work.waitUntilFinished()
+        #expect(loader.value?.source == source.identity)
+        #expect(loader.value?.definitions.notableBlocks.blockIDs.contains("minecraft:diamond_ore") == false)
         fixture.close(); await fixture.work.waitUntilFinished()
     }
 }

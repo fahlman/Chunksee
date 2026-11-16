@@ -316,7 +316,7 @@ import Synchronization
         #expect(try await library.picture(for: ItemStack(id: "test:flat")) != nil)
         let definitions = first.details.definitions, readers = first.readers
         #expect(definitions.enchantments["test:sample"] != nil)
-        first.readDefinitions = { _, _ in Issue.record("Artwork changes must not reload game definitions"); throw CancellationError() }
+        first.readDefinitions = { _, _, _ in Issue.record("Artwork changes must not reload game definitions"); throw CancellationError() }
         let map = try #require(a.map)
         map.viewport = .init(center: CGPoint(x: 8, y: 8), scale: 8)
         map.requestTiles(visibleIn: CGSize(width: 64, height: 64), displayScale: 1)
@@ -551,7 +551,7 @@ import Synchronization
         await resources.waitForRefresh()
         let offAgain = try await rendered()
         #expect(offAgain.detail == nil && offAgain.heights == off.heights)
-        #expect(try await WorldResources.readDefinitions(resources.world, library: library.data) == definitions)
+        #expect(try await WorldResources.readDefinitions(resources.world, library: library.data).value == definitions)
         #expect(offAgain.cacheWrite?.key == offKey)
         #expect(reads.withLock { $0 } == readsAtSwitch)
         resources.close(); await resources.waitUntilClosed()

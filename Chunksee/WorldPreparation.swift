@@ -15,7 +15,9 @@ struct WorldPreparation {
     }
 
     static func read(_ snapshot: WorldSnapshot, minecraft: MinecraftResources,
-                     readDefinitions: @escaping ReadDefinitions = WorldDefinitions.read(_:dimensions:library:)) async throws -> Self {
+                     readDefinitions: @escaping ReadDefinitions = {
+                         try await WorldDefinitions.read($0, dimensions: $1, library: $2).value
+                     }) async throws -> Self {
         while true {
             try Task.checkCancellation()
             let source = WorldGameAssetSource(generation: minecraft.generation)

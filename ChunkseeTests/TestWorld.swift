@@ -114,7 +114,7 @@ extension BiomePresentation {
 extension WorldDefinitions {
     nonisolated static func read(_ world: World, assets: GameAssets?) throws -> Self {
         try Task.checkCancellation()
-        return try read(world, dimensions: world.dimensions(), assets: assets)
+        return try read(world, dimensions: world.dimensions(), assets: assets).value
     }
 }
 
@@ -123,7 +123,7 @@ extension WorldDefinitions {
 extension WorldDetails {
     nonisolated static func read(_ world: World) -> WorldDetails {
         let dimensions = world.dimensions()
-        return WorldDetails(definitions: (try? WorldDefinitions.read(world, dimensions: dimensions, assets: nil)) ?? WorldDefinitions(),
+        return WorldDetails(definitions: (try? WorldDefinitions.read(world, dimensions: dimensions, assets: nil).value) ?? WorldDefinitions(),
                             info: WorldInfoSnapshot.read(world, dimensions: dimensions).value,
                             mapSnapshot: WorldMapSnapshot.read(world).value)
     }

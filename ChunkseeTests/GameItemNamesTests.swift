@@ -80,7 +80,7 @@ import Testing
         var updated = world.details.definitions
         updated.enchantments["test:ward"] = ward
         let gate = AsyncReadGate<WorldDefinitions>()
-        world.readDefinitions = { _, _ in await gate.read("definitions") }
+        world.readDefinitions = { _, _, _ in .complete(await gate.read("definitions")) }
         world.worldChanged([root.appendingPathComponent("datapacks/changed.zip")])
         await gate.waitForRequest("definitions")
         #expect(world.gameNames.identity == before.identity)
