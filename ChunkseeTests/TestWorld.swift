@@ -154,12 +154,14 @@ extension WorldResources {
                      watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
                      readRegion: @escaping RegionReader.Read = RegionReader.scan,
                      readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
+                     prepareCache: @escaping @Sendable (URL) async -> Void = WorldResources.prepareCache,
                      maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) async throws {
         let folder = try WorldFolders(defaults: defaults).remember(snapshot.access.url)
         let prepared = try await WorldPreparation.read(snapshot, minecraft: names.minecraft)
         self.init(prepared: prepared, names: names, savedSearches: savedSearches,
                   settings: WorldSettings(folder: folder, defaults: defaults), cacheRoot: cacheRoot,
-                  watchWorld: watchWorld, readRegion: readRegion, readGameAssets: readGameAssets, maintainCache: maintainCache)
+                  watchWorld: watchWorld, readRegion: readRegion, readGameAssets: readGameAssets,
+                  prepareCache: prepareCache, maintainCache: maintainCache)
     }
 
     func includeDimensions(from snapshot: WorldSnapshot) async throws {

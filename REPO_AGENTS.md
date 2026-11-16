@@ -810,8 +810,9 @@ ordinary/night and tile/detail kind. Each binary property-list envelope validate
 storage version, kind and complete key identity; its pixels, heights, water and detail remain
 packed Data. A late old write can cause a miss, never a hit for a newer key. Atomic stores
 replace only their slot and never enumerate the directory. World-owned startup maintenance
-discards the previous layout once, then writes a completion marker. Region reads and map
-renders await that registered maintenance task; closing drains it through BackgroundWork.
+discards the previous layout once, then writes a completion marker. Region reads, block counts
+and map renders await only that preparation task. Marking the folder used and pruning other
+worlds follow in independent background work; closing drains both tasks through BackgroundWork.
 The existing world-level LRU pruning keeps its owner. Storage changes leave renderer version 38
 unchanged because the drawing output is unchanged.
 

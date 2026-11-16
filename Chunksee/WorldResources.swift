@@ -104,6 +104,7 @@ final class WorldResources {
     var players: [PlayerInfo] { playerSnapshot.players }
     private let makeReader: (WorldReadSource, ChunkseeKit.Dimension, WorldDefinitions, Task<Void, Never>?) -> RegionReader
     private let watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher?
+    private let prepareCache: @Sendable (URL) async -> Void
     private let maintainCache: @Sendable (URL, URL) async -> Void
     @ObservationIgnored private var cachePreparation: Task<Void, Never>?
     var activeDimensionID: String?
@@ -268,11 +269,13 @@ final class WorldResources {
          watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
+         prepareCache: @escaping @Sendable (URL) async -> Void = WorldResources.prepareCache,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         let snapshot = prepared.snapshot
         let readSource = WorldReadSource(snapshot.world)
         self.readSource = readSource
         self.watchWorld = watchWorld
+        self.prepareCache = prepareCache
         self.maintainCache = maintainCache
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
@@ -300,7 +303,7 @@ final class WorldResources {
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
         let cachePreparation = Self.startCacheMaintenance(work: backgroundWork, root: cacheRoot,
-            world: snapshot.world.url, operation: maintainCache)
+            world: snapshot.world.url, prepare: prepareCache, maintain: maintainCache)
         self.cachePreparation = cachePreparation
         let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions,
                            preparation: Task<Void, Never>?) in
@@ -354,11 +357,22 @@ final class WorldResources {
     }
 
     private static func startCacheMaintenance(work: BackgroundWork, root: URL?, world: URL,
-                                             operation: @escaping @Sendable (URL, URL) async -> Void) -> Task<Void, Never>? {
+                                             previousPreparation: Task<Void, Never>? = nil,
+                                             prepare: @escaping @Sendable (URL) async -> Void,
+                                             maintain: @escaping @Sendable (URL, URL) async -> Void) -> Task<Void, Never>? {
         guard let root, let folder = TileCache.worldFolder(forWorldAt: world, root: root) else { return nil }
-        return work.start(priority: .utility) {
-            await Self.runCacheMaintenance(operation, root: root, folder: folder)
+        let preparation = work.start(priority: .utility) {
+            await previousPreparation?.value
+            guard !Task.isCancelled else { return }
+            await Self.runCachePreparation(prepare, folder: folder)
         }
+        work.start(priority: .background) {
+            await preparation?.value
+            guard !Task.isCancelled else { return }
+            await Self.runCacheMaintenance(maintain, root: root, folder: folder)
+        }
+        // Pruning skips this world's folder, so readers only need its layout ready.
+        return preparation
     }
 
     func waitForCachePreparation() async throws {
@@ -373,12 +387,9 @@ final class WorldResources {
         guard !isClosed else { throw CancellationError() }
         let snapshot = prepared.snapshot, oldAccess = access, retired = index.readers
         let nextSource = WorldReadSource(snapshot.world)
-        let previousPreparation = cachePreparation
-        let maintain = maintainCache
-        cachePreparation = Self.startCacheMaintenance(work: backgroundWork, root: cacheRoot, world: snapshot.world.url) { root, folder in
-            await previousPreparation?.value
-            await maintain(root, folder)
-        }
+        cachePreparation = Self.startCacheMaintenance(work: backgroundWork, root: cacheRoot,
+            world: snapshot.world.url, previousPreparation: cachePreparation,
+            prepare: prepareCache, maintain: maintainCache)
         let readers = snapshot.dimensions.map { makeReader(nextSource, $0, snapshot.details.definitions, cachePreparation) }
         watcher?.stop()
         refreshWork.cancel()
@@ -440,11 +451,14 @@ final class WorldResources {
         refreshLighting()
     }
 
-    @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
+    @concurrent nonisolated static func prepareCache(folder: URL) async {
         guard !Task.isCancelled else { return }
         // Failure leaves the marker absent so a later opening can try again. Cache failures
         // never prevent reading the world; each envelope still validates its complete key.
         try? TileCache.prepare(worldFolder: folder)
+    }
+
+    @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
         guard !Task.isCancelled else { return }
         TileCache.markUsed(worldFolder: folder)
         guard !Task.isCancelled else { return }
@@ -452,6 +466,12 @@ final class WorldResources {
     }
 
     /// The work registry is main-actor isolated; maintenance keeps its off-main I/O boundary.
+    @concurrent private nonisolated static func runCachePreparation(
+        _ operation: @Sendable (URL) async -> Void, folder: URL
+    ) async {
+        await operation(folder)
+    }
+
     @concurrent private nonisolated static func runCacheMaintenance(
         _ operation: @Sendable (URL, URL) async -> Void, root: URL, folder: URL
     ) async {

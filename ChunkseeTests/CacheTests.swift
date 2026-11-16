@@ -278,8 +278,8 @@ import Testing
         #expect(try Data(contentsOf: current) == Data("new cache".utf8))
     }
 
-    @Test(.timeLimit(.minutes(1))) func startupMaintenanceFinishesBeforeScansAndRenders() async throws {
-        let world = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
+    @Test(.timeLimit(.minutes(1))) func startupLayoutGatesReadsButPruningDoesNot() async throws {
+        let world = try TestWorld.make(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheStartup-\(UUID())")
         defer {
             try? FileManager.default.removeItem(at: world)
@@ -292,10 +292,13 @@ import Testing
             watchWorld: { _, _ in nil }, readRegion: { dimension, region, options in
                 #expect(FileManager.default.fileExists(atPath: ready.path))
                 return try await RegionReader.scan(dimension, region: region, options: options)
+            }, prepareCache: { folder in
+                await gate.read("preparation")
+                await WorldResources.prepareCache(folder: folder)
+                try? Data().write(to: ready)
             }, maintainCache: { root, folder in
                 await gate.read("maintenance")
                 await WorldResources.maintainCache(root: root, folder: folder)
-                try? Data().write(to: ready)
             })
         let session = WorldSession(resources: resources, renderTile: { renderer, region in
             #expect(FileManager.default.fileExists(atPath: ready.path))
@@ -304,12 +307,20 @@ import Testing
         let map = try #require(session.map)
         map.viewport.center = CGPoint(x: 8, y: 8)
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+        let dimension = try #require(session.selectedDimensionID)
+        session.search.text = "block:diamond"
+        await gate.waitForRequest("preparation")
+        #expect(map.tiles.isEmpty && resources.index.index.dimensions.isEmpty && resources.blockCounts.snapshot.dimensions.isEmpty)
+        await gate.finish("preparation", with: ())
         await gate.waitForRequest("maintenance")
-        #expect(map.tiles.isEmpty && resources.index.index.dimensions.isEmpty)
-        await gate.finish("maintenance", with: ())
         await resources.index.waitForIndex()
+        await session.search.waitForSearch()
         await map.waitUntilIdle()
         #expect(!map.tiles.isEmpty && !resources.index.index.dimensions.isEmpty)
+        let counts = try #require(resources.blockCounts.snapshot.dimensions[dimension])
+        #expect(counts.coverage(of: .init(x: 0, z: 0), matching: resources.blockCounts.catalog.blockIDs) == .complete)
+        #expect(counts.regions[.init(x: 0, z: 0)]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 5)
+        await gate.finish("maintenance", with: ())
         resources.close()
         await resources.waitUntilClosed()
     }
