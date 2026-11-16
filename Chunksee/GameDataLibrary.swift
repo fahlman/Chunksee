@@ -157,9 +157,9 @@ actor GameDataLibrary {
         return assets?.blockItemID(for: block.id).map { ItemStack(id: $0.description) }
     }
 
-    func definitions(in world: World) throws -> WorldDefinitions {
+    func definitions(in world: World, dimensions: [ChunkseeKit.Dimension]) throws -> WorldDefinitions {
         try checkAvailable()
-        return try WorldDefinitions.read(world, assets: assets)
+        return try WorldDefinitions.read(world, dimensions: dimensions, assets: assets)
     }
 
     func lighting(in world: World) throws -> [String: MapLighting] {

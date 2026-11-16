@@ -3,6 +3,7 @@ import ChunkseeKit
 /// The game source and the opening facts it interprets travel together. Region readers must
 /// never start with a temporary option set that evicts the same world's completed disk cache.
 struct WorldPreparation {
+    typealias ReadDefinitions = @Sendable (World, [ChunkseeKit.Dimension], GameDataLibrary?) async throws -> WorldDefinitions
     let snapshot: WorldSnapshot
     let source: WorldGameAssetSource
     let library: GameResourceLibrary?
@@ -14,7 +15,7 @@ struct WorldPreparation {
     }
 
     static func read(_ snapshot: WorldSnapshot, minecraft: MinecraftResources,
-                     readGameData: @escaping @Sendable (WorldSnapshot, GameDataLibrary) async throws -> WorldSnapshot = readingGameData) async throws -> Self {
+                     readDefinitions: @escaping ReadDefinitions = WorldDefinitions.read(_:dimensions:library:)) async throws -> Self {
         while true {
             try Task.checkCancellation()
             let source = WorldGameAssetSource(generation: minecraft.generation)
@@ -22,11 +23,13 @@ struct WorldPreparation {
             try Task.checkCancellation()
             guard source.generation == minecraft.generation else { continue }
             do {
-                let prepared: WorldSnapshot
-                if let library { prepared = try await readGameData(snapshot, library.data) }
-                else { prepared = snapshot }
+                let definitions = try await readDefinitions(snapshot.world, snapshot.dimensions, library?.data)
                 try Task.checkCancellation()
                 guard source.generation == minecraft.generation else { continue }
+                var details = snapshot.details
+                details.definitions = definitions
+                let prepared = WorldSnapshot(access: snapshot.access, world: snapshot.world, dimensions: snapshot.dimensions,
+                    dimensionDocuments: snapshot.dimensionDocuments, players: snapshot.players, details: details)
                 return Self(snapshot: prepared, source: source, library: library)
             } catch {
                 try Task.checkCancellation()
@@ -36,15 +39,5 @@ struct WorldPreparation {
                 throw error
             }
         }
-    }
-
-    @concurrent
-    nonisolated static func readingGameData(_ snapshot: WorldSnapshot, library: GameDataLibrary) async throws -> WorldSnapshot {
-        var details = snapshot.details
-        details.definitions = try await library.definitions(in: snapshot.world)
-        let players = snapshot.world.players()
-        try Task.checkCancellation()
-        return WorldSnapshot(access: snapshot.access, world: snapshot.world, dimensions: snapshot.dimensions,
-                             dimensionDocuments: snapshot.dimensionDocuments, players: players, details: details)
     }
 }

@@ -15,8 +15,8 @@ nonisolated final class PlayerSnapshot: Sendable {
     }
 }
 
-/// Consumers read one producer's immutable snapshot. Definitions and their dependent players
-/// can share a publication without copying the players into another mutable roster.
+/// Consumers share their producer's immutable snapshot without copying players into another
+/// mutable roster. Resolving saved health inputs against definitions does not replace this value.
 protocol PlayerSnapshotSource: AnyObject {
     var snapshot: PlayerSnapshot { get }
 }

@@ -1,6 +1,7 @@
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Synchronization
 import Testing
 @testable import ChunkseeTestHost
 
@@ -38,6 +39,50 @@ import Testing
         return try Dictionary(uniqueKeysWithValues: files.filter { $0.pathExtension == "lzfse" }.map {
             ($0.path, try Data(contentsOf: $0))
         })
+    }
+
+    @Test(arguments: [false, true])
+    func openingReadsEachInputOnceAndKeepsSavedPlayersWhenPreparingDefinitions(useGameFiles: Bool) async throws {
+        let game = try self.game("ward"), root = try TestWorld.make(chunks: [], dimensionSettings: [
+            "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"),
+                                                           noise: .string("minecraft:overworld"))
+        ])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root)
+        let file = world.playerDataDirectory.appendingPathComponent("00000001-0000-0002-0000-000300000004.dat")
+        try Fixtures.writeGzippedNBT(.compound([
+            "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(12), .double(64), .double(3)])
+        ]), to: file)
+        let counts = Mutex((dimensions: 0, players: 0)), definitions = Scans()
+        let snapshot = try WorldSnapshot.readContents(root, readDimensions: { world in
+            counts.withLock { $0.dimensions += 1 }
+            return world.dimensions()
+        }, readPlayers: { world in
+            counts.withLock { $0.players += 1 }
+            return world.players()
+        })
+        defer { snapshot.access.release() }
+        #expect(snapshot.details.definitions == WorldDefinitions())
+        #expect(snapshot.players.count == 1 && snapshot.players.first?.position?.x == 12)
+        // If preparation parses the player files again, it will incorrectly discard this
+        // opening's saved players. This checks the real read path, not only a callback count.
+        try FileManager.default.removeItem(at: file)
+        let minecraft = MinecraftResources(defaults: TestDefaults.make())
+        if useGameFiles { minecraft.choose(game.root) }
+        let prepared = try await WorldPreparation.read(snapshot, minecraft: minecraft) { world, dimensions, library in
+            await definitions.record()
+            #expect((library != nil) == useGameFiles)
+            #expect(dimensions.map(\.id) == snapshot.dimensions.map(\.id))
+            return try await WorldDefinitions.read(world, dimensions: dimensions, library: library)
+        }
+        #expect(counts.withLock { $0.dimensions } == 1)
+        #expect(counts.withLock { $0.players } == 1)
+        #expect(await definitions.count == 1)
+        #expect(prepared.snapshot.players.count == 1 && prepared.snapshot.players.first?.position?.x == 12)
+        #expect(prepared.snapshot.details.dimensionSettings["minecraft:overworld"] != nil)
+        #expect((prepared.snapshot.details.definitions.enchantments["test:ward"] != nil) == useGameFiles)
+        await minecraft.waitUntilIdle()
     }
 
     @Test func unchangedReopenUsesTheCompletedCacheWithEitherArtworkSetting() async throws {
@@ -124,12 +169,12 @@ import Testing
         minecraft.choose(old.root)
         let library = try #require(await minecraft.library()), snapshot = try await WorldSnapshot.read(root)
         defer { snapshot.access.release() }
-        let retired = try await WorldPreparation.readingGameData(snapshot, library: library.data)
-        let gate = AsyncReadGate<WorldSnapshot>()
+        let retired = try await WorldDefinitions.read(snapshot.world, dimensions: snapshot.dimensions, library: library.data)
+        let gate = AsyncReadGate<WorldDefinitions>()
         let task = Task {
-            try await WorldPreparation.read(snapshot, minecraft: minecraft) { snapshot, data in
-                if data.identity == library.identity { return await gate.read("retired") }
-                return try await WorldPreparation.readingGameData(snapshot, library: data)
+            try await WorldPreparation.read(snapshot, minecraft: minecraft) { world, dimensions, data in
+                if data?.identity == library.identity { return await gate.read("retired") }
+                return try await WorldDefinitions.read(world, dimensions: dimensions, library: data)
             }
         }
         await gate.waitForRequest("retired")
@@ -148,15 +193,15 @@ import Testing
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let minecraft = MinecraftResources(defaults: TestDefaults.make())
         minecraft.choose(game.root)
-        let snapshot = try await WorldSnapshot.read(root), gate = AsyncReadGate<WorldSnapshot>()
+        let snapshot = try await WorldSnapshot.read(root), gate = AsyncReadGate<WorldDefinitions>()
         defer { snapshot.access.release() }
         let task = Task {
-            try await WorldPreparation.read(snapshot, minecraft: minecraft) { _, _ in await gate.read("opening") }
+            try await WorldPreparation.read(snapshot, minecraft: minecraft) { _, _, _ in await gate.read("opening") }
         }
         await gate.waitForRequest("opening")
         task.cancel()
         await gate.waitForCancellation("opening")
-        await gate.finish("opening", with: snapshot)
+        await gate.finish("opening", with: WorldDefinitions())
         await #expect(throws: CancellationError.self) { try await task.value }
         await minecraft.waitUntilIdle()
     }

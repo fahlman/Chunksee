@@ -53,20 +53,25 @@ nonisolated struct WorldSnapshot: Sendable {
         return try result.get()
     }
 
-    static func readContents(_ url: URL) throws -> WorldSnapshot {
+    static func readContents(_ url: URL,
+                             readDimensions: @Sendable (World) -> [ChunkseeKit.Dimension] = { $0.dimensions() },
+                             readPlayers: @Sendable (World) -> [PlayerInfo] = { $0.players() }) throws -> WorldSnapshot {
         let access = WorldReadAccess(url)
         do {
             try Task.checkCancellation()
             let world = try World(contentsOf: url)
-            let dimensions = world.dimensions()
+            let dimensions = readDimensions(world)
             var documents: [String: String] = [:]
             for dimension in dimensions {
                 let path = dimension.documentURL(inWorldAt: url).resolvingSymlinksInPath().path
                 if documents[path] == nil { documents[path] = dimension.id }
             }
-            let details = WorldDetails.read(world)
+            // Definitions are composed once by WorldPreparation, after the selected game is
+            // known. These saved facts do not depend on that selection.
+            let details = WorldDetails(info: WorldInfoSnapshot.read(world, dimensions: dimensions).value,
+                                       mapSnapshot: WorldMapSnapshot.read(world).value)
             let snapshot = WorldSnapshot(access: access, world: world, dimensions: dimensions, dimensionDocuments: documents,
-                                         players: world.players(), details: details)
+                                         players: readPlayers(world), details: details)
             try Task.checkCancellation()
             return snapshot
         } catch is CancellationError {

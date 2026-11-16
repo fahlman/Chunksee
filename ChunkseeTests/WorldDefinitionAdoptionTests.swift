@@ -2,6 +2,7 @@ import ChunkseeKit
 import ChunkseeIndex
 import ChunkseeKitTestSupport
 import Foundation
+import Observation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -253,6 +254,8 @@ import Testing
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let resources = try await resources(root, assetReads: assetReads), first = try game.resources(), second = try game.resources(), third = try game.resources()
         defer { resources.close() }
+        let savedPlayers = resources.playerSnapshot
+        resources.readPlayers = { _ in Issue.record("Game changes must not reread saved players"); return nil }
         let blank = try await WorldResources.readDefinitions(resources.world, library: nil)
         let known = try await WorldResources.readDefinitions(resources.world, library: first.data)
         let gate = AsyncReadGate<WorldDefinitions>()
@@ -269,6 +272,7 @@ import Testing
         await gate.finish("newer", with: known)
         await gate.finish("older", with: blank)
         try await expectHealth(20, in: resources)
+        #expect(resources.playerSnapshot === savedPlayers)
         #expect(resources.details.definitions.leafTag?.members.map(\.id) == ["example:needles"])
         await assetReads.publish(third, to: resources)
         await gate.waitForRequest("closing")
@@ -298,7 +302,7 @@ import Testing
         #expect(definitions.notableBlocks.blockIDs.contains("minecraft:diamond_ore"))
     }
 
-    @Test func failedPlayerRefreshKeepsOneCoherentSnapshotUntilTheNextSave() async throws {
+    @Test func definitionsPublishWhileAPlayerReadIsPendingAndStillAdvanceWhenItFails() async throws {
         let root = try fixture(enchantment: "test:ward")
         defer { try? FileManager.default.removeItem(at: root) }
         let definition = root.appendingPathComponent("datapacks/ChunkseeTest/data/test/enchantment/ward.json")
@@ -306,15 +310,73 @@ import Testing
         let resources = try await resources(root)
         defer { resources.close() }
         let original = resources.playerSnapshot, definitions = resources.details.definitions
-        resources.readPlayers = { _ in nil }
+        let players = AsyncReadGate<[PlayerInfo]?>()
+        resources.readPlayers = { _ in await players.read("players") }
         try write(changesHealth, to: definition)
-        resources.worldChanged([definition])
+        resources.worldChanged([definition, resources.world.playerDataDirectory])
+        await players.waitForRequest("players")
+        for await value in Observations({ resources.details.definitions }) where value != definitions { break }
+        #expect(resources.playerSnapshot === original)
+        #expect(resources.players.first?.maximumHealth(enchantments: resources.details.definitions.enchantments) == nil)
+        await players.finish("players", with: nil)
         await resources.waitForRefresh()
-        #expect(resources.playerSnapshot === original && resources.details.definitions == definitions)
-        try await expectHealth(20, in: resources)
-        resources.readPlayers = { await WorldResources.readPlayers($0) }
-        resources.worldChanged([definition])
+        #expect(resources.playerSnapshot === original && resources.details.definitions != definitions)
         try await expectHealth(nil, in: resources)
+        resources.readPlayers = { await WorldResources.readPlayers($0) }
+        resources.worldChanged([resources.world.playerDataDirectory])
+        try await expectHealth(nil, in: resources)
+        #expect(resources.playerSnapshot !== original)
         resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test func playerSavesPublishWhenDefinitionsCannotBeRead() async throws {
+        let root = try fixture(enchantment: "test:ward")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try await resources(root)
+        defer { resources.close() }
+        let original = try #require(resources.players.first), definitions = resources.details.definitions
+        let changed = PlayerInfo(uuid: original.uuid, nbt: .compound([
+            "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(30), .double(64), .double(0)])
+        ]))
+        resources.readDefinitions = { _, _ in throw CocoaError(.fileReadUnknown) }
+        resources.readPlayers = { _ in [changed] }
+        resources.worldChanged([root.appendingPathComponent("level.dat")])
+        await resources.waitForRefresh()
+        #expect(resources.players.first?.position?.x == 30)
+        #expect(resources.details.definitions == definitions)
+        #expect(resources.index.snapshot.players === resources.playerSnapshot)
+        resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test func gameDiscoveryDoesNotHoldOrRestartPlayerSaves() async throws {
+        let root = try fixture(enchantment: "test:ward"), game = try ItemPictureFixture()
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        let discovery = AsyncReadGate<GameResourceLibrary?>(), players = AsyncReadGate<[PlayerInfo]?>()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in await discovery.read("game") })
+        defer { resources.close() }
+        resources.refreshDelay = .zero
+        let original = try #require(resources.players.first)
+        let changed = PlayerInfo(uuid: original.uuid, nbt: .compound([
+            "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(40), .double(64), .double(0)])
+        ]))
+        resources.readPlayers = { _ in await players.read("players") }
+        names.minecraft.choose(game.root)
+        await discovery.waitForRequest("game")
+        resources.worldChanged([resources.world.playerDataDirectory])
+        await players.waitForRequest("players")
+        await players.releaseAllAndFuture(with: [changed])
+        for await snapshot in Observations({ resources.playerSnapshot })
+            where snapshot.players.first?.position?.x == 40 { break }
+        await discovery.finish("game", with: nil)
+        await resources.waitForRefresh()
+        #expect(await players.requested == ["players"])
+        #expect(resources.players.first?.position?.x == 40)
+        resources.close(); await resources.waitUntilClosed()
+        await names.minecraft.waitUntilIdle()
     }
 }
