@@ -14,6 +14,7 @@ nonisolated enum TestWorldResources {
             "data/minecraft/worldgen/noise_settings/overworld.json": ["noise": ["min_y": -64, "height": 384], "sea_level": 63],
             "data/minecraft/worldgen/noise_settings/nether.json": ["noise": ["min_y": 0, "height": 128], "sea_level": 32],
             "data/minecraft/tags/block/diamond_ores.json": ["replace": true, "values": ["minecraft:diamond_ore", "minecraft:deepslate_diamond_ore"]],
+            "data/minecraft/tags/block/ores.json": ["replace": true, "values": ["#minecraft:diamond_ores"]],
             "data/minecraft/tags/worldgen/biome/is_overworld.json": ["replace": true, "values": ["minecraft:plains", "minecraft:lush_caves", "minecraft:deep_dark", "minecraft:mushroom_fields"]]
         ]
         let pack = root.appendingPathComponent("datapacks/ChunkseeTest")

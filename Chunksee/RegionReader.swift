@@ -12,21 +12,17 @@ actor RegionReader {
     /// Exactly the immutable facts consumed by a scan and its index projection.
     nonisolated struct Inputs: Equatable, Sendable {
         let options: RegionScanOptions
-        let notableBlocks: NotableBlock.Catalog
         let structureGroups: StructureGroup.Catalog
 
         init(options: RegionScanOptions = RegionReader.options(),
-             notableBlocks: NotableBlock.Catalog = .init(tags: [:]),
              structureGroups: StructureGroup.Catalog = .init(tags: [:])) {
             self.options = options
-            self.notableBlocks = notableBlocks
             self.structureGroups = structureGroups
         }
 
         init(dimensionID: String, definitions: WorldDefinitions) {
             let context = MapDefinitions(dimensionID: dimensionID, definitions: definitions).context
-            self.init(options: RegionReader.options(context: context, definitions: definitions),
-                      notableBlocks: definitions.notableBlocks, structureGroups: definitions.structureGroups)
+            self.init(options: RegionReader.options(context: context), structureGroups: definitions.structureGroups)
         }
     }
 
@@ -34,7 +30,6 @@ actor RegionReader {
     let cache: ScanCache
     nonisolated let inputs: Inputs
     private nonisolated let cacheOptions: ScanCache.Options
-    nonisolated var notableBlocks: NotableBlock.Catalog { inputs.notableBlocks }
     nonisolated var structureGroups: StructureGroup.Catalog { inputs.structureGroups }
     private var reading: [ScanCache.Key: Task<RegionFacts, Error>] = [:]
     private var isClosed = false
@@ -52,9 +47,8 @@ actor RegionReader {
         self.cachePreparation = cachePreparation
     }
 
-    nonisolated static func options(context: MapSurfaceContext = .unknown,
-                                    definitions: WorldDefinitions = .init()) -> RegionScanOptions {
-        RegionScanOptions(blockIDs: definitions.notableBlocks.blockIDs,
+    nonisolated static func options(context: MapSurfaceContext = .unknown) -> RegionScanOptions {
+        RegionScanOptions(biomeIDs: BiomePresentation.caveBiomeIDs, structurePieceIDs: ["minecraft:shpr"],
                           biomeSampleY: context.biomeSampleY, height: context.buildHeight)
     }
 

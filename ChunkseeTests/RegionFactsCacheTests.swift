@@ -102,8 +102,9 @@ import Testing
         let facts = try dimension.scan(region: region, options: options)
         cache.store(facts, key: key)
         #expect(cache.load(key)?.containers.count == 1)
-        for other in [RegionScanOptions(blockIDs: []), RegionScanOptions(blockIDs: options.blockIDs, biomeSampleY: 64),
-                      RegionScanOptions(blockIDs: options.blockIDs, height: 384)] {
+        var empty = options, all = options, sample = options, height = options, pieces = options
+        empty.biomeIDs = []; all.biomeIDs = nil; sample.biomeSampleY = 64; height.height = 384; pieces.structurePieceIDs = nil
+        for other in [empty, all, sample, height, pieces] {
             #expect(cache.load(.init(dimension: dimension, region: region, options: .init(other))) == nil)
         }
         let directory = try #require(cache.directory)

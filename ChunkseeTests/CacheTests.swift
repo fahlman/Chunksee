@@ -217,7 +217,7 @@ import Testing
             dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
             dimension.entitiesDirectory.appendingPathComponent("r.-1.0.mca"),
         ])
-        let oldMarker = StructureMarker(StructureTests().start("minecraft:jungle_pyramid", chunk: (-17, 4), pieces: [
+        let oldMarker = try StructureMarker(StructureTests().start("minecraft:jungle_pyramid", chunk: (-17, 4), pieces: [
             ("minecraft:tejp", [-272, 64, 64, -261, 73, 78]),
         ]))
         let oldFile = try #require(cache.directory).appendingPathComponent("structures.-1.0.\(fingerprint).v3")

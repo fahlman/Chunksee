@@ -14,13 +14,20 @@ import Observation
 }
 
 @Suite(.isolatedStores) struct StructureTests {
-    /// A structure start built the way chunks store it, read through ChunkseeKit's public API.
-    func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])] = [("piece", [0, 60, 0, 9, 70, 9])]) -> StructureStart {
-        let nbt = NBT.compound(["structures": .compound(["starts": .compound([id: .compound([
+    /// The production compact projection keeps complete bounds before selecting portal pieces.
+    func start(_ id: String, chunk: (Int, Int), pieces: [(String, [Int])] = [("piece", [0, 60, 0, 9, 70, 9])]) throws -> StructureFacts {
+        var spec = TestWorld.chunk(x: chunk.0, z: chunk.1, palette: ["minecraft:stone"]) { _, _, _ in 0 }
+        var nbt = try #require(spec.nbt.compound)
+        nbt["structures"] = .compound(["starts": .compound([id: .compound([
             "id": .string(id), "ChunkX": .int(Int32(chunk.0)), "ChunkZ": .int(Int32(chunk.1)),
             "Children": .list(.compound, pieces.map { .compound(["id": .string($0.0), "BB": .intArray($0.1.map { Int32($0) })]) }),
-        ])])])])
-        return StructureStart.starts(inChunk: nbt)[0]
+        ])])])
+        spec.nbt = .compound(nbt)
+        let root = try TestWorld.make(chunks: [spec])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dimension = try #require(try World(contentsOf: root).dimension("minecraft:overworld"))
+        let region = ChunkPosition(x: chunk.0, z: chunk.1).region
+        return try #require(try dimension.scan(region: region, options: RegionReader.options()).structures.first)
     }
 
     @Test func groupsNamesAndDefaults() throws {
@@ -31,15 +38,15 @@ import Observation
         #expect(groups.group(for: "mydatapack:tower") == .other)
         #expect(!StructureGroup.mineshaft.isShownByDefault && !StructureGroup.netherFossil.isShownByDefault)
         #expect(StructureGroup.stronghold.isShownByDefault)
-        let names = ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
+        let names = try ["minecraft:village_plains", "minecraft:ocean_ruin_cold", "minecraft:ruined_portal_ocean",
                      "minecraft:shipwreck_beached", "minecraft:ancient_city"].map {
-            StructureMarker(start($0, chunk: (0, 0))).name(in: .unavailable)
+            try StructureMarker(start($0, chunk: (0, 0))).name(in: .unavailable)
         }
         #expect(names == ["Village Plains", "Ocean Ruin Cold", "Ruined Portal Ocean", "Shipwreck Beached", "Ancient City"])
     }
 
-    @Test func boundsAndStrongholdPortalRoom() {
-        let marker = StructureMarker(start("minecraft:stronghold", chunk: (-302, -51), pieces: [
+    @Test func boundsAndStrongholdPortalRoom() throws {
+        let marker = try StructureMarker(start("minecraft:stronghold", chunk: (-302, -51), pieces: [
             ("minecraft:shstart", [-4830, -19, -814, -4826, -9, -810]),
             ("minecraft:shpr", [-4900, -40, -830, -4890, -32, -815]),
         ]))

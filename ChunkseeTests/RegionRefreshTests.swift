@@ -116,7 +116,6 @@ import Testing
         #expect(incremental.biomes == complete.biomes && incremental.caveBiomes == complete.caveBiomes)
         #expect(Set(incremental.biomeAreas.map(\.id)) == Set(complete.biomeAreas.map(\.id)))
         #expect(incremental.biomeAreas.map(\.chunkCount).sorted() == complete.biomeAreas.map(\.chunkCount).sorted())
-        #expect(incremental.blocks.sorted { $0.chunk.x < $1.chunk.x } == complete.blocks.sorted { $0.chunk.x < $1.chunk.x })
         #expect(incremental.formats == complete.formats)
     }
 

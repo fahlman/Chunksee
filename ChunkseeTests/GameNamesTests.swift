@@ -26,6 +26,7 @@ enum GameNameFixture {
             "assets/minecraft/lang/fr_fr.json": ItemPictureFixture.json([
                 "language.code": "fra_FR",
                 "effect.minecraft.unluck": "Malchance", "block.minecraft.diamond_ore": "Minerai de diamant",
+                "tag.block.minecraft.diamond_ores": "Diamants du pack",
                 "block.minecraft.spawner": "Générateur de monstres",
             ]),
         ])
@@ -60,7 +61,9 @@ enum GameNameFixture {
         #expect(names.advancement("minecraft:story/mine_diamond",
             title: .translated(key: "advancements.story.mine_diamond.title", fallback: nil, arguments: [])) == "Diamonds!")
         #expect(names.advancement("example:story/mine_diamond", title: nil) == "Story Mine Diamond")
-        #expect(NotableBlock.diamond.name(in: names) == "Minerai de diamant")
+        #expect(NotableBlock.diamond.name(in: names) == "Diamants du pack")
+        #expect(NotableBlock.block("minecraft:diamond_ore").name(in: names) == "Minerai de diamant")
+        #expect(NotableBlock.tag("test:moon_ores").name(in: names) == "Moon Ores")
         #expect(NotableBlock.spawner.name(in: names) == "Générateur de monstres")
         #expect(names.gameMode(.survival) == "Survival Mode")
         #expect(names.name(key: "options.difficulty.hard", fallback: "Hard") == "Hard")
@@ -109,12 +112,10 @@ enum GameNameFixture {
 
     @Test func translatedBlockSearchMatchesTheDisplayedNameAndStillAcceptsIDs() async throws {
         let names = try await GameNameFixture.names("fr_FR")
-        let deposit = ChunkDeposit(chunk: ChunkPosition(x: 0, z: 0),
-            deposit: BlockDeposit(block: .diamond, count: 4, minY: 0, maxY: 15))
-        let index = SearchIndex.overworld(DimensionContent(blocks: [deposit]))
-        for query in ["block:minerai", "block:minecraft:diamond_ore"] {
-            let found = WorldSearch.search(query, in: index, players: [], gameNames: names) { _ in .named("") }
-            #expect(found.map { $0.title(in: names) } == ["Minerai de diamant"])
+        let blocks = try BlockSearchFixture.input([BlockSearchFixture.chunk(x: 0, count: 4)])
+        for query in ["block:diamants", "block:minecraft:diamond_ore"] {
+            let found = WorldSearch.search(query, in: SearchIndex(), players: [], gameNames: names, blocks: blocks) { _ in .named("") }
+            #expect(found.map { $0.title(in: names) } == ["Diamants du pack"])
             #expect(found.first?.count == 4)
         }
     }

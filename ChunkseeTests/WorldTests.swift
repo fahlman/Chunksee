@@ -129,8 +129,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let definitions = try WorldDefinitions.read(World(contentsOf: world), assets: nil)
-        let facts = try await RegionReader.scan(dimension, region: .init(x: 0, z: -1), options: RegionReader.options(definitions: definitions))
-        let deposits = BlockDeposit.grouped(try #require(facts.chunks.first).blockDeposits, using: definitions.notableBlocks)
+        let counts = try dimension.countBlocks(region: .init(x: 0, z: -1), matching: definitions.notableBlocks.blockIDs)
+        let deposits = BlockDeposit.grouped(try #require(counts.chunks[.init(x: 1, z: -1)]), using: definitions.notableBlocks)
         #expect(deposits == [BlockDeposit(block: .diamond, count: 5, minY: 0, maxY: 15), BlockDeposit(block: .spawner, count: 1, minY: 0, maxY: 15)])
 
         let defaults = TestDefaults.make()
@@ -141,7 +141,7 @@ import Testing
         await session.search.waitForSearch()
         let hit = try #require(session.search.results.first)
         #expect(session.search.results.count == 1)
-        #expect(hit.title(in: .unavailable) == "Diamond Ore" && hit.detail(in: .unavailable) == "5 blocks · Y 0 to 15" && hit.count == 5)
+        #expect(hit.title(in: .unavailable) == "Diamond Ores" && hit.detail(in: .unavailable) == "5 blocks · Y 0 to 15" && hit.count == 5)
         #expect(hit.position == CGPoint(x: 24, y: -8) && hit.source == .block(.diamond))
         session.search.text = "block:spawner"
         await session.search.waitForSearch()
@@ -151,41 +151,31 @@ import Testing
         #expect(session.search.results.isEmpty)
     }
 
-    @Test func blockSearchKeepsOnlyTheRichestChunks() {
-        // More chunks with diamonds than the limit: only the richest are listed, richest first.
-        let deposits = (0..<(WorldSearch.blockResultLimit + 500)).map { i in
-            ChunkDeposit(chunk: ChunkPosition(x: i, z: 0), deposit: BlockDeposit(block: .diamond, count: i + 1, minY: -64, maxY: -49))
-        }.sorted { $0.deposit.count > $1.deposit.count }
-        let index = SearchIndex.overworld(DimensionContent(blocks: deposits))
-        let hits = WorldSearch.search("block:diamond", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
-        #expect(hits.count == WorldSearch.blockResultLimit)
-        #expect(hits.first?.count == WorldSearch.blockResultLimit + 500 && hits.last?.count == 501)
-        #expect(WorldSearch.search("block:emerald", in: index, players: [], gameNames: .unavailable) { _ in .named("") }.isEmpty)
+    @Test func blockSearchRanksNearestBeforeTheSidebarLimit() throws {
+        let blocks = try BlockSearchFixture.input((0..<220).map { BlockSearchFixture.chunk(x: $0, count: $0 + 1) })
+        let hits = WorldSearch.search("block:diamond", in: SearchIndex(), players: [], gameNames: .unavailable, blocks: blocks) { _ in .named("") }
+        #expect(hits.count == 200)
+        #expect(hits.first?.count == 1 && hits.last?.count == 200)
+        #expect(hits.first?.position == CGPoint(x: 8, y: 8) && hits.last?.position == CGPoint(x: 3192, y: 8))
+        #expect(WorldSearch.search("block:emerald", in: SearchIndex(), players: [], gameNames: .unavailable, blocks: blocks) { _ in .named("") }.isEmpty)
     }
 
-    @Test func blockSearchKeepsTheSameTiedChunksAndPinsAfterAnEquivalentIndexRefresh() {
-        let firstChunkX = -500
-        let strongest = ChunkDeposit(chunk: ChunkPosition(x: 2000, z: 0),
-            deposit: BlockDeposit(block: .diamond, count: 100, minY: -64, maxY: -49))
-        let tied = (0..<(WorldSearch.blockResultLimit + 500)).map { index in
-            ChunkDeposit(chunk: ChunkPosition(x: firstChunkX + index, z: 0),
-                deposit: BlockDeposit(block: .diamond, count: 36, minY: -64, maxY: -49))
+    @Test func blockSearchKeepsTheSameTiedChunksAndPinsAfterAnEquivalentCountRefresh() throws {
+        let chunks = (-110..<110).map { BlockSearchFixture.chunk(x: $0, count: 36) } + [BlockSearchFixture.chunk(x: 2000, count: 100)]
+        let beforeInput = try BlockSearchFixture.input(chunks, x: 0, z: 8)
+        let dimension = beforeInput.point.dimension
+        let oldIndex = try #require(beforeInput.counts.dimensions[dimension])
+        let raw = oldIndex.regions.values.compactMap(\.counts)
+        let refreshed = BlockCountIndex(dimension: dimension).updating(available: Set(raw.map(\.region)), replacements: Array(raw.reversed()))
+        let afterInput = BlockQueryInput(counts: BlockCountSnapshot(dimensions: [dimension: refreshed]), catalog: beforeInput.catalog, point: beforeInput.point)
+        func search(_ input: BlockQueryInput) -> [SearchHit] {
+            WorldSearch.search("block:diamond", in: SearchIndex(), players: [], gameNames: .unavailable, blocks: input) { _ in .named("") }
         }
-        func search(_ ties: [ChunkDeposit]) -> [SearchHit] {
-            let index = SearchIndex.overworld(DimensionContent(blocks: [strongest] + ties))
-            return WorldSearch.search("block:diamond", in: index, players: [], gameNames: .unavailable) { _ in .named("") }
-        }
-
-        // Both inputs are richest first, but a refreshed index may enumerate equal counts differently.
-        let before = search(tied), after = search(Array(tied.reversed()))
-        let selectedTies = firstChunkX..<(firstChunkX + WorldSearch.blockResultLimit - 1)
-        var expectedIDs = Set(selectedTies.map { "minecraft:overworld@diamond@\($0),0" })
-        expectedIDs.insert("minecraft:overworld@diamond@2000,0")
-        #expect(before.count == WorldSearch.blockResultLimit)
-        #expect(Set(before.map(\.id)) == expectedIDs)
-        #expect(before.first?.count == 100 && before.first?.position == CGPoint(x: 32008, y: 8))
-        #expect(after.map(\.id) == before.map(\.id))
-        #expect(after.map(\.position) == before.map(\.position))
+        let before = search(beforeInput), after = search(afterInput)
+        let expectedIDs = Set((-100..<100).map { "minecraft:overworld@#minecraft:diamond_ores@\($0),0" })
+        #expect(before.count == 200 && Set(before.map(\.id)) == expectedIDs)
+        #expect(before.first?.position == CGPoint(x: -8, y: 8) && before[1].position == CGPoint(x: 8, y: 8))
+        #expect(after.map(\.id) == before.map(\.id) && after.map(\.position) == before.map(\.position))
         #expect(after.map(\.count) == before.map(\.count) && after.map(\.y) == before.map(\.y))
     }
 
@@ -353,13 +343,8 @@ import Testing
 
 @Suite(.isolatedStores) struct LayerSearchTests {
     @Test func structuresPlacesAndCreatures() throws {
-        func start(_ id: String, _ x: Int32) -> NBT {
-            .compound(["id": .string(id), "ChunkX": .int(x), "ChunkZ": .int(0),
-                       "Children": .list([.compound(["id": .string("minecraft:jigsaw"),
-                                                   "BB": .intArray([x * 16, 60, 0, x * 16 + 9, 70, 9])])])])
-        }
-        let village = StructureMarker(try #require(StructureStart.starts(inChunk: .compound(["structures": .compound(["starts": .compound([
-            "minecraft:village_plains": start("minecraft:village_plains", 2)])])])).first), groups: try StructureTagFixture.catalog())
+        let village = try StructureMarker(StructureTests().start("minecraft:village_plains", chunk: (2, 0),
+            pieces: [("minecraft:jigsaw", [32, 60, 0, 41, 70, 9])]), groups: StructureTagFixture.catalog())
         let wolf = try #require(CreatureMarker(Creature(id: "minecraft:wolf", x: 1, y: 64, z: 2, customName: "Summer", owner: UUID()), dimension: "minecraft:overworld"))
         let cat = try #require(CreatureMarker(Creature(id: "minecraft:cat", x: 5, y: 64, z: 5, owner: UUID()), dimension: "minecraft:overworld"))
         let villager = try #require(Creature(Fixtures.mob(["id": .string("minecraft:villager"), "Health": .float(20),

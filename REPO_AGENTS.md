@@ -571,13 +571,14 @@ the surface-rule range's upper plane for roof hiding and middle plane for biome 
 context keeps the actual surface, without a dimension-name ceiling fallback. Explicit cutaways
 keep their chosen Y. Source/pack replacement updates each map's height scale and renderer context,
 cancels obsolete renders/coordinate reads, and replaces region readers only when their consumed
-inputs change. RegionReader.Inputs owns the scan options and notable-block/structure-group
-catalogs used by each reader. WorldResources compares that value and uses one factory for opening,
+inputs change. RegionReader.Inputs owns the scan options and structure-group catalog
+used by each reader. WorldResources compares that value and uses one factory for opening,
 new dimensions and replacement. Leaf membership, trades, possible-biome lists and other unconsumed
 definition facts cannot discard readers or the index. Enchantment changes likewise keep the
 reader, region cache key and saved health inputs; current maximum health is resolved without a
-region reread. Scan options include tag-derived block IDs and dimension sampling/height choices;
-each shared index uses the same catalog. Old index passes cannot publish into the replacement
+region reread. Scan options include explicit cave-biome and portal-piece filters and dimension
+sampling/height choices. Ore grouping belongs to the independent count query and cannot retire
+core readers. Old index passes cannot publish into the replacement
 generation. Heat maps rebind to the new reader, and retired readers/loaders drain under the world's
 BackgroundWork owner.
 Tile renderer version 27 invalidates the previous interpretation. Source/color and surface keys
@@ -615,6 +616,7 @@ invalidates older scan envelopes, including those that stored a resolved maximum
 | `Places.swift` | Native place groups and markers, plus portal link status/return warnings (grouping, linking and round-trip rules from ChunkseeKit's `PointOfInterest` and `NetherPortal`) |
 | `WorldSearch.swift`, `RegionIndex.swift` | Native region projections and shared dimension-index adoption; app result presentation/search over the world snapshot |
 | `SearchModel.swift`, `WorldQueryStore.swift` | Independent per-dimension search controls, saved-query commands and the shared sidebar/map result projection; WorldQueryStore owns the world's typed and saved query publications |
+| `WorldBlockCountStore.swift`, `BlockCountCache.swift`, `Blocks.swift` | Shared terrain-only count scheduling and persisted coverage, captured per-window block-search origins, and Kit-owned group aliases; palette rules and distance ordering remain in Kit |
 | `PlayerNames.swift` | Names from the shared Minecraft folder's local caches and, while permission remains on, Mojang; name-source lifetimes and cancellation |
 | `MinecraftResources.swift` | The single installed-game folder bookmark/access owner; coherent observed source replacement, newest installed release selection, file identity and weak sharing across live documents |
 | `GameDataLibrary.swift` | Definitions, lighting and model geometry retained independently of artwork; typed data/artwork source identities |
@@ -760,8 +762,14 @@ one `RegionFacts` envelope per region, validating all three file fingerprints, s
 `RegionFacts.interpretationVersion` and `ScanCache.transformVersion`. Scan caches use one stable
 region slot containing a binary property-list envelope under LZFSE compression. The envelope
 validates its storage version and the complete key identity before returning facts, including
-nonfinite saved numbers. Scans currently request the app's notable block IDs; the coordinated
-Kit adoption will move those counts to the independent count reader (#576).
+nonfinite saved numbers. Core scans retain no block counts. `WorldBlockCountStore` uses Kit's
+terrain-only `countBlocks` after the main index finishes, at background priority. Occupied regions
+are visited outward from captured window origins; one producer coalesces the shared raw counts
+and cancels when the last query releases its demand. Its separate binary-plist/LZFSE cache validates
+the complete terrain file stamp, counted-ID coverage and block-count interpretation. Entity/POI
+edits and regrouping already counted IDs do not recount palettes; newly requested IDs require
+coverage. Successful empty, unsearched and failed regions remain distinct. Changed terrain and
+retired world sources cannot publish stale completions.
 Biome sampling uses MapSurfaceContext's middle generation plane for known ceiling dimensions,
 with the shared surface sample elsewhere. Vanilla Nether metadata gives Y64; the saved mapping
 also supports remapped/custom dimension IDs. Kit owns biome usage, section counts/heights,
@@ -1045,22 +1053,22 @@ the same aggregate with its own labels. Storage tests exercise the production pr
 Shared searchableInventory selects inventory plus saved equipment; book searchText and sign
 searchLines supply saved text fields. The app adds its localized labels and trims sign captions.
 Filter.includes owns creature/pet/villager/trade membership, combined with the existing text pass
-without a second filtered creature array. WorldIndex.richestDeposits owns cross-dimension block
-matching/ranking; the app chooses its display limit and converts the typed result to a native pin.
+without a second filtered creature array. BlockCountIndex owns nearest block matching/ranking;
+the app supplies its captured origin and display limit, then converts the typed result to a native pin.
 SearchHit keeps app-only titles, details, native coordinates and selection links. No extra catalog,
-query state or background work is introduced.
+inventory-query state or inventory background work is introduced.
 
-ChunkseeIndex.NotableBlock owns the nine display groups and grouped deposit counts/section height
-bounds. Its Catalog resolves ore membership from runtime block tags; the app has no ore-ID list. Blocks.swift keeps only aliases, game-language names/search
-labels. ChunkDeposit and ChunkFormats alias shared index types. RegionReader uses the shared
-world catalog for scan options and search aliases; the shared region index groups deposits. The old app Codable conformances had no persistence consumers;
-ScanCache continues to store core RegionFacts, with no cache-format change.
+ChunkseeIndex.NotableBlock owns dynamic ore groups, the explicitly approved exceptions, and
+grouped deposit counts/section height bounds. Its Catalog resolves the composed root ore tag;
+the app has no ore-ID list. Blocks.swift keeps group aliases, game-language labels and the captured
+query anchor. Raw quantities live in the independent count store, not RegionReader or its core
+scan envelope. Grouping those quantities happens at query time in Kit.
 
 `WorldResources.queryStore` owns typed and saved query publications through RefreshLoader.
 It observes the world's coherent index/player snapshot, player names, game-language identity and
 singleplayer identity even when no window is visible. SearchModel keeps only a window's query
 handle and presentation helpers; results(for:) reads publications and never scans synchronously.
-Unsaved typed queries have independent loaders per window. Saved queries share one loader per
+Unsaved typed queries have independent loaders per window. Ordinary saved queries share one loader per
 query and source across open and later documents. Their publication key includes index revision,
 player-snapshot identity, names, game-language identity and singleplayer identity; no NBT comparison
 is needed. A source change cancels old work through the loader. Previous coherent hits remain
@@ -1068,6 +1076,18 @@ visible while replacements load, except changed language or singleplayer labels 
 Clearing the current query clears its displayed hits immediately.
 Saving a completed typed query immediately shares that same result; retained hits from another
 query are never adopted as the new saved query's result.
+
+Block queries instead share the raw count store while each window owns its ranked typed and
+saved-query results. Starting a query captures the selected player UUID in that dimension,
+otherwise the map center. A player anchor follows only that UUID's published position and keeps
+its last point when the player disappears or changes dimension. A map-center anchor stays fixed;
+panning, selecting a result and zooming never recapture it. Kit ranks the complete retained
+count set by distance and stable ties before applying the 200-result sidebar/map limit. Catalog,
+origin and world replacement retire incompatible results; completed count progress reranks the
+same query without another palette read. "Searching farther away…" is a list state, never an
+item caption. Missing ore definitions have their own explanation while explicit groups remain
+available. Closing a window cancels only its query loaders; the world's count producer stops
+after the last window's block demand ends.
 
 Saved queries have individual waiter leases. An active typed waiter survives removal of its saved
 query; the entry retires after its final use. Closing one window releases only its waiters and typed
@@ -2364,8 +2384,9 @@ and pictures from the earlier JSON numeric/member interpretation.
 
 Effects, merchant ranks, statistics, notable-block search labels,
 game modes and difficulty use the game’s keys. Statistics retain their saved values and Kit-owned
-units. The existing notable-block groups choose representative block IDs solely for their labels;
-their membership remains Kit’s runtime tag catalog. The game supplies no structure or cat-variant
+units. Ore-tag group names use the game's `tag.block` key, then its readable identifier; direct
+block groups use the block name. Membership comes from Kit's composed `minecraft:ores` catalog,
+with the explicitly approved individual groups and separate Nether Gold. The game supplies no structure or cat-variant
 names, so their fallback preserves ID word order. Loot-table labels derive from saved paths, with
 no special renames. Old-format guidance uses the saved version name, when available, without a
 version number in the UI string. No game language files are redistributed.

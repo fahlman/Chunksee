@@ -220,15 +220,15 @@ import Testing
         defer { resources.close() }
         await resources.waitForRefresh()
         let id = "minecraft:overworld", original = try #require(resources.readers[id])
-        #expect(original.inputs.options.blockIDs?.contains("minecraft:diamond_ore") == true)
+        #expect(resources.blockCounts.catalog.blockIDs.contains("minecraft:diamond_ore"))
         let ores = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/block/diamond_ores.json")
         try write(#"{"replace":true,"values":[]}"#, to: ores)
         resources.worldChanged([ores])
         await resources.waitForRefresh()
         await resources.index.waitForIndex()
         let changedOres = try #require(resources.readers[id])
-        #expect(changedOres !== original)
-        #expect(changedOres.inputs.options.blockIDs?.contains("minecraft:diamond_ore") == false)
+        #expect(changedOres === original)
+        #expect(!resources.blockCounts.catalog.blockIDs.contains("minecraft:diamond_ore"))
         let villages = root.appendingPathComponent("datapacks/ChunkseeTest/data/minecraft/tags/worldgen/structure/village.json")
         try write(#"{"replace":true,"values":["example:hill_fort"]}"#, to: villages)
         resources.worldChanged([villages])
@@ -449,7 +449,8 @@ import Testing
         resources.worldChanged([pack])
         await resources.waitForRefresh(); await resources.index.waitForIndex()
         #expect(!resources.details.definitions.notableBlocks.blockIDs.contains("minecraft:diamond_ore"))
-        #expect(resources.readers[dimension.id] !== reader)
+        #expect(resources.readers[dimension.id] === reader)
+        #expect(await scans.count == count)
         resources.close(); await resources.waitUntilClosed()
     }
 }

@@ -101,7 +101,7 @@ import Testing
     @Test func searchesUseTranslatedNamesAndRetainDistinctIDsWithEqualLabels() async throws {
         let names = try await names("fr_FR")
         let spawner = PlaceMarker(Spawner(x: 2, y: 12, z: 3, mob: "minecraft:zombie"))
-        let structure = StructureMarker(StructureTests().start("test:abandoned_camp_old_growth_pine_taiga", chunk: (0, 0)))
+        let structure = try StructureMarker(StructureTests().start("test:abandoned_camp_old_growth_pine_taiga", chunk: (0, 0)))
         let areas = BiomePresentation.areas(from: [
             ChunkPosition(x: 0, z: 0): "test:high/meadow",
             ChunkPosition(x: 1, z: 0): "other:high/meadow",

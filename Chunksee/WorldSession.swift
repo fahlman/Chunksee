@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import Observation
 
 /// One dimension document's controls, map and navigation. The world's shared resources own its
@@ -98,6 +99,16 @@ final class WorldSession {
         let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderAfterPreparation)
         mapState = initialMap.map(MapState.loaded) ?? .unavailable(choices)
         navigation = MapNavigation(map: initialMap)
+        search.captureBlockOrigin { [weak self] in
+            guard let self, !self.isClosed, let dimension = self.selectedDimensionID, let map = self.map else { return nil }
+            if case .player(let id)? = self.selection.sidebarSelection,
+               let location = self.players.first(where: { $0.uuid == id })?.location,
+               location.dimension == dimension, let origin = BlockSearchOrigin(x: location.x, z: location.z) {
+                return BlockSearchAnchor(point: .init(dimension: dimension, origin: origin), playerID: id)
+            }
+            guard let origin = BlockSearchOrigin(x: map.viewport.center.x, z: map.viewport.center.y) else { return nil }
+            return BlockSearchAnchor(point: .init(dimension: dimension, origin: origin), playerID: nil)
+        }
         observeMapPresentation()
         _ = heatMap
         _ = slimeChunks

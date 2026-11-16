@@ -25,8 +25,6 @@ nonisolated struct DimensionContent: Sendable {
     /// Each chunk's surface biome and any cave biomes under it, for the hover readout.
     var biomes: [ChunkPosition: String] = [:]
     var caveBiomes: [ChunkPosition: [String]] = [:]
-    /// Notable blocks per chunk, for `block:` search, richest first.
-    var blocks: [ChunkDeposit] = []
     /// Readable and pre-1.18 chunks across the dimension.
     var formats = ChunkFormats()
     /// Shared retained facts and native projections, replaced only for successfully read regions.
@@ -38,7 +36,7 @@ nonisolated struct DimensionContent: Sendable {
     static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
         let available = reader.availableRegions
         let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
-            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs, notableBlocks: reader.notableBlocks)
+            dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
         let selected = change.mapRegions
         let changed = previousIndex.regionsToRead(available: available, selected: selected)
         let replacements = await withTaskGroup(of: (RegionPosition, RegionIndex?).self) { group in
@@ -72,7 +70,6 @@ nonisolated struct DimensionContent: Sendable {
         part.signs = shared.signs
         part.biomes = shared.biomes
         part.caveBiomes = shared.caveBiomes
-        part.blocks = shared.blocks
         part.formats = shared.formats
         part.structures.sort { $0.id < $1.id }
         part.creatures = creatures.sorted { $0.id < $1.id }
@@ -232,7 +229,7 @@ nonisolated enum WorldSearch {
         var results: [String: [SearchHit]] = [:]
         for query in request.queries {
             guard !Task.isCancelled else { return [:] }
-            results[query] = search(query, in: request.index, players: request.players, gameNames: request.gameNames) {
+            results[query] = search(query, in: request.index, players: request.players, gameNames: request.gameNames, blocks: request.blocks) {
                 request.playerNames[$0.uuid] ?? GameNames.PlayerName(playerID: $0.uuid, singleplayerUUID: nil, knownName: nil)
             }
         }
@@ -241,14 +238,15 @@ nonisolated enum WorldSearch {
 
     /// One layer's markers matching every word (all of them with no words): biome areas largest
     /// first, everything else by id.
-    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex, gameNames: GameNames) -> [SearchHit] {
+    static func search(_ filter: LayerFilter, query: SearchQuery, in index: SearchIndex, gameNames: GameNames,
+                       blocks: BlockQueryInput? = nil) -> [SearchHit] {
         let hits: [SearchHit]
         switch filter {
         case .structure: hits = layerHits(index.structures, query: query, gameNames: gameNames, y: \.y, content: SearchHit.Content.structure)
         case .place: hits = layerHits(index.places, query: query, gameNames: gameNames, y: { $0.y }, content: SearchHit.Content.place)
         case .creature, .pet, .villager: hits = creatureHits(index.creatures, filter: filter, query: query, gameNames: gameNames)
         case .trade: hits = tradeHits(index.creatures, query: query, gameNames: gameNames)
-        case .block: hits = blockHits(index, query: query, gameNames: gameNames)
+        case .block: return blockHits(blocks, query: query, gameNames: gameNames)
         case .biome:
             hits = layerHits(index.biomeAreas, query: query, gameNames: gameNames) {
                 .biome(markerID: $0.id, group: $0.group, chunkCount: $0.chunkCount)
@@ -257,22 +255,15 @@ nonisolated enum WorldSearch {
         return hits.sorted { $0.count != $1.count ? $0.count > $1.count : $0.id < $1.id }
     }
 
-    /// At most this many `block:` results. Common ores are in hundreds of thousands of chunks
-    /// (diamond ore alone in about 150,000 in Ryan's Realm); listing and pinning them all made
-    /// searching take seconds and would slow every redraw of the map.
-    static let blockResultLimit = 1000
-
-    /// The richest chunks holding a notable block whose name or id matches every word, one hit per
-    /// chunk and block. The pin sits at the chunk's center; the detail gives the height range to dig.
-    private static func blockHits(_ index: SearchIndex, query: SearchQuery, gameNames: GameNames) -> [SearchHit] {
-        let catalogs = index.dimensions.values.compactMap { $0.shared?.notableBlocks }
-        let blocks = Set(NotableBlock.allCases.filter { block in
-            query.matches(block.searchText(in: nil, gameNames: gameNames)) || catalogs.contains { query.matches(block.searchText(in: $0, gameNames: gameNames)) }
-        })
-        return index.richestDeposits(matching: blocks, limit: blockResultLimit, in: \.blocks).compactMap { entry in
-            let dimension = entry.dimension, chunk = entry.value.chunk, deposit = entry.value.deposit
+    /// Rank the running window's dimension before applying the sidebar/map's 200-row limit.
+    /// The pin sits at the chunk's center; the detail gives the height range to dig.
+    private static func blockHits(_ input: BlockQueryInput?, query: SearchQuery, gameNames: GameNames) -> [SearchHit] {
+        guard let input, let index = input.counts.dimensions[input.point.dimension] else { return [] }
+        let groups = Set(input.catalog.groups.filter { query.matches($0.searchText(in: input.catalog, gameNames: gameNames)) })
+        return index.nearestDeposits(matching: groups, using: input.catalog, from: input.point.origin, limit: 200).compactMap { entry in
+            let dimension = input.point.dimension, chunk = entry.chunk, deposit = entry.deposit
             guard let origin = chunk.blockOrigin else { return nil }
-            return SearchHit(id: "\(dimension)@\(deposit.block.rawValue)@\(chunk.x),\(chunk.z)",
+            return SearchHit(id: "\(dimension)@\(deposit.block.id)@\(chunk.x),\(chunk.z)",
                              dimension: dimension, position: CGPoint(x: origin.x + 8, y: origin.z + 8), y: deposit.minY,
                              content: .block(deposit))
         }
@@ -368,10 +359,11 @@ nonisolated enum WorldSearch {
 
     /// Places matching the query text, most items first. `name(of:)` names players.
     static func search(_ text: String, in index: SearchIndex, players: [PlayerInfo], gameNames: GameNames,
+                       blocks: BlockQueryInput? = nil,
                        name: (PlayerInfo) -> GameNames.PlayerName) -> [SearchHit] {
         let query = SearchQuery(text)
         if let filter = query.filter {
-            return search(filter, query: query, in: index, gameNames: gameNames)
+            return search(filter, query: query, in: index, gameNames: gameNames, blocks: blocks)
         }
         guard !query.isEmpty else { return [] }
         var labels = GameNames.ItemLabels(gameNames)

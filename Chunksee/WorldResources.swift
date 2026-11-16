@@ -47,10 +47,13 @@ final class WorldResources {
     let savedPlaces: SavedPlaces
     var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
+    @ObservationIgnored private(set) lazy var blockCounts = WorldBlockCountStore(
+        world: readSource, dimensions: dimensions, catalog: details.definitions.notableBlocks,
+        cacheRoot: cacheRoot, cachePreparation: cachePreparation, index: index, work: backgroundWork)
     @ObservationIgnored private(set) lazy var queryStore = WorldQueryStore(
         index: index, work: backgroundWork, names: names, savedSearches: savedSearches,
         singleplayerUUID: { [weak self] in self?.world.level.singleplayerUUID },
-        gameNames: { [weak self] in self?.gameNames ?? .unavailable })
+        gameNames: { [weak self] in self?.gameNames ?? .unavailable }, blockCounts: blockCounts)
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
@@ -394,6 +397,7 @@ final class WorldResources {
         access = snapshot.access
         readSource = nextSource
         guard !isClosed else { return }
+        blockCounts.replace(world: nextSource, dimensions: snapshot.dimensions, cachePreparation: cachePreparation)
         // Install the prepared catalog before definition callbacks can replace its readers.
         // Completed compatible facts remain available while the new files are checked.
         index.replaceWorldSource(readers: readers, firstDimension: activeDimensionID)
@@ -430,6 +434,7 @@ final class WorldResources {
         guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
         index.include(added.map { makeReader(readSource, $0, details.definitions, cachePreparation) }, firstDimension: activeDimensionID)
+        blockCounts.replace(world: readSource, dimensions: dimensions, cachePreparation: cachePreparation)
         refreshInfo()
         refreshNightLighting(reread: true)
         refreshLighting()
@@ -556,6 +561,7 @@ final class WorldResources {
     private func adoptDefinitions(_ current: WorldDefinitionLoader.Facts?) {
         guard !isClosed else { return }
         let definitions = current?.definitions ?? WorldDefinitions()
+        blockCounts.setCatalog(definitions.notableBlocks)
         let retired = index.readers
         guard retired.contains(where: {
             $0.inputs != RegionReader.Inputs(dimensionID: $0.dimension.id, definitions: definitions)
@@ -706,6 +712,7 @@ final class WorldResources {
         watcher?.stop()
         backgroundWork.close()
         queryStore.close()
+        blockCounts.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         assetLoader.close()

@@ -167,11 +167,11 @@ extension RegionTileRenderer {
         let neutral = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{}}"#.utf8)))
         let health = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{"minecraft:attributes":[{"id":"test:health","attribute":"minecraft:max_health","amount":4,"operation":"add_value"}]}}"#.utf8)))
         var definitions = WorldDefinitions(enchantments: Dictionary(uniqueKeysWithValues: [("test:a", neutral), ("test:b", health)]))
-        var first = RegionReader.options(definitions: definitions)
-        first.blockIDs = Set(["minecraft:stone", "minecraft:dirt"])
+        var first = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        first.biomeIDs = Set(["minecraft:lush_caves", "minecraft:deep_dark"])
         definitions.enchantments = Dictionary(uniqueKeysWithValues: [("test:b", health), ("test:a", neutral)])
-        var reordered = RegionReader.options(definitions: definitions)
-        reordered.blockIDs = Set(["minecraft:dirt", "minecraft:stone"])
+        var reordered = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        reordered.biomeIDs = Set(["minecraft:deep_dark", "minecraft:lush_caves"])
         let region = RegionPosition(x: 0, z: 0)
         let key = ScanCache.Key(dimension: dimension, region: region, options: .init(first))
         let otherOrder = ScanCache.Key(dimension: dimension, region: region, options: .init(reordered))
@@ -180,8 +180,8 @@ extension RegionTileRenderer {
         cache.store(try dimension.scan(region: region, options: first), key: key)
         #expect(ScanCache(directory: cache.directory).load(otherOrder)?.options == first)
         definitions.enchantments["test:a"] = health
-        var newDefinitions = RegionReader.options(definitions: definitions)
-        newDefinitions.blockIDs = first.blockIDs
+        var newDefinitions = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        newDefinitions.biomeIDs = first.biomeIDs
         let sameKey = ScanCache.Key(dimension: dimension, region: region, options: .init(newDefinitions))
         #expect(sameKey == key && cache.load(sameKey)?.options == first)
         var changed = first

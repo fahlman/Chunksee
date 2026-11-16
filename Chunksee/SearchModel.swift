@@ -9,6 +9,7 @@ nonisolated struct SearchRequest: Sendable {
     var players: [PlayerInfo]
     var playerNames: [UUID: GameNames.PlayerName]
     var gameNames: GameNames
+    var blocks: BlockQueryInput? = nil
 }
 
 /// Per-window controls over the world's published search results. Views never scan a world.
@@ -39,8 +40,15 @@ final class SearchModel {
 
     func results(for query: String) -> [SearchHit] {
         guard !handle.isClosed else { return [] }
-        return query == text ? results : queryStore.results(for: query)
+        return query == text ? results : handle.results(for: query)
     }
+
+    func captureBlockOrigin(using capture: @escaping @MainActor () -> BlockSearchAnchor?) {
+        handle.captureBlockOrigin(using: capture)
+    }
+
+    func isSearchingFarther(for query: String) -> Bool { handle.isSearchingFarther(for: query) }
+    func hasOreDefinitions(for query: String) -> Bool { handle.hasOreDefinitions(for: query) }
 
     /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
     func listedHits(for query: String, where belongsToDimension: (String?) -> Bool) -> (rows: ArraySlice<SearchHit>, total: Int) {
