@@ -259,7 +259,7 @@ enum StructureTestWorld {
         #expect(pet.creature.uuid == NBT.intArray([11, 12, 13, 14]).uuid)
         #expect(pet.creature.maximumHealth(enchantments: [:]) == 40 && pet.creature.sittingOrder == true && pet.creature.collarColor == "orange")
         #expect(pet.creature.appearance?.variant == "minecraft:pale" && pet.creature.equipment?.isEmpty == true)
-        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: .init(try #require(session.resources.readers[dimension.id]).scanOptions)))?.creatures
+        let cached = cache.load(.init(dimension: dimension, region: .init(x: 0, z: 0), options: .init(try #require(session.resources.readers[dimension.id]).inputs.options)))?.creatures
         #expect(cached?.first?.health == 8)
         #expect(cached?.first?.maximumHealth(enchantments: [:]) == 40 && cached?.first?.appearance == pet.creature.appearance)
         session.selection.choose(.creature(pet.id))

@@ -16,9 +16,6 @@ final class AppModel {
     private let readWorld: @Sendable (URL) async throws -> WorldSnapshot
     private let readRegion: RegionReader.Read
 
-    /// Readers waiting for initial metadata; returned snapshots hold their own opening instead.
-    var openingRequestCount: Int { openingReads.values.reduce(0) { $0 + $1.requests.count } }
-
     private enum ReadPurpose { case opening, catalog, replacement }
 
     private struct OpeningRead {

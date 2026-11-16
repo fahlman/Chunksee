@@ -135,7 +135,7 @@ enum StructureTagFixture {
         #expect(try await groups() == ["minecraft:village_plains": .other, "test:hill_fort": .other,
                                       "test:camp": .village, "test:unknown": .other])
         let after = try #require(resources.readers["minecraft:overworld"])
-        #expect(before !== after && before.scanOptions == after.scanOptions)
+        #expect(before !== after && before.inputs.options == after.inputs.options)
         try write("malformed")
         resources.worldChanged([tag])
         #expect(try await groups()["test:camp"] == .abandonedCamp)

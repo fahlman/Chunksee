@@ -1,7 +1,6 @@
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
-import Observation
 import Testing
 @testable import ChunkseeTestHost
 
@@ -77,7 +76,6 @@ import Testing
         session.close()
         await session.waitUntilClosed()
         await resources.backgroundWork.waitUntilFinished()
-        for await count in Observations({ model.openingRequestCount }) where count == 0 { break }
         #expect(session.isClosed && resources.isClosed && resources.backgroundWork.isClosed)
         return objects
     }

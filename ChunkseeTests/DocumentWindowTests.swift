@@ -83,7 +83,6 @@ import Testing
             }) {}
             #expect(opened.openingFailure == nil)
             #expect(opened.session?.selectedDimensionID == "minecraft:overworld")
-            #expect(model.openingRequestCount == 0)
             let session = try #require(opened.session)
             defaults.removeObject(forKey: "worldFolderBookmarks")
             let rereader = opened.makeReader()

@@ -21,8 +21,6 @@ nonisolated struct MobAppearance: Hashable, Sendable {
         traits = (appearance?.traits ?? [:]).sorted { $0.key < $1.key }.map { Trait(name: $0.key, value: $0.value) }
     }
 
-    var isRecorded: Bool { variant != nil || markings != nil || !traits.isEmpty }
-
     var saved: CreatureAppearance {
         CreatureAppearance(variant: variant, markings: markings,
             traits: traits.isEmpty ? nil : Dictionary(uniqueKeysWithValues: traits.map { ($0.name, $0.value) }))

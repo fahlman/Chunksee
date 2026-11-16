@@ -31,7 +31,7 @@ import Testing
         #expect(catalog.marker(red.id) == red)
         let sheep = try #require(catalog.kind("minecraft:sheep"))
         #expect(sheep.count == 3 && sheep.variants.count == 3)
-        #expect(sheep.variants.contains { !$0.appearance.isRecorded && $0.count == 1 })
+        #expect(sheep.variants.contains { $0.appearance == MobAppearance(nil) && $0.count == 1 })
         #expect(GameNames.unavailable.mobName(sheep.id, in: catalog) != GameNames.unavailable.mobName("test:sheep", in: catalog))
         let fishKind = try #require(catalog.kind("minecraft:tropical_fish"))
         #expect(fishKind.variants.count == 2 && fishKind.variants.allSatisfy { $0.count == 1 })

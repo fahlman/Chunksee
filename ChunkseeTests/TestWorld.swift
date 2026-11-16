@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import ChunkseeKitTestSupport
 import SwiftUI
 import Testing
@@ -98,6 +99,13 @@ nonisolated enum TestWorld {
             let position = ChunkPosition(x: chunk.x, z: chunk.z)
             return Fixtures.RegionChunk(localX: position.localX, localZ: position.localZ, nbt: chunk.nbt, timestamp: 0)
         })
+    }
+}
+
+// Small scene fixtures use the same shared aggregation and native projection as the index.
+extension BiomePresentation {
+    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
+        areas(from: ChunkseeIndex.BiomeArea.connected(in: biomes))
     }
 }
 
