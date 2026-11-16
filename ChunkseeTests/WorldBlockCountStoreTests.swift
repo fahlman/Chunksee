@@ -108,7 +108,7 @@ final class BlockCountHarness {
         #expect(h.counts.snapshot === original)
         #expect(await log.calls.count == 3)
 
-        for folder in [ChunkseeKit.Dimension.Folder.entities, .poi] {
+        for folder in [ChunkseeKit.Dimension.Folder.entities, .pointsOfInterest] {
             let file = h.dimension.regionURL(folder, at: .init(x: 1, z: 0))
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data([1]).write(to: file)

@@ -40,6 +40,19 @@ nonisolated enum CacheArchiveFixture {
         let archive = try PropertyListSerialization.data(fromPropertyList: entry, format: .binary, options: 0)
         try ((archive as NSData).compressed(using: .lzfse) as Data).write(to: file)
     }
+
+    static func changing(_ version: InterpretationVersion, field: String) throws -> InterpretationVersion {
+        var value = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(version)) as? [String: Any])
+        switch field {
+        case "revision": value[field] = version.revision + 1
+        case "generatedFacts": value[field] = "changed-generated-facts"
+        default:
+            var dependencies = try #require(value[field] as? [[String: Any]])
+            dependencies.append(["domain": "fixture", "revision": 1, "generatedFacts": "fixture", "dependencies": []])
+            value[field] = dependencies
+        }
+        return try JSONDecoder().decode(InterpretationVersion.self, from: JSONSerialization.data(withJSONObject: value))
+    }
 }
 
 extension RegionTileRenderer {
@@ -54,19 +67,6 @@ extension RegionTileRenderer {
     private func world() throws -> URL {
         try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
             palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 7 ? 1 : 0 }])
-    }
-
-    private func changing(_ version: InterpretationVersion, field: String) throws -> InterpretationVersion {
-        var value = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(version)) as? [String: Any])
-        switch field {
-        case "revision": value[field] = version.revision + 1
-        case "generatedFacts": value[field] = "changed-generated-facts"
-        default:
-            var dependencies = try #require(value[field] as? [[String: Any]])
-            dependencies.append(["domain": "fixture", "revision": 1, "generatedFacts": "fixture", "dependencies": []])
-            value[field] = dependencies
-        }
-        return try JSONDecoder().decode(InterpretationVersion.self, from: JSONSerialization.data(withJSONObject: value))
     }
 
     @Test func wholeReaderContractsRejectOldDiskEntriesWhileAnUnchangedReopenHits() throws {
@@ -88,7 +88,7 @@ extension RegionTileRenderer {
                 case "assets": changed.inputs.assets = try changing(#require(key.inputs.assets), field: field)
                 default:
                     var light = try #require(key.inputs.nightLight)
-                    light.interpretation = try changing(light.interpretation, field: field)
+                    light.interpretation = try CacheArchiveFixture.changing(light.interpretation, field: field)
                     changed.inputs.nightLight = light
                 }
                 #expect(changed.fileName == key.fileName)
@@ -189,7 +189,7 @@ extension RegionTileRenderer {
         #expect(cache.load(.init(dimension: dimension, region: region, options: .init(changed))) == nil)
         for field in ["revision", "generatedFacts", "dependencies"] {
             var changed = key
-            changed.interpretation = try changing(key.interpretation, field: field)
+            changed.interpretation = try CacheArchiveFixture.changing(key.interpretation, field: field)
             #expect(cache.load(changed) == nil)
         }
         #expect(cache.load(key) != nil)

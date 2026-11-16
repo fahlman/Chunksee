@@ -20,7 +20,7 @@ import Testing
         #expect(reopened.load(.init(dimension: dimension, region: region, blockIDs: ["minecraft:diamond_ore"])) == counts)
         #expect(reopened.load(.init(dimension: dimension, region: region, blockIDs: ids.union(["minecraft:iron_ore"]))) == nil)
 
-        for kind in [ChunkseeKit.Dimension.Folder.entities, .poi] {
+        for kind in [ChunkseeKit.Dimension.Folder.entities, .pointsOfInterest] {
             let file = dimension.regionURL(kind, at: region)
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data([1, 2, 3]).write(to: file)
@@ -60,7 +60,7 @@ import Testing
         }
         cache.store(counts, key: key)
         var changed = key
-        changed.interpretation = InterpretationVersion(domain: "blockCounts", revision: 999, generatedFacts: "", dependencies: [])
+        changed.interpretation = try CacheArchiveFixture.changing(key.interpretation, field: "revision")
         #expect(cache.load(changed) == nil)
         #expect(cache.load(key) == counts)
     }

@@ -2,6 +2,7 @@ import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost

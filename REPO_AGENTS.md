@@ -22,6 +22,12 @@ Ryan's rules, approved 2026-10-25:
 - **No self-made maintenance.** A new Minecraft version should need no code change, or at
   most one tool run.
 
+Ryan's storage rule, approved 2026-11-15 (#581): the app and Kit write property lists for their
+own persistence and cache identities, never JSON. Existing JSON stores start fresh; do not add
+conversions. External Minecraft and service JSON remains readable. Kit's transient external-input
+normalization and historical sign/book spelling stay within that reader exception, not storage
+or keys. Agent check scripts and evidence are outside this product rule.
+
 Chunksee presents facts supplied by ChunkseeKit and ChunkseeIndex. It does not decode game
 files or keep another copy of game rules. Read the user's installed language files through Kit;
 reading those files at runtime is not redistribution. Choose the user's language in the app,
