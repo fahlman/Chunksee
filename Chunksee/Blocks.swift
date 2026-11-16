@@ -23,7 +23,8 @@ nonisolated struct BlockSearchAnchor: Equatable, Sendable {
     let playerID: UUID?
 
     mutating func update(players: [PlayerInfo]) {
-        guard let playerID, let location = players.first(where: { $0.uuid == playerID })?.location,
+        guard let playerID, let player = players.first(where: { $0.uuid == playerID }),
+              let location = PlayerPresentation.position(of: player),
               location.dimension == point.dimension,
               let origin = BlockSearchOrigin(x: location.x, z: location.z) else { return }
         point = BlockSearchPoint(dimension: point.dimension, origin: origin)

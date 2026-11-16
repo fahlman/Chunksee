@@ -102,7 +102,8 @@ final class WorldSession {
         search.captureBlockOrigin { [weak self] in
             guard let self, !self.isClosed, let dimension = self.selectedDimensionID, let map = self.map else { return nil }
             if case .player(let id)? = self.selection.sidebarSelection,
-               let location = self.players.first(where: { $0.uuid == id })?.location,
+               let player = self.players.first(where: { $0.uuid == id }),
+               let location = PlayerPresentation.position(of: player),
                location.dimension == dimension, let origin = BlockSearchOrigin(x: location.x, z: location.z) {
                 return BlockSearchAnchor(point: .init(dimension: dimension, origin: origin), playerID: id)
             }
