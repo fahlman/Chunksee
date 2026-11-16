@@ -635,14 +635,16 @@ import Testing
             try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).color(point.x, point.z)
         }
         #expect(try await color() == [0, 0, 255, 255])
-        let files = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
-        let name = try #require(files.first { $0.hasSuffix(".lzfse") })
-        let olderName = name.replacingOccurrences(of: ".v\(TileCache.rendererVersion).lzfse", with: ".v25.lzfse")
-        let olderFile = cache.directory.appendingPathComponent(olderName)
-        try FileManager.default.moveItem(at: cache.directory.appendingPathComponent(name), to: olderFile)
+        let key = try #require(renderer.cacheKey(for: region))
+        let file = cache.directory.appendingPathComponent(try #require(key.fileName))
+        var oldKey = key
+        oldKey.inputs.renderer = 25
+        var entry = try CacheArchiveFixture.read(file)
+        entry["identity"] = try InterpretationKey.identity(of: oldKey)
+        try CacheArchiveFixture.write(entry, to: file)
+        #expect(cache.load(key) == nil)
         #expect(try await color() == [0, 0, 255, 255])
-        #expect(!FileManager.default.fileExists(atPath: olderFile.path))
-        #expect(FileManager.default.fileExists(atPath: cache.directory.appendingPathComponent(name).path))
+        #expect(cache.load(key) != nil)
         await library.close()
     }
 
@@ -675,8 +677,8 @@ import Testing
         let after = try #require(CacheKey.fileStamp(for: dimension.regionURL(at: region)))
         #expect(after.size == own.size && after.modified == own.modified)
         let cachedFiles = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
-        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse") }.count == 1)
-        #expect(cachedFiles.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
+        #expect(cachedFiles.filter { $0.hasSuffix(".tile.plist.lzfse") }.count == 1)
+        #expect(cachedFiles.filter { $0.hasSuffix(".detail.plist.lzfse") }.count == 1)
         await library.close()
     }
 
@@ -955,8 +957,8 @@ import Testing
         #expect(try ItemPictureFixture.pixels(#require(try await renderer.tile(for: region)).full.image).bytes == ItemPictureFixture.pixels(sharp.full.image).bytes)
         let files = try FileManager.default.contentsOfDirectory(atPath: cache.directory.path)
         #expect(files.count == 2) // The latest ordinary tile and its matching deferred detail.
-        #expect(files.filter { $0.hasSuffix(".lzfse") }.count == 1)
-        #expect(files.filter { $0.hasSuffix(".lzfse.detail") }.count == 1)
+        #expect(files.filter { $0.hasSuffix(".tile.plist.lzfse") }.count == 1)
+        #expect(files.filter { $0.hasSuffix(".detail.plist.lzfse") }.count == 1)
         await library.close()
     }
 

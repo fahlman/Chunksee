@@ -90,7 +90,8 @@ import Testing
             f.readers.append(reader)
             #expect(await TestWorld.index(reader).caveBiomes.isEmpty)
             #expect(await count.value == 1)
-            #expect(!FileManager.default.fileExists(atPath: historical.path))
+            // Reading current facts does not perform the world's startup cleanup.
+            #expect(FileManager.default.fileExists(atPath: historical.path))
         }
     }
 

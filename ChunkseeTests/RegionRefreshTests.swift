@@ -144,7 +144,8 @@ import Testing
         #expect(times[3 * 32 + 2] == 7200)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))
         #expect(saved?.inhabitedTimes[3 * 32 + 2] == 7200)
-        #expect(!FileManager.default.fileExists(atPath: old.path))
+        // Startup owns old-layout cleanup; a direct region write does not list this folder.
+        #expect(FileManager.default.fileExists(atPath: old.path))
         await reader.close()
     }
 

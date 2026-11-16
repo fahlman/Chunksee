@@ -29,9 +29,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make(), id = UUID()
         // A missing border choice uses its default without losing the saved grid choice.
-        let record = try JSONSerialization.data(withJSONObject:
-            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]])
-        defaults.set(["version": 2, "mapPresentations": ["minecraft:overworld": record]],
+        let record = try PropertyListSerialization.data(fromPropertyList:
+            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]], format: .binary, options: 0)
+        defaults.set(["version": 2, "mapPresentations.plist": ["minecraft:overworld": record]],
                      forKey: "worldSettings." + id.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)

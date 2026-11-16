@@ -85,7 +85,8 @@ import Testing
         await reader.close()
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        // The old entry is ignored here; world startup owns obsolete-file cleanup.
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
         let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: .init(RegionReader.options())))
         #expect(saved?.containers == contents.containers)
     }

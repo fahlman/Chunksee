@@ -77,9 +77,9 @@ enum StructureTagFixture {
         #expect(settings.mapPresentation(for: dimension).overlays.structures == [.village, .mineshaft, .other, .stronghold])
         #expect(settings.mapPresentation(for: "minecraft:the_nether").overlays.structures.contains(.abandonedCamp))
 
-        let record = try JSONSerialization.data(withJSONObject: ["version": 1,
-            "presentation": ["overlays": ["structures": ["village": false, "mineshaft": true]]]])
-        defaults.set(["version": 2, "mapPresentations": [dimension: record]], forKey: key)
+        let record = try PropertyListSerialization.data(fromPropertyList: ["version": 1,
+            "presentation": ["overlays": ["structures": ["village": false, "mineshaft": true]]]], format: .binary, options: 0)
+        defaults.set(["version": 2, "mapPresentations.plist": [dimension: record]], forKey: key)
         let newer = settings.mapPresentation(for: dimension).overlays
         #expect(!newer.structures.contains(.village) && newer.structures.contains(.mineshaft))
         #expect(newer.structures.contains(.abandonedCamp) && !newer.structures.contains(.netherFossil))

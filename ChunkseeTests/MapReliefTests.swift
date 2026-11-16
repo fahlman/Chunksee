@@ -108,9 +108,11 @@ import Testing
         try ((Data(surface.pixels) as NSData).compressed(using: .lzfse) as Data).write(to: file)
         #expect(cache.load(key) == nil)
         cache.store(surface, for: key)
-        var bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
+        var entry = try CacheArchiveFixture.read(file)
+        var bytes = try #require(entry["payload"] as? Data)
         bytes[512 * 512 * 8] = 2 // Invalid water mask.
-        try ((bytes as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        entry["payload"] = bytes
+        try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(key) == nil)
     }
 

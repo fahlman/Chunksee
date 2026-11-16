@@ -120,7 +120,8 @@ import Testing
         #expect(try await colored.topBlocks(in: file, localX: 0, localZ: 0)?[0]?.y == 14)
         let fallback = try #require(baseline.cacheKey(for: position))
         let source = try #require(colored.cacheKey(for: position))
-        #expect(fallback.fileName != source.fileName && cache.load(source) != nil)
+        #expect(fallback.fileName == source.fileName && fallback != source)
+        #expect(cache.load(fallback) == nil && cache.load(source) != nil)
         for style in MapStyle.allCases {
             var plain = baseline, supplied = colored
             plain.style = style; supplied.style = style

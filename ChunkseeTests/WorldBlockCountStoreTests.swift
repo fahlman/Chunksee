@@ -196,6 +196,9 @@ final class BlockCountHarness {
                 return saved
             })
         defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
+        // The real index must publish the saved terrain change before the count store retries.
+        let reader = RegionReader(dimension: h.dimension, cache: .off)
+        h.index.include([reader], firstDimension: h.dimension.id)
         let region = RegionPosition(x: 0, z: 0)
         h.counts.setDemand([try h.point(8)])
         await entered.waitForRequest("old")
@@ -210,6 +213,6 @@ final class BlockCountHarness {
         let result = try #require(h.counts.snapshot.dimensions[h.dimension.id])
         #expect(result.coverage(of: region, matching: h.counts.catalog.blockIDs) == .complete)
         #expect(result.regions[region]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 17)
-        h.close(); await h.finish()
+        h.close(); await h.finish(); await reader.close()
     }
 }

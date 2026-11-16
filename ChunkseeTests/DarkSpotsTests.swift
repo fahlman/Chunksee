@@ -96,9 +96,12 @@ import Testing
         renderer.darkSpots = nil
         let restored = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == ItemPictureFixture.pixels(ordinary.full.image).bytes)
-        var bad = try (Data(contentsOf: cache.directory.appendingPathComponent(try #require(litKey.fileName))) as NSData).decompressed(using: .lzfse) as Data
+        let file = cache.directory.appendingPathComponent(try #require(litKey.fileName))
+        var entry = try CacheArchiveFixture.read(file)
+        var bad = try #require(entry["payload"] as? Data)
         bad[512 * 512 * 9] = 3
-        try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: cache.directory.appendingPathComponent(try #require(litKey.fileName)))
+        entry["payload"] = bad
+        try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(litKey) == nil)
         #expect(cache.load(key) != nil)
     }

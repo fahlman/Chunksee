@@ -348,7 +348,8 @@ import Testing
         #expect(rebuilt.map(\.y) == [-50])
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }
         #expect(saved?.first?.y == -50)
-        #expect(!FileManager.default.fileExists(atPath: previous.path))
+        // The obsolete entry cannot serve this read; startup removes old layouts once.
+        #expect(FileManager.default.fileExists(atPath: previous.path))
         await reader.close()
     }
 }
