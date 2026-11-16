@@ -104,7 +104,7 @@ nonisolated enum TestWorld {
 
 // Small scene fixtures use the same shared aggregation and native projection as the index.
 extension BiomePresentation {
-    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [BiomeArea] {
+    nonisolated static func areas(from biomes: [ChunkPosition: String]) -> [ChunkseeTestHost.BiomeArea] {
         areas(from: ChunkseeIndex.BiomeArea.connected(in: biomes))
     }
 }

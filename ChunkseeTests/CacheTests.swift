@@ -6,25 +6,6 @@ import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
-/// The retired marker-cache shape is a fixture, not a persistence contract for live markers.
-private nonisolated struct LegacyStructureMarker: Encodable {
-    let id: String
-    let structureID: String
-    let group: String
-    let bounds: CGRect
-    let y: Int?
-    let portalRoom: CGPoint?
-
-    init(_ marker: StructureMarker) {
-        id = marker.id
-        structureID = marker.structureID
-        group = marker.group.rawValue
-        bounds = marker.bounds
-        y = marker.y
-        portalRoom = marker.portalRoom
-    }
-}
-
 @Suite(.isolatedStores) struct TileCacheTests {
     @Test func sharedKeysHaveStableNamesAndReadFreshFileAttributes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheKeyTests-\(UUID())")

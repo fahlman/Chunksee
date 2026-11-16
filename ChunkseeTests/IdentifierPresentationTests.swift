@@ -83,7 +83,7 @@ import Testing
         stale.group = .other
         let oldFile = try #require(cache.directory).appendingPathComponent("structures.0.0.\(fingerprint).v16")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try PropertyListEncoder().encode([stale])
+        let data = try PropertyListEncoder().encode([LegacyStructureMarker(stale)])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
         let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, inputs: .init(structureGroups: groups))).structures
