@@ -455,7 +455,7 @@ final class WorldResources {
         guard !Task.isCancelled else { return }
         // Failure leaves the marker absent so a later opening can try again. Cache failures
         // never prevent reading the world; each envelope still validates its complete key.
-        try? TileCache.prepare(worldFolder: folder)
+        try? CacheArchive.prepare(worldFolder: folder)
     }
 
     @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {

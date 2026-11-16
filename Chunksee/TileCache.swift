@@ -42,14 +42,10 @@ nonisolated struct TileCache: Sendable {
     /// 38: packed retained layers preserve close-up detail within the existing memory budget.
     static let rendererVersion = 38
 
-    /// Storage layout changes do not change the renderer's interpretation of a world.
-    private static let storageVersion = 1
-    private enum Kind: String, Codable { case tile, detail }
-    private struct Entry: Codable {
-        let storageVersion: Int
-        let identity: String
-        let kind: Kind
-        let payload: Data
+    enum Kind: String, Codable { case tile, detail }
+    struct Payload: Codable {
+        var kind: Kind
+        var bytes: Data
     }
 
     let directory: URL
@@ -149,21 +145,6 @@ nonisolated struct TileCache: Sendable {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: worldFolder.path)
     }
 
-    /// The world owner awaits this once before starting cache readers or writers. Old layouts
-    /// are discarded, not converted. A marker is written only after cleanup succeeds.
-    static func prepare(worldFolder: URL) throws {
-        let manager = FileManager.default
-        let marker = worldFolder.appendingPathComponent("storage-layout-\(storageVersion)")
-        guard !manager.fileExists(atPath: marker.path) else { return }
-        try Task.checkCancellation()
-        try manager.createDirectory(at: worldFolder, withIntermediateDirectories: true)
-        for old in try manager.contentsOfDirectory(at: worldFolder, includingPropertiesForKeys: nil) {
-            try Task.checkCancellation()
-            try manager.removeItem(at: old)
-        }
-        try Data().write(to: marker, options: .atomic)
-    }
-
     /// The key for a region file as it is on disk now, or `nil` if it can't be read.
     static func key(for region: RegionPosition, regionFile: URL, inputs: Inputs,
                     biomeFiles: [RegionTileRenderer.BiomeFile]?) -> Key? {
@@ -231,27 +212,14 @@ nonisolated struct TileCache: Sendable {
     }
 
     private func loadPayload(_ key: Key, kind: Kind) -> Data? {
-        guard let identity = try? InterpretationKey.identity(of: key),
-              let name = kind == .tile ? key.fileName : key.detailFileName,
-              let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-              let archive = try? (data as NSData).decompressed(using: .lzfse) as Data,
-              let entry = try? PropertyListDecoder().decode(Entry.self, from: archive),
-              entry.storageVersion == Self.storageVersion, entry.identity == identity,
-              entry.kind == kind else { return nil }
-        return entry.payload
+        guard let name = kind == .tile ? key.fileName : key.detailFileName,
+              let payload: Payload = CacheArchive.load(key, from: directory.appendingPathComponent(name)),
+              payload.kind == kind else { return nil }
+        return payload.bytes
     }
 
     private func storePayload(_ payload: Data, key: Key, kind: Kind) {
-        guard let identity = try? InterpretationKey.identity(of: key),
-              let name = kind == .tile ? key.fileName : key.detailFileName else { return }
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .binary
-        let entry = Entry(storageVersion: Self.storageVersion, identity: identity, kind: kind, payload: payload)
-        guard let archive = try? encoder.encode(entry),
-              let compressed = try? (archive as NSData).compressed(using: .lzfse) as Data else { return }
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try compressed.write(to: directory.appendingPathComponent(name), options: .atomic)
-        } catch { return }
+        guard let name = kind == .tile ? key.fileName : key.detailFileName else { return }
+        CacheArchive.store(Payload(kind: kind, bytes: payload), key: key, at: directory.appendingPathComponent(name))
     }
 }

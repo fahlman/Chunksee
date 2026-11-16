@@ -30,14 +30,27 @@ extension ScanCache {
 
 /// Damaged archives retain a valid outer codec so tests reach payload validation too.
 nonisolated enum CacheArchiveFixture {
-    static func read(_ file: URL) throws -> [String: Any] {
+    static func read<Payload: Codable>(_ file: URL, as type: Payload.Type) throws -> CacheArchive.Entry<Payload> {
         let archive = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
         #expect(archive.starts(with: Data("bplist00".utf8)))
-        return try #require(PropertyListSerialization.propertyList(from: archive, format: nil) as? [String: Any])
+        return try CacheArchive.read(type, from: file)
     }
 
-    static func write(_ entry: [String: Any], to file: URL) throws {
-        let archive = try PropertyListSerialization.data(fromPropertyList: entry, format: .binary, options: 0)
+    static func write<Payload: Codable>(_ entry: CacheArchive.Entry<Payload>, to file: URL) throws {
+        try CacheArchive.write(entry, to: file)
+    }
+
+    /// A deliberately invalid fact cannot be represented by its validated production type.
+    /// Mutate its encoded fields inside the real envelope, retaining a readable outer codec.
+    static func corruptPayload<Payload: Codable>(_ entry: CacheArchive.Entry<Payload>, to file: URL,
+                                                change: (inout [String: Any]) throws -> Void) throws {
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        var fields = try #require(PropertyListSerialization.propertyList(from: encoder.encode(entry), format: nil) as? [String: Any])
+        var payload = try #require(fields["payload"] as? [String: Any])
+        try change(&payload)
+        fields["payload"] = payload
+        let archive = try PropertyListSerialization.data(fromPropertyList: fields, format: .binary, options: 0)
         try ((archive as NSData).compressed(using: .lzfse) as Data).write(to: file)
     }
 

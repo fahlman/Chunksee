@@ -51,10 +51,11 @@ import Testing
         let cache = BlockCountCache(world: root, dimensionID: dimension.id, root: root.appendingPathComponent("cache"))
         cache.store(counts, key: key)
         let file = try #require(cache.directory).appendingPathComponent("counts.0.0.plist.lzfse")
-        let entry = try CacheArchiveFixture.read(file)
+        let entry = try CacheArchiveFixture.read(file, as: RegionBlockCounts.self)
         for field in ["identity", "storageVersion"] {
             var broken = entry
-            broken[field] = field == "identity" ? "wrong" : 99
+            if field == "identity" { broken.identity = "wrong" }
+            else { broken.storageVersion = 99 }
             try CacheArchiveFixture.write(broken, to: file)
             #expect(cache.load(key) == nil)
         }

@@ -18,12 +18,6 @@ nonisolated struct BlockCountCache: Sendable {
         }
     }
 
-    private struct Entry: Codable {
-        let storageVersion: Int
-        let identity: String
-        let counts: RegionBlockCounts
-    }
-    private static let storageVersion = 1
     let directory: URL?
 
     init(world: URL, dimensionID: String, root: URL?) {
@@ -32,31 +26,21 @@ nonisolated struct BlockCountCache: Sendable {
     }
 
     func load(_ key: Key) -> RegionBlockCounts? {
-        guard let file = file(key), let compressed = try? Data(contentsOf: file),
-              let data = try? (compressed as NSData).decompressed(using: .lzfse) as Data,
-              let entry = try? PropertyListDecoder().decode(Entry.self, from: data),
-              entry.storageVersion == Self.storageVersion,
-              entry.counts.dimension == key.dimension, entry.counts.region == key.region,
-              Set(key.blockIDs).isSubset(of: entry.counts.blockIDs) else { return nil }
+        guard let file = file(key), let entry = try? CacheArchive.read(RegionBlockCounts.self, from: file),
+              entry.payload.dimension == key.dimension, entry.payload.region == key.region,
+              Set(key.blockIDs).isSubset(of: entry.payload.blockIDs) else { return nil }
         // A broader completed read answers a narrower request. Validate its actual coverage
         // under the current terrain stamp and interpretation before reusing it.
         var storedKey = key
-        storedKey.blockIDs = entry.counts.blockIDs.sorted()
-        guard let identity = try? InterpretationKey.identity(of: storedKey), entry.identity == identity else { return nil }
-        return entry.counts
+        storedKey.blockIDs = entry.payload.blockIDs.sorted()
+        guard entry.matches(storedKey) else { return nil }
+        return entry.payload
     }
 
     func store(_ counts: RegionBlockCounts, key: Key) {
-        guard let directory, let file = file(key), counts.dimension == key.dimension, counts.region == key.region,
-              counts.blockIDs == Set(key.blockIDs), let identity = try? InterpretationKey.identity(of: key) else { return }
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .binary
-        guard let data = try? encoder.encode(Entry(storageVersion: Self.storageVersion, identity: identity, counts: counts)),
-              let compressed = try? (data as NSData).compressed(using: .lzfse) as Data else { return }
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try compressed.write(to: file, options: .atomic)
-        } catch { return }
+        guard let file = file(key), counts.dimension == key.dimension, counts.region == key.region,
+              counts.blockIDs == Set(key.blockIDs) else { return }
+        CacheArchive.store(counts, key: key, at: file)
     }
 
     private func file(_ key: Key) -> URL? {

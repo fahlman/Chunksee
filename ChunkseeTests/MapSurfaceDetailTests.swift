@@ -180,12 +180,12 @@ import Testing
         #expect(detail.detail == surface.detail && detail.heights == surface.heights)
         #expect(try Data(contentsOf: file) == ordinary)
         let detailFile = directory.appendingPathComponent(try #require(key.detailFileName))
-        let original = try CacheArchiveFixture.read(detailFile)
-        let bytes = try #require(original["payload"] as? Data)
+        let original = try CacheArchiveFixture.read(detailFile, as: TileCache.Payload.self)
+        let bytes = original.payload.bytes
         for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 4 - 1)),
                     Data(repeating: 0, count: 512 * 512 * 4 + MapSurfaceDetail.maximumEncodedBytes + 1)] {
             var broken = original
-            broken["payload"] = bad
+            broken.payload.bytes = bad
             try CacheArchiveFixture.write(broken, to: detailFile)
             #expect(cache.loadDetail(key) == nil)
             #expect(cache.load(key)?.heights == surface.heights)
@@ -233,10 +233,8 @@ import Testing
         #expect(cache.load(ordinary)?.nightLight == nil && cache.loadDetail(ordinary)?.nightLight == nil)
         #expect(cache.load(night)?.nightLight == restored.nightLight)
         let file = directory.appendingPathComponent(try #require(night.detailFileName))
-        var entry = try CacheArchiveFixture.read(file)
-        var bytes = try #require(entry["payload"] as? Data)
-        bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
-        entry["payload"] = bytes
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.payload.bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
         try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.loadDetail(night) == nil)
         #expect(cache.load(night)?.nightLight == restored.nightLight)

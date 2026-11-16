@@ -110,22 +110,28 @@ import Testing
         let directory = try #require(cache.directory)
         let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
         let compressed = try Data(contentsOf: file)
-        let original = try CacheArchiveFixture.read(file)
+        let original = try CacheArchiveFixture.read(file, as: RegionFacts.self)
         for invalid in ["storage", "interpretation", "identity", "dimension", "options"] {
             var entry = original
-            var saved = try #require(entry["facts"] as? [String: Any])
             switch invalid {
-            case "storage": entry["storageVersion"] = -1
-            case "interpretation":
-                var version = try #require(saved["version"] as? [String: Any])
-                version["revision"] = -1
-                saved["version"] = version
-            case "identity": entry["identity"] = "different"
-            case "dimension": saved["dimension"] = "minecraft:the_nether"
-            default: saved["biomeSampleY"] = 64
+            case "storage":
+                entry.storageVersion = -1
+                try CacheArchiveFixture.write(entry, to: file)
+            case "identity":
+                entry.identity = "different"
+                try CacheArchiveFixture.write(entry, to: file)
+            default:
+                try CacheArchiveFixture.corruptPayload(entry, to: file) { saved in
+                    switch invalid {
+                    case "interpretation":
+                        var version = try #require(saved["version"] as? [String: Any])
+                        version["revision"] = -1
+                        saved["version"] = version
+                    case "dimension": saved["dimension"] = "minecraft:the_nether"
+                    default: saved["biomeSampleY"] = 64
+                    }
+                }
             }
-            entry["facts"] = saved
-            try CacheArchiveFixture.write(entry, to: file)
             #expect(cache.load(key) == nil)
         }
         try compressed.write(to: file)

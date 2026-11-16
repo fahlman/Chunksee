@@ -639,8 +639,8 @@ import Testing
         let file = cache.directory.appendingPathComponent(try #require(key.fileName))
         var oldKey = key
         oldKey.inputs.renderer = 25
-        var entry = try CacheArchiveFixture.read(file)
-        entry["identity"] = try InterpretationKey.identity(of: oldKey)
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.identity = try InterpretationKey.identity(of: oldKey)
         try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(key) == nil)
         #expect(try await color() == [0, 0, 255, 255])

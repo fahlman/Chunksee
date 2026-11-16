@@ -97,10 +97,8 @@ import Testing
         let restored = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == ItemPictureFixture.pixels(ordinary.full.image).bytes)
         let file = cache.directory.appendingPathComponent(try #require(litKey.fileName))
-        var entry = try CacheArchiveFixture.read(file)
-        var bad = try #require(entry["payload"] as? Data)
-        bad[512 * 512 * 9] = 3
-        entry["payload"] = bad
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.payload.bytes[512 * 512 * 9] = 3
         try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(litKey) == nil)
         #expect(cache.load(key) != nil)

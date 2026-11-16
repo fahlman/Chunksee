@@ -27,23 +27,21 @@ import Testing
         #expect(cache.load(current) == nil && cache.load(old)?.pixels[0] == 1)
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
         let file = directory.appendingPathComponent(try #require(old.fileName))
-        let original = try CacheArchiveFixture.read(file)
+        let original = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
         for field in ["storageVersion", "identity", "kind", "payload"] {
             var broken = original
             switch field {
-            case "storageVersion": broken[field] = -1
-            case "identity": broken[field] = "different input"
-            case "kind": broken[field] = "detail"
+            case "storageVersion": broken.storageVersion = -1
+            case "identity": broken.identity = "different input"
+            case "kind": broken.payload.kind = .detail
             default:
-                var payload = try #require(original[field] as? Data)
-                payload[512 * 512 * 8] = 2 // Valid length, invalid water mask.
-                broken[field] = payload
+                broken.payload.bytes[512 * 512 * 8] = 2 // Valid length, invalid water mask.
             }
             try CacheArchiveFixture.write(broken, to: file)
             #expect(cache.load(old) == nil)
         }
         // Old packed bytes are not an envelope even when placed in a current slot.
-        let payload = try #require(original["payload"] as? Data)
+        let payload = original.payload.bytes
         try ((payload as NSData).compressed(using: .lzfse) as Data).write(to: file)
         #expect(cache.load(old) == nil)
     }
@@ -270,11 +268,15 @@ import Testing
         let old = folder.appendingPathComponent("old-dimension/scans/facts.0.0.old-json.lzfse")
         try FileManager.default.createDirectory(at: old.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("old cache".utf8).write(to: old)
-        try TileCache.prepare(worldFolder: folder)
+        let previousMarker = folder.appendingPathComponent("storage-layout-1")
+        try Data().write(to: previousMarker)
+        try CacheArchive.prepare(worldFolder: folder)
         #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(!FileManager.default.fileExists(atPath: previousMarker.path))
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("storage-layout-\(CacheArchive.storageVersion)").path))
         let current = folder.appendingPathComponent("current-slot")
         try Data("new cache".utf8).write(to: current)
-        try TileCache.prepare(worldFolder: folder)
+        try CacheArchive.prepare(worldFolder: folder)
         #expect(try Data(contentsOf: current) == Data("new cache".utf8))
     }
 

@@ -646,6 +646,7 @@ invalidates older scan envelopes, including those that stored a resolved maximum
 | `GamePlayerNames.swift` | Shared player name, UUID fallback, personal/named marker and inventory phrases, location headings and absent-owner labels; literal account names remain distinct from the personal pronoun |
 | `GameBlockNames.swift` | Block names, translated filter matching/order and bounded water-depth descriptions, using the current GameNames snapshot; saved palette IDs and choices remain the input |
 | `TileCache.swift` | Unlit terrain on disk, keyed by source file stamps, complete Kit interpretation contracts and typed drawing inputs |
+| `CacheArchive.swift` | Shared binary-plist/LZFSE envelope, atomic file writes and one storage/layout revision for scans, block counts and tiles/detail |
 | `ScrollWheelInput.swift` | A small AppKit view for arbitrary-view scroll deltas, which SwiftUI on macOS 27 does not expose; native hit testing scopes input to the map and its window |
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
 | `MapDrawingInput.swift` | Resolved terrain presentation shared by the screen, Copy/Share, area export and their legends |
@@ -806,15 +807,18 @@ one envelope per region. Reopening with changed enchantment definitions reuses t
 resolves the result against the newly loaded definitions.
 
 Tile slots are bounded by region, style, Surface/latest-cutaway, unfiltered/latest-filtered,
-ordinary/night and tile/detail kind. Each binary property-list envelope validates its own
-storage version, kind and complete key identity; its pixels, heights, water and detail remain
-packed Data. A late old write can cause a miss, never a hit for a newer key. Atomic stores
-replace only their slot and never enumerate the directory. World-owned startup maintenance
+ordinary/night and tile/detail kind. CacheArchive owns the binary-property-list/LZFSE envelope,
+atomic writes and the one storage/layout version shared by scans, block counts and tiles/detail.
+It validates the complete key identity. Each payload owner validates its facts, including tile
+versus detail kind; pixels, heights, water and detail remain packed Data. A late old write can
+cause a miss, never a hit for a newer key. Stores replace only their slot and never enumerate
+the directory. World-owned startup maintenance
 discards the previous layout once, then writes a completion marker. Region reads, block counts
 and map renders await only that preparation task. Marking the folder used and pruning other
 worlds follow in independent background work; closing drains both tasks through BackgroundWork.
 The existing world-level LRU pruning keeps its owner. Storage changes leave renderer version 38
-unchanged because the drawing output is unchanged.
+unchanged because the drawing output is unchanged. Storage/layout revision 2 unifies the
+pre-release envelopes and names the cleanup marker; it does not alter Kit's interpretation.
 
 MapModel retains keyed ordinary, preview and close-up images. Prepared-image keys add the height
 scale and saved-lighting preparation to the unlit surface key; clock angles remain drawing inputs
