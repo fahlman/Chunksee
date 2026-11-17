@@ -271,8 +271,9 @@ struct WorldView: View {
     }
 
     static func inspectorBinding(for session: WorldSession,
+                                 isSelectedTab: @escaping () -> Bool,
                                  acceptsPresentationChange: @escaping () -> Bool) -> Binding<Bool> {
-        Binding { session.selection.isInspectorShown } set: {
+        Binding { isSelectedTab() && session.selection.isInspectorShown } set: {
             // A retained binding can receive native reconciliation writes after another tab
             // becomes main. Query its window now, rather than capturing an appearance value.
             guard acceptsPresentationChange() else { return }
@@ -288,7 +289,8 @@ private struct WorldInspectorPresentation: ViewModifier {
     @State private var window = InspectorWindow()
 
     func body(content: Content) -> some View {
-        content.inspector(isPresented: WorldView.inspectorBinding(for: session) {
+        let isSelectedTab = window.isSelectedTab
+        content.inspector(isPresented: WorldView.inspectorBinding(for: session, isSelectedTab: { isSelectedTab }) {
             window.acceptsPresentationChange
         }) {
             WorldInspector(session: session)
@@ -304,26 +306,99 @@ private struct WorldInspectorPresentation: ViewModifier {
     }
 }
 
-/// SwiftUI's appearance preference can outlive native tab activation. Keep only a weak
-/// attachment to query AppKit's current document window; no activity or visibility is cached.
+/// AppKit owns tab selection; this projection only invalidates the inspector modifier.
+/// SelectionModel retains the user's choice while its tab is hidden. Presenting false for
+/// that hidden tab gives SwiftUI a presentation change when the tab becomes selected again.
+@Observable
 private final class InspectorWindow {
-    weak var view: NSView?
+    @ObservationIgnored weak var view: NSView?
+    private(set) var isSelectedTab = true
+
+    func updateSelection(from view: NSView) {
+        guard self.view === view else { return }
+        let selected = Self.isSelected(view.window)
+        if selected != isSelectedTab { isSelectedTab = selected }
+    }
 
     var acceptsPresentationChange: Bool {
-        NSApp.isActive && view?.window?.isMainWindow == true
+        guard let window = view?.window else { return false }
+        return NSApp.isActive && window.isMainWindow && Self.isSelected(window)
+    }
+
+    private static func isSelected(_ window: NSWindow?) -> Bool {
+        guard let selected = window?.tabGroup?.selectedWindow else { return true }
+        return selected === window
     }
 }
 
 private struct InspectorWindowReader: NSViewRepresentable {
     let reference: InspectorWindow
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+    func makeNSView(context: Context) -> WindowView {
+        let view = WindowView()
+        view.reference = reference
         reference.view = view
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) { reference.view = view }
+    func updateNSView(_ view: WindowView, context: Context) {}
+
+    static func dismantleNSView(_ view: WindowView, coordinator: ()) {
+        view.detach()
+    }
+
+    final class WindowView: NSView {
+        weak var reference: InspectorWindow?
+        private weak var observedGroup: NSWindowTabGroup?
+        private var selectionObservation: NSKeyValueObservation?
+        private var windowUpdate: NotificationCenter.ObservationToken?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            selectionObservation = nil
+            observedGroup = nil
+            windowUpdate = nil
+            if let window {
+                windowUpdate = NotificationCenter.default.addObserver(of: window, for: .didUpdate) { [weak self] _ in
+                    self?.observeGroup()
+                }
+            }
+            observeGroup()
+            publishSelection()
+        }
+
+        func detach() {
+            selectionObservation = nil
+            observedGroup = nil
+            windowUpdate = nil
+            if reference?.view === self { reference?.view = nil }
+            reference = nil
+        }
+
+        private func observeGroup() {
+            let group = window?.tabGroup
+            guard observedGroup !== group else { return }
+            observedGroup = group
+            // selectedWindow supports KVO. The window's group can change when tabs are
+            // joined or separated, so native window updates also refresh this attachment.
+            selectionObservation = group?.observe(\.selectedWindow) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    reference?.updateSelection(from: self)
+                }
+            }
+            publishSelection()
+        }
+
+        private func publishSelection() {
+            // Attachment can occur during a SwiftUI update. Read current AppKit state on
+            // the next actor turn; a retired view cannot publish into a newer attachment.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                reference?.updateSelection(from: self)
+            }
+        }
+    }
 }
 
 /// A player in the sidebar. Choosing one shows their details and, when it's known, their last

@@ -78,8 +78,8 @@ import Testing
         let first = WorldSession(resources: resources), second = WorldSession(resources: resources)
         defer { first.close(); second.close() }
         await first.search.waitForIndex(); await second.search.waitForIndex()
-        let inspector = WorldView.inspectorBinding(for: first) { true }
-        let otherInspector = WorldView.inspectorBinding(for: second) { true }
+        let inspector = WorldView.inspectorBinding(for: first, isSelectedTab: { true }) { true }
+        let otherInspector = WorldView.inspectorBinding(for: second, isSelectedTab: { true }) { true }
         let presentations: [(WorldSession) -> Void] = [
             { $0.presentSheet(.coordinates) },
             { $0.presentSheet(.imageExport) },
@@ -132,8 +132,8 @@ import Testing
         try #require(first.viewID != second.viewID && first.selectedDimensionID == second.selectedDimensionID)
         try #require((first.resources === second.resources) == sharedWorld)
         var currentWindow: UUID? = first.viewID
-        let firstBinding = WorldView.inspectorBinding(for: first) { currentWindow == first.viewID }
-        let secondBinding = WorldView.inspectorBinding(for: second) { currentWindow == second.viewID }
+        let firstBinding = WorldView.inspectorBinding(for: first, isSelectedTab: { true }) { currentWindow == first.viewID }
+        let secondBinding = WorldView.inspectorBinding(for: second, isSelectedTab: { true }) { currentWindow == second.viewID }
 
         first.selection.choose(.storage)
         try #require(firstBinding.wrappedValue && !secondBinding.wrappedValue)
@@ -179,6 +179,45 @@ import Testing
         #expect(secondBinding.wrappedValue && second.selection.sidebarSelection == .worldInfo)
         second.close()
         await second.waitUntilClosed()
+    }
+
+    @Test func inspectorPresentationFollowsTabSelectionWithoutChangingItsRetainedChoice() async throws {
+        let root = try TestWorld.make(chunks: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = WorldSession(resources: try await resources(root))
+        defer { session.close() }
+        var tabIsSelected = true
+        var windowIsMain = true
+        let inspector = WorldView.inspectorBinding(for: session, isSelectedTab: { tabIsSelected }) {
+            tabIsSelected && windowIsMain
+        }
+        session.selection.choose(.storage)
+        try #require(inspector.wrappedValue)
+
+        tabIsSelected = false
+        windowIsMain = false
+        #expect(!inspector.wrappedValue)
+        inspector.wrappedValue = false
+        #expect(session.selection.isInspectorShown && session.selection.sidebarSelection == .storage)
+
+        // Selecting the tab again supplies a false-to-true presentation change even
+        // when its group is behind another window. App focus never hides that column.
+        tabIsSelected = true
+        #expect(inspector.wrappedValue)
+        inspector.wrappedValue = false
+        #expect(inspector.wrappedValue && session.selection.sidebarSelection == .storage)
+
+        // A deliberate Hide in the current window survives later tab switches.
+        windowIsMain = true
+        inspector.wrappedValue = false
+        tabIsSelected = false
+        #expect(!inspector.wrappedValue && !session.selection.isInspectorShown)
+        tabIsSelected = true
+        #expect(!inspector.wrappedValue && session.selection.sidebarSelection == .storage)
+        inspector.wrappedValue = true
+        #expect(inspector.wrappedValue && session.selection.sidebarSelection == .storage)
+        session.close()
+        await session.waitUntilClosed()
     }
 
     private func deaths(_ handle: PlayerRecordStore.Handle?) -> Int? {
