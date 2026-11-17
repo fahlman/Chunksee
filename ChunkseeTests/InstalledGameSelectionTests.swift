@@ -53,41 +53,36 @@ import Testing
         await libraries.close()
     }
 
-    @Test(.timeLimit(.minutes(1))) func olderGameTagsReachANewerWorldWithoutInventingMissingOreDefinitions() async throws {
-        let game = try Fixtures.tempDirectory(), root = try Fixtures.tempDirectory()
-        defer { try? FileManager.default.removeItem(at: game); try? FileManager.default.removeItem(at: root) }
-        // 1.18.2 supplies this legacy child tag but has no minecraft:ores root. A test-world
-        // pack will reference the child explicitly; the archive must not invent that root.
+    @Test(.timeLimit(.minutes(1))) func olderGameWithoutAnOreRootStillOpensANewerWorld() async throws {
+        let game = try Fixtures.tempDirectory()
+        defer { try? FileManager.default.removeItem(at: game) }
+        // The real 1.18.2 archive has this child but no minecraft:ores root. This checks
+        // selection and the absent root, not support for its legacy tag-folder format.
         _ = try install(["id": "1.18.2", "world_version": 2975, "stable": true,
                          "build_time": "2022-02-28T10:40:37+00:00"], as: "only-release", under: game, entries: [
             .init(path: "data/minecraft/tags/blocks/diamond_ores.json",
                   text: #"{"replace":false,"values":["minecraft:diamond_ore","minecraft:deepslate_diamond_ore"]}"#),
         ])
-        try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
-            "LevelName": .string("Newer save"), "DataVersion": .int(5023),
-            "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string("file/catalog")])]),
-        ])]), to: root.appendingPathComponent("level.dat"))
-        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/overworld/region"),
-                                                withIntermediateDirectories: true)
-        try Fixtures.write(Array(#"{"pack":{"min_format":121,"max_format":121,"description":"Catalog fixture"}}"#.utf8),
-                           to: root.appendingPathComponent("datapacks/catalog/pack.mcmeta"))
-        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
-        names.minecraft.choose(game)
-        var resources: WorldResources?
-        var failure: (any Error)?
-        do {
-            let loaded = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
-                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
-                watchWorld: { _, _ in nil })
-            resources = loaded
-            loaded.refreshDelay = .zero
-            await loaded.waitForRefresh()
-            let library = try #require(try await names.minecraft.readLibrary())
+        try await withNewerWorld(game: game, dataVersion: 5023) { loaded, library, _ in
             #expect(library.version.id == "1.18.2" && library.version.dataVersion == 2975)
-            #expect(loaded.world.level.dataVersion == 5023)
-            #expect(loaded.mapGameResources.data === library.data)
             #expect(!loaded.details.definitions.notableBlocks.hasOreDefinitions)
-            #expect(loaded.details.definitions.notableBlocks.ids(for: .tag("minecraft:diamond_ores")) == nil)
+            #expect(loaded.blockCounts.catalog == loaded.details.definitions.notableBlocks)
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1))) func readableOlderGameTagsReachANewerWorldAndRefreshOreDefinitions() async throws {
+        let game = try Fixtures.tempDirectory()
+        defer { try? FileManager.default.removeItem(at: game) }
+        // A minimal current-format archive supplies the child; the enabled pack controls
+        // the root. Its real release metadata is older than this synthetic save's revision.
+        _ = try install(["id": "26.3", "world_version": 5023, "stable": true,
+                         "build_time": "2026-09-15T11:20:48+00:00"], as: "only-release", under: game, entries: [
+            .init(path: "data/minecraft/tags/block/diamond_ores.json",
+                  text: #"{"values":["minecraft:diamond_ore","minecraft:deepslate_diamond_ore"]}"#),
+        ])
+        try await withNewerWorld(game: game, dataVersion: 5024) { loaded, library, root in
+            #expect(library.version.id == "26.3" && library.version.dataVersion == 5023)
+            #expect(!loaded.details.definitions.notableBlocks.hasOreDefinitions)
 
             let ores = root.appendingPathComponent("datapacks/catalog/data/minecraft/tags/block/ores.json")
             try Fixtures.write(Array(##"{"values":["#minecraft:diamond_ores"]}"##.utf8), to: ores)
@@ -111,6 +106,37 @@ import Testing
             let missing = loaded.details.definitions.notableBlocks
             #expect(!missing.hasOreDefinitions && missing.blockIDs == empty.blockIDs)
             #expect(loaded.blockCounts.catalog == missing)
+        }
+    }
+
+    private func withNewerWorld(game: URL, dataVersion: Int32,
+                               check: (WorldResources, GameResourceLibrary, URL) async throws -> Void) async throws {
+        let root = try Fixtures.tempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
+            "LevelName": .string("Newer save"), "DataVersion": .int(dataVersion),
+            "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string("file/catalog")])]),
+        ])]), to: root.appendingPathComponent("level.dat"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/minecraft/overworld/region"),
+                                                withIntermediateDirectories: true)
+        try Fixtures.write(Array(#"{"pack":{"min_format":121,"max_format":121,"description":"Catalog fixture"}}"#.utf8),
+                           to: root.appendingPathComponent("datapacks/catalog/pack.mcmeta"))
+        let defaults = TestDefaults.make(), names = PlayerNames(defaults: defaults)
+        names.minecraft.choose(game)
+        var resources: WorldResources?
+        var failure: (any Error)?
+        do {
+            let loaded = try await WorldResources(snapshot: WorldSnapshot.read(root), names: names,
+                savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+                watchWorld: { _, _ in nil })
+            resources = loaded
+            loaded.refreshDelay = .zero
+            await loaded.waitForRefresh()
+            let library = try #require(try await names.minecraft.readLibrary())
+            #expect(loaded.world.level.dataVersion == dataVersion)
+            #expect(library.version.dataVersion < dataVersion)
+            #expect(loaded.mapGameResources.data === library.data)
+            try await check(loaded, library, root)
             #expect(try await names.minecraft.readLibrary() === library)
         } catch { failure = error }
         resources?.close()
