@@ -21,9 +21,9 @@ import Testing
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension(dimensionID))
         let context = MapSurfaceContext(settings: WorldDetails.read(world).dimensionSettings[dimension.id], water: nil)
-        if let read { return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero,
+        if let read { return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero,
                                      cacheDirectory: nil, readTopBlocks: read) }
-        return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, cacheDirectory: nil)
+        return MapModel(definitions: { .init(context: context, heightScale: nil) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero, cacheDirectory: nil)
     }
 
     private func board() -> NSPasteboard {
@@ -343,7 +343,7 @@ import Testing
         old.y = nil
         let previous = try TestWorld.legacyCache([LegacyStructureMarker(old)], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
                                                 directory: #require(cache.directory))
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache)
         let rebuilt = await TestWorld.index(reader).structures
         #expect(rebuilt.map(\.y) == [-50])
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }

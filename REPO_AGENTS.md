@@ -1423,6 +1423,16 @@ pending reads by that folder ID. A move or reread admits one new WorldReadSource
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads
 retire; BackgroundWork drains their accepted work before releasing the old access. Compatible
 completed region facts remain visible while the replacement readers check the same world's files.
+WorldReadSource also owns the open root's availability boundary (#587). A read or folder listing
+must start and finish with an existing, readable, traversable world directory. Losing that root
+is a failed read, preserving completed values; a missing individual folder inside an accessible
+root still means a legitimate deletion. RegionReader and MapModel require the explicit source,
+including in tests; neither guesses a parent path or defaults to an unchecked source. Terrain,
+heat, index, independent block-count demand and saved metadata use this same boundary. A broad
+refresh that finds the root unavailable keeps its accumulated invalidations for the next event;
+it does not start a retry loop. Existing loader identities and cancellation still reject retired
+sources and closed owners. The controlled root-move tests establish this read/publication
+contract, not delivery of an actual volume-unmount or reconnect notification.
 MapModel keeps its view and chosen style, but has no currentRenderer while its dimension is absent;
 display, detail and export cannot read a retired path. Document rereads retain the same session,
 selection, navigation, search and SwiftUI view identity instead of copying a subset into a new one.

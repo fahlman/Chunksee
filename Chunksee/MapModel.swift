@@ -7,6 +7,7 @@ import Observation
 @Observable
 final class MapModel {
     private(set) var dimension: ChunkseeKit.Dimension
+    @ObservationIgnored private var world: WorldReadSource
     var viewport: MapViewport {
         didSet {
             if Self.chunk(at: viewport.center) != Self.chunk(at: oldValue.center) {
@@ -95,7 +96,11 @@ final class MapModel {
     private let renderWork, cacheWork, readoutWork, coordinateWork, detailWork, shadowWork: BackgroundWork.Scope
     @ObservationIgnored private let writeCache: @Sendable (RegionTileRenderer.CacheWrite) async -> Void
     var unfinishedCacheWrites: Int { cacheWork.unfinishedCount }
-    @ObservationIgnored let renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
+    @ObservationIgnored private let readTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
+    var renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile? {
+        let world = world, read = readTile
+        return { renderer, region in try await world.read { _ in try await read(renderer, region) } }
+    }
     /// Full color/normal images plus retained materials share the existing roughly 200 MB
     /// budget. Previews keep their separate 200 MB budget. Visible tiles are never evicted,
     /// so a very large window can exceed these rather than show blanks.
@@ -112,7 +117,7 @@ final class MapModel {
          gameResources: @escaping @MainActor () -> MapGameResources,
          savedLighting: @escaping @MainActor () -> MapLighting?,
          nightLighting: @escaping @MainActor () -> MonsterSpawnLight?,
-         work: BackgroundWork, dimension: ChunkseeKit.Dimension, center: CGPoint,
+         work: BackgroundWork, world: WorldReadSource, dimension: ChunkseeKit.Dimension, center: CGPoint,
          presentation: MapPresentation = MapPresentation(),
          regionConcurrency: Int = MapModel.defaultConcurrency, chunkConcurrency: Int = MapModel.defaultConcurrency,
          maxTiles: Int = 200, maxPreviews: Int = 800, cacheDirectory: URL? = nil,
@@ -139,10 +144,11 @@ final class MapModel {
         self.readDetail = readDetail
         shadowWork = work.makeScope()
         self.dimension = dimension
+        self.world = world
         self.chunkConcurrency = max(1, chunkConcurrency)
         self.heightScale = definitions.heightScale
         self.readTopBlocksFor = readTopBlocks
-        self.renderTile = renderTile
+        self.readTile = renderTile
         self.writeCache = writeCache
         self.maxTiles = maxTiles
         self.maxPreviews = maxPreviews
@@ -151,7 +157,7 @@ final class MapModel {
                                            chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: definitions.heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
-        self.availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        self.availableRegions = Set((try? world.regionFiles(in: dimension, folder: .terrain))?.map { RegionPosition(x: $0.x, z: $0.z) } ?? [])
         observeLighting()
         observeGameResources()
         observeDefinitions()
@@ -160,12 +166,13 @@ final class MapModel {
 
     /// A world reread changes file inputs, never this window's chosen view or navigation.
     /// A missing dimension has no renderer, so neither display nor export can read its old path.
-    func replaceSource(_ dimension: ChunkseeKit.Dimension?, cacheDirectory: URL?) {
+    func replaceSource(world: WorldReadSource, dimension: ChunkseeKit.Dimension?, cacheDirectory: URL?) {
         guard !isClosed else { return }
         coordinateWork.cancel()
         cacheWork.cancel()
         resetTopBlockReads()
         clearRenderedTiles()
+        self.world = world
         if let dimension {
             precondition(dimension.id == self.dimension.id)
             let definitions = readDefinitions()
@@ -174,7 +181,7 @@ final class MapModel {
             renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
                 chunkConcurrency: chunkConcurrency, cache: cacheDirectory.map(TileCache.init(directory:)),
                 heightScale: heightScale)
-            availableRegions = Set(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+            availableRegions = Set((try? world.regionFiles(in: dimension, folder: .terrain))?.map { RegionPosition(x: $0.x, z: $0.z) } ?? [])
         } else {
             renderer = nil
             heightScale = nil
@@ -329,9 +336,8 @@ final class MapModel {
     /// Redraws regions whose files the game saved, and shows regions it just created.
     func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
         guard !isClosed, let currentRenderer else { return }
-        let listing = dimension.readRegionFiles()
-        guard listing.isComplete else { return }
-        let available = Set(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
+        guard let files = try? world.regionFiles(in: dimension, folder: .terrain) else { return }
+        let available = Set(files.map { RegionPosition(x: $0.x, z: $0.z) })
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
         let regions = regions ?? availableRegions.union(available)

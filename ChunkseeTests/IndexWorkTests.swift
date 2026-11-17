@@ -13,7 +13,7 @@ struct IndexWorkTests {
         let world = try World(contentsOf: url)
         let overworld = try #require(world.dimension("overworld")), nether = try #require(world.dimension("the_nether"))
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: nether, cache: .off), RegionReader(dimension: overworld, cache: .off)],
+        let index = WorldIndexStore(readers: [RegionReader(world: .init(try World(contentsOf: url)), dimension: nether, cache: .off), RegionReader(world: .init(try World(contentsOf: url)), dimension: overworld, cache: .off)],
             work: work, firstDimension: overworld.id, playerRoster: PlayerRoster([]),
             readDimension: { reader, _, _ in await gate.read(reader.dimension.id) })
         await gate.waitForRequest(overworld.id)
@@ -33,9 +33,9 @@ struct IndexWorkTests {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        var old: RegionReader? = RegionReader(dimension: dimension, cache: .off)
+        var old: RegionReader? = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         weak let retired = old
-        let current = RegionReader(dimension: dimension, cache: .off)
+        let current = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>(), numbers = ReadNumbers()
         let index = WorldIndexStore(readers: old.map { [$0] } ?? [], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
             readDimension: { _, _, _ in await gate.read(String(await numbers.next())) })
@@ -60,7 +60,7 @@ struct IndexWorkTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
+        let index = WorldIndexStore(readers: [RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, _ in await gate.read("index") })
         await gate.waitForRequest("index")
         index.rebuild(firstDimension: nil)
@@ -80,7 +80,7 @@ struct IndexWorkTests {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>()
         let first = WorldIndexStore(readers: [reader], work: work, firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, _ in await gate.read("first") })

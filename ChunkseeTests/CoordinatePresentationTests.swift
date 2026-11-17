@@ -10,7 +10,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimensions().first)
         let position = CGPoint(x: -8.7, y: -16.1)
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: position, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: position, cacheDirectory: nil)
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally(); map.close() }
         var content = MapContent(gameNames: .unavailable)
@@ -80,7 +80,7 @@ import Testing
         }
         let data = try encoder.encode(LegacyContents(containers: [oldContainer]))
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache)
         let contents = try #require(await reader.facts(RegionPosition(x: -1, z: -1)))
         await reader.close()
         let container = try #require(contents.containers.first)

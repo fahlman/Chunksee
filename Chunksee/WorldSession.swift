@@ -118,7 +118,7 @@ final class WorldSession {
 
     func prepareWorldSourceReplacement() {
         imageExport.cancel()
-        map?.replaceSource(nil, cacheDirectory: nil)
+        map?.replaceSource(world: resources.readSource, dimension: nil, cacheDirectory: nil)
     }
 
     /// The session and all of its window state stay alive while the shared world changes inputs.
@@ -126,7 +126,7 @@ final class WorldSession {
         guard !isClosed else { return }
         let dimension = resources.dimensions.first { $0.id == selectedDimensionID }
         if let map {
-            map.replaceSource(dimension, cacheDirectory: dimension.flatMap {
+            map.replaceSource(world: resources.readSource, dimension: dimension, cacheDirectory: dimension.flatMap {
                 TileCache.directory(forWorldAt: resources.url, dimensionID: $0.id, root: resources.cacheRoot)
             })
         } else if let map = Self.initialMap(resources: resources, dimensionID: selectedDimensionID,
@@ -190,7 +190,8 @@ final class WorldSession {
                            gameResources: { [weak resources] in resources?.mapGameResources ?? .unavailable },
                            savedLighting: { [weak resources] in resources?.savedLighting(in: dimension.id) },
                            nightLighting: { [weak resources] in resources?.nightLighting(in: dimension.id) },
-                           work: resources.backgroundWork, dimension: dimension, center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
+                           work: resources.backgroundWork, world: resources.readSource, dimension: dimension,
+                           center: DimensionPresentation.spawnPoint(in: resources.world, dimensionID: dimensionID),
                            presentation: choices,
                            cacheDirectory: TileCache.directory(forWorldAt: resources.url, dimensionID: dimension.id, root: resources.cacheRoot),
                            renderTile: renderTile)

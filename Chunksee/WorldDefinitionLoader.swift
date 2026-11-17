@@ -66,7 +66,7 @@ final class WorldDefinitionLoader {
             try Task.checkCancellation()
             guard case .loaded(let library) = source.game.selection else { throw CancellationError() }
             let compatible = previous?.source == source.game.identity ? previous?.definitions : nil
-            let updated = try await readDefinitions(source.world.world, library, compatible)
+            let updated = try await source.world.read { try await readDefinitions($0, library, compatible) }
             try Task.checkCancellation()
             if !updated.isComplete, let previous, previous.source != source.game.identity {
                 // A partial replacement cannot mix old categories into a new source identity.

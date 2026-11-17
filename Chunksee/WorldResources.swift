@@ -62,7 +62,7 @@ final class WorldResources {
     @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
-            return try await read(source, previous)
+            return try await source.worldSource.read { _ in try await read(source, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish, source: infoSource,
         initialValue: openingInfo, firstRequest: .refresh, merge: { _, newer in newer },
         retainingValue: { value, previous, current in
@@ -87,7 +87,7 @@ final class WorldResources {
     @ObservationIgnored private lazy var mapLoader = RefreshLoader<WorldMapSource, RefreshInvalidation, WorldMapSnapshot>(
         partialRead: { [weak self] source, _, previous in
             guard let read = await self?.readMaps else { throw CancellationError() }
-            return try await read(source, previous)
+            return try await source.worldSource.read { _ in try await read(source, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish,
         source: WorldMapSource(worldSource: readSource), initialValue: openingMaps,
         firstRequest: .refresh, merge: { _, newer in newer }
@@ -167,7 +167,7 @@ final class WorldResources {
         source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
     ) { [weak self] source, _ in
         guard let read = await self?.readNightLighting else { throw CancellationError() }
-        return try await read(source.world.world, source.library)
+        return try await source.world.read { try await read($0, source.library) }
     }
     @ObservationIgnored var readNightLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MonsterSpawnLight] = {
         try await WorldResources.readNightLighting($0, library: $1)
@@ -185,7 +185,7 @@ final class WorldResources {
         source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
     ) { [weak self] source, _ in
         guard let read = await self?.readLighting else { throw CancellationError() }
-        return try await read(source.world.world, source.library)
+        return try await source.world.read { try await read($0, source.library) }
     }
     @ObservationIgnored var readLighting: @Sendable (World, GameDataLibrary?) async throws -> [String: MapLighting] = {
         try await WorldResources.readLighting($0, library: $1)
@@ -211,7 +211,9 @@ final class WorldResources {
     @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
         partialRead: { [weak self] source, request, previous in
             guard let read = await self?.readBiomeColors else { throw CancellationError() }
-            let colors = try await read(source.world.world, source.data, source.artwork, previous, request == .contents)
+            let colors = try await source.world.read {
+                try await read($0, source.data, source.artwork, previous, request == .contents)
+            }
             return colors.isComplete ? .complete(colors) : .partial(colors)
         },
         work: backgroundWork, priority: nil, whenInactive: .finish, source: biomeSource,
@@ -307,7 +309,7 @@ final class WorldResources {
         self.cachePreparation = cachePreparation
         let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions,
                            preparation: Task<Void, Never>?) in
-            RegionReader(dimension: dimension,
+            RegionReader(world: source, dimension: dimension,
                 cache: ScanCache(forWorldAt: source.world.url, dimensionID: dimension.id, root: cacheRoot),
                 inputs: .init(dimensionID: dimension.id, definitions: definitions),
                 cachePreparation: preparation, read: readRegion)
@@ -871,6 +873,11 @@ final class WorldResources {
     }
 
     private func refresh() async {
+        let source = readSource
+        guard (try? await source.read { _ in true }) == true,
+              !isClosed, source == readSource else { return }
+        // Unavailable roots keep these invalidations for the next save/reconnect event.
+        // Each reader also checks its own boundary because demand can start without an event.
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers
         let biomesChanged = pendingBiomeMetadata || pendingBiomePacks, reloadBiomes = pendingBiomePacks
         let lightingChanged = pendingLighting, worldDataChanged = pendingWorldData

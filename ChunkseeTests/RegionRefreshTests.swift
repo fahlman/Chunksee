@@ -14,7 +14,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let reads = Reads()
-        let reader = RegionReader(dimension: dimension, cache: .off, read: { dimension, region, options in
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off, read: { dimension, region, options in
             await reads.record(dimension.id, region)
             return try await RegionReader.scan(dimension, region: region, options: options)
         })
@@ -102,7 +102,7 @@ import Testing
 
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
         let definitions = resources.details.definitions
-        let reader = RegionReader(dimension: dimension, cache: .off,
+        let reader = RegionReader(world: resources.readSource, dimension: dimension, cache: .off,
             inputs: .init(dimensionID: dimension.id, definitions: definitions))
         let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
@@ -139,7 +139,7 @@ import Testing
         let cache = ScanCache(directory: root)
         let region = RegionPosition(x: 0, z: 0)
         let old = try TestWorld.legacyCache([Int](repeating: 0, count: 1024), name: "inhabitedTimes.0.0.unchanged.v14", directory: root)
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache)
         let times = try #require(await reader.facts(region)).inhabitedTimes
         #expect(times[3 * 32 + 2] == 7200)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))
@@ -298,6 +298,12 @@ import Testing
             let source = wholeWorld ? url : dimension.regionDirectory
             try FileManager.default.moveItem(at: source, to: parked)
             await changed([url], in: resources)
+            // These can also be demanded without a watcher event. Retention cannot depend
+            // solely on WorldResources declining the broad refresh above.
+            map.regionsChanged()
+            session.heatMap.load(reread: true)
+            resources.index.rebuild(firstDimension: overworld)
+            await resources.index.waitForIndex()
             await resources.blockCounts.waitForCounts()
             await session.search.waitForSearch()
             await map.waitUntilIdle()
@@ -430,7 +436,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionContent>(), requests = Changes()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
+        let index = WorldIndexStore(readers: [RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, change in
                                         let key = await requests.record(change)
                                         return await gate.read(key)

@@ -209,7 +209,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let work = BackgroundWork()
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: .zero, cacheDirectory: nil)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero, cacheDirectory: nil)
         let navigation = MapNavigation(map: map)
         let (updates, continuation) = AsyncStream.makeStream(of: Bool.self)
         var updatesIterator = updates.makeAsyncIterator()

@@ -26,6 +26,7 @@ actor RegionReader {
         }
     }
 
+    let world: WorldReadSource
     let dimension: ChunkseeKit.Dimension
     let cache: ScanCache
     nonisolated let inputs: Inputs
@@ -36,9 +37,10 @@ actor RegionReader {
     private let read: Read
     private let cachePreparation: Task<Void, Never>?
 
-    init(dimension: ChunkseeKit.Dimension, cache: ScanCache,
+    init(world: WorldReadSource, dimension: ChunkseeKit.Dimension, cache: ScanCache,
          inputs: Inputs = .init(), cachePreparation: Task<Void, Never>? = nil,
          read: @escaping Read = RegionReader.scan) {
+        self.world = world
         self.dimension = dimension
         self.cache = cache
         self.inputs = inputs
@@ -60,13 +62,14 @@ actor RegionReader {
 
     /// A failed source listing cannot prove any retained region has disappeared.
     nonisolated var availableRegions: Set<RegionPosition>? {
-        var regions = Set<RegionPosition>()
-        for folder in ChunkseeKit.Dimension.Folder.allCases {
-            let listing = dimension.readRegionFiles(folder)
-            guard listing.isComplete else { return nil }
-            regions.formUnion(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
+        try? world.read { _ in
+            var regions = Set<RegionPosition>()
+            for folder in ChunkseeKit.Dimension.Folder.allCases {
+                let files = try world.regionFiles(in: dimension, folder: folder)
+                regions.formUnion(files.map { RegionPosition(x: $0.x, z: $0.z) })
+            }
+            return regions
         }
-        return regions
     }
 
     /// One value per saved terrain region, for layers such as Time Spent.
@@ -97,8 +100,12 @@ actor RegionReader {
         let ownsRead: Bool
         if let existing = reading[key] { task = existing; ownsRead = false }
         else {
-            let dimension = dimension, cache = cache, read = read
-            task = Task { try await Self.readAndSave(dimension, key: key, cache: cache, read: read) }
+            let world = world, dimension = dimension, cache = cache, read = read
+            task = Task {
+                try await world.read { _ in
+                    try await Self.readAndSave(dimension, key: key, cache: cache, read: read)
+                }
+            }
             reading[key] = task
             ownsRead = true
         }

@@ -153,7 +153,7 @@ extension RegionTileRenderer {
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
         let oldTerrain = try CacheArchiveFixture.changing(Chunk.interpretationVersion, field: "generatedFacts")
         let directory = root.appendingPathComponent("tiles")
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: root)), dimension: dimension, center: CGPoint(x: 8, y: 8),
             cacheDirectory: directory, writeCache: { _ in Issue.record("Incompatible pixels started a cache write") },
             renderTile: { renderer, region in
                 guard let tile = try await renderer.tile(for: region) else { return nil }
