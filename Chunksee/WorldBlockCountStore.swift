@@ -61,7 +61,11 @@ final class WorldBlockCountStore {
             await index.waitForIndex()
             await source.cachePreparation?.value
             try Task.checkCancellation()
-            return .complete(try await Self.read(source, request: request, previous: previous, read: read, publish: publish))
+            return .complete(try await source.world.whileAvailable {
+                try await Self.read(source, request: request, previous: previous, read: read, publish: { snapshot in
+                    (try? await source.world.whileAvailable { await publish(snapshot) }) ?? false
+                })
+            })
         }, work: work, priority: .background, whenInactive: .cancel,
             source: Source(world: world, dimensions: dimensions, cacheRoot: cacheRoot, cachePreparation: cachePreparation),
             firstRequest: Request(demand: [], blockIDs: []), merge: { _, newer in newer },
@@ -105,7 +109,7 @@ final class WorldBlockCountStore {
 
     @concurrent private nonisolated static func read(_ source: Source, request: Request, previous: BlockCountSnapshot?,
                                                     read: Read,
-                                                    publish: RefreshLoader<Source, Request, BlockCountSnapshot>.Progress) async throws -> BlockCountSnapshot {
+                                                    publish: @Sendable (BlockCountSnapshot) async -> Bool) async throws -> BlockCountSnapshot {
         var dimensions = previous?.dimensions ?? [:], stamps = previous?.stamps ?? [:]
         let availableIDs = Set(source.dimensions.map(\.id))
         dimensions = dimensions.filter { availableIDs.contains($0.key) }
@@ -118,13 +122,13 @@ final class WorldBlockCountStore {
             }
             guard !points.isEmpty else { continue }
             try Task.checkCancellation()
-            let listing = dimension.readRegionFiles(.terrain)
-            guard listing.isComplete else { continue }
-            let regions = Set(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
+            guard let regions = try? source.world.regions(in: dimension, folders: [.terrain]) else { continue }
             available[dimension.id] = regions
-            let currentStamps = Dictionary(uniqueKeysWithValues: regions.map {
-                ($0, BlockCountSnapshot.Stamp(file: CacheKey.fileStamp(for: dimension.regionURL(.terrain, at: $0))))
-            })
+            let currentStamps = try source.world.read(in: dimension) { dimension in
+                Dictionary(uniqueKeysWithValues: regions.map {
+                    ($0, BlockCountSnapshot.Stamp(file: CacheKey.fileStamp(for: dimension.regionURL(.terrain, at: $0))))
+                })
+            }
             var counts = dimensions[dimension.id] ?? BlockCountIndex(dimension: dimension.id)
             let changed = Set(regions.filter { stamps[dimension.id]?[$0] != currentStamps[$0] })
             counts = counts.invalidating(changed).updating(available: regions, replacements: [])
@@ -147,14 +151,16 @@ final class WorldBlockCountStore {
                       var counts = dimensions[id] else { continue }
                 try Task.checkCancellation()
                 let ids = request.blockIDs.union(counts.regions[region]?.counts?.blockIDs ?? [])
-                let key = BlockCountCache.Key(dimension: dimension, region: region, blockIDs: ids)
+                let key = try source.world.read(in: dimension) {
+                    BlockCountCache.Key(dimension: $0, region: region, blockIDs: ids)
+                }
                 stamps[id, default: [:]][region] = .init(file: key.file)
-                let cache = BlockCountCache(world: source.world.world.url, dimensionID: id, root: source.cacheRoot)
+                let cache = BlockCountCache(world: source.world.url, dimensionID: id, root: source.cacheRoot)
                 do {
                     let saved: RegionBlockCounts
                     if let cached = cache.load(key) { saved = cached }
                     else {
-                        saved = try await read(dimension, region, ids)
+                        saved = try await source.world.read(in: dimension) { try await read($0, region, ids) }
                         try Task.checkCancellation()
                         guard saved.dimension == id, saved.region == region, ids.isSubset(of: saved.blockIDs),
                               BlockCountCache.Key(dimension: dimension, region: region, blockIDs: ids) == key else {

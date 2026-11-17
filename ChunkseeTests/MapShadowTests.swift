@@ -125,7 +125,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld")), reads = ReadNumbers()
         let work = BackgroundWork()
         let savedLighting = TestSavedLighting()
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: work, world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 4, y: 8),
                            maxTiles: 1, maxPreviews: 1,
                            renderTile: { renderer, region in
                                _ = await reads.next()
@@ -167,7 +167,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 4, y: 8))
         savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
@@ -190,7 +190,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8))
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 4, y: 8))
         savedLighting.value = try lighting(sun: 60)
         map.requestTiles(visibleIn: CGSize(width: 8, height: 8))
         await map.waitUntilIdle()
@@ -216,7 +216,7 @@ import Testing
         neighborRenderer.usesSavedLighting = true
         let neighbor = try #require(try await neighborRenderer.tile(for: west))
         let savedLighting = TestSavedLighting()
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 4, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { savedLighting.value }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 4, y: 8),
                            renderTile: { renderer, region in
                                if region == west { return await gate.read("neighbor") }
                                return try await renderer.tile(for: region)

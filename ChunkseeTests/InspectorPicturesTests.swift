@@ -146,6 +146,27 @@ import Testing
         await session.waitUntilClosed()
     }
 
+    @Test(.timeLimit(.minutes(1))) func losingTheWorldDiscardsAnInFlightHeadingRead() async throws {
+        let root = try TestWorld.make(chunks: []), parked = root.appendingPathExtension("unavailable")
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: parked) }
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil, watchWorld: { _, _ in nil })
+        let gate = AsyncReadGate<BlockState?>()
+        resources.readHeadingBlock = { _, _ in await gate.read("block") }
+        let read = Task { await resources.headingBlock(at: .init(blockX: 0, blockY: 1, blockZ: 0), in: "minecraft:overworld") }
+        do {
+            await gate.waitForRequest("block")
+            try FileManager.default.moveItem(at: root, to: parked)
+            await gate.releaseAllAndFuture(with: BlockState("minecraft:spawner"))
+            #expect(await read.value == nil)
+        } catch {
+            resources.close(); await gate.releaseAllAndFuture(with: nil)
+            await resources.waitUntilClosed(); throw error
+        }
+        resources.close(); await resources.waitUntilClosed()
+    }
+
     @Test func cancelingOneHeadingDoesNotCancelItsSibling() async throws {
         let root = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }

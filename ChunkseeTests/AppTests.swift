@@ -144,7 +144,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: cacheURL) }
         let dimension = try #require(try World(contentsOf: url).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _, _ in
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: ScanCache(directory: cacheURL)) { _, _, _ in
             await gate.read("region")
         }
         let read = Task { await reader.facts(.init(x: 0, z: 0)) }

@@ -74,7 +74,7 @@ import Observation
         ])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let found = await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).structures
+        let found = await TestWorld.index(RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off)).structures
         #expect(found.map(\.structureID).sorted() == ["minecraft:stronghold", "minecraft:village_plains"])
         #expect(found.first { $0.group == .stronghold }?.bounds == CGRect(x: 640, y: -16, width: 10, height: 10))
     }
@@ -206,7 +206,7 @@ enum StructureTestWorld {
         try FileManager.default.createDirectory(at: poiDir, withIntermediateDirectories: true)
         try Data(TestWorld.regionFile([TestWorld.ChunkSpec(x: 0, z: 0, nbt: chunk)])).write(to: poiDir.appendingPathComponent("r.0.0.mca"))
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let places = await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).places
+        let places = await TestWorld.index(RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off)).places
         #expect(places.filter { $0.group == .portal }.count == 1)  // two blocks, one portal
         #expect(places.filter { $0.group == .bed }.count == 1)
     }
@@ -412,7 +412,7 @@ enum StructureTestWorld {
         let world = try TestWorld.make(chunks: [chunk])
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off)
         let index = await TestWorld.index(reader)
         await reader.close()
         #expect(index.biomeAreas.map(\.id) == ["minecraft:sulfur_caves@0,0"])
@@ -591,7 +591,7 @@ enum StructureTestWorld {
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
         let visibility = Visibility()
         let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
         visibility.isShown = true
@@ -625,8 +625,8 @@ enum StructureTestWorld {
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>(), work = BackgroundWork()
-        let older = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
-        let newer = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
+        let older = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off) { _, _, _ in await gate.read("older") }
+        let newer = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off) { _, _, _ in await gate.read("newer") }
         let source = HeatReaderSource(older)
         let visibility = Visibility()
         let layer = HeatMapLayer(reader: { source.reader }, isShown: { visibility.isShown }, work: work)
@@ -659,7 +659,7 @@ enum StructureTestWorld {
         defer { try? FileManager.default.removeItem(at: world) }
         let dimension = try #require(try World(contentsOf: world).dimensions().first)
         let gate = AsyncReadGate<RegionFacts>()
-        let reader = RegionReader(dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off) { _, _, _ in await gate.read("region") }
         let visibility = Visibility()
         let layer = HeatMapLayer(reader: { reader }, isShown: { visibility.isShown }, work: BackgroundWork())
         visibility.isShown = true

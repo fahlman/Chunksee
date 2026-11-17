@@ -47,7 +47,7 @@ import SwiftUI
     @Test(arguments: [-1, 1], [true, false])
     func heightCommandsStepOneLevelAndEnterCutaway(step: Int, isSurface: Bool) async throws {
         try await withFixture { f in
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             map.setDepth(MapDepth(y: 64, isSurface: isSurface))
             let viewport = map.viewport
@@ -61,7 +61,7 @@ import SwiftUI
 
     @Test func heightCommandsKeepCustomHeightsAndGuardIntegerEndpointsAndClosure() async throws {
         try await withFixture { f in
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: .zero)
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: try f.dimension(), center: .zero)
             f.maps.append(map)
             for (height, step) in [(-900, -1), (900, 1), (Int.min, -1), (Int.max, 1)] {
                 map.setDepth(MapDepth(y: height, isSurface: true))
@@ -129,7 +129,7 @@ import SwiftUI
             let surface = try await RegionTileRenderer(dimension: dimension).tile(for: region)
             let cutaway = try await RegionTileRenderer(dimension: dimension, cutawayY: 7).tile(for: region)
             let gate = f.tiles
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, _ in
                 guard !Task.isCancelled else { return nil }
                 return await gate.read(renderer.cutawayY.map(String.init) ?? "surface")
             })
@@ -156,7 +156,7 @@ import SwiftUI
     @Test func changingHeightCancelsPendingCopiesAndRereadsAStillPointer() async throws {
         try await withFixture { f in
             let dimension = try f.dimension(), gate = f.blocks
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: dimension, center: .zero, readTopBlocks: { chunk, renderer, cached in
                 guard !Task.isCancelled else { return nil }
                 if renderer.cutawayY == nil { return await gate.read("surface") }
                 return await MapModel.readTopBlocks(of: chunk, using: renderer, cached: cached)
@@ -184,9 +184,45 @@ import SwiftUI
         }
     }
 
+    @Test(arguments: [false, true]) func unavailableWorldDiscardsHoverAndCoordinateReads(lostDuringRead: Bool) async throws {
+        try await withFixture { f in
+            let dimension = try f.dimension(), point = CGPoint(x: 8, y: 8)
+            let parked = f.url.appendingPathExtension("unavailable")
+            defer { try? FileManager.default.removeItem(at: parked) }
+            let renderer = RegionTileRenderer(dimension: dimension)
+            let expected = try #require(await MapModel.readTopBlocks(of: .init(x: 0, z: 0), using: renderer, cached: nil))
+            let gate = f.blocks
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
+                work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: dimension, center: .zero,
+                readTopBlocks: { _, _, _ in await gate.read("held") })
+            f.maps.append(map)
+            if !lostDuringRead { try FileManager.default.moveItem(at: f.url, to: parked) }
+            var copyFinished = false, copied: RegionTileRenderer.TopBlock?
+            map.loadTopBlocks(at: point)
+            map.readTopBlock(at: point) { copied = $0; copyFinished = true }
+            if lostDuringRead {
+                await gate.waitForRequest("held", count: 2)
+                try FileManager.default.moveItem(at: f.url, to: parked)
+            }
+            await gate.releaseAllAndFuture(with: expected)
+            await map.waitForTopBlocks()
+            await map.waitForCoordinateReads()
+            #expect(copyFinished && copied == nil && map.topBlock(at: point) == nil)
+            if !lostDuringRead { #expect(await gate.requested.isEmpty) }
+
+            try FileManager.default.moveItem(at: parked, to: f.url)
+            map.loadTopBlocks(at: point)
+            await map.waitForTopBlocks()
+            #expect(map.topBlock(at: point)?.id == "minecraft:bedrock")
+            map.readTopBlock(at: point) { copied = $0 }
+            await map.waitForCoordinateReads()
+            #expect(copied?.id == "minecraft:bedrock")
+        }
+    }
+
     @Test func exportedTerrainFollowsTheCutawayAndSurface() async throws {
         try await withFixture { f in
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))
             f.maps.append(map)
             let size = CGSize(width: 16, height: 16)
             map.requestTiles(visibleIn: size, displayScale: 1)

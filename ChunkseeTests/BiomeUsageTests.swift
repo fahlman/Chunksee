@@ -29,7 +29,7 @@ import Testing
 
         func dimension() throws -> ChunkseeKit.Dimension { try #require(try World(contentsOf: url).dimension("overworld")) }
         func reader() throws -> RegionReader {
-            let reader = RegionReader(dimension: try dimension(), cache: .off)
+            let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: try dimension(), cache: .off)
             readers.append(reader)
             return reader
         }
@@ -83,7 +83,7 @@ import Testing
             let historical = try TestWorld.legacyCache(stale, name: "caveBiomes.0.0.\(fingerprint).v11",
                                                       directory: #require(cache.directory))
             let count = ReadCount()
-            let reader = RegionReader(dimension: dimension, cache: cache, read: { dimension, region, options in
+            let reader = RegionReader(world: .init(try World(contentsOf: f.url)), dimension: dimension, cache: cache, read: { dimension, region, options in
                 await count.note()
                 return try await RegionReader.scan(dimension, region: region, options: options)
             })

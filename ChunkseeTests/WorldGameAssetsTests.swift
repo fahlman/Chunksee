@@ -62,7 +62,7 @@ import Synchronization
         await resources.waitForRefresh()
         let drawings = Mutex<[MapGameResources.Identity]>([])
         let map = MapModel(definitions: { .unknown }, gameResources: { resources.mapGameResources }, savedLighting: { nil }, nightLighting: { nil },
-            work: resources.backgroundWork, dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
+            work: resources.backgroundWork, world: .init(try World(contentsOf: root)), dimension: dimension, center: CGPoint(x: 8, y: 8), renderTile: { renderer, region in
                 let identity = MapGameResources(data: renderer.gameData, artwork: renderer.gameArtwork,
                                                 biomeColors: renderer.biomeColors).identity
                 drawings.withLock { $0.append(identity) }
