@@ -133,7 +133,7 @@ import Testing
             loaded.refreshDelay = .zero
             await loaded.waitForRefresh()
             let library = try #require(try await names.minecraft.readLibrary())
-            #expect(loaded.world.level.dataVersion == dataVersion)
+            #expect(loaded.world.level.dataVersion == Int(dataVersion))
             #expect(library.version.dataVersion < dataVersion)
             #expect(loaded.mapGameResources.data === library.data)
             try await check(loaded, library, root)
