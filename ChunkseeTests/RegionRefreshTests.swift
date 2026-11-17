@@ -265,6 +265,76 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func unavailableWorldRetainsItsSnapshotButAvailableWorldAppliesFolderDeletion(wholeWorld: Bool) async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        let parked = url.appendingPathExtension("unavailable")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: parked)
+        }
+        let resources = try await self.resources(url, reads: Reads())
+        let session = WorldSession(resources: resources, dimensionID: overworld)
+        do {
+            let dimension = try #require(resources.dimensions.first { $0.id == overworld })
+            let map = try #require(session.map)
+            map.viewport.center = CGPoint(x: 512, y: 8)
+            map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
+            session.visibility.showsTimeSpent = true
+            session.search.text = "block:diamond"
+            await resources.waitForRefresh()
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            let regions = [RegionPosition(x: 0, z: 0), RegionPosition(x: 1, z: 0)]
+            let tiles = try regions.map { try #require(map.tiles[$0]) }
+            let heat = try regions.map { try #require(session.heatMap.visibleImages?[$0]) }
+            #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 2)
+            #expect(session.search.matches(for: session.search.text).hits.count == 2)
+
+            // The same broad event must distinguish an unavailable source from a legitimate
+            // deletion inside a still-readable world. No volume or real watcher is involved.
+            let source = wholeWorld ? url : dimension.regionDirectory
+            try FileManager.default.moveItem(at: source, to: parked)
+            await changed([url], in: resources)
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            if wholeWorld {
+                #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 2)
+                #expect(map.availableRegions == Set(regions))
+                #expect(session.search.matches(for: session.search.text).hits.count == 2)
+                for (index, region) in regions.enumerated() {
+                    #expect(map.tiles[region] === tiles[index])
+                    #expect(session.heatMap.visibleImages?[region] === heat[index])
+                }
+            } else {
+                #expect(resources.index.index.dimensions[overworld]?.storage.isEmpty == true)
+                #expect(map.availableRegions.isEmpty && map.tiles.isEmpty)
+                #expect(session.heatMap.visibleImages?.isEmpty != false)
+                #expect(session.search.matches(for: session.search.text).hits.isEmpty)
+            }
+
+            try FileManager.default.moveItem(at: parked, to: source)
+            _ = try write([terrain(0, count: 7)], in: dimension, folder: .terrain, region: 0)
+            await changed([url], in: resources)
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 8)
+            #expect(map.availableRegions == Set(regions))
+            #expect(regions.allSatisfy { map.tiles[$0] != nil && session.heatMap.visibleImages?[$0] != nil })
+            #expect(session.search.matches(for: session.search.text).hits.map(\.count).sorted() == [1, 7])
+        } catch {
+            session.close(); resources.close(); await resources.waitUntilClosed()
+            throw error
+        }
+        session.close(); resources.close(); await resources.waitUntilClosed()
+    }
+
     @Test(arguments: [false, true]) func savedDataEventsKeepIndexTerrainAndHeatImages(legacy: Bool) async throws {
         let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
         defer { try? FileManager.default.removeItem(at: url) }
