@@ -6,6 +6,11 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct BlockQueryTests {
+    @MainActor private final class ViewportCenter {
+        var point: BlockSearchPoint
+        init(_ point: BlockSearchPoint) { self.point = point }
+    }
+
     @Test func nearestRowsKeepFullTotalsInTypedAndSavedSearches() async throws {
         let h = try BlockCountHarness(chunks: (0..<220).map { BlockSearchFixture.chunk(x: $0, count: $0 + 1) })
         defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
@@ -50,9 +55,9 @@ import Testing
         let saved = "block: diamond"
         h.saved.add(saved)
         let first = SearchModel(queryStore: h.queries), second = SearchModel(queryStore: h.queries)
-        var center = try h.point(8)
+        let center = ViewportCenter(try h.point(8))
         let far = try h.point(520)
-        first.captureBlockOrigin { BlockSearchAnchor(point: center, playerID: nil) }
+        first.captureBlockOrigin { BlockSearchAnchor(point: center.point, playerID: nil) }
         second.captureBlockOrigin { BlockSearchAnchor(point: far, playerID: nil) }
         first.text = saved; second.text = saved
         await first.waitForSearch(); await second.waitForSearch()
@@ -61,7 +66,7 @@ import Testing
         #expect(first.matches(for: saved).hits.first?.position != second.matches(for: saved).hits.first?.position)
         #expect(await log.calls.count == 2)
 
-        center = far // A new viewport/selection is not a new search.
+        center.point = far // A new viewport/selection is not a new search.
         h.index.rebuild(firstDimension: h.dimension.id)
         await h.index.waitForIndex(); await first.waitForSearch()
         #expect(first.matches(for: first.text).hits.first?.position == CGPoint(x: 8, y: 8))
