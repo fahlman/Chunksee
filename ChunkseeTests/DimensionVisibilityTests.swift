@@ -12,8 +12,10 @@ import Testing
         try FileManager.default.createDirectory(at: url.appendingPathComponent("dimensions/minecraft/the_nether/region"),
                                                 withIntermediateDirectories: true)
         let defaults = TestDefaults.make(), worldID = UUID()
-        // Existing dimension settings have no saved-place flag, so their pins stay shown.
-        defaults.set(["layers": ["minecraft:overworld": ["showsGrid": true]]],
+        // A missing choice defaults independently of the other current-format choices.
+        let record = try PropertyListSerialization.data(fromPropertyList:
+            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]], format: .binary, options: 0)
+        defaults.set(["version": 2, "mapPresentations.plist": ["minecraft:overworld": record]],
                      forKey: "worldSettings." + worldID.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)
@@ -118,7 +120,7 @@ import Testing
         for session in reopened { await session.waitUntilClosed() }
     }
 
-    @Test func oldPreferencesSeedEachDimensionOnceWithoutBecomingSharedLiveSettings() {
+    @Test func oldGlobalPreferencesDoNotSeedAnyDimension() {
 
         let defaults = TestDefaults.make()
 
@@ -128,17 +130,18 @@ import Testing
         defaults.set(true, forKey: "showsGrid")
         let settings = WorldSettings(id: id, defaults: defaults)
         var overworld = settings.mapPresentation(for: "minecraft:overworld")
-        #expect(overworld.overlays.structures == [.mineshaft, .abandonedCamp] && overworld.overlays.creatures.isEmpty && overworld.overlays.showsGrid)
+        #expect(overworld == MapPresentation())
         overworld.overlays.structures = []
-        overworld.overlays.showsGrid = false
+        overworld.overlays.creatures = []
+        overworld.overlays.showsGrid = true
         settings.save(overworld, for: "minecraft:overworld")
         let nether = WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays
-        #expect(nether.structures == [.mineshaft, .abandonedCamp] && nether.creatures.isEmpty && nether.showsGrid)
+        #expect(nether == LayerVisibility())
         #expect(defaults.bool(forKey: "showsGrid") && defaults.stringArray(forKey: "shownStructureGroups") == ["mineshaft"])
         defaults.set(["villager"], forKey: "shownCreatureGroups")
         defaults.set(false, forKey: "showsGrid")
         #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:overworld").overlays.creatures.isEmpty)
-        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays.showsGrid)
+        #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: "minecraft:the_nether").overlays == LayerVisibility())
     }
 
     @Test func worldsAreIndependentAndReopeningPreservesEveryDimension() {

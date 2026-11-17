@@ -135,11 +135,17 @@ import Testing
 
     @Test func simultaneousReadersSharePendingWorkAndOneCancellationDoesNotEndSiblings() async throws {
         try await withFixture(paused: true) { f in
-            let tasks = f.documents.map { f.start($0) }
+            let folder = try #require(f.model.worldFolders.world(containing: f.documents[0]))
+            // Each immediate task enters the main-actor model and joins its pending read
+            // before returning at task.value. All siblings therefore exist before cancellation,
+            // without exposing the model's private waiter bookkeeping to the tests.
+            let tasks = f.documents.map { document in
+                let task = Task.immediate { @MainActor in try await f.model.initialDimension(at: document, in: folder) }
+                f.tasks.append(task)
+                return task
+            }
             await f.probe.waitForStarts(1)
-            await waitUntil { f.model.openingRequestCount == 3 }
             tasks[0].cancel()
-            await waitUntil { f.model.openingRequestCount == 2 }
             await f.probe.release(1)
             await #expect(throws: CancellationError.self) { try await tasks[0].value }
             for task in tasks.dropFirst() {
@@ -157,13 +163,10 @@ import Testing
             await f.probe.waitForStarts(1)
             old.cancel()
             await f.probe.waitForCancellation(1)
-            await waitUntil { f.model.openingRequestCount == 0 }
             let replacement = f.start(f.documents[1])
             await f.probe.waitForStarts(2)
-            await waitUntil { f.model.openingRequestCount == 1 }
             await f.probe.release(1)
             await #expect(throws: CancellationError.self) { try await old.value }
-            #expect(f.model.openingRequestCount == 1)
             await f.probe.release(2)
             let session = try await f.attach(try await replacement.value)
             #expect(!session.resources.isClosed && session.players.count == 1)
@@ -254,7 +257,6 @@ import Testing
             // the same dimensions. Native document restoration itself needs a separate check.
             let waiting = (urls + urls).map { f.start($0) }
             await f.probe.waitForStarts(1)
-            await waitUntil { f.model.openingRequestCount == waiting.count }
             guard case .world(let repeated) = try await f.reader.readFolder(f.url) else {
                 Issue.record("A repeated folder opening did not redirect"); return
             }
@@ -264,7 +266,7 @@ import Testing
             for request in waiting { _ = try await f.attach(request.value) }
             #expect(f.sessions.count == waiting.count)
             #expect(Set(f.sessions.map { ObjectIdentifier($0.resources) }).count == 1)
-            #expect(f.model.openingRequestCount == 0)
+            #expect(await f.probe.count == 1)
             await f.model.names.minecraft.waitUntilIdle()
         }
     }
@@ -273,7 +275,7 @@ import Testing
         try await withFixture { f in
             guard case .world(let urls) = try await f.reader.readFolder(f.url) else { Issue.record("World did not redirect"); return }
             #expect(Set(urls) == Set(f.documents))
-            #expect(await f.probe.count == 0 && f.model.openingRequestCount == 0)
+            #expect(await f.probe.count == 0)
         }
     }
 

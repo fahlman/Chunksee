@@ -64,7 +64,7 @@ import Testing
         content.hits = [hit]
         examples.append((content, try #require(hit.position), "-21 -32 -31"))
         content = MapContent(gameNames: .unavailable)
-        let structure = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
+        let structure = try StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                       pieces: [("piece", [-10, -60, -20, -1, -41, -11])]))
         content.structures = [structure]
         examples.append((content, structure.position, "-5 -50 -15"))
@@ -338,17 +338,18 @@ import Testing
         let cache = ScanCache(directory: url.appendingPathComponent("cache")), region = RegionPosition(x: -1, z: -1)
         let fingerprint = ScanCache.legacyFingerprint([dimension.regionDirectory.appendingPathComponent("r.-1.-1.mca"),
                                                  dimension.entitiesDirectory.appendingPathComponent("r.-1.-1.mca")])
-        var old = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
+        var old = try StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                  pieces: [("piece", [-10, -60, -20, -1, -41, -11])]))
         old.y = nil
-        let previous = try TestWorld.legacyCache([old], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
+        let previous = try TestWorld.legacyCache([LegacyStructureMarker(old)], name: "structures.-1.-1.\(fingerprint).v\(oldVersion)",
                                                 directory: #require(cache.directory))
         let reader = RegionReader(dimension: dimension, cache: cache)
         let rebuilt = await TestWorld.index(reader).structures
         #expect(rebuilt.map(\.y) == [-50])
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }
         #expect(saved?.first?.y == -50)
-        #expect(!FileManager.default.fileExists(atPath: previous.path))
+        // The obsolete entry cannot serve this read; startup removes old layouts once.
+        #expect(FileManager.default.fileExists(atPath: previous.path))
         await reader.close()
     }
 }

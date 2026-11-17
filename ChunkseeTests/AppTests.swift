@@ -5,6 +5,17 @@ import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct WorldDocumentTests {
+    @Test(arguments: [false, true])
+    func startupPreservesOnlineConsentAndLeavesRetiredWindowKeysAlone(online: Bool) {
+        let defaults = TestDefaults.make(), keys = ["openWorlds", "recentWorlds", "lastWorldBookmark"]
+        defaults.set(online, forKey: "looksUpPlayerNamesOnline")
+        for key in keys { defaults.set("unused old value", forKey: key) }
+        let model = AppModel(defaults: defaults, cacheRoot: nil)
+        #expect(model.names.looksUpOnline == online)
+        #expect(defaults.bool(forKey: "looksUpPlayerNamesOnline") == online)
+        for key in keys { #expect(defaults.string(forKey: key) == "unused old value") }
+    }
+
     @Test func readsOpeningMetadataAndRejectsOtherFolders() async throws {
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }

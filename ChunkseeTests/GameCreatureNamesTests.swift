@@ -230,7 +230,7 @@ import Testing
             entity("minecraft:cat", number: 5, fields: ["Owner": .intArray([10, 20, 30, 40])]),
         ]
         try FileManager.default.createDirectory(at: dimension.entitiesDirectory, withIntermediateDirectories: true)
-        let chunk = NBT.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Position": .intArray([0, 0]), "Entities": .list(entities)])
+        let chunk = NBT.compound(["DataVersion": .int(Int32(5023)), "Position": .intArray([0, 0]), "Entities": .list(entities)])
         try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)]))
             .write(to: dimension.entitiesDirectory.appendingPathComponent("r.0.0.mca"))
         let defaults = TestDefaults.make(), players = PlayerNames(defaults: TestDefaults.make())
@@ -258,9 +258,9 @@ import Testing
         #expect(linked.map { world.gameNames.creature($0.creature) } == ["Berry", "Cat"])
         first.selection.choose(.mobType("minecraft:sheep"))
         second.selection.choose(.creature(farmer.id))
-        let original = first.search.results(for: "creature:")
+        let original = first.search.matches(for: "creature:").hits
         #expect(original.count == 5 && Set(original.map { $0.title(in: world.gameNames) }) == ["Sheep", "Berry", "Farmer", "Cat"])
-        #expect(first.search.results(for: "creature:fermier").isEmpty)
+        #expect(first.search.matches(for: "creature:fermier").hits.isEmpty)
         let captured = MapContent(session: first)
         let viewport = MapViewport(center: CGPoint(x: 12, y: 4), scale: 8), size = CGSize(width: 800, height: 600)
         let oldLocations = captured.accessibleLocations(viewport: viewport, size: size)
@@ -273,10 +273,10 @@ import Testing
         await world.waitForRefresh()
         for session in [first, second] {
             await session.search.waitForSearch()
-            let hits = session.search.results(for: "creature:")
+            let hits = session.search.matches(for: "creature:").hits
             #expect(hits.map(\.id) == original.map(\.id) && hits.map(\.count) == original.map(\.count))
             #expect(Set(hits.map { $0.title(in: world.gameNames) }) == ["Mouton", "Berry", "Fermier", "Chat"])
-            #expect(session.search.results(for: "creature:fermier").map { $0.title(in: world.gameNames) } == ["Fermier"])
+            #expect(session.search.matches(for: "creature:fermier").hits.map { $0.title(in: world.gameNames) } == ["Fermier"])
             #expect(session.visibility.mobTypes == ["minecraft:sheep"])
             #expect(session.presentation.selectedIndex.mobTypes.kind("minecraft:sheep")?.count == 2)
             let currentLinks = session.presentation.linkedPets(to: owner)

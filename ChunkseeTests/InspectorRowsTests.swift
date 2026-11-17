@@ -16,8 +16,8 @@ import Testing
         let player = PlayerInfo(uuid: UUID(), nbt: .compound([
             "DataVersion": .int(5023), "Health": .float(19.5), "attributes": attributes,
         ]))
-        let animal = HealthPresentation(health: creature.health, maximum: creature.maxHealth)
-        let person = HealthPresentation(health: player.health, maximum: player.maxHealth)
+        let animal = HealthPresentation(health: creature.health, maximum: creature.maximumHealth(enchantments: [:]))
+        let person = HealthPresentation(health: player.health, maximum: player.maximumHealth(enchantments: [:]))
         #expect(animal == person)
         #expect(animal.text(locale: english) == "9.75 of 20 hearts")
         #expect(animal.gaugeValue == 19.5 && animal.maximum == 40)

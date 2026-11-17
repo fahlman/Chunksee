@@ -85,7 +85,8 @@ import Testing
         await reader.close()
         let container = try #require(contents.containers.first)
         #expect(container.x == -9 && container.y == -1 && container.z == -17)
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        // The old entry is ignored here; world startup owns obsolete-file cleanup.
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
         let saved = cache.load(.init(dimension: dimension, region: RegionPosition(x: -1, z: -1), options: .init(RegionReader.options())))
         #expect(saved?.containers == contents.containers)
     }
@@ -144,16 +145,16 @@ import Testing
         for (query, count) in [("creature:", 2), ("pet:", 1), ("villager:", 1), ("trade:carrot", 1), ("Broken", 0)] {
             session.search.text = query
             await session.search.waitForSearch()
-            #expect(session.search.results.count == count, "\(query), \(value)")
+            #expect(session.search.matches(for: session.search.text).hits.count == count, "\(query), \(value)")
         }
         session.search.text = "gold_ingot"
         await session.search.waitForSearch()
-        #expect(session.search.results.count == 1)
-        #expect(session.search.results.first?.position == CGPoint(x: -8.5, y: -16.5))
-        #expect(session.search.results.first?.y == -1)
+        #expect(session.search.matches(for: session.search.text).hits.count == 1)
+        #expect(session.search.matches(for: session.search.text).hits.first?.position == CGPoint(x: -8.5, y: -16.5))
+        #expect(session.search.matches(for: session.search.text).hits.first?.y == -1)
         session.search.text = "diamond"
         await session.search.waitForSearch()
-        let results = session.search.results
+        let results = session.search.matches(for: session.search.text).hits
         #expect(results.count == 4)
         #expect(results.filter { $0.position == nil && $0.dimension == nil && $0.y == nil }.count == 3)
         #expect(results.contains { $0.position == CGPoint(x: -8.7, y: -16.1) && $0.y == -1 })

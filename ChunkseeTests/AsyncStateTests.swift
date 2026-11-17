@@ -179,32 +179,32 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
-        await gate.finish("saved", with: ["saved": [hit("Saved")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Saved")])])
         await search.waitForSearch()
         search.text = "first"
         await gate.waitForRequest("first")
-        await gate.finish("first", with: ["first": [hit("First")]])
+        await gate.finish("first", with: ["first": .all([hit("First")])])
         await search.waitForSearch()
 
         search.text = "second"
         await gate.waitForRequest("second")
         #expect(search.isSearching)
-        #expect(search.results.map(\.id) == ["First"])
-        #expect(search.results(for: "second").map(\.id) == ["First"])
-        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
-        await gate.finish("second", with: ["second": [hit("Second")]])
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["First"])
+        #expect(search.matches(for: "second").hits.map(\.id) == ["First"])
+        #expect(search.matches(for: "saved").hits.map(\.id) == ["Saved"])
+        await gate.finish("second", with: ["second": .all([hit("Second")])])
         await search.waitForSearch()
-        #expect(search.results.map(\.id) == ["Second"])
-        #expect(search.results(for: "first").isEmpty)
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Second"])
+        #expect(search.matches(for: "first").hits.isEmpty)
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
 
         search.text = ""
-        #expect(search.results.isEmpty && search.results(for: "").isEmpty)
-        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
+        #expect(search.matches(for: search.text).hits.isEmpty && search.matches(for: "").hits.isEmpty)
+        #expect(search.matches(for: "saved").hits.map(\.id) == ["Saved"])
         await search.closeTestWorld()
     }
 
@@ -212,7 +212,7 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved, execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
         await gate.waitForRequest("saved")
@@ -220,13 +220,13 @@ import Testing
         await gate.waitForRequest("first")
         search.text = "second"
         await gate.waitForRequest("second")
-        await gate.finish("saved", with: ["saved": [hit("Saved")]])
-        await gate.finish("second", with: ["second": [hit("Second")]])
+        await gate.finish("saved", with: ["saved": .all([hit("Saved")])])
+        await gate.finish("second", with: ["second": .all([hit("Second")])])
         await search.waitForSearch()
-        await gate.finish("first", with: ["first": [hit("Obsolete")]])
+        await gate.finish("first", with: ["first": .all([hit("Obsolete")])])
         await search.waitForTasks()
-        #expect(search.results.map(\.id) == ["Second"])
-        #expect(search.results(for: "saved").map(\.id) == ["Saved"])
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Second"])
+        #expect(search.matches(for: "saved").hits.map(\.id) == ["Saved"])
         #expect(await gate.requested.filter { $0 == "saved" }.count == 1)
         await search.closeTestWorld()
     }
@@ -235,7 +235,7 @@ import Testing
         let defaults = TestDefaults.make()
         let saved = SavedSearches(defaults: defaults)
         saved.add("saved")
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let players = PlayerRoster([])
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: players, names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: saved,
@@ -243,25 +243,25 @@ import Testing
         search.text = "query"
         for query in ["saved", "query"] {
             await gate.waitForRequest("\(query)-0")
-            await gate.finish("\(query)-0", with: [query: [hit("Previous \(query)")]])
+            await gate.finish("\(query)-0", with: [query: .all([hit("Previous \(query)")])])
         }
         await search.waitForSearch()
         players.publish([PlayerInfo(uuid: UUID(), nbt: .compound([:]))])
         for query in ["saved", "query"] { await gate.waitForRequest("\(query)-1") }
-        #expect(search.results.map(\.id) == ["Previous query"])
-        #expect(search.results(for: "saved").map(\.id) == ["Previous saved"])
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Previous query"])
+        #expect(search.matches(for: "saved").hits.map(\.id) == ["Previous saved"])
         for query in ["saved", "query"] {
-            await gate.finish("\(query)-1", with: [query: [hit("Updated \(query)")]])
+            await gate.finish("\(query)-1", with: [query: .all([hit("Updated \(query)")])])
         }
         await search.waitForSearch()
-        #expect(search.results.map(\.id) == ["Updated query"])
-        #expect(search.results(for: "saved").map(\.id) == ["Updated saved"])
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Updated query"])
+        #expect(search.matches(for: "saved").hits.map(\.id) == ["Updated saved"])
         await search.closeTestWorld()
     }
 
     @Test func anOldQueryCannotPublishOverTheNewQuery() async {
         let defaults = TestDefaults.make()
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([]), names: PlayerNames(defaults: defaults), singleplayerUUID: { nil },
                                  firstDimension: nil, savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.queries[0]) }, gameNames: { .unavailable })
@@ -269,12 +269,12 @@ import Testing
         await gate.waitForRequest("old")
         search.text = "new"
         await gate.waitForRequest("new")
-        await gate.finish("new", with: ["new": [hit("Current")]])
+        await gate.finish("new", with: ["new": .all([hit("Current")])])
         await search.waitForSearch()
-        await gate.finish("old", with: ["old": [hit("Obsolete")]])
+        await gate.finish("old", with: ["old": .all([hit("Obsolete")])])
         await search.waitForTasks()
-        #expect(search.results.map(\.id) == ["Current"])
-        #expect(search.results(for: "old").isEmpty)
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Current"])
+        #expect(search.matches(for: "old").hits.isEmpty)
         await search.closeTestWorld()
     }
 
@@ -284,7 +284,7 @@ import Testing
         names.looksUpOnline = true
         let player = PlayerInfo(uuid: uuid, nbt: .compound([:]))
         let unknown = GameNames.unavailable.player(.unnamed(uuid))
-        let gate = AsyncReadGate<[String: [SearchHit]]>()
+        let gate = AsyncReadGate<WorldQueryStore.Results>()
         let search = makeSearch(readers: [], work: BackgroundWork(), playerRoster: PlayerRoster([player]), names: names, singleplayerUUID: { nil }, firstDimension: nil,
                                  savedSearches: SavedSearches(defaults: defaults),
                                  execute: { await gate.read($0.gameNames.player($0.playerNames[uuid]!)) }, gameNames: { .unavailable })
@@ -292,11 +292,11 @@ import Testing
         await gate.waitForRequest(unknown)
         await names.lookUp([uuid])
         await gate.waitForRequest("Known")
-        await gate.finish("Known", with: ["diamond": [hit("Known")]])
+        await gate.finish("Known", with: ["diamond": .all([hit("Known")])])
         await search.waitForSearch()
-        await gate.finish(unknown, with: ["diamond": [hit("Unknown")]])
+        await gate.finish(unknown, with: ["diamond": .all([hit("Unknown")])])
         await search.waitForTasks()
-        #expect(search.results.map(\.id) == ["Known"])
+        #expect(search.matches(for: search.text).hits.map(\.id) == ["Known"])
         await search.closeTestWorld()
     }
 }

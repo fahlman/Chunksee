@@ -74,9 +74,15 @@ with a link to this guide. Help opens only when requested.
    Item names keep their kind beside a custom name, such as `Diamond Sword “Excalibur”`, in
    search, equipment and trades. Trade searches also match custom names on either cost or the
    item for sale. Written books retain their title and author.
-   Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (diamonds, ancient debris, spawners…; the 1,000 richest chunks) to search one kind
+   Start with `structure:`, `place:`, `creature:`, `pet:`, `villager:`, `trade:`, `biome:` or `block:` (ores, ancient debris, spawners…) to search one kind
    ("biome:pale garden"). Choose **Save Search** at the start of Search Results to keep it in Saved Searches,
    where its eye button keeps its pins on the map.
+   Block searches list the nearest 200 matching chunks in this dimension. They start from the
+   selected player's saved position, or the map center when no player is selected, and search
+   farther away in the background. A player origin follows that player's updated saved position;
+   panning, zooming and choosing a result keep the search origin. Each window keeps its own origin,
+   including for saved searches. Ore groups and their names come from the selected game files and
+   the world's data packs.
    Results show the place's name; select one to see its matching contents, count and location in
    the inspector. The section heading shows how many results are listed when there are more than 200.
 9. Players appear on the map at their last saved position, with their last death (✕) and respawn

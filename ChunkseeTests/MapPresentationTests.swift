@@ -7,10 +7,10 @@ import Testing
 
 @Suite(.isolatedStores) struct MapPresentationTests {
     @Test(arguments: [false, true])
-    func shownOnlyMapRecordsMigrateOnceWithoutChangingOtherDimensions(empty: Bool) throws {
+    func shownOnlyGroupListsUseDefaultsWithoutRewritingSavedRecords(empty: Bool) throws {
         let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld", other = "test:other"
         let key = "worldSettings." + id.uuidString, annotations = Data("opaque annotations".utf8)
-        let oldRecord = try JSONSerialization.data(withJSONObject: [
+        let oldRecord = try PropertyListSerialization.data(fromPropertyList: [
             "viewport": [12.0, -9, 2], "presentation": [
                 "style": "height", "depth": ["y": 40, "isSurface": false], "castsShadows": false,
                 "overlays": [
@@ -19,49 +19,41 @@ import Testing
                     "creatures": empty ? [] : ["pet", "unfamiliar"], "showsGrid": true
                 ]
             ]
-        ])
-        defaults.set(["dimension": other, "places": annotations,
-                      "mapPresentations": [dimension: oldRecord, other: oldRecord]], forKey: key)
+        ], format: .binary, options: 0)
+        defaults.set(["dimension": other, "places.plist": annotations,
+                      "mapPresentations.plist": [dimension: oldRecord, other: oldRecord]], forKey: key)
         let settings = WorldSettings(id: id, defaults: defaults)
         let choices = settings.mapPresentation(for: dimension)
         #expect(choices.style == .height && choices.depth == MapDepth(y: 40, isSurface: false))
         #expect(!choices.castsShadows && choices.overlays.showsGrid)
         #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
         #expect(!choices.overlays.structures.contains(.abandonedCamp))
-        #expect(choices.overlays.places == (empty ? [] : [.spawner]))
-        #expect(choices.overlays.creatures == (empty ? [] : [.pet]))
+        #expect(choices.overlays.places == LayerVisibility().places)
+        #expect(choices.overlays.creatures == LayerVisibility().creatures)
         #expect(settings.viewport(for: dimension) == MapViewport(center: CGPoint(x: 12, y: -9), scale: 2))
         let stored = try #require(defaults.dictionary(forKey: key))
-        let records = try #require(stored["mapPresentations"] as? [String: Data])
-        let migrated = try #require(records[dimension])
-        let record = try #require(JSONSerialization.jsonObject(with: migrated) as? [String: Any])
-        let presentation = try #require(record["presentation"] as? [String: Any])
-        let overlays = try #require(presentation["overlays"] as? [String: Any])
-        #expect(record["version"] as? Int == 1)
-        #expect((overlays["places"] as? [String: Bool])?["spawner"] == !empty)
-        #expect((overlays["places"] as? [String: Bool])?["portal"] == false)
-        #expect((overlays["creatures"] as? [String: Bool])?["pet"] == !empty)
-        #expect((overlays["creatures"] as? [String: Bool])?["named"] == false)
-        #expect(records[other] == oldRecord && stored["places"] as? Data == annotations)
+        let records = try #require(stored["mapPresentations.plist"] as? [String: Data])
+        #expect(records[dimension] == oldRecord && records[other] == oldRecord)
+        #expect(stored["places.plist"] as? Data == annotations)
         #expect(settings.lastDimension == other)
 
         let reopened = WorldSettings(id: id, defaults: defaults)
         #expect(reopened.mapPresentation(for: dimension) == choices)
-        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Data])?[dimension] == migrated)
-        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Data])?[other] == oldRecord)
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations.plist"] as? [String: Data])?[dimension] == oldRecord)
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations.plist"] as? [String: Data])?[other] == oldRecord)
     }
 
     @Test func explicitGroupChoicesUseDefaultsOnlyForMissingGroups() throws {
         let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
         let key = "worldSettings." + id.uuidString
-        let data = try JSONSerialization.data(withJSONObject: [
+        let data = try PropertyListSerialization.data(fromPropertyList: [
             "version": 1, "presentation": ["overlays": [
                 "structures": ["village": false, "mineshaft": true],
                 "places": ["portal": false, "spawner": true],
                 "creatures": ["named": false, "mob": true]
             ]]
-        ])
-        defaults.set(["mapPresentations": [dimension: data]], forKey: key)
+        ], format: .binary, options: 0)
+        defaults.set(["mapPresentations.plist": [dimension: data]], forKey: key)
         let settings = WorldSettings(id: id, defaults: defaults)
         var choices = settings.mapPresentation(for: dimension)
         #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
@@ -75,12 +67,12 @@ import Testing
         #expect(WorldSettings(id: id, defaults: defaults).mapPresentation(for: dimension) == choices)
     }
 
-    @Test func migrationCollectsEveryChoiceAndRetiresOnlyThatDimensionsOldFields() throws {
+    @Test func separateMapFieldsAreIgnoredAndCurrentWorldDataIsPreserved() throws {
         let defaults = TestDefaults.make(), id = UUID(), player = UUID()
         let key = "worldSettings." + id.uuidString, dimension = "minecraft:overworld", other = "minecraft:the_nether"
         let annotations = Data("opaque annotations".utf8)
         defaults.set([
-            "dimension": other, "places": annotations, "shownVersionNotices": ["kept notice"],
+            "dimension": other, "places.plist": annotations, "shownVersionNotices": ["kept notice"],
             "views": [dimension: [-12.5, 33, 2], other: [7.0, 8, 4]],
             "depths": [dimension: ["y": -23, "surface": 0]], "styles": [dimension: "height"],
             "blockFilters": [dimension: ["enabled": false, "hidden": ["stone", "bad:id:bad"], "highlighted": ["sand", "stone"]]],
@@ -92,49 +84,40 @@ import Testing
                 "showsWorldBorder": false, "showsTimeSpent": true, "showsSlimeChunks": true, "showsDarkSpots": true
             ], other: ["showsGrid": false]]
         ], forKey: key)
+        let before = try #require(defaults.dictionary(forKey: key))
         let settings = WorldSettings(id: id, defaults: defaults)
-        let choices = settings.mapPresentation(for: dimension)
-        #expect(choices.style == .height && choices.depth == MapDepth(y: -23, isSurface: false))
-        #expect(choices.lightingMode == .daylight && !choices.castsShadows && choices.blendsBiomeColors)
-        #expect(choices.blockFilter == MapBlockFilter(isEnabled: false, hiddenIDs: ["minecraft:stone"], highlightedIDs: ["minecraft:sand"]))
-        #expect(!choices.overlays.structures.contains(.village) && choices.overlays.structures.contains(.mineshaft))
-        #expect(choices.overlays.places == [.spawner] && choices.overlays.creatures == [.pet])
-        #expect(choices.overlays.mobTypes == ["minecraft:sheep"] && choices.overlays.biomes == [BiomeGroup(id: "test:wetland")])
-        #expect(choices.overlays.hiddenPlayers == [player] && choices.overlays.showsGrid)
-        #expect(!choices.overlays.showsSavedPlaces && !choices.overlays.showsWorldBorder)
-        #expect(choices.overlays.showsTimeSpent && choices.overlays.showsSlimeChunks && choices.overlays.showsDarkSpots)
-        #expect(settings.viewport(for: dimension) == MapViewport(center: CGPoint(x: -12.5, y: 33), scale: 2))
-        let migrated = try #require(defaults.dictionary(forKey: key))
-        for section in ["views", "depths", "styles", "blockFilters", "lightingModes", "castsShadows", "biomeBlending", "layers"] {
-            #expect((migrated[section] as? [String: Any])?[dimension] == nil)
-        }
-        #expect((migrated["views"] as? [String: [Double]])?[other] == [7, 8, 4])
-        #expect((migrated["mapPresentations"] as? [String: Data])?.count == 1)
-        #expect(migrated["places"] as? Data == annotations && settings.lastDimension == other)
-        #expect(settings.hasShownVersionNotice("kept notice"))
+        #expect(settings.mapPresentation(for: dimension) == MapPresentation())
+        #expect(settings.viewport(for: dimension) == nil)
+        #expect(settings.lastDimension == other && settings.hasShownVersionNotice("kept notice"))
+        let unchanged = try #require(defaults.dictionary(forKey: key))
+        #expect(NSDictionary(dictionary: unchanged).isEqual(to: before))
 
-        // Obsolete fields written after migration cannot replace the canonical record.
-        var oldWriter = migrated
-        oldWriter["styles"] = [dimension: "normal"]
-        defaults.set(oldWriter, forKey: key)
-        #expect(settings.mapPresentation(for: dimension) == choices)
+        var choices = MapPresentation()
+        choices.style = .waterDepth
+        choices.overlays.showsGrid = true
         settings.save(MapViewport(center: .zero, scale: 4), presentation: choices, for: dimension, selected: other)
         #expect(settings.mapPresentation(for: dimension) == choices && settings.viewport(for: dimension)?.scale == 4)
-        #expect(defaults.dictionary(forKey: key)?["places"] as? Data == annotations)
+        let saved = try #require(defaults.dictionary(forKey: key))
+        #expect(saved["places.plist"] as? Data == annotations)
+        for section in ["views", "depths", "styles", "blockFilters", "lightingModes", "castsShadows", "biomeBlending", "layers"] {
+            let actual = try #require(saved[section] as? [String: Any])
+            let previous = try #require(before[section] as? [String: Any])
+            #expect(NSDictionary(dictionary: actual).isEqual(to: previous))
+        }
     }
 
     @Test func unreadableChoicesKeepReadableSiblingsAndOtherDimensionRecords() throws {
         let defaults = TestDefaults.make(), id = UUID(), dimension = "minecraft:overworld"
-        let data = try JSONSerialization.data(withJSONObject: [
-            "viewport": [0, 0, -1], "presentation": [
+        let data = try PropertyListSerialization.data(fromPropertyList: [
+            "version": 1, "viewport": [0, 0, -1], "presentation": [
                 "style": "future-style", "depth": ["y": 40, "isSurface": false], "castsShadows": false,
                 "lightingMode": "unfamiliar", "blendsBiomeColors": true,
                 "blockFilter": ["hiddenIDs": ["stone", "bad:id:bad"], "highlightedIDs": ["stone", "sand"]],
                 "overlays": ["showsGrid": true, "showsTimeSpent": "invalid", "shownFutureLayer": true]
             ]
-        ])
+        ], format: .binary, options: 0)
         let key = "worldSettings." + id.uuidString
-        defaults.set(["mapPresentations": [dimension: data, "test:unreadable": "keep opaque sibling"]], forKey: key)
+        defaults.set(["mapPresentations.plist": [dimension: data, "test:unreadable": "keep opaque sibling"]], forKey: key)
         let settings = WorldSettings(id: id, defaults: defaults), choices = settings.mapPresentation(for: dimension)
         #expect(choices.style == MapPresentation().style && choices.lightingMode == MapPresentation().lightingMode)
         #expect(choices.depth == MapDepth(y: 40, isSurface: false) && !choices.castsShadows && choices.blendsBiomeColors)
@@ -142,7 +125,7 @@ import Testing
         #expect(choices.overlays.showsGrid && !choices.overlays.showsTimeSpent && choices.overlays.showsSavedPlaces)
         #expect(settings.viewport(for: dimension) == nil)
         settings.save(choices, for: dimension)
-        #expect((defaults.dictionary(forKey: key)?["mapPresentations"] as? [String: Any])?["test:unreadable"] as? String == "keep opaque sibling")
+        #expect((defaults.dictionary(forKey: key)?["mapPresentations.plist"] as? [String: Any])?["test:unreadable"] as? String == "keep opaque sibling")
     }
 
     @Test func aSessionSavesAllChoicesWithoutAViewAndRestoresOnlyPersistentOverlays() async throws {
@@ -244,6 +227,6 @@ import Testing
         choices.overlays.showsGrid = true
         settings.save(choices, for: nil)
         #expect(settings.lastDimension == "test:front")
-        #expect(defaults.dictionary(forKey: key)?["mapPresentations"] == nil)
+        #expect(defaults.dictionary(forKey: key)?["mapPresentations.plist"] == nil)
     }
 }

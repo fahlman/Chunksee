@@ -13,7 +13,7 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: url) }
         try Fixtures.writeGzippedNBT(.compound([
-            "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "DataVersion": .int(Int32(5023)),
             "data": .compound(["size": .double(64), "center_x": .double(10_000), "center_z": .double(10_000)]),
         ]), to: url.appendingPathComponent("dimensions/minecraft/overworld/data/minecraft/world_border.dat"))
         let world = try World(contentsOf: url)

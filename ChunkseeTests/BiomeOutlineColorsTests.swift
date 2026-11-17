@@ -2,6 +2,7 @@ import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 @testable import ChunkseeTestHost
 
@@ -127,6 +128,65 @@ import Testing
         Attachment.record(image, named: "game-biome-outline-\(scheme)", as: .png)
         let pixels = try ItemPictureFixture.pixels(image)
         #expect(pixels.color(50, 50) == [38, 0, 0, 38]) // Existing 15% area fill uses the game red.
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func failedWaterTagsKeepTheirMembershipWhileColorsAdvanceAndRetryOnMetadataDemand() async throws {
+        let root = try world()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try pack(at: root, grass: 0xff0000)
+        let folder = root.appendingPathComponent("datapacks/outline")
+        let tag = folder.appendingPathComponent("data/minecraft/tags/worldgen/biome/is_ocean.json")
+        // No game jar is selected, so this fixture must define the complete tag.
+        try write(ItemPictureFixture.json(["replace": true, "values": ["test:land"]]), to: tag)
+        let defaults = TestDefaults.make()
+        let resources = try await WorldResources(snapshot: WorldSnapshot.read(root), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: nil,
+            watchWorld: { _, _ in nil }, readGameAssets: { _ in nil })
+        defer { resources.close() }
+        resources.refreshDelay = .zero
+        await resources.waitForRefresh()
+        let initial = try #require(resources.biomeColors)
+        #expect(initial.isComplete && initial.outlineColor(for: "test:land", at: .zero) == MapColor(0x654321))
+        let requests = Mutex<[Bool]>([])
+        resources.readBiomeColors = { world, data, artwork, previous, reload in
+            requests.withLock { $0.append(reload) }
+            return try await WorldResources.readBiomeColors(world, data: data, artwork: artwork,
+                                                            previous: previous, reload: reload)
+        }
+
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: tag.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path) }
+        #expect(throws: (any Error).self) {
+            try resources.world.tags(for: ["minecraft:is_ocean"], in: "worldgen/biome", assets: nil)
+        }
+        try write(definition(grass: 0x00ff00, foliage: 0xabcdef, water: 0x654321),
+                  to: folder.appendingPathComponent("data/test/worldgen/biome/land.json"))
+        resources.worldChanged([folder])
+        await resources.waitForRefresh()
+        let partial = try #require(resources.biomeColors)
+        #expect(!partial.isComplete)
+        #expect(partial.biome("test:land").color(.grass, x: 0, z: 0) == 0x00ff00)
+        #expect(partial.outlineColor(for: "test:land", at: .zero) == MapColor(0x654321))
+
+        // An incompatible game source cannot acquire the retained membership.
+        let replaced = try MapBiomeColors.read(in: resources.world,
+            source: .init(data: "replacement", artwork: .unavailable), assets: nil, retaining: partial)
+        #expect(!replaced.isComplete)
+        #expect(replaced.outlineColor(for: "test:land", at: .zero) == MapColor(0x00ff00))
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tag.path)
+        try write(ItemPictureFixture.json(["replace": true, "values": [String]()]), to: tag)
+        let retried = try await WorldResources.readBiomeColors(resources.world, data: nil, artwork: nil,
+                                                               previous: partial, reload: false)
+        #expect(retried.isComplete && retried.outlineColor(for: "test:land", at: .zero) == MapColor(0x00ff00))
+        #expect(retried.sourceKey == partial.sourceKey)
+        resources.worldChanged([root.appendingPathComponent("level.dat")])
+        await resources.waitForRefresh()
+        #expect(resources.biomeColors?.isComplete == true)
+        #expect(resources.biomeColors?.outlineColor(for: "test:land", at: .zero) == MapColor(0x00ff00))
+        #expect(requests.withLock { $0 } == [true, true])
+        resources.close(); await resources.waitUntilClosed()
     }
 
     private func world() throws -> URL {

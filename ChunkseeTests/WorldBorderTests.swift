@@ -15,7 +15,7 @@ import Testing
             let folder = url.appendingPathComponent("dimensions/minecraft/\(id)")
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("region"), withIntermediateDirectories: true)
             try Fixtures.writeGzippedNBT(.compound([
-                "DataVersion": .int(Int32(SaveVersion.java26_3)),
+                "DataVersion": .int(Int32(5023)),
                 "data": .compound(["size": .double(size), "center_x": .double(8), "center_z": .double(8)]),
             ]), to: folder.appendingPathComponent("data/minecraft/world_border.dat"))
         }
@@ -28,8 +28,11 @@ import Testing
         let url = try world()
         defer { try? FileManager.default.removeItem(at: url) }
         let defaults = TestDefaults.make(), id = UUID()
-        // An existing dimension with no border choice keeps the previously always-shown border.
-        defaults.set(["layers": ["minecraft:overworld": ["showsGrid": true]]], forKey: "worldSettings." + id.uuidString)
+        // A missing border choice uses its default without losing the saved grid choice.
+        let record = try PropertyListSerialization.data(fromPropertyList:
+            ["version": 1, "presentation": ["overlays": ["showsGrid": true]]], format: .binary, options: 0)
+        defaults.set(["version": 2, "mapPresentations.plist": ["minecraft:overworld": record]],
+                     forKey: "worldSettings." + id.uuidString)
         func open() async throws -> WorldResources {
             let names = PlayerNames(defaults: defaults)
             let prepared = try await WorldPreparation.read(WorldSnapshot.read(url), minecraft: names.minecraft)

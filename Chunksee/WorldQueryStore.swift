@@ -1,3 +1,4 @@
+import ChunkseeIndex
 import ChunkseeKit
 import Foundation
 import Observation
@@ -16,14 +17,15 @@ nonisolated struct SearchSources: Equatable, Sendable {
     }
 }
 
-/// The world owns every query publication. Saved queries share a producer; each window has
-/// one independent typed-query loader, including its retained result and retired reads.
+/// The world owns every query publication. Ordinary saved queries share a producer; block
+/// queries share raw counts and keep their captured search point in each window.
 @Observable
 final class WorldQueryStore {
-    typealias Results = [String: [SearchHit]]
+    typealias Results = [String: SearchMatches]
     typealias Read = @Sendable (SearchRequest) async -> Results
     let index: WorldIndexStore
     let savedSearches: SavedSearches
+    private let blockCounts: WorldBlockCountStore?
     private let names: PlayerNames
     private let gameNames: @MainActor () -> GameNames
     private let singleplayerUUID: @MainActor () -> UUID?
@@ -59,29 +61,94 @@ final class WorldQueryStore {
     nonisolated fileprivate struct Source: Equatable, Sendable {
         let query: String
         let context: Context
+        var blocks: BlockQueryInput? = nil
         var isActive: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
         var request: SearchRequest {
             SearchRequest(queries: [query], index: context.index.index, players: context.index.players.players,
-                          playerNames: context.key.names, gameNames: context.gameNames)
+                          playerNames: context.key.names, gameNames: context.gameNames, blocks: blocks)
         }
-        static func == (lhs: Self, rhs: Self) -> Bool { lhs.query == rhs.query && lhs.context === rhs.context }
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.query == rhs.query && lhs.context === rhs.context && lhs.blocks == rhs.blocks
+        }
+
+        func canFinishBefore(_ next: Self) -> Bool {
+            guard query == next.query, context === next.context, let blocks, let nextBlocks = next.blocks else { return false }
+            return blocks.counts.world == nextBlocks.counts.world && blocks.catalog == nextBlocks.catalog &&
+                blocks.point == nextBlocks.point
+        }
     }
 
     nonisolated fileprivate final class Value: Sendable {
         let query: String
         let sources: SearchSources
-        let hits: [SearchHit]
+        let matches: SearchMatches
+        let blockWorld: WorldReadSource?
+        let blockCatalog: NotableBlock.Catalog?
+        let blockPoint: BlockSearchPoint?
         init(source: Source, results: Results) {
             query = source.query
             sources = source.context.key
-            hits = results[source.query] ?? []
+            matches = results[source.query] ?? .all([])
+            blockWorld = source.blocks?.counts.world
+            blockCatalog = source.blocks?.catalog
+            blockPoint = source.blocks?.point
         }
     }
 
+    /// Count progress must not starve a running query. Finish one compatible pass, then use
+    /// only the newest pending snapshot; a new query or interpretation still retires immediately.
+    fileprivate final class QueryLoader {
+        typealias Loader = RefreshLoader<Source, RefreshInvalidation, Value>
+        private let loader: Loader
+        private var pending: Source?
+        var published: @MainActor (Loader.Publication, Loader.Publication) -> Void = { _, _ in }
+        var source: Source { loader.source }
+        var value: Value? { loader.value }
+        var isReading: Bool { loader.isReading }
+        var isClosed: Bool { loader.isClosed || loader.work.isClosed }
+
+        init(_ loader: Loader) {
+            self.loader = loader
+            loader.published = { [weak self] previous, publication in
+                guard let self else { return }
+                self.published(previous, publication)
+                guard let value = publication.value, previous.value !== value,
+                      self.loader.value === value, self.loader.source == publication.source,
+                      let next = self.pending else { return }
+                self.pending = nil
+                self.loader.request(source: next, isEnabled: true, reread: false)
+            }
+        }
+
+        func request(source: Source, isEnabled: Bool) {
+            guard !isClosed else { return }
+            if isEnabled, loader.isReading, loader.source.canFinishBefore(source) {
+                pending = source == loader.source ? nil : source
+                return
+            }
+            pending = nil
+            loader.request(source: source, isEnabled: isEnabled, reread: false)
+        }
+
+        func replace(source: Source, value: Value?) {
+            pending = nil
+            loader.replace(source: source, value: value)
+        }
+
+        func close() { pending = nil; loader.close() }
+        func waitForCurrentRead() async { await loader.waitForCurrentRead() }
+    }
+
     fileprivate final class Window {
-        let loader: RefreshLoader<Source, RefreshInvalidation, Value>
+        let loader: QueryLoader
+        let work: BackgroundWork.Scope
         var shared: Shared?
-        init(_ loader: RefreshLoader<Source, RefreshInvalidation, Value>) { self.loader = loader }
+        var captureOrigin: @MainActor () -> BlockSearchAnchor? = { nil }
+        var origins: [String: BlockSearchAnchor] = [:]
+        var savedBlocks: [String: QueryLoader] = [:]
+        init(_ loader: QueryLoader, work: BackgroundWork.Scope) {
+            self.loader = loader; self.work = work
+        }
     }
 
     fileprivate final class Shared {
@@ -90,19 +157,21 @@ final class WorldQueryStore {
             let source: Source
             let continuation: CheckedContinuation<Value?, Never>
         }
-        let loader: RefreshLoader<Source, RefreshInvalidation, Value>
+        let loader: QueryLoader
         var users: Set<UUID> = []
         var waiters: [UUID: Waiter] = [:]
-        init(_ loader: RefreshLoader<Source, RefreshInvalidation, Value>) { self.loader = loader }
+        init(_ loader: QueryLoader) { self.loader = loader }
     }
 
     init(index: WorldIndexStore, work: BackgroundWork, names: PlayerNames, savedSearches: SavedSearches,
          singleplayerUUID: @escaping @MainActor () -> UUID?, gameNames: @escaping @MainActor () -> GameNames,
+         blockCounts: WorldBlockCountStore? = nil,
          execute: @escaping Read = WorldSearch.execute) {
         self.index = index
         self.work = work.makeScope()
         self.names = names
         self.savedSearches = savedSearches
+        self.blockCounts = blockCounts
         self.singleplayerUUID = singleplayerUUID
         self.gameNames = gameNames
         self.execute = execute
@@ -120,24 +189,29 @@ final class WorldQueryStore {
                        names: labels, singleplayerUUID: singleplayerUUID)
     }
 
-    private func loader(source: Source, read: @escaping @Sendable (Source) async throws -> Value) -> RefreshLoader<Source, RefreshInvalidation, Value> {
-        RefreshLoader(progressRead: { source, _, _, _ in .complete(try await read(source)) },
-            scope: work.makeScope(), priority: .userInitiated, whenInactive: .cancel, source: source,
+    private func loader(source: Source, scope: BackgroundWork.Scope? = nil,
+                        read: @escaping @Sendable (Source) async throws -> Value) -> QueryLoader {
+        QueryLoader(RefreshLoader(progressRead: { source, _, _, _ in .complete(try await read(source)) },
+            scope: scope ?? work.makeScope(), priority: .userInitiated, whenInactive: .cancel, source: source,
             firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, _, next in
                 guard next.isActive, previous.sources.gameNamesID == next.context.key.gameNamesID,
-                      previous.sources.singleplayerUUID == next.context.key.singleplayerUUID else { return nil }
+                      previous.sources.singleplayerUUID == next.context.key.singleplayerUUID,
+                      previous.blockWorld == next.blocks?.counts.world,
+                      previous.blockCatalog == next.blocks?.catalog,
+                      previous.blockPoint == next.blocks?.point else { return nil }
                 return previous
-            })
+            }))
     }
 
     func acquire() -> Handle {
         let windowID = UUID()
-        let loader = loader(source: Source(query: "", context: context)) { [weak self] source in
+        let windowWork = work.makeScope()
+        let loader = loader(source: Source(query: "", context: context), scope: windowWork.makeScope()) { [weak self] source in
             guard let self else { throw CancellationError() }
             return try await self.readWindow(windowID, source: source)
         }
-        let window = Window(loader)
-        if isClosed { loader.close() } else { windows[windowID] = window }
+        let window = Window(loader, work: windowWork)
+        if isClosed { loader.close(); windowWork.close() } else { windows[windowID] = window }
         return Handle(id: windowID, window: window, owner: self)
     }
 
@@ -193,17 +267,20 @@ final class WorldQueryStore {
             shared[query] = nil
             entry.loader.close()
         } else {
-            entry.loader.request(source: source, isEnabled: source.context.isReady, reread: false)
+            entry.loader.request(source: source, isEnabled: source.context.isReady)
         }
     }
 
     private func update(_ window: Window, id: UUID, query: String) {
         guard !isClosed, windows[id] === window else { return }
-        let source = Source(query: query, context: context)
+        if query != window.loader.source.query, SearchQuery(query).filter == .block {
+            window.origins[query] = window.captureOrigin()
+        }
+        let source = source(for: query, window: window)
         if source != window.loader.source {
             let previous = window.shared
             previous?.users.remove(id)
-            window.shared = savedSearches.contains(query) ? sharedEntry(for: query) : nil
+            window.shared = savedSearches.contains(query) && SearchQuery(query).filter != .block ? sharedEntry(for: query) : nil
             window.shared?.users.insert(id)
             // Establish the new lease synchronously: removing a saved query before this
             // window's task starts must still let the already requested query finish.
@@ -221,7 +298,49 @@ final class WorldQueryStore {
                 return
             }
         }
-        window.loader.request(source: source, isEnabled: source.isActive && source.context.isReady, reread: false)
+        window.loader.request(source: source, isEnabled: source.isActive && source.context.isReady)
+    }
+
+    private func source(for query: String, window: Window) -> Source {
+        guard SearchQuery(query).filter == .block, let blockCounts else { return Source(query: query, context: context) }
+        if window.origins[query] == nil { window.origins[query] = window.captureOrigin() }
+        window.origins[query]?.update(players: context.currentPlayers.players)
+        let input = window.origins[query].map {
+            BlockQueryInput(counts: blockCounts.snapshot, catalog: blockCounts.catalog, point: $0.point)
+        }
+        return Source(query: query, context: context, blocks: input)
+    }
+
+    private func updateSavedBlocks(_ window: Window) {
+        let wanted = Set(savedSearches.all.filter { $0.isShown && SearchQuery($0.query).filter == .block }.map(\.query))
+        for (query, loader) in window.savedBlocks where !wanted.contains(query) {
+            loader.close()
+            window.savedBlocks[query] = nil
+        }
+        for query in wanted {
+            let source = source(for: query, window: window)
+            if window.savedBlocks[query] == nil {
+                let execute = execute
+                window.savedBlocks[query] = loader(source: source, scope: window.work.makeScope()) { source in
+                    let found = await execute(source.request)
+                    try Task.checkCancellation()
+                    return Value(source: source, results: found)
+                }
+            }
+            window.savedBlocks[query]?.request(source: source, isEnabled: context.isReady)
+        }
+        let active = window.loader.source.query
+        window.origins = window.origins.filter { wanted.contains($0.key) || $0.key == active }
+    }
+
+    private func updateBlockDemand() {
+        let points = windows.values.flatMap { window -> [BlockSearchPoint] in
+            let active = window.loader.source.query
+            return window.origins.compactMap { query, anchor in
+                query == active || window.savedBlocks[query] != nil ? anchor.point : nil
+            }
+        }
+        blockCounts?.setDemand(Set(points))
     }
 
     /// One world observation updates sources even with no visible window. A window only
@@ -235,6 +354,8 @@ final class WorldQueryStore {
             _ = $0.savedSearches.all
             _ = $0.singleplayerUUID()
             _ = $0.gameNames().identity
+            _ = $0.blockCounts?.snapshot
+            _ = $0.blockCounts?.catalog
         }) { store, _ in
             store.refresh()
         }
@@ -244,26 +365,35 @@ final class WorldQueryStore {
         guard !isClosed else { return }
         let current = Self.context(index: index, names: names, singleplayerUUID: singleplayerUUID(), gameNames: gameNames())
         if !context.hasSameInputs(as: current) { context = current }
-        for query in savedSearches.all.map(\.query) where savedSearches.contains(query) {
+        for query in savedSearches.all.map(\.query) where SearchQuery(query).filter != .block {
             let entry = sharedEntry(for: query)
             update(entry, query: query)
         }
-        for (id, window) in windows { update(window, id: id, query: window.loader.source.query) }
+        for (id, window) in windows {
+            update(window, id: id, query: window.loader.source.query)
+            updateSavedBlocks(window)
+        }
         for (query, entry) in shared { update(entry, query: query) }
+        updateBlockDemand()
     }
 
     private func canDisplay(_ value: Value?) -> Bool {
         guard !isClosed, let value else { return false }
+        if value.blockCatalog != nil {
+            guard value.blockCatalog == blockCounts?.catalog,
+                  value.blockWorld == blockCounts?.snapshot.world else { return false }
+        }
         return value.sources.gameNamesID == gameNames().identity && value.sources.singleplayerUUID == singleplayerUUID()
     }
 
-    func results(for query: String) -> [SearchHit] {
-        guard savedSearches.contains(query), let value = shared[query]?.loader.value, canDisplay(value) else { return [] }
-        return value.hits
+    func matches(for query: String) -> SearchMatches {
+        guard savedSearches.contains(query), let value = shared[query]?.loader.value, canDisplay(value) else { return .all([]) }
+        return value.matches
     }
 
     private var isSearchingSaved: Bool {
         !isClosed && savedSearches.all.contains {
+            guard SearchQuery($0.query).filter != .block else { return false }
             guard let entry = shared[$0.query] else { return true }
             return !entry.loader.source.context.isReady || entry.loader.isReading
         }
@@ -306,19 +436,25 @@ final class WorldQueryStore {
 
     private func releaseWindow(_ id: UUID) {
         guard let window = windows.removeValue(forKey: id) else { return }
+        window.work.close()
         window.loader.close()
+        for loader in window.savedBlocks.values { loader.close() }
         for (query, entry) in shared {
             entry.users.remove(id)
             for (waiterID, waiter) in entry.waiters where waiter.window == id { release(waiterID, from: entry) }
             update(entry, query: query)
         }
         window.shared = nil
+        updateBlockDemand()
     }
 
     func close() {
         sourceObservation?.cancel()
         work.close()
-        for window in windows.values { window.loader.close() }
+        for window in windows.values {
+            window.loader.close()
+            for loader in window.savedBlocks.values { loader.close() }
+        }
         for entry in shared.values {
             for waiter in entry.waiters.values { waiter.continuation.resume(returning: nil) }
             entry.waiters = [:]
@@ -326,6 +462,7 @@ final class WorldQueryStore {
         }
         windows = [:]
         shared = [:]
+        blockCounts?.setDemand([])
     }
 
     func waitForTasks() async { await work.waitUntilFinished() }
@@ -336,16 +473,22 @@ final class WorldQueryStore {
         private weak var owner: WorldQueryStore?
         var text: String {
             get { window.loader.source.query }
-            set { owner?.update(window, id: id, query: newValue) }
+            set {
+                owner?.update(window, id: id, query: newValue)
+                owner?.updateSavedBlocks(window)
+                owner?.updateBlockDemand()
+            }
         }
         var isClosed: Bool { owner == nil || owner?.isClosed == true || window.loader.isClosed }
         var isActive: Bool { window.loader.source.isActive }
         var isSearching: Bool {
-            !isClosed && ((isActive && (!window.loader.source.context.isReady || window.loader.isReading)) || owner?.isSearchingSaved == true)
+            !isClosed && ((isActive && (!window.loader.source.context.isReady || window.loader.isReading)) ||
+                owner?.isSearchingSaved == true || window.savedBlocks.values.contains { $0.isReading } ||
+                (!window.origins.isEmpty && owner?.blockCounts?.isReading == true))
         }
-        var results: [SearchHit] {
-            guard !isClosed, isActive, let value = window.loader.value, owner?.canDisplay(value) == true else { return [] }
-            return value.hits
+        var matches: SearchMatches {
+            guard !isClosed, isActive, let value = window.loader.value, owner?.canDisplay(value) == true else { return .all([]) }
+            return value.matches
         }
 
         fileprivate init(id: UUID, window: Window, owner: WorldQueryStore) {
@@ -354,12 +497,38 @@ final class WorldQueryStore {
             self.owner = owner
         }
 
+        func captureBlockOrigin(using capture: @escaping @MainActor () -> BlockSearchAnchor?) {
+            guard !isClosed else { return }
+            window.captureOrigin = capture
+            owner?.refresh()
+        }
+
+        func matches(for query: String) -> SearchMatches {
+            guard !isClosed, let owner else { return .all([]) }
+            if SearchQuery(query).filter == .block {
+                guard let value = window.savedBlocks[query]?.value, owner.canDisplay(value) else { return .all([]) }
+                return value.matches
+            }
+            return owner.matches(for: query)
+        }
+
+        func isSearchingFarther(for query: String) -> Bool {
+            !isClosed && SearchQuery(query).filter == .block && window.origins[query] != nil && owner?.blockCounts?.isReading == true
+        }
+
+        func hasOreDefinitions(for query: String) -> Bool {
+            SearchQuery(query).filter != .block || owner?.blockCounts?.catalog.hasOreDefinitions != false
+        }
+
         func waitForSearch() async {
             guard let owner else { return }
             while !isClosed {
                 await owner.index.waitForProjection()
                 owner.refresh()
+                await owner.blockCounts?.waitForCounts()
+                owner.refresh()
                 await window.loader.waitForCurrentRead()
+                for loader in window.savedBlocks.values { await loader.waitForCurrentRead() }
                 for query in owner.savedSearches.all.map(\.query) {
                     guard !isClosed, let entry = owner.shared[query] else { continue }
                     _ = await owner.wait(for: entry, window: id, source: entry.loader.source)
@@ -373,7 +542,7 @@ final class WorldQueryStore {
             owner?.releaseWindow(id)
             owner = nil
         }
-        func waitForTasks() async { await window.loader.waitUntilFinished() }
+        func waitForTasks() async { await window.work.waitUntilFinished() }
         isolated deinit { close() }
     }
 }

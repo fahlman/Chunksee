@@ -7,21 +7,20 @@ import Testing
     nonisolated private enum EvolvingGroup: String, CaseIterable, PersistedLayerGroup {
         case oldShown, oldHidden, newShown, newHidden
         var isShownByDefault: Bool { self == .oldShown || self == .newShown }
-        static let legacyVisibilityGroups: Set<Self> = [.oldShown, .oldHidden]
     }
 
     @Test func newGroupsUseTheirDefaultsWithoutOverridingOldChoices() throws {
         let decoder = JSONDecoder()
-        let legacy = try decoder.decode(SavedGroupVisibility<EvolvingGroup>.self,
-            from: Data(#"["oldHidden","unfamiliar"]"#.utf8))
         let explicit = try decoder.decode(SavedGroupVisibility<EvolvingGroup>.self,
             from: Data(#"{"oldShown":false,"oldHidden":true,"unfamiliar":true}"#.utf8))
-        #expect(legacy.shown == [.oldHidden, .newShown])
-        #expect(explicit.shown == legacy.shown)
-        let emptyLegacy = try decoder.decode(SavedGroupVisibility<EvolvingGroup>.self, from: Data("[]".utf8))
+        #expect(explicit.shown == [.oldHidden, .newShown])
         let emptyRecord = try decoder.decode(SavedGroupVisibility<EvolvingGroup>.self, from: Data("{}".utf8))
-        #expect(emptyLegacy.shown == [.newShown])
         #expect(emptyRecord.shown == [.oldShown, .newShown])
+        for oldList in [#"["oldHidden","unfamiliar"]"#, "[]"] {
+            #expect(throws: DecodingError.self) {
+                try decoder.decode(SavedGroupVisibility<EvolvingGroup>.self, from: Data(oldList.utf8))
+            }
+        }
 
         // Once the user hides the new default-shown group, reopening must honor that choice.
         let saved = try JSONEncoder().encode(SavedGroupVisibility<EvolvingGroup>(shown: [.oldHidden]))

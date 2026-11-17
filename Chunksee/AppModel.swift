@@ -16,9 +16,6 @@ final class AppModel {
     private let readWorld: @Sendable (URL) async throws -> WorldSnapshot
     private let readRegion: RegionReader.Read
 
-    /// Readers waiting for initial metadata; returned snapshots hold their own opening instead.
-    var openingRequestCount: Int { openingReads.values.reduce(0) { $0 + $1.requests.count } }
-
     private enum ReadPurpose { case opening, catalog, replacement }
 
     private struct OpeningRead {
@@ -40,10 +37,6 @@ final class AppModel {
         self.cacheRoot = cacheRoot
         self.readWorld = readWorld
         self.readRegion = readRegion
-        // The old window model's bookmarks cannot serve native document restoration.
-        for key in ["openWorlds", "recentWorlds", "lastWorldBookmark"] {
-            defaults.removeObject(forKey: key)
-        }
         names = PlayerNames(defaults: defaults)
         savedSearches = SavedSearches(defaults: defaults)
         worldFolders = WorldFolders(defaults: defaults)

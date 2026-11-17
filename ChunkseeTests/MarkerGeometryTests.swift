@@ -22,14 +22,8 @@ import Testing
     }
 
     private func structure() throws -> StructureMarker {
-        let nbt = NBT.compound(["structures": .compound(["starts": .compound([
-            "minecraft:village_plains": .compound(["id": .string("minecraft:village_plains"),
-                "ChunkX": .int(0), "ChunkZ": .int(0), "Children": .list([.compound([
-                    "id": .string("minecraft:jigsaw"), "BB": .intArray([-4, 60, -4, 3, 70, 3]),
-                ])]),
-            ]),
-        ])])])
-        return StructureMarker(try #require(StructureStart.starts(inChunk: nbt).first))
+        try StructureMarker(StructureTests().start("minecraft:village_plains", chunk: (0, 0),
+            pieces: [("minecraft:jigsaw", [-4, 60, -4, 3, 70, 3])]))
     }
 
     @Test func badgesKeepOneSizeWhenSelectedThenGrowWithTheBlockUpToTheCap() throws {

@@ -329,12 +329,14 @@ final class MapModel {
     /// Redraws regions whose files the game saved, and shows regions it just created.
     func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
         guard !isClosed, let currentRenderer else { return }
+        let listing = dimension.readRegionFiles()
+        guard listing.isComplete else { return }
+        let available = Set(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
-        let regions = regions ?? availableRegions.union(dimension.regionFiles().map { RegionPosition(x: $0.x, z: $0.z) })
+        let regions = regions ?? availableRegions.union(available)
         for region in regions {
-            let file = dimension.regionURL(.terrain, x: region.x, z: region.z)
-            if FileManager.default.fileExists(atPath: file.path) { availableRegions.insert(region) } else { availableRegions.remove(region) }
+            if available.contains(region) { availableRegions.insert(region) } else { availableRegions.remove(region) }
         }
         let affected = currentRenderer.samplesNeighborBiomes
             ? regions.reduce(into: Set<RegionPosition>()) { $0.formUnion(RegionTileRenderer.neighboringRegions(around: $1)) }
@@ -348,7 +350,12 @@ final class MapModel {
         invalidateDetail(in: affected, keepingImages: true)
         let removed = affected.subtracting(availableRegions)
         invalidateDetail(in: removed, keepingImages: false)
-        for region in removed { detailSurfaces[region] = nil }
+        for region in removed {
+            tiles[region] = nil
+            previews[region] = nil
+            detailSurfaces[region] = nil
+        }
+        stale.subtract(removed)
         if !affected.isDisjoint(with: shadowSources) { invalidateShadows() }
         failed.subtract(affected)
         forgetTopBlocks(in: regions)

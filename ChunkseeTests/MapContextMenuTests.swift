@@ -238,7 +238,7 @@ import Testing
             content.places = [place]
             try await check(place, content: content, copied: "-7 -23 -4", block: CGPoint(x: -7, y: -4))
 
-            var structure = StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
+            var structure = try StructureMarker(StructureTests().start("minecraft:mineshaft", chunk: (-1, -1),
                                               pieces: [("piece", [-14, -60, -14, -11, -41, -11])]))
             content = MapContent(gameNames: .unavailable)
             content.structures = [structure]

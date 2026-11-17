@@ -23,10 +23,10 @@ struct SavedQueryWorkTests {
         var drained = false
         let closing = Task.immediate { await work.waitUntilFinished(); drained = true }
         #expect(!drained)
-        await gate.finish("saved", with: ["saved": []])
+        await gate.finish("saved", with: ["saved": .all([])])
         await pending.value
         await closing.value
-        #expect(drained && !model.isSearching && model.results(for: "saved").isEmpty)
+        #expect(drained && !model.isSearching && model.matches(for: "saved").hits.isEmpty)
         model.text = "after"
         await model.waitForSearch()
         #expect(await gate.requested == ["saved"])
@@ -42,15 +42,15 @@ struct SavedQueryWorkTests {
         await gate.waitForRequest("second")
         first.queryStore.close()
         await firstWaiter.value
-        #expect(!first.isSearching && first.results(for: "saved").isEmpty)
+        #expect(!first.isSearching && first.matches(for: "saved").hits.isEmpty)
         await gate.waitForCancellation("first")
         var drained = false
         let closing = Task.immediate { await first.queryStore.waitForTasks(); drained = true }
         #expect(!drained)
-        await gate.finish("first", with: ["saved": []])
+        await gate.finish("first", with: ["saved": .all([])])
         await closing.value // The second world's pass is deliberately still held.
         #expect(drained && second.isSearching)
-        await gate.finish("second", with: ["saved": []])
+        await gate.finish("second", with: ["saved": .all([])])
         await secondWaiter.value
         #expect(!second.isSearching)
         await first.closeTestWorld()

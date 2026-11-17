@@ -9,16 +9,10 @@ import Testing
     private let center = CGPoint(x: 200, y: 100)
 
     private func structure() throws -> StructureMarker {
-        let nbt = NBT.compound(["structures": .compound(["starts": .compound([
-            "minecraft:stronghold": .compound(["ChunkX": .int(-7), "ChunkZ": .int(-3),
-                "Children": .list([.compound([
-                    "id": .string("minecraft:shstart"), "BB": .intArray([-101, 40, -43, -2, 59, 16]),
-                ]), .compound([
-                    "id": .string("minecraft:shpr"), "BB": .intArray([-86, 45, -28, -81, 49, -23]),
-                ])]),
-            ]),
-        ])])])
-        return StructureMarker(try #require(StructureStart.starts(inChunk: nbt).first))
+        try StructureMarker(StructureTests().start("minecraft:stronghold", chunk: (-7, -3), pieces: [
+            ("minecraft:shstart", [-101, 40, -43, -2, 59, 16]),
+            ("minecraft:shpr", [-86, 45, -28, -81, 49, -23]),
+        ]))
     }
 
     @Test func structureDrawingPickingAndAccessibilityShareCoordinatesAndBadgeGeometry() throws {

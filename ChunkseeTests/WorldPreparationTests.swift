@@ -1,6 +1,7 @@
 import ChunkseeKit
 import ChunkseeKitTestSupport
 import Foundation
+import Synchronization
 import Testing
 @testable import ChunkseeTestHost
 
@@ -40,6 +41,50 @@ import Testing
         })
     }
 
+    @Test(arguments: [false, true])
+    func openingReadsEachInputOnceAndKeepsSavedPlayersWhenPreparingDefinitions(useGameFiles: Bool) async throws {
+        let game = try self.game("ward"), root = try TestWorld.make(chunks: [], dimensionSettings: [
+            "minecraft:overworld": TestWorld.noiseDimension(type: .string("minecraft:overworld"),
+                                                           noise: .string("minecraft:overworld"))
+        ])
+        defer { game.remove(); try? FileManager.default.removeItem(at: root) }
+        let world = try World(contentsOf: root)
+        let file = world.playerDataDirectory.appendingPathComponent("00000001-0000-0002-0000-000300000004.dat")
+        try Fixtures.writeGzippedNBT(.compound([
+            "DataVersion": .int(5023), "Dimension": .string("minecraft:overworld"),
+            "Pos": .list([.double(12), .double(64), .double(3)])
+        ]), to: file)
+        let counts = Mutex((dimensions: 0, players: 0)), definitions = Scans()
+        let snapshot = try WorldSnapshot.readContents(root, readDimensions: { world in
+            counts.withLock { $0.dimensions += 1 }
+            return world.dimensions()
+        }, readPlayers: { world in
+            counts.withLock { $0.players += 1 }
+            return world.players()
+        })
+        defer { snapshot.access.release() }
+        #expect(snapshot.details.definitions == WorldDefinitions())
+        #expect(snapshot.players.count == 1 && snapshot.players.first?.position?.x == 12)
+        // If preparation parses the player files again, it will incorrectly discard this
+        // opening's saved players. This checks the real read path, not only a callback count.
+        try FileManager.default.removeItem(at: file)
+        let minecraft = MinecraftResources(defaults: TestDefaults.make())
+        if useGameFiles { minecraft.choose(game.root) }
+        let prepared = try await WorldPreparation.read(snapshot, minecraft: minecraft) { world, dimensions, library in
+            await definitions.record()
+            #expect((library != nil) == useGameFiles)
+            #expect(dimensions.map(\.id) == snapshot.dimensions.map(\.id))
+            return try await WorldDefinitions.read(world, dimensions: dimensions, library: library).value
+        }
+        #expect(counts.withLock { $0.dimensions } == 1)
+        #expect(counts.withLock { $0.players } == 1)
+        #expect(await definitions.count == 1)
+        #expect(prepared.snapshot.players.count == 1 && prepared.snapshot.players.first?.position?.x == 12)
+        #expect(prepared.snapshot.details.dimensionSettings["minecraft:overworld"] != nil)
+        #expect((prepared.snapshot.details.definitions.enchantments["test:ward"] != nil) == useGameFiles)
+        await minecraft.waitUntilIdle()
+    }
+
     @Test func unchangedReopenUsesTheCompletedCacheWithEitherArtworkSetting() async throws {
         let game = try self.game("ward"), changedGame = try self.game("replacement")
         let root = try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0, palette: ["minecraft:stone"]) { _, _, _ in 0 }])
@@ -55,16 +100,15 @@ import Testing
         ]), to: world.playerDataDirectory.appendingPathComponent("00000001-0000-0002-0000-000300000004.dat"))
         let initial = try await WorldSnapshot.read(root)
         #expect(initial.details.definitions.enchantments["test:ward"] == nil)
-        #expect(initial.players.first?.maxHealth == nil)
+        #expect(initial.players.first?.maximumHealth(enchantments: initial.details.definitions.enchantments) == nil)
         initial.access.release()
 
         let firstModel = model(game: game, cache: cache, scans: scans)
         let first = try await open(root, model: firstModel)
         defer { first.close() }
         #expect(first.resources.details.definitions.enchantments["test:ward"] != nil)
-        #expect(first.players.first?.maxHealth == 20)
+        #expect(first.players.first?.maximumHealth(enchantments: first.details.definitions.enchantments) == 20)
         let firstReader = try #require(first.resources.readers["minecraft:overworld"])
-        #expect(firstReader.scanOptions.enchantments == first.resources.details.definitions.enchantments)
         await first.resources.index.waitForIndex()
         first.resources.refreshGameAssets()
         await first.resources.waitForRefresh()
@@ -83,7 +127,7 @@ import Testing
             next.resources.refreshGameAssets()
             await next.resources.waitForRefresh()
             #expect(next.resources !== first.resources)
-            #expect(next.players.first?.maxHealth == 20)
+            #expect(next.players.first?.maximumHealth(enchantments: next.details.definitions.enchantments) == 20)
             #expect(await scans.count == 1)
             #expect(try cacheFiles(cache) == saved)
             next.close(); await next.waitUntilClosed(); await nextModel.names.minecraft.waitUntilIdle()
@@ -93,10 +137,10 @@ import Testing
         let changed = try await open(root, model: changedModel)
         defer { changed.close() }
         await changed.resources.index.waitForIndex()
-        #expect(await scans.count == 2)
+        #expect(await scans.count == 1)
         #expect(changed.resources.details.definitions.enchantments["test:replacement"] != nil)
-        #expect(changed.players.first?.maxHealth == nil)
-        #expect(try cacheFiles(cache) != saved)
+        #expect(changed.players.first?.maximumHealth(enchantments: changed.details.definitions.enchantments) == nil)
+        #expect(try cacheFiles(cache) == saved)
         changed.close(); await changed.waitUntilClosed(); await changedModel.names.minecraft.waitUntilIdle()
         await firstModel.names.minecraft.waitUntilIdle()
     }
@@ -125,12 +169,12 @@ import Testing
         minecraft.choose(old.root)
         let library = try #require(await minecraft.library()), snapshot = try await WorldSnapshot.read(root)
         defer { snapshot.access.release() }
-        let retired = try await WorldPreparation.readingGameData(snapshot, library: library.data)
-        let gate = AsyncReadGate<WorldSnapshot>()
+        let retired = try await WorldDefinitions.read(snapshot.world, dimensions: snapshot.dimensions, library: library.data).value
+        let gate = AsyncReadGate<WorldDefinitions>()
         let task = Task {
-            try await WorldPreparation.read(snapshot, minecraft: minecraft) { snapshot, data in
-                if data.identity == library.identity { return await gate.read("retired") }
-                return try await WorldPreparation.readingGameData(snapshot, library: data)
+            try await WorldPreparation.read(snapshot, minecraft: minecraft) { world, dimensions, data in
+                if data?.identity == library.identity { return await gate.read("retired") }
+                return try await WorldDefinitions.read(world, dimensions: dimensions, library: data).value
             }
         }
         await gate.waitForRequest("retired")
@@ -149,15 +193,15 @@ import Testing
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let minecraft = MinecraftResources(defaults: TestDefaults.make())
         minecraft.choose(game.root)
-        let snapshot = try await WorldSnapshot.read(root), gate = AsyncReadGate<WorldSnapshot>()
+        let snapshot = try await WorldSnapshot.read(root), gate = AsyncReadGate<WorldDefinitions>()
         defer { snapshot.access.release() }
         let task = Task {
-            try await WorldPreparation.read(snapshot, minecraft: minecraft) { _, _ in await gate.read("opening") }
+            try await WorldPreparation.read(snapshot, minecraft: minecraft) { _, _, _ in await gate.read("opening") }
         }
         await gate.waitForRequest("opening")
         task.cancel()
         await gate.waitForCancellation("opening")
-        await gate.finish("opening", with: snapshot)
+        await gate.finish("opening", with: WorldDefinitions())
         await #expect(throws: CancellationError.self) { try await task.value }
         await minecraft.waitUntilIdle()
     }

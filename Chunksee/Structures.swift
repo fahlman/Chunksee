@@ -139,7 +139,7 @@ nonisolated enum StructureGroup: String, CaseIterable, Codable, Sendable {
 }
 
 /// One structure on the map.
-nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
+nonisolated struct StructureMarker: Identifiable, Equatable, Sendable {
     var id: String
     var structureID: String
     var group: StructureGroup
@@ -153,7 +153,7 @@ nonisolated struct StructureMarker: Identifiable, Equatable, Sendable, Codable {
 
     var position: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
 
-    init(_ start: StructureStart, groups: StructureGroup.Catalog = .init(tags: [:])) {
+    init(_ start: StructureFacts, groups: StructureGroup.Catalog = .init(tags: [:])) {
         id = "\(start.id)@\(start.chunkX),\(start.chunkZ)"
         structureID = start.id
         group = groups.group(for: start.id)

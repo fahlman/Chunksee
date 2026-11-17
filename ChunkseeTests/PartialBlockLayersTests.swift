@@ -260,7 +260,7 @@ import Testing
         let section = Fixtures.section(y: 0, palette: palette,
             indices: (0..<4096).map { $0 / 256 == 15 ? 2 : $0 / 256 > 12 ? 1 : 0 })
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: [section]))])
+            dataVersion: 5023, sections: [section]))])
         let fixture = try fixture(), waterRoot = try world([15: "minecraft:water", 14: "minecraft:water", 13: "minecraft:water"])
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: waterRoot) }
         let saved = try World(contentsOf: root), assets = try fixture.library()
@@ -299,7 +299,7 @@ import Testing
 
     @Test func excessiveTranslucentTowersKeepAVisibleFlatSurface() throws {
         let sections = (0..<20).map { Fixtures.section(y: $0, palette: [.string("test:torch")], indices: []) }
-        let chunk = try Chunk(nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3, sections: sections))
+        let chunk = try Chunk(nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: 5023, sections: sections))
         var colors = RegionTileRenderer.ColorSections(chunk, filter: MapBlockFilter(), water: nil, coverage: {
             $0 == BlockState("test:torch") ? .partial(opacity: 1 / 64) : .unavailable
         })

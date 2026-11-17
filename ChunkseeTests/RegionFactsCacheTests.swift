@@ -19,7 +19,7 @@ import Testing
                                         indices: blocks, biomes: ["minecraft:plains"])
         let chunks = [[ground, unusedStone], [neighbor], [unusedStone]].enumerated().map { index, sections in
             TestWorld.ChunkSpec(x: index, z: 0, nbt: Fixtures.chunk(x: index, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         }
         let url = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -102,35 +102,43 @@ import Testing
         let facts = try dimension.scan(region: region, options: options)
         cache.store(facts, key: key)
         #expect(cache.load(key)?.containers.count == 1)
-        for other in [RegionScanOptions(blockIDs: []), RegionScanOptions(blockIDs: options.blockIDs, biomeSampleY: 64),
-                      RegionScanOptions(blockIDs: options.blockIDs, height: 384)] {
+        var empty = options, all = options, sample = options, height = options, pieces = options
+        empty.biomeIDs = []; all.biomeIDs = nil; sample.biomeSampleY = 64; height.height = 384; pieces.structurePieceIDs = nil
+        for other in [empty, all, sample, height, pieces] {
             #expect(cache.load(.init(dimension: dimension, region: region, options: .init(other))) == nil)
         }
         let directory = try #require(cache.directory)
         let file = try #require(try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
         let compressed = try Data(contentsOf: file)
-        let data = try (compressed as NSData).decompressed(using: .lzfse) as Data
-        let original = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        for invalid in ["transform", "interpretation", "fingerprint", "dimension", "options"] {
+        let original = try CacheArchiveFixture.read(file, as: RegionFacts.self)
+        for invalid in ["storage", "interpretation", "identity", "dimension", "options"] {
             var entry = original
-            var saved = try #require(entry["facts"] as? [String: Any])
             switch invalid {
-            case "transform": entry["transformVersion"] = ScanCache.transformVersion - 1
-            case "interpretation":
-                var version = try #require(saved["version"] as? [String: Any])
-                version["revision"] = -1
-                saved["version"] = version
-            case "fingerprint": entry["fingerprint"] = "different"
-            case "dimension": saved["dimension"] = "minecraft:the_nether"
-            default: saved["biomeSampleY"] = 64
+            case "storage":
+                entry.storageVersion = -1
+                try CacheArchiveFixture.write(entry, to: file)
+            case "identity":
+                entry.identity = "different"
+                try CacheArchiveFixture.write(entry, to: file)
+            default:
+                try CacheArchiveFixture.corruptPayload(entry, to: file) { saved in
+                    switch invalid {
+                    case "interpretation":
+                        var version = try #require(saved["version"] as? [String: Any])
+                        version["revision"] = -1
+                        saved["version"] = version
+                    case "dimension": saved["dimension"] = "minecraft:the_nether"
+                    default: saved["biomeSampleY"] = 64
+                    }
+                }
             }
-            entry["facts"] = saved
-            let invalidData = try JSONSerialization.data(withJSONObject: entry)
-            try ((invalidData as NSData).compressed(using: .lzfse) as Data).write(to: file)
             #expect(cache.load(key) == nil)
         }
         try compressed.write(to: file)
         #expect(cache.load(key)?.containers.count == 1)
+        var transformed = key
+        transformed.transform += 1
+        #expect(cache.load(transformed) == nil)
     }
 
     @Test func cachePreservesIntegerLimitsAndNonfiniteSavedNumbers() async throws {
@@ -182,6 +190,35 @@ import Testing
         #expect(await HeatMap.images(reader, previous: heat).isEmpty)
         try FileManager.default.removeItem(at: file)
         #expect(await DimensionContent.read(reader, previous: initial, change: .all).regions.isEmpty)
+        #expect(await HeatMap.images(reader, previous: heat).isEmpty)
+        await reader.close()
+    }
+
+    @Test(arguments: ChunkseeKit.Dimension.Folder.allCases)
+    func failedFolderDiscoveryRetainsTheIndexAndHeat(folder: ChunkseeKit.Dimension.Folder) async throws {
+        let url = try world()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
+        let directory = dimension.directory(folder)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let reader = RegionReader(dimension: dimension, cache: .off)
+        let initial = await DimensionContent.read(reader, previous: nil, change: .all)
+        let heat = await HeatMap.images(reader, previous: [:])
+        #expect(initial.containers.count == 1 && heat.count == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        for change in [RegionChange.all, .regions([.init(x: 0, z: 0)])] {
+            let retained = await DimensionContent.read(reader, previous: initial, change: change)
+            #expect(retained.containers == initial.containers && retained.storage == initial.storage)
+            #expect(Set(retained.regions.keys) == Set(initial.regions.keys))
+        }
+        #expect(await HeatMap.images(reader, previous: heat).count == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        let recovered = await DimensionContent.read(reader, previous: initial, change: .all)
+        #expect(recovered.containers == initial.containers)
+        // Actual terrain-folder removal, unlike failed discovery, removes its contributions.
+        try FileManager.default.removeItem(at: dimension.regionDirectory)
+        #expect(await DimensionContent.read(reader, previous: recovered, change: .all).regions.isEmpty)
         #expect(await HeatMap.images(reader, previous: heat).isEmpty)
         await reader.close()
     }

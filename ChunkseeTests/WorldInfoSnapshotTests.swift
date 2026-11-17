@@ -45,7 +45,7 @@ import Testing
         #expect(first.details.dayTime == 6000 && originalWeather?.isRaining == true)
         #expect(first.slimeChunks.seed == 42 && second.slimeChunks.seed == 42)
         let definitions = AsyncReadGate<WorldDefinitions>()
-        resources.readDefinitions = { _, _ in await definitions.read("held") }
+        resources.readDefinitions = { _, _, _ in .complete(await definitions.read("held")) }
         try Data([1, 2, 3]).write(to: weather)
         _ = try saved("game_rules", ["minecraft:keep_inventory": .byte(0)], at: root)
         _ = try saved("world_gen_settings", ["seed": .long(43)], at: root)
@@ -64,7 +64,7 @@ import Testing
         #expect(resources.details.weather == originalWeather && resources.details.definitions == originalDefinitions)
         await definitions.finish("held", with: originalDefinitions)
         await resources.waitForRefresh()
-        resources.readDefinitions = { try await WorldResources.readDefinitions($0, library: $1) }
+        resources.readDefinitions = { try await WorldResources.readDefinitions($0, library: $1, retaining: $2) }
         first.close(); await first.waitUntilClosed()
         #expect(!resources.isClosed)
 

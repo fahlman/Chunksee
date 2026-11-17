@@ -157,9 +157,10 @@ actor GameDataLibrary {
         return assets?.blockItemID(for: block.id).map { ItemStack(id: $0.description) }
     }
 
-    func definitions(in world: World) throws -> WorldDefinitions {
+    func definitions(in world: World, dimensions: [ChunkseeKit.Dimension],
+                     retaining previous: WorldDefinitions?) throws -> RefreshRead<WorldDefinitions> {
         try checkAvailable()
-        return try WorldDefinitions.read(world, assets: assets)
+        return try WorldDefinitions.read(world, dimensions: dimensions, assets: assets, retaining: previous)
     }
 
     func lighting(in world: World) throws -> [String: MapLighting] {
@@ -172,11 +173,12 @@ actor GameDataLibrary {
         return try world.nightMonsterLighting(assets: assets)
     }
 
-    func biomeColors(in world: World, artwork: GameArtworkLibrary?) async throws -> MapBiomeColors {
+    func biomeColors(in world: World, artwork: GameArtworkLibrary?,
+                     retaining previous: MapBiomeColors? = nil) async throws -> MapBiomeColors {
         let maps = try await artwork?.colorMaps() ?? [:]
         try checkAvailable()
         return try MapBiomeColors.read(in: world, source: GameResourceSource(data: self, artwork: artwork),
-                                       assets: assets, colorMaps: maps)
+                                       assets: assets, colorMaps: maps, retaining: previous)
     }
 }
 

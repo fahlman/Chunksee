@@ -63,7 +63,7 @@ import Testing
         let offset = (RegionTileRenderer.side + 1) * 4
         let gold = try #require(BlockColors.color(for: "minecraft:gold_block"))
         #expect(Array(pixels[offset..<offset + 4]) == [gold.red, gold.green, gold.blue, 255])
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(FileManager.default.fileExists(atPath: oldFile.path)) // cleanup belongs to world startup
     }
 
     @Test func oldStructureCacheIsReclassifiedByTheSharedIdentifierParser() async throws {
@@ -79,15 +79,16 @@ import Testing
         let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
         let cache = ScanCache(directory: world.appendingPathComponent("scan-cache"))
         let fingerprint = ScanCache.legacyFingerprint([dimension.regionURL(x: 0, z: 0), dimension.regionURL(.entities, x: 0, z: 0)])
-        var stale = StructureMarker(try #require(StructureStart.starts(inChunk: spec.nbt).first))
+        let facts = try dimension.scan(region: .init(x: 0, z: 0), options: RegionReader.options())
+        var stale = StructureMarker(try #require(facts.structures.first))
         stale.group = .other
         let oldFile = try #require(cache.directory).appendingPathComponent("structures.0.0.\(fingerprint).v16")
         try FileManager.default.createDirectory(at: oldFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try PropertyListEncoder().encode([stale])
+        let data = try PropertyListEncoder().encode([LegacyStructureMarker(stale)])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
         let groups = try StructureTagFixture.catalog()
         let markers = await TestWorld.index(RegionReader(dimension: dimension, cache: cache, inputs: .init(structureGroups: groups))).structures
         #expect(markers.count == 1 && markers.first?.group == .village && markers.first?.name(in: .unavailable) == "Village Plains")
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
     }
 }

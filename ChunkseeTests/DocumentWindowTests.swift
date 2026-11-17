@@ -83,7 +83,6 @@ import Testing
             }) {}
             #expect(opened.openingFailure == nil)
             #expect(opened.session?.selectedDimensionID == "minecraft:overworld")
-            #expect(model.openingRequestCount == 0)
             let session = try #require(opened.session)
             defaults.removeObject(forKey: "worldFolderBookmarks")
             let rereader = opened.makeReader()
@@ -129,7 +128,7 @@ import Testing
         // A snapshot read before the document moved takes apply's coordinated reread path.
         func displacedSnapshot() async throws -> DimensionSnapshot {
             DimensionSnapshot(source: .snapshot(try await WorldSnapshot.read(root)),
-                folder: .init(id: UUID(), url: root, legacyPath: nil), dimensionID: "minecraft:overworld",
+                folder: .init(id: UUID(), url: root), dimensionID: "minecraft:overworld",
                 documentURL: root.appendingPathComponent("previous-dimension-location"))
         }
         do {
