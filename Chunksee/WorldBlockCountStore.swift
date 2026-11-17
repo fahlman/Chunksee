@@ -109,7 +109,7 @@ final class WorldBlockCountStore {
 
     @concurrent private nonisolated static func read(_ source: Source, request: Request, previous: BlockCountSnapshot?,
                                                     read: Read,
-                                                    publish: RefreshLoader<Source, Request, BlockCountSnapshot>.Progress) async throws -> BlockCountSnapshot {
+                                                    publish: @Sendable (BlockCountSnapshot) async -> Bool) async throws -> BlockCountSnapshot {
         var dimensions = previous?.dimensions ?? [:], stamps = previous?.stamps ?? [:]
         let availableIDs = Set(source.dimensions.map(\.id))
         dimensions = dimensions.filter { availableIDs.contains($0.key) }

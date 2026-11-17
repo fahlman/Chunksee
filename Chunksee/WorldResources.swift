@@ -60,7 +60,7 @@ final class WorldResources {
     private let playerLoader: WorldPlayerLoader
     @ObservationIgnored private var gameResourceObservation: ModelObservation?
     @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
-        partialRead: { [weak self] source, _, previous in
+        partialRead: { @concurrent [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
             return try await source.worldSource.read { _ in try await read(source, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish, source: infoSource,
@@ -85,7 +85,7 @@ final class WorldResources {
         infoLoader.request(source: infoSource, isEnabled: true, refresh: .refresh)
     }
     @ObservationIgnored private lazy var mapLoader = RefreshLoader<WorldMapSource, RefreshInvalidation, WorldMapSnapshot>(
-        partialRead: { [weak self] source, _, previous in
+        partialRead: { @concurrent [weak self] source, _, previous in
             guard let read = await self?.readMaps else { throw CancellationError() }
             return try await source.worldSource.read { _ in try await read(source, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish,
@@ -165,7 +165,7 @@ final class WorldResources {
     @ObservationIgnored private lazy var nightLightingLoader = RefreshLoader(
         work: backgroundWork, priority: nil, whenInactive: .cancel,
         source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
-    ) { [weak self] source, _ in
+    ) { @concurrent [weak self] source, _ in
         guard let read = await self?.readNightLighting else { throw CancellationError() }
         return try await source.world.read { try await read($0, source.library) }
     }
@@ -183,7 +183,7 @@ final class WorldResources {
     @ObservationIgnored private lazy var lightingLoader = RefreshLoader(
         work: backgroundWork, priority: nil, whenInactive: .finish,
         source: LightingSource(world: readSource, generation: names.minecraft.generation, library: gameData)
-    ) { [weak self] source, _ in
+    ) { @concurrent [weak self] source, _ in
         guard let read = await self?.readLighting else { throw CancellationError() }
         return try await source.world.read { try await read($0, source.library) }
     }
@@ -209,7 +209,7 @@ final class WorldResources {
         return biomeLoader.value?.available(for: GameResourceSource(data: gameData, artwork: gameArtwork))
     }
     @ObservationIgnored private lazy var biomeLoader = RefreshLoader<BiomeSource, BiomeRequest, MapBiomeColors>(
-        partialRead: { [weak self] source, request, previous in
+        partialRead: { @concurrent [weak self] source, request, previous in
             guard let read = await self?.readBiomeColors else { throw CancellationError() }
             let colors = try await source.world.read {
                 try await read($0, source.data, source.artwork, previous, request == .contents)
@@ -874,7 +874,7 @@ final class WorldResources {
 
     private func refresh() async {
         let source = readSource
-        guard (try? await source.read { _ in true }) == true,
+        guard (try? await source.read { @Sendable _ async in true }) == true,
               !isClosed, source == readSource else { return }
         // Unavailable roots keep these invalidations for the next save/reconnect event.
         // Each reader also checks its own boundary because demand can start without an event.
