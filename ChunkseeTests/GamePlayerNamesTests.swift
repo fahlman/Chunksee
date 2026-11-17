@@ -11,7 +11,7 @@ import Testing
 
     private var savedPlayer: NBT {
         .compound([
-            "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "DataVersion": .int(Int32(5023)),
             "Dimension": .string("minecraft:overworld"),
             "Pos": .list([.double(-8.7), .double(48), .double(-16.2)]),
             "LastDeathLocation": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-9, 64, -17])]),

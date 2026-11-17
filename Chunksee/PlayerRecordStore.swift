@@ -46,7 +46,7 @@ final class PlayerRecordStore {
                 guard case .loaded(let library) = source.game?.selection, let read = await self?.read else {
                     throw CancellationError()
                 }
-                return try await read(source.world.world, uuid, source.name, library, previous)
+                return try await source.world.read { try await read($0, uuid, source.name, library, previous) }
             }, work: work, priority: .utility, whenInactive: .cancel, source: source(for: uuid),
                 firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, old, new in
                     // Game replacement changes title definitions, not this player's saved progress.

@@ -13,13 +13,13 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: url) }
         try Fixtures.writeGzippedNBT(.compound([
-            "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "DataVersion": .int(Int32(5023)),
             "data": .compound(["size": .double(64), "center_x": .double(10_000), "center_z": .double(10_000)]),
         ]), to: url.appendingPathComponent("dimensions/minecraft/overworld/data/minecraft/world_border.dat"))
         let world = try World(contentsOf: url)
         let dimension = try #require(world.dimension("minecraft:overworld"))
         let border = try #require(try world.worldBorder(of: dimension))
-        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 8, y: 8),
                            regionConcurrency: 1, chunkConcurrency: 1)
         let size = CGSize(width: 480, height: 320)
         map.requestTiles(visibleIn: size, displayScale: 1)

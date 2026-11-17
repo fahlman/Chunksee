@@ -39,25 +39,25 @@ nonisolated struct WorldInfoSnapshot: Sendable {
         }
         return failed ? .partial(next) : .complete(next)
     }
+
+    @concurrent
+    static func refreshed(_ world: World, dimensions: [ChunkseeKit.Dimension],
+                          retaining previous: Self?) async throws -> RefreshRead<Self> {
+        try Task.checkCancellation()
+        let current = try World(contentsOf: world.url)
+        let result = read(current, dimensions: dimensions, retaining: previous)
+        try Task.checkCancellation()
+        return result
+    }
 }
 
 /// Catalog changes replace a read's inputs; ordinary saves keep this source and coalesce.
 nonisolated struct WorldInfoSource: Equatable, Sendable {
     let worldSource: WorldReadSource
-    var url: URL { worldSource.world.url }
     let dimensions: [ChunkseeKit.Dimension]
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.worldSource == rhs.worldSource && lhs.dimensions.count == rhs.dimensions.count &&
             zip(lhs.dimensions, rhs.dimensions).allSatisfy { $0.0.id == $0.1.id && $0.0.url == $0.1.url }
-    }
-
-    @concurrent
-    func read(retaining previous: WorldInfoSnapshot?) async throws -> RefreshRead<WorldInfoSnapshot> {
-        try Task.checkCancellation()
-        let world = try World(contentsOf: url)
-        let result = WorldInfoSnapshot.read(world, dimensions: dimensions, retaining: previous)
-        try Task.checkCancellation()
-        return result
     }
 }

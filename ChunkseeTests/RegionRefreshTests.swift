@@ -14,7 +14,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let reads = Reads()
-        let reader = RegionReader(dimension: dimension, cache: .off, read: { dimension, region, options in
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off, read: { dimension, region, options in
             await reads.record(dimension.id, region)
             return try await RegionReader.scan(dimension, region: region, options: options)
         })
@@ -102,7 +102,7 @@ import Testing
 
     private func matchesCompleteRead(_ resources: WorldResources, dimension: ChunkseeKit.Dimension) async throws {
         let definitions = resources.details.definitions
-        let reader = RegionReader(dimension: dimension, cache: .off,
+        let reader = RegionReader(world: resources.readSource, dimension: dimension, cache: .off,
             inputs: .init(dimensionID: dimension.id, definitions: definitions))
         let complete = await DimensionContent.read(reader, previous: nil, change: .all)
         await reader.close()
@@ -139,7 +139,7 @@ import Testing
         let cache = ScanCache(directory: root)
         let region = RegionPosition(x: 0, z: 0)
         let old = try TestWorld.legacyCache([Int](repeating: 0, count: 1024), name: "inhabitedTimes.0.0.unchanged.v14", directory: root)
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache)
         let times = try #require(await reader.facts(region)).inhabitedTimes
         #expect(times[3 * 32 + 2] == 7200)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))
@@ -265,6 +265,87 @@ import Testing
         await resources.waitUntilClosed()
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true])
+    func unavailableWorldRetainsItsSnapshotButAvailableWorldAppliesFolderDeletion(wholeWorld: Bool, legacy: Bool) async throws {
+        let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
+        let parked = url.appendingPathExtension("unavailable")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: parked)
+        }
+        if legacy {
+            try FileManager.default.moveItem(at: url.appendingPathComponent("dimensions/minecraft/overworld/region"),
+                                             to: url.appendingPathComponent("region"))
+            try FileManager.default.removeItem(at: url.appendingPathComponent("dimensions"))
+        }
+        let resources = try await self.resources(url, reads: Reads())
+        let session = WorldSession(resources: resources, dimensionID: overworld)
+        do {
+            let dimension = try #require(resources.dimensions.first { $0.id == overworld })
+            let map = try #require(session.map)
+            map.viewport.center = CGPoint(x: 512, y: 8)
+            map.requestTiles(visibleIn: CGSize(width: 800, height: 300), displayScale: 1)
+            session.visibility.showsTimeSpent = true
+            session.search.text = "block:diamond"
+            await resources.waitForRefresh()
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            let regions = [RegionPosition(x: 0, z: 0), RegionPosition(x: 1, z: 0)]
+            let tiles = try regions.map { try #require(map.tiles[$0]) }
+            let heat = try regions.map { try #require(session.heatMap.visibleImages?[$0]) }
+            #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 2)
+            #expect(session.search.matches(for: session.search.text).hits.count == 2)
+
+            // The same broad event must distinguish an unavailable source from a legitimate
+            // deletion inside a still-readable world. No volume or real watcher is involved.
+            let source = wholeWorld ? url : dimension.regionDirectory
+            try FileManager.default.moveItem(at: source, to: parked)
+            await changed([url], in: resources)
+            // These can also be demanded without a watcher event. Retention cannot depend
+            // solely on WorldResources declining the broad refresh above.
+            map.regionsChanged()
+            session.heatMap.load(reread: true)
+            resources.index.rebuild(firstDimension: overworld)
+            await resources.index.waitForIndex()
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            if wholeWorld {
+                #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 2)
+                #expect(map.availableRegions == Set(regions))
+                #expect(session.search.matches(for: session.search.text).hits.count == 2)
+                for (index, region) in regions.enumerated() {
+                    #expect(map.tiles[region] === tiles[index])
+                    #expect(session.heatMap.visibleImages?[region] === heat[index])
+                }
+            } else {
+                #expect(resources.index.index.dimensions[overworld]?.storage.isEmpty == true)
+                #expect(map.availableRegions.isEmpty && map.tiles.isEmpty)
+                #expect(session.heatMap.visibleImages?.isEmpty != false)
+                #expect(session.search.matches(for: session.search.text).hits.isEmpty)
+            }
+
+            try FileManager.default.moveItem(at: parked, to: source)
+            _ = try write([terrain(0, count: 7)], in: dimension, folder: .terrain, region: 0)
+            await changed([url], in: resources)
+            await resources.blockCounts.waitForCounts()
+            await session.search.waitForSearch()
+            await map.waitUntilIdle()
+            await session.heatMap.waitForReads()
+            #expect(resources.index.index.dimensions[overworld]?.storage.first?.count == 8)
+            #expect(map.availableRegions == Set(regions))
+            #expect(regions.allSatisfy { map.tiles[$0] != nil && session.heatMap.visibleImages?[$0] != nil })
+            #expect(session.search.matches(for: session.search.text).hits.map(\.count).sorted() == [1, 7])
+        } catch {
+            session.close(); resources.close(); await resources.waitUntilClosed()
+            throw error
+        }
+        session.close(); resources.close(); await resources.waitUntilClosed()
+    }
+
     @Test(arguments: [false, true]) func savedDataEventsKeepIndexTerrainAndHeatImages(legacy: Bool) async throws {
         let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
         defer { try? FileManager.default.removeItem(at: url) }
@@ -360,7 +441,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
         let gate = AsyncReadGate<DimensionContent>(), requests = Changes()
-        let index = WorldIndexStore(readers: [RegionReader(dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
+        let index = WorldIndexStore(readers: [RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)], work: BackgroundWork(), firstDimension: nil, playerRoster: PlayerRoster([]),
                                     readDimension: { _, _, change in
                                         let key = await requests.record(change)
                                         return await gate.read(key)

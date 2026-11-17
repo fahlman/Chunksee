@@ -30,7 +30,7 @@ final class WorldPlayerLoader: PlayerSnapshotSource {
             source: world, initialValue: PlayerSnapshot(players)) { source, _ in
                 let read = await reads.players
                 try Task.checkCancellation()
-                guard let players = await read(source.world) else { throw CancellationError() }
+                guard let players = try await source.read({ await read($0) }) else { throw CancellationError() }
                 try Task.checkCancellation()
                 return PlayerSnapshot(players)
             }

@@ -27,14 +27,14 @@ import Testing
     }
 
     private func progress(at root: URL, player: UUID) throws -> [URL: Data] {
-        var entries: [String: Any] = ["DataVersion": SaveVersion.java26_3]
+        var entries: [String: Any] = ["DataVersion": 5023]
         for (index, id) in [diamond, "test:literal", "test:dynamic", "test:missing_title", "test:unknown", "test:incomplete", "minecraft:recipes/test"].enumerated() {
             entries[id] = ["done": id != "test:incomplete", "criteria": ["found": "2026-10-\(20 - index) 12:00:00 +0000"]]
         }
         let files = [
             root.appendingPathComponent("players/advancements/\(player.uuidString.lowercased()).json"): try ItemPictureFixture.json(entries),
             root.appendingPathComponent("players/stats/\(player.uuidString.lowercased()).json"): try ItemPictureFixture.json([
-                "DataVersion": SaveVersion.java26_3, "stats": ["minecraft:custom": ["minecraft:deaths": 4]],
+                "DataVersion": 5023, "stats": ["minecraft:custom": ["minecraft:deaths": 4]],
             ]),
         ]
         for (url, data) in files { try write(data, to: url) }
@@ -50,7 +50,7 @@ import Testing
         let enabledPacks = ["vanilla", TestWorldResources.pack] + (enabled ? ["file/titles"] : [])
         let metadata = root.appendingPathComponent("level.dat")
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
-            "LevelName": .string("Title fixture"), "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "LevelName": .string("Title fixture"), "DataVersion": .int(Int32(5023)),
             "DataPacks": .compound(["Enabled": .list(enabledPacks.map(NBT.string))]),
         ])]), to: metadata)
         return metadata
@@ -139,7 +139,7 @@ import Testing
         let root = try TestWorld.make(chunks: []), player = UUID()
         defer { try? FileManager.default.removeItem(at: root) }
         let names = ["oldest", "second", "third", "fourth", "fifth", "newest"]
-        var files: [String: Data] = [:], saved: [String: Any] = ["DataVersion": SaveVersion.java26_3]
+        var files: [String: Data] = [:], saved: [String: Any] = ["DataVersion": 5023]
         for (index, name) in names.enumerated() {
             files["data/test/advancement/\(name).json"] = try ItemPictureFixture.json(["display": ["title": name]])
             saved["test:" + name] = ["done": true, "criteria": ["found": "2026-10-\(10 + index) 12:00:00 +0000"]]

@@ -19,12 +19,12 @@ import Testing
                                         indices: blocks, biomes: ["minecraft:plains"])
         let chunks = [[ground, unusedStone], [neighbor], [unusedStone]].enumerated().map { index, sections in
             TestWorld.ChunkSpec(x: index, z: 0, nbt: Fixtures.chunk(x: index, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         }
         let url = try TestWorld.make(chunks: chunks)
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("minecraft:overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let scan = await TestWorld.index(reader)
         #expect(scan.biomes == [ChunkPosition(x: 0, z: 0): "minecraft:desert"])
         #expect(scan.biomeAreas.count == 1 && scan.biomeAreas.first?.group.id == "minecraft:desert")
@@ -55,7 +55,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), count = Reads()
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region, options in
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache) { dimension, region, options in
             _ = await count.note()
             return try await RegionReader.scan(dimension, region: region, options: options)
         }
@@ -82,13 +82,42 @@ import Testing
         #expect(await reader.facts(region) != nil)
         #expect(await count.count == expectedReads + 1)
         await reader.close()
-        let uncached = RegionReader(dimension: dimension, cache: .off) { dimension, region, options in
+        let uncached = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off) { dimension, region, options in
             _ = await count.note()
             return try await RegionReader.scan(dimension, region: region, options: options)
         }
         _ = await uncached.facts(region); _ = await uncached.facts(region)
         #expect(await count.count == expectedReads + 3)
         await uncached.close()
+    }
+
+    @Test(.timeLimit(.minutes(1))) func losingTheWorldDuringAScanCannotReplaceOrCacheEmptyFacts() async throws {
+        let url = try world(), parked = url.appendingPathExtension("unavailable")
+        let cacheRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {
+            try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: parked)
+            try? FileManager.default.removeItem(at: cacheRoot)
+        }
+        let world = try World(contentsOf: url), source = WorldReadSource(world)
+        let dimension = try #require(world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
+        let cache = ScanCache(directory: cacheRoot), gate = AsyncReadGate<Void>()
+        let reader = RegionReader(world: source, dimension: dimension, cache: cache) { dimension, region, options in
+            await gate.read("held")
+            return try await RegionReader.scan(dimension, region: region, options: options)
+        }
+        let reading = Task { await reader.facts(region) }
+        do {
+            await gate.waitForRequest("held")
+            try FileManager.default.moveItem(at: url, to: parked)
+            await gate.releaseAllAndFuture(with: ())
+            #expect(await reading.value == nil)
+            #expect(!FileManager.default.fileExists(atPath: cacheRoot.path))
+            try FileManager.default.moveItem(at: parked, to: url)
+            #expect(await reader.facts(region)?.containers.count == 1)
+        } catch {
+            await gate.releaseAllAndFuture(with: ()); await reader.close(); _ = await reading.value; throw error
+        }
+        await reader.close()
     }
 
     @Test func optionsIdentityAndBothVersionsAreValidated() async throws {
@@ -170,7 +199,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache)
         let initial = await DimensionContent.read(reader, previous: nil, change: .all)
         let heat = await HeatMap.images(reader, previous: [:])
         #expect(initial.containers.count == 1 && heat.count == 1)
@@ -201,7 +230,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let directory = dimension.directory(folder)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let initial = await DimensionContent.read(reader, previous: nil, change: .all)
         let heat = await HeatMap.images(reader, previous: [:])
         #expect(initial.containers.count == 1 && heat.count == 1)
@@ -229,7 +258,7 @@ import Testing
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let region = RegionPosition(x: 0, z: 0), count = Reads(), gate = AsyncReadGate<Void>()
         let cache = ScanCache(directory: url.appendingPathComponent("test-cache"))
-        let reader = RegionReader(dimension: dimension, cache: cache) { dimension, region, options in
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: cache) { dimension, region, options in
             let facts = try await RegionReader.scan(dimension, region: region, options: options)
             if await count.note() == 1 { await gate.read("read") }
             return facts

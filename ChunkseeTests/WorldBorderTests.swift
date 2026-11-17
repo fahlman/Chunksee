@@ -15,7 +15,7 @@ import Testing
             let folder = url.appendingPathComponent("dimensions/minecraft/\(id)")
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("region"), withIntermediateDirectories: true)
             try Fixtures.writeGzippedNBT(.compound([
-                "DataVersion": .int(Int32(SaveVersion.java26_3)),
+                "DataVersion": .int(Int32(5023)),
                 "data": .compound(["size": .double(size), "center_x": .double(8), "center_z": .double(8)]),
             ]), to: folder.appendingPathComponent("data/minecraft/world_border.dat"))
         }

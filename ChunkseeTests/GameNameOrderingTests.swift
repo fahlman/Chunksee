@@ -111,7 +111,7 @@ import Testing
             for child in ["region", "entities"] {
                 try FileManager.default.createDirectory(at: folder.appendingPathComponent(child), withIntermediateDirectories: true)
             }
-            let chunk = NBT.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)),
+            let chunk = NBT.compound(["DataVersion": .int(Int32(5023)),
                                      "Position": .intArray([0, 0]), "Entities": .list(entities)])
             try Data(TestWorld.regionFile([.init(x: 0, z: 0, nbt: chunk)]))
                 .write(to: folder.appendingPathComponent("entities/r.0.0.mca"))

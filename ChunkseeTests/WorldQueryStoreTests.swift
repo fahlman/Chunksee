@@ -64,7 +64,7 @@ import Testing
         let fixtures = ShoulderPetTests(), url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         func player(_ x: Double) -> PlayerInfo {
             PlayerInfo(uuid: fixtures.carrier, nbt: fixtures.playerData(pets: [fixtures.parrot(fixtures.bird)],
                 dimension: .string(fixtures.overworld), position: [x, 64, 0]))

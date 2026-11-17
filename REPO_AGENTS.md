@@ -109,11 +109,19 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.91.0`, resolved to `0.91.0` (`c416e73da5b3a2e85e3a64dfc3137cc011f86e1d`).
+  minor" from `0.93.0`, resolved to `0.93.0` (`044dfa493d471b73fccbc3f4e502cc1515de7bda`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.93.0 makes the block-count matching/nearest queries throw on task cancellation;
+    the app handles cancellation in its existing background query path and rejects retired
+    results before publication. Count progress coalesces in WorldQueryStore as described below.
+  - Kit 0.92.0 removes unused public declarations and discarded RegionContents projections.
+    Tests retain their original save-version inputs as literals after removal of
+    SaveVersion/DataVersion. Production uses the full region scan, whose saved facts and
+    regionFacts 36/blockCounts 1 interpretation remain unchanged. Neither adoption adds a
+    cache rebuild beyond the coordinated adoption below.
   - Kit 0.91.0 supplies full matching chunk/group totals alongside the nearest limited rows,
     and distinguishes failed region-folder discovery from a complete empty listing. Search
     headings keep the full total; refreshes retain the index, heat map, drawn tiles and block
@@ -656,7 +664,7 @@ invalidates older scan envelopes, including those that stored a resolved maximum
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
 | `MapDrawingInput.swift` | Resolved terrain presentation shared by the screen, Copy/Share, area export and their legends |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
-| `ContentView.swift`, `MapView.swift` | SwiftUI views |
+| `ContentView.swift`, `MapView.swift` | SwiftUI views; ContentView's small AppKit attachment projects native tab selection at the inspector and checks its owning window for presentation writes (see SelectionModel) |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types and resolved creature list routes, each dimension view's expanded groups and revealing a map marker's ancestors |
@@ -730,6 +738,23 @@ separate from its map anchor; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
 current shared world data. It refers weakly to its document and retains no detail snapshot.
+A private inspector ViewModifier projects AppKit's selected tab into the presented column,
+while SelectionModel retains the user's inspector choice. A hidden tab presents false; returning
+to it presents the retained choice again. A selected tab in a visible background window still
+presents its inspector, independently of app focus. SwiftUI's appearance preference does not
+identify selected tabs, and rejecting a background reconciliation write alone left the native
+column collapsed in both recorded original/reopened histories on #562.
+The narrow AppKit attachment observes `NSWindowTabGroup.selectedWindow` through its documented
+KVO support. Native window updates replace that observation when joining/separating tabs changes
+the group; detachment drops both observations. The owning view and group are weak references.
+Publication moves to the main actor and reads the current attachment; an old view cannot publish
+into a newer one. This also avoids changing SwiftUI state during view attachment. Only the private
+modifier observes the derived tab selection, so tab changes do not invalidate the sidebar/map body.
+Presentation writes still query current application activity, `isMainWindow` and native tab selection
+at callback time; the existing closed-document and sheet guards apply. Direct selection actions
+keep their own path. There is no second inspector choice, timer, retry or document identity reset.
+This selected-tab candidate still requires Claude's native original/reopened-history checks before
+it can be treated as a verified fix for #513.
 The document stops its observation and closes and drains its player-record reads with its other
 feature models. Native inspector bindings use `isInspectorShown`; showing details again preserves
 the selected identity, highlights and overlay without navigating. Only an empty selection with no
@@ -992,15 +1017,20 @@ Export uses the same current map. Tile renderer version 6 keys cutaways by Y and
 plus the latest cutaway per region, rather than every slider intermediate. Slider limits come from
 the saved dimension type, including custom definitions, without changing terrain or roof behavior.
 
-The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
-remember its selection immediately. Native tab/window focus does not change a session's dimension;
+WorldDocumentScene observes SwiftUI's focused scene session to prioritize that world's front dimension
+and remember its selection immediately. The app and native window tests share that activation and
+the standard sidebar and inspector commands. Each entry point supplies the termination query explicitly;
+the isolated test host supplies false because it does not run the app's termination flow.
+Native tab/window focus does not change a session's dimension;
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.
 SwiftUI ScenePhase has no Quit event. The existing NSApplicationDelegate hook exposes the early
 termination query so focus changes while AppKit closes tabs cannot overwrite the last front tab.
 Before returning the normal immediate reply, the app's existing termination hook asks AppModel
 to save every live dimension's current viewport/depth through WorldResources. This flushes the
 one-second viewport debounce without waiting for document deinitialization or changing the
-front dimension. No world files are written; native termination and restoration remain AppKit's. No tab/window focus bridge is used.
+front dimension. No world files are written; native termination and restoration remain AppKit's.
+The inspector's owning-window query and selected-tab projection stay at its presentation boundary
+(see SelectionModel).
 
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
@@ -1100,6 +1130,13 @@ query and source across open and later documents. Their publication key includes
 player-snapshot identity, names, game-language identity and singleplayer identity; no NBT comparison
 is needed. A source change cancels old work through the loader. Previous coherent hits remain
 visible while replacements load, except changed language or singleplayer labels clear immediately.
+Kit's block aggregation checks task cancellation between chunks and throughout ranking. The query
+store rejects cancelled results before publication; cancellation cannot replace retained hits with
+an empty result. Within WorldQueryStore, a running block pass finishes while newer count snapshots
+for the same query/context/world/catalog/origin coalesce into one pending newest input. Its result
+publishes before that next pass starts. Query, interpretation or origin changes still cancel
+immediately, as do disabled demand and closure. This policy applies to typed and saved block
+queries, uses no timer and leaves RefreshLoader's general source-retirement behavior unchanged.
 Clearing the current query clears its displayed hits immediately.
 Saving a completed typed query immediately shares that same result; retained hits from another
 query are never adopted as the new saved query's result.
@@ -1408,6 +1445,23 @@ pending reads by that folder ID. A move or reread admits one new WorldReadSource
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads
 retire; BackgroundWork drains their accepted work before releasing the old access. Compatible
 completed region facts remain visible while the replacement readers check the same world's files.
+WorldReadSource also owns the open root's availability boundary (#587). A read or folder listing
+must start and finish with an existing, readable, traversable world directory. Losing that root
+is a failed read, preserving completed values; a missing individual folder inside an accessible
+root still means a legitimate deletion. RegionReader and MapModel require the explicit source,
+including in tests; neither guesses a parent path or defaults to an unchecked source. Terrain,
+heat, index, independent block-count demand and saved metadata use this same boundary. A broad
+refresh that finds the root unavailable keeps its accumulated invalidations for the next event;
+it does not start a retry loop. Existing loader identities and cancellation still reject retired
+sources and closed owners. The controlled root-move tests establish this read/publication
+contract, not delivery of an actual volume-unmount or reconnect notification.
+The source keeps its World private; callers use its URL only for identity and cache locations.
+Metadata producers receive the World through its guarded read. Dimension producers receive their
+explicitly admitted dimension through the same boundary, preserving that opening's path even when
+an individual folder is deleted; a read never rediscovers or guesses a different layout. The source
+also owns complete region-set discovery. Composite index, heat and count passes use its availability
+transaction around their individually guarded reads. Tile, close-up, hover, copied-coordinate and
+inspector-heading reads share the boundary too; retained pixels and saved facts remain usable.
 MapModel keeps its view and chosen style, but has no currentRenderer while its dimension is absent;
 display, detail and export cannot read a retired path. Document rereads retain the same session,
 selection, navigation, search and SwiftUI view identity instead of copying a subset into a new one.
@@ -1890,7 +1944,8 @@ can add room when it opens. The 420-point height minimum follows the inspector, 
 original window height instead of adding the navigation chrome twice. The document scene must
 not put another minimum-width frame around the loaded view: that masks the columns' combined
 minimum and lets them overflow. Only the opening placeholder has its own 640-by-420 frame.
-The app and regression tests share WorldDocumentScene. Tests open real document windows with
+The app and regression tests share WorldDocumentScene, including focused-document activation and
+the sidebar and inspector commands. Tests open real document windows with
 synthetic files, shrink first to small and medium widths, then show World Info and a location
 inspector, with and without the newer-world banner. They verify the columns fit before any
 test-driven resize, hide the inspector, shrink again and invoke native Zoom. A disposable second

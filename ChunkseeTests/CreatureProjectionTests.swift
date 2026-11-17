@@ -24,7 +24,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let players = PlayerRoster([player(1)]), gate = AsyncReadGate<Bool>()
         let part = try content()
         let index = WorldIndexStore(readers: [reader], work: BackgroundWork(), firstDimension: nil,
@@ -55,7 +55,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let players = PlayerRoster([player(1)]), gate = AsyncReadGate<Bool>(), numbers = ReadNumbers()
         let part = try content()
         let index = WorldIndexStore(readers: [reader], work: BackgroundWork(), firstDimension: nil,
@@ -83,7 +83,7 @@ import Testing
         let url = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(World(contentsOf: url).dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(try World(contentsOf: url)), dimension: dimension, cache: .off)
         let players = PlayerRoster([player(1)]), gate = AsyncReadGate<Bool>()
         let part = try content()
         let index = WorldIndexStore(readers: [reader], work: BackgroundWork(), firstDimension: nil,

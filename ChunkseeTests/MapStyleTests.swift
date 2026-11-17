@@ -88,7 +88,7 @@ import Testing
         try Data(#"{"pack":{"description":"Synthetic height scale","min_format":121,"max_format":121}}"#.utf8)
             .write(to: pack.appendingPathComponent("pack.mcmeta"))
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
-            "LevelName": .string("Height Scale"), "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "LevelName": .string("Height Scale"), "DataVersion": .int(Int32(5023)),
             "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack), .string("file/custom")])])
         ])]), to: url.appendingPathComponent("level.dat"))
         let details = WorldDetails.read(try World(contentsOf: url))
@@ -167,7 +167,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 8, y: 8),
             renderTile: { renderer, _ in await render.read(renderer.style.rawValue) },
             readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
@@ -221,7 +221,7 @@ import Testing
         #expect(second.map?.style == .waterDepth)
         // An unreadable saved build range cannot enable a guessed height scale.
         let dimension = try #require(resources.world.dimension("overworld"))
-        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero)
         unknown.setStyle(.height)
         #expect(unknown.style == .normal)
         unknown.setStyle(.waterDepth)
@@ -320,7 +320,7 @@ import Testing
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
         let definitions = MapStyleDefinitions(.init(settings: settings, water: nil))
         let map = MapModel(definitions: { definitions.value }, gameResources: { .unavailable },
-            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: root)), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
         definitions.value = .unknown
@@ -384,7 +384,7 @@ import Testing
                 })
         }
         let chunk = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+            dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         return try TestWorld.make(chunks: [chunk], dimensionSettings: definitions ?? ["minecraft:overworld": definition(sea: 40)])
     }
 }

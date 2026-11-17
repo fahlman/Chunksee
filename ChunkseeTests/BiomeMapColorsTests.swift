@@ -698,7 +698,7 @@ import Testing
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gate = AsyncReadGate<Bool>(), reads = ReadNumbers(), work = BackgroundWork()
         let gameResources = TestGameResources()
-        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: work, world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 8, y: 8), regionConcurrency: 1,
             renderTile: { renderer, region in
                 // Only hold the visible tile under test. Shadow-height neighbors can finish
                 // normally without taking a gate intended for this tile's replacement.
@@ -970,7 +970,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gameResources = TestGameResources()
-        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 8, y: 8),
                            cacheDirectory: url.appendingPathComponent("tiles"))
         map.setCastsShadows(false)
         gameResources.value = MapGameResources(data: library.data, artwork: library, biomeColors: try await library.data.biomeColors(in: world, artwork: library))
@@ -1007,7 +1007,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: url) }
         let world = try World(contentsOf: url), dimension = try #require(world.dimension("overworld")), library = try fixture.library()
         let gameResources = TestGameResources()
-        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let map = MapModel(definitions: { .unknown }, gameResources: { gameResources.value }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero)
         gameResources.value = MapGameResources(data: library.data, artwork: library, biomeColors: try await library.data.biomeColors(in: world, artwork: library))
         map.setBiomeBlending(true)
         let plan = try MapExportPlan(bounds: CGRect(x: 0, y: 0, width: 16, height: 16), blocksPerPixel: 1)
@@ -1070,7 +1070,7 @@ import Testing
         let biomeCells = perBlock ? indices(biomes) : (0..<4).flatMap { y in (0..<4).flatMap { z in (0..<4).map { x in biomes(x * 4, y * 4, z * 4) } } }
         let section = Fixtures.section(y: 0, palette: palette, indices: indices(blocks),
             biomes: biomeIDs, biomeIndices: biomeCells, biomeBits: biomeBits)
-        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: perBlock ? SaveVersion.perBlockBiomes : SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
+        return .init(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: perBlock ? 5119 : 5023, sections: [section], extra: ["yPos": .int(0)]))
     }
 
     private func world(chunks: [TestWorld.ChunkSpec] = [], seed: Int64? = nil) throws -> URL {
