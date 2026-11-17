@@ -90,7 +90,7 @@ import Testing
             #expect(loaded.details.definitions.notableBlocks.ids(for: .tag("minecraft:diamond_ores")) == nil)
 
             let ores = root.appendingPathComponent("datapacks/catalog/data/minecraft/tags/block/ores.json")
-            try Fixtures.write(Array(#"{"values":["#minecraft:diamond_ores"]}"#.utf8), to: ores)
+            try Fixtures.write(Array(##"{"values":["#minecraft:diamond_ores"]}"##.utf8), to: ores)
             loaded.worldChanged([ores])
             await loaded.waitForRefresh()
             let known = loaded.details.definitions.notableBlocks
