@@ -403,6 +403,43 @@ import Testing
         #expect(map.detailImages[.init(x: -1, z: -1)]?.picture === current)
     }
 
+    @Test(.timeLimit(.minutes(1))) func losingTheWorldDuringACloseUpReadCannotPublishItsSurface() async throws {
+        let fixture = try fixture(), root = try world(), parked = root.appendingPathExtension("unavailable")
+        defer {
+            fixture.remove()
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: parked)
+        }
+        let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
+        let gate = AsyncReadGate<RegionTileRenderer.DetailSurface?>(), work = BackgroundWork()
+        let resources = TestGameResources(), artwork = try fixture.library()
+        let map = MapModel(definitions: { .unknown }, gameResources: { resources.value }, savedLighting: { nil }, nightLighting: { nil },
+            work: work, world: .init(try World(contentsOf: root)), dimension: dimension, center: CGPoint(x: -8, y: -8),
+            cacheDirectory: root.appendingPathComponent("tiles"), readDetail: { _, _ in await gate.read("held") })
+        do {
+            resources.value = MapGameResources(data: artwork.data, artwork: artwork, biomeColors: nil)
+            let size = CGSize(width: 64, height: 64)
+            map.viewport.scale = 4
+            map.requestTiles(visibleIn: size)
+            await map.waitUntilIdle()
+            await map.waitForRenders()
+            let region = RegionPosition(x: -1, z: -1), tile = try #require(map.tiles[.init(x: -1, z: -1)])
+            let surface = try #require(try await (try requiredRenderer(map)).detail(for: region))
+            map.viewport.scale = 8
+            map.requestTiles(visibleIn: size)
+            await gate.waitForRequest("held")
+            try FileManager.default.moveItem(at: root, to: parked)
+            await gate.releaseAllAndFuture(with: surface)
+            await map.waitUntilIdle()
+            await map.waitForRenders()
+            #expect(map.detailImages.isEmpty && map.tiles[region] === tile)
+        } catch {
+            map.close(); await gate.releaseAllAndFuture(with: nil); await work.waitUntilFinished()
+            await artwork.close(); throw error
+        }
+        map.close(); await work.waitUntilFinished(); await artwork.close()
+    }
+
     private func lighting(night: Bool) throws -> MapLighting {
         let time = try JSONDecoder().decode(DimensionTime.self, from: Data(#"{"has_skylight":true}"#.utf8))
         let saved = try #require(SkyLighting(sunAngle: night ? 180 : 0, moonAngle: 0,

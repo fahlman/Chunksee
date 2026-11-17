@@ -58,9 +58,8 @@ nonisolated enum HeatMap {
     /// are left out.
     @concurrent
     static func images(_ reader: RegionReader, previous: [RegionPosition: CGImage]) async -> [RegionPosition: CGImage] {
-        (try? await reader.world.read { _ in
-            let files = try reader.world.regionFiles(in: reader.dimension, folder: .terrain)
-            let available = Set(files.map { RegionPosition(x: $0.x, z: $0.z) })
+        (try? await reader.world.whileAvailable {
+            let available = try reader.world.regions(in: reader.dimension, folders: [.terrain])
             var images = previous.filter { available.contains($0.key) }
             for part in await reader.everyRegion(in: available, { await $0.facts($1) }) {
                 guard let facts = part.value else { continue }

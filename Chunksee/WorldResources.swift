@@ -37,7 +37,7 @@ final class WorldResources {
     private(set) var dimensionDocuments: [String: String]
     private let openingInfo: WorldInfoSnapshot
     private let openingMaps: WorldMapSnapshot
-    var infoSnapshot: WorldInfoSnapshot { infoLoader.value ?? WorldInfoSnapshot(world: readSource.world) }
+    var infoSnapshot: WorldInfoSnapshot { infoLoader.value ?? openingInfo }
     var details: WorldDetails {
         WorldDetails(definitions: definitionLoader.value?.definitions ?? WorldDefinitions(),
                      info: infoSnapshot, mapSnapshot: mapLoader.value ?? WorldMapSnapshot(sources: []))
@@ -62,7 +62,7 @@ final class WorldResources {
     @ObservationIgnored private(set) lazy var infoLoader = RefreshLoader<WorldInfoSource, RefreshInvalidation, WorldInfoSnapshot>(
         partialRead: { @concurrent [weak self] source, _, previous in
             guard let read = await self?.readInfo else { throw CancellationError() }
-            return try await source.worldSource.read { _ in try await read(source, previous) }
+            return try await source.worldSource.read { try await read($0, source.dimensions, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish, source: infoSource,
         initialValue: openingInfo, firstRequest: .refresh, merge: { _, newer in newer },
         retainingValue: { value, previous, current in
@@ -74,8 +74,8 @@ final class WorldResources {
             return retained
         }
     )
-    @ObservationIgnored var readInfo: @Sendable (WorldInfoSource, WorldInfoSnapshot?) async throws -> RefreshRead<WorldInfoSnapshot> = {
-        try await $0.read(retaining: $1)
+    @ObservationIgnored var readInfo: @Sendable (World, [ChunkseeKit.Dimension], WorldInfoSnapshot?) async throws -> RefreshRead<WorldInfoSnapshot> = {
+        try await WorldInfoSnapshot.refreshed($0, dimensions: $1, retaining: $2)
     }
     private var infoSource: WorldInfoSource {
         .init(worldSource: readSource, dimensions: dimensions.sorted { $0.id < $1.id })
@@ -87,13 +87,13 @@ final class WorldResources {
     @ObservationIgnored private lazy var mapLoader = RefreshLoader<WorldMapSource, RefreshInvalidation, WorldMapSnapshot>(
         partialRead: { @concurrent [weak self] source, _, previous in
             guard let read = await self?.readMaps else { throw CancellationError() }
-            return try await source.worldSource.read { _ in try await read(source, previous) }
+            return try await source.worldSource.read { try await read($0, previous) }
         }, work: backgroundWork, priority: .utility, whenInactive: .finish,
         source: WorldMapSource(worldSource: readSource), initialValue: openingMaps,
         firstRequest: .refresh, merge: { _, newer in newer }
     )
-    @ObservationIgnored var readMaps: @Sendable (WorldMapSource, WorldMapSnapshot?) async throws -> RefreshRead<WorldMapSnapshot> = {
-        try await $0.read(retaining: $1)
+    @ObservationIgnored var readMaps: @Sendable (World, WorldMapSnapshot?) async throws -> RefreshRead<WorldMapSnapshot> = { @concurrent world, previous in
+        WorldMapSnapshot.read(world, retaining: previous)
     }
     private func refreshMaps() {
         guard !isClosed else { return }
@@ -259,7 +259,7 @@ final class WorldResources {
         init(_ value: WorldSession) { self.value = value }
     }
 
-    var url: URL { readSource.world.url }
+    var url: URL { readSource.url }
     var defaultDimensionID: String? {
         settings.lastDimension.flatMap { id in dimensions.first { $0.id == id }?.id } ?? dimensions.first?.id
     }
@@ -310,7 +310,7 @@ final class WorldResources {
         let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions,
                            preparation: Task<Void, Never>?) in
             RegionReader(world: source, dimension: dimension,
-                cache: ScanCache(forWorldAt: source.world.url, dimensionID: dimension.id, root: cacheRoot),
+                cache: ScanCache(forWorldAt: source.url, dimensionID: dimension.id, root: cacheRoot),
                 inputs: .init(dimensionID: dimension.id, definitions: definitions),
                 cachePreparation: preparation, read: readRegion)
         }
@@ -771,7 +771,7 @@ final class WorldResources {
         var block: BlockState?
         guard let task = backgroundWork.start(priority: .utility, operation: {
             guard !Task.isCancelled else { return }
-            block = try? await read(dimension, position)
+            block = try? await source.read(in: dimension) { try await read($0, position) }
         }) else { return nil }
         await withTaskCancellationHandler {
             await task.value
@@ -874,8 +874,8 @@ final class WorldResources {
 
     private func refresh() async {
         let source = readSource
-        guard (try? await source.read { @Sendable _ async in true }) == true,
-              !isClosed, source == readSource else { return }
+        do { try await source.checkAvailability() } catch { return }
+        guard !isClosed, source == readSource else { return }
         // Unavailable roots keep these invalidations for the next save/reconnect event.
         // Each reader also checks its own boundary because demand can start without an event.
         let changed = pendingIndex, terrain = pendingTerrain, playersChanged = pendingPlayers

@@ -184,6 +184,42 @@ import SwiftUI
         }
     }
 
+    @Test(arguments: [false, true]) func unavailableWorldDiscardsHoverAndCoordinateReads(lostDuringRead: Bool) async throws {
+        try await withFixture { f in
+            let dimension = try f.dimension(), point = CGPoint(x: 8, y: 8)
+            let parked = f.url.appendingPathExtension("unavailable")
+            defer { try? FileManager.default.removeItem(at: parked) }
+            let renderer = RegionTileRenderer(dimension: dimension)
+            let expected = try #require(await MapModel.readTopBlocks(of: .init(x: 0, z: 0), using: renderer, cached: nil))
+            let gate = f.blocks
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil },
+                work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: dimension, center: .zero,
+                readTopBlocks: { _, _, _ in await gate.read("held") })
+            f.maps.append(map)
+            if !lostDuringRead { try FileManager.default.moveItem(at: f.url, to: parked) }
+            var copyFinished = false, copied: RegionTileRenderer.TopBlock?
+            map.loadTopBlocks(at: point)
+            map.readTopBlock(at: point) { copied = $0; copyFinished = true }
+            if lostDuringRead {
+                await gate.waitForRequest("held", count: 2)
+                try FileManager.default.moveItem(at: f.url, to: parked)
+            }
+            await gate.releaseAllAndFuture(with: expected)
+            await map.waitForTopBlocks()
+            await map.waitForCoordinateReads()
+            #expect(copyFinished && copied == nil && map.topBlock(at: point) == nil)
+            if !lostDuringRead { #expect(await gate.requested.isEmpty) }
+
+            try FileManager.default.moveItem(at: parked, to: f.url)
+            map.loadTopBlocks(at: point)
+            await map.waitForTopBlocks()
+            #expect(map.topBlock(at: point)?.id == "minecraft:bedrock")
+            map.readTopBlock(at: point) { copied = $0 }
+            await map.waitForCoordinateReads()
+            #expect(copied?.id == "minecraft:bedrock")
+        }
+    }
+
     @Test func exportedTerrainFollowsTheCutawayAndSurface() async throws {
         try await withFixture { f in
             let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8))

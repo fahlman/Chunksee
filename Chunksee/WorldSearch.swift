@@ -34,7 +34,7 @@ nonisolated struct DimensionContent: Sendable {
     /// Reads a dimension from its regions, through the reader's cached library facts.
     @concurrent
     static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
-        (try? await reader.world.read { _ in
+        (try? await reader.world.whileAvailable {
             await readAvailable(reader, previous: previous, change: change)
         }) ?? previous ?? DimensionContent()
     }

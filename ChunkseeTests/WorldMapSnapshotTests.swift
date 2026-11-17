@@ -38,9 +38,9 @@ import Testing
             session.selection.show(map)
             let image = try #require(MapContent(session: session).inGameMap?.image)
             if lostDuringRead {
-                resources.readMaps = { source, previous in
+                resources.readMaps = { world, previous in
                     await gate.read("held")
-                    return try await source.read(retaining: previous)
+                    return WorldMapSnapshot.read(world, retaining: previous)
                 }
                 resources.worldChanged([file]); await gate.waitForRequest("held")
             }
@@ -53,7 +53,7 @@ import Testing
 
             try FileManager.default.moveItem(at: parked, to: root)
             try FileManager.default.removeItem(at: file)
-            resources.readMaps = { try await $0.read(retaining: $1) }
+            resources.readMaps = { WorldMapSnapshot.read($0, retaining: $1) }
             // This event normally refreshes terrain only. The broad invalidation from the
             // unavailable interval must still reconcile saved maps when access returns.
             let dimension = try #require(resources.dimensions.first)

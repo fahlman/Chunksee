@@ -61,9 +61,9 @@ final class WorldBlockCountStore {
             await index.waitForIndex()
             await source.cachePreparation?.value
             try Task.checkCancellation()
-            return .complete(try await source.world.read { _ in
+            return .complete(try await source.world.whileAvailable {
                 try await Self.read(source, request: request, previous: previous, read: read, publish: { snapshot in
-                    (try? await source.world.read { _ in await publish(snapshot) }) ?? false
+                    (try? await source.world.whileAvailable { await publish(snapshot) }) ?? false
                 })
             })
         }, work: work, priority: .background, whenInactive: .cancel,
@@ -122,12 +122,13 @@ final class WorldBlockCountStore {
             }
             guard !points.isEmpty else { continue }
             try Task.checkCancellation()
-            guard let files = try? source.world.regionFiles(in: dimension, folder: .terrain) else { continue }
-            let regions = Set(files.map { RegionPosition(x: $0.x, z: $0.z) })
+            guard let regions = try? source.world.regions(in: dimension, folders: [.terrain]) else { continue }
             available[dimension.id] = regions
-            let currentStamps = Dictionary(uniqueKeysWithValues: regions.map {
-                ($0, BlockCountSnapshot.Stamp(file: CacheKey.fileStamp(for: dimension.regionURL(.terrain, at: $0))))
-            })
+            let currentStamps = try source.world.read(in: dimension) { dimension in
+                Dictionary(uniqueKeysWithValues: regions.map {
+                    ($0, BlockCountSnapshot.Stamp(file: CacheKey.fileStamp(for: dimension.regionURL(.terrain, at: $0))))
+                })
+            }
             var counts = dimensions[dimension.id] ?? BlockCountIndex(dimension: dimension.id)
             let changed = Set(regions.filter { stamps[dimension.id]?[$0] != currentStamps[$0] })
             counts = counts.invalidating(changed).updating(available: regions, replacements: [])
@@ -150,14 +151,16 @@ final class WorldBlockCountStore {
                       var counts = dimensions[id] else { continue }
                 try Task.checkCancellation()
                 let ids = request.blockIDs.union(counts.regions[region]?.counts?.blockIDs ?? [])
-                let key = BlockCountCache.Key(dimension: dimension, region: region, blockIDs: ids)
+                let key = try source.world.read(in: dimension) {
+                    BlockCountCache.Key(dimension: $0, region: region, blockIDs: ids)
+                }
                 stamps[id, default: [:]][region] = .init(file: key.file)
-                let cache = BlockCountCache(world: source.world.world.url, dimensionID: id, root: source.cacheRoot)
+                let cache = BlockCountCache(world: source.world.url, dimensionID: id, root: source.cacheRoot)
                 do {
                     let saved: RegionBlockCounts
                     if let cached = cache.load(key) { saved = cached }
                     else {
-                        saved = try await source.world.read { _ in try await read(dimension, region, ids) }
+                        saved = try await source.world.read(in: dimension) { try await read($0, region, ids) }
                         try Task.checkCancellation()
                         guard saved.dimension == id, saved.region == region, ids.isSubset(of: saved.blockIDs),
                               BlockCountCache.Key(dimension: dimension, region: region, blockIDs: ids) == key else {

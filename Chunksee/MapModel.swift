@@ -99,7 +99,18 @@ final class MapModel {
     @ObservationIgnored private let readTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
     var renderTile: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile? {
         let world = world, read = readTile
-        return { renderer, region in try await world.read { _ in try await read(renderer, region) } }
+        return { renderer, region in try await Self.read(renderer, from: world) { try await read($0, region) } }
+    }
+
+    /// Tiles, close-ups, hover and copied coordinates all receive the opening's admitted file
+    /// binding inside the same root boundary. Exports receive renderTile's captured source too.
+    nonisolated private static func read<Value: Sendable>(_ renderer: RegionTileRenderer, from source: WorldReadSource,
+        _ operation: @Sendable (RegionTileRenderer) async throws -> Value) async throws -> Value {
+        try await source.read(in: renderer.dimension) { dimension in
+            var bound = renderer
+            bound.dimension = dimension
+            return try await operation(bound)
+        }
     }
     /// Full color/normal images plus retained materials share the existing roughly 200 MB
     /// budget. Previews keep their separate 200 MB budget. Visible tiles are never evicted,
@@ -157,7 +168,7 @@ final class MapModel {
                                            chunkConcurrency: max(1, chunkConcurrency),
                                            cache: cacheDirectory.map(TileCache.init(directory:)), heightScale: definitions.heightScale)
         self.viewport = MapViewport(center: center, scale: 1)
-        self.availableRegions = Set((try? world.regionFiles(in: dimension, folder: .terrain))?.map { RegionPosition(x: $0.x, z: $0.z) } ?? [])
+        self.availableRegions = (try? world.regions(in: dimension, folders: [.terrain])) ?? []
         observeLighting()
         observeGameResources()
         observeDefinitions()
@@ -181,7 +192,7 @@ final class MapModel {
             renderer = RegionTileRenderer(dimension: dimension, surfaceContext: definitions.context,
                 chunkConcurrency: chunkConcurrency, cache: cacheDirectory.map(TileCache.init(directory:)),
                 heightScale: heightScale)
-            availableRegions = Set((try? world.regionFiles(in: dimension, folder: .terrain))?.map { RegionPosition(x: $0.x, z: $0.z) } ?? [])
+            availableRegions = (try? world.regions(in: dimension, folders: [.terrain])) ?? []
         } else {
             renderer = nil
             heightScale = nil
@@ -336,8 +347,7 @@ final class MapModel {
     /// Redraws regions whose files the game saved, and shows regions it just created.
     func regionsChanged(_ regions: Set<RegionPosition>? = nil) {
         guard !isClosed, let currentRenderer else { return }
-        guard let files = try? world.regionFiles(in: dimension, folder: .terrain) else { return }
-        let available = Set(files.map { RegionPosition(x: $0.x, z: $0.z) })
+        guard let available = try? world.regions(in: dimension, folders: [.terrain]) else { return }
         // A directory notification has no individual file names. Include the old set so deleted
         // regions are removed too, and the current set so newly created regions become visible.
         let regions = regions ?? availableRegions.union(available)
@@ -528,7 +538,7 @@ final class MapModel {
                   detailSurfaces[$0] == nil && !detailLoadsAttempted.contains($0)
               }) else { return }
         guard let renderer = currentRenderer else { return }
-        let id = UUID(), reader = readDetail, work = work, cacheWork = cacheWork
+        let id = UUID(), reader = readDetail, world = world, work = work, cacheWork = cacheWork
         guard let task = detailWork.start(priority: nil, operation: { [weak self] in
             // A just-rendered ordinary tile may still be writing its sidecar. Finish accepted
             // writes before loading, so zooming cannot cause a redundant world read.
@@ -536,7 +546,7 @@ final class MapModel {
             let surface: RegionTileRenderer.DetailSurface?
             do {
                 try Task.checkCancellation()
-                surface = try await reader(renderer, region)
+                surface = try await Self.read(renderer, from: world) { try await reader($0, region) }
             } catch { surface = nil }
             guard let self, self.detailLoadJob?.id == id, !self.isClosed else { return }
             self.detailLoadJob = nil
@@ -623,6 +633,12 @@ final class MapModel {
     @ObservationIgnored private var readoutRegion: RegionFile?
     typealias TopBlockReader = @Sendable (ChunkPosition, RegionTileRenderer, RegionFile?) async -> TopBlockRead?
     @ObservationIgnored private let readTopBlocksFor: TopBlockReader
+    private var topBlockReader: TopBlockReader {
+        let world = world, read = readTopBlocksFor
+        return { chunk, renderer, cached in
+            try? await Self.read(renderer, from: world) { await read(chunk, $0, cached) }
+        }
+    }
     private static let maxReadoutChunks = 64
 
     /// Readout reads not yet finished, cancelled or not.
@@ -645,7 +661,7 @@ final class MapModel {
         let chunk = ChunkPosition(containingBlockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         let index = ChunkPosition.localColumnIndex(blockX: Int(coordinates.x), blockZ: Int(coordinates.z))
         guard let renderer = currentRenderer else { completion(nil); return }
-        let cached = readoutRegion, read = readTopBlocksFor
+        let cached = readoutRegion, read = topBlockReader
         coordinateWork.start(priority: nil) { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self else { return }
@@ -704,7 +720,7 @@ final class MapModel {
     private func startTopBlockRead(of chunk: ChunkPosition) {
         let region = chunk.region, generation = regionGenerations[region, default: 0], id = UUID()
         guard let renderer = currentRenderer else { return }
-        let cached = readoutRegion, read = readTopBlocksFor
+        let cached = readoutRegion, read = topBlockReader
         guard let task = readoutWork.start(priority: nil, operation: { [weak self] in
             let result = await read(chunk, renderer, cached)
             guard let self, self.activeTopBlockReads[chunk]?.id == id else { return }

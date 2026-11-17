@@ -90,7 +90,7 @@ import Testing
         defer { resources.close() }
         let reads = AsyncReadGate<RefreshRead<WorldInfoSnapshot>>(), schedules = AsyncReadGate<Void>(), numbers = ReadNumbers()
         let lighting = AsyncReadGate<[String: MapLighting]>()
-        resources.readInfo = { _, _ in await reads.read(String(await numbers.next())) }
+        resources.readInfo = { _, _, _ in await reads.read(String(await numbers.next())) }
         resources.readLighting = { _, _ in await lighting.read("save") }
         resources.waitBeforeRefresh = { _ in await schedules.read("save") }
         let file = root.appendingPathComponent("data/minecraft/world_clocks.dat")
@@ -133,7 +133,7 @@ import Testing
         let resources = try await resources(root)
         defer { resources.close() }
         let dimension = try #require(resources.dimensions.first)
-        resources.readInfo = { _, _ in Issue.record("Unrelated input reread saved world facts"); throw CancellationError() }
+        resources.readInfo = { _, _, _ in Issue.record("Unrelated input reread saved world facts"); throw CancellationError() }
         resources.worldChanged([dimension.regionDirectory.appendingPathComponent("r.0.0.mca")])
         await resources.waitForRefresh()
         resources.names.minecraft.usesGameArtwork.toggle()
@@ -152,7 +152,7 @@ import Testing
         let resources = try await resources(root)
         defer { resources.close() }
         let reads = AsyncReadGate<RefreshRead<WorldInfoSnapshot>>(), numbers = ReadNumbers()
-        resources.readInfo = { _, _ in await reads.read(String(await numbers.next())) }
+        resources.readInfo = { _, _, _ in await reads.read(String(await numbers.next())) }
         resources.worldChanged([root.appendingPathComponent("data/minecraft/weather.dat")])
         await reads.waitForRequest("0")
         try FileManager.default.createDirectory(at: root.appendingPathComponent("dimensions/example/new/region"),

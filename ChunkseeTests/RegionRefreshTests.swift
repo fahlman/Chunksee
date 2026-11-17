@@ -265,13 +265,18 @@ import Testing
         await resources.waitUntilClosed()
     }
 
-    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
-    func unavailableWorldRetainsItsSnapshotButAvailableWorldAppliesFolderDeletion(wholeWorld: Bool) async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true])
+    func unavailableWorldRetainsItsSnapshotButAvailableWorldAppliesFolderDeletion(wholeWorld: Bool, legacy: Bool) async throws {
         let url = try TestWorld.make(chunks: [terrain(0), terrain(32)])
         let parked = url.appendingPathExtension("unavailable")
         defer {
             try? FileManager.default.removeItem(at: url)
             try? FileManager.default.removeItem(at: parked)
+        }
+        if legacy {
+            try FileManager.default.moveItem(at: url.appendingPathComponent("dimensions/minecraft/overworld/region"),
+                                             to: url.appendingPathComponent("region"))
+            try FileManager.default.removeItem(at: url.appendingPathComponent("dimensions"))
         }
         let resources = try await self.resources(url, reads: Reads())
         let session = WorldSession(resources: resources, dimensionID: overworld)

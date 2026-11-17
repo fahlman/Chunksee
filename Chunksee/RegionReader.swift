@@ -62,14 +62,7 @@ actor RegionReader {
 
     /// A failed source listing cannot prove any retained region has disappeared.
     nonisolated var availableRegions: Set<RegionPosition>? {
-        try? world.read { _ in
-            var regions = Set<RegionPosition>()
-            for folder in ChunkseeKit.Dimension.Folder.allCases {
-                let files = try world.regionFiles(in: dimension, folder: folder)
-                regions.formUnion(files.map { RegionPosition(x: $0.x, z: $0.z) })
-            }
-            return regions
-        }
+        try? world.regions(in: dimension, folders: ChunkseeKit.Dimension.Folder.allCases)
     }
 
     /// One value per saved terrain region, for layers such as Time Spent.
@@ -102,7 +95,7 @@ actor RegionReader {
         else {
             let world = world, dimension = dimension, cache = cache, read = read
             task = Task {
-                try await world.read { _ in
+                try await world.read(in: dimension) { dimension in
                     try await Self.readAndSave(dimension, key: key, cache: cache, read: read)
                 }
             }

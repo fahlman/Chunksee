@@ -98,8 +98,8 @@ import Testing
             try? FileManager.default.removeItem(at: url); try? FileManager.default.removeItem(at: parked)
             try? FileManager.default.removeItem(at: cacheRoot)
         }
-        let source = WorldReadSource(try World(contentsOf: url))
-        let dimension = try #require(source.world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
+        let world = try World(contentsOf: url), source = WorldReadSource(world)
+        let dimension = try #require(world.dimension("overworld")), region = RegionPosition(x: 0, z: 0)
         let cache = ScanCache(directory: cacheRoot), gate = AsyncReadGate<Void>()
         let reader = RegionReader(world: source, dimension: dimension, cache: cache) { dimension, region, options in
             await gate.read("held")

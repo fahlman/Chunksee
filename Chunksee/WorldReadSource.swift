@@ -4,7 +4,8 @@ import Foundation
 /// One admitted opening, reread or move. The folder's persistent identity belongs to the app
 /// registry; this identity retires work even when a reread keeps exactly the same URL.
 nonisolated final class WorldReadSource: Equatable, Sendable {
-    let world: World
+    private let world: World
+    var url: URL { world.url }
 
     init(_ world: World) { self.world = world }
 
@@ -27,12 +28,38 @@ nonisolated final class WorldReadSource: Equatable, Sendable {
         return value
     }
 
-    func regionFiles(in dimension: ChunkseeKit.Dimension, folder: ChunkseeKit.Dimension.Folder)
-        throws -> [(x: Int, z: Int, url: URL)] {
-        try read { _ in
-            let listing = dimension.readRegionFiles(folder)
-            guard listing.isComplete else { throw CocoaError(.fileReadUnknown) }
-            return listing.files
+    /// Keep the dimension admitted by the opening. Rediscovery during a read could redirect an
+    /// old-layout path, or mistake deletion of its region folder for loss of the whole source.
+    func read<Value>(in dimension: ChunkseeKit.Dimension,
+                     _ operation: (ChunkseeKit.Dimension) throws -> Value) throws -> Value {
+        try read { _ in try operation(dimension) }
+    }
+
+    @concurrent
+    func read<Value: Sendable>(in dimension: ChunkseeKit.Dimension,
+                              _ operation: @Sendable (ChunkseeKit.Dimension) async throws -> Value) async throws -> Value {
+        try await read { _ in try await operation(dimension) }
+    }
+
+    /// Composite consumers retain their prior publication if the root is lost between their
+    /// individually guarded reads. They do not receive a second unguarded file-access handle.
+    @concurrent
+    func whileAvailable<Value: Sendable>(_ operation: @Sendable () async throws -> Value) async throws -> Value {
+        try await read { _ in try await operation() }
+    }
+
+    @concurrent
+    func checkAvailability() async throws { try requireAvailable() }
+
+    func regions(in dimension: ChunkseeKit.Dimension, folders: [ChunkseeKit.Dimension.Folder]) throws -> Set<RegionPosition> {
+        try read(in: dimension) { dimension in
+            var result = Set<RegionPosition>()
+            for folder in folders {
+                let listing = dimension.readRegionFiles(folder)
+                guard listing.isComplete else { throw CocoaError(.fileReadUnknown) }
+                result.formUnion(listing.files.map { RegionPosition(x: $0.x, z: $0.z) })
+            }
+            return result
         }
     }
 
