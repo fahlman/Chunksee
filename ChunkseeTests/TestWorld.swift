@@ -29,7 +29,7 @@ nonisolated enum TestWorld {
     static func chunk(x: Int, z: Int, palette: [String], index: (Int, Int, Int) -> Int) -> ChunkSpec {
         let indices = (0..<16).flatMap { y in (0..<16).flatMap { z in (0..<16).map { x in index(x, y, z) } } }
         let section = Fixtures.section(y: 0, palette: palette.map(NBT.string), indices: indices)
-        return ChunkSpec(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: SaveVersion.java26_3,
+        return ChunkSpec(x: x, z: z, nbt: Fixtures.chunk(x: x, z: z, dataVersion: 5023,
             sections: [section], extra: ["yPos": .int(0)]))
     }
 
@@ -37,14 +37,14 @@ nonisolated enum TestWorld {
         let root = try Fixtures.tempDirectory()
         let regionDir = root.appendingPathComponent("dimensions/minecraft/overworld/region")
         try FileManager.default.createDirectory(at: regionDir, withIntermediateDirectories: true)
-        var levelData: [String: NBT] = ["LevelName": .string("Test"), "DataVersion": .int(Int32(SaveVersion.java26_3))]
+        var levelData: [String: NBT] = ["LevelName": .string("Test"), "DataVersion": .int(Int32(5023))]
         try TestWorldResources.write(to: root)
         levelData["DataPacks"] = .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack)])])
         let level = NBT.compound(["Data": .compound(levelData)])
         try Fixtures.writeGzippedNBT(level, to: root.appendingPathComponent("level.dat"))
         if !dimensionSettings.isEmpty {
             try Fixtures.writeGzippedNBT(.compound([
-                "DataVersion": .int(Int32(SaveVersion.java26_3)),
+                "DataVersion": .int(Int32(5023)),
                 "data": .compound(["dimensions": .compound(dimensionSettings)]),
             ]), to: root.appendingPathComponent("data/minecraft/world_gen_settings.dat"))
         }
@@ -72,14 +72,14 @@ nonisolated enum TestWorld {
         let dimension = try #require(try World(contentsOf: root).dimension(dimensionID))
         if !blockEntities.isEmpty || inhabitedTime != 0 {
             let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound([
-                "DataVersion": .int(Int32(SaveVersion.java26_3)), "Status": .string("minecraft:full"), "sections": .list([]),
+                "DataVersion": .int(Int32(5023)), "Status": .string("minecraft:full"), "sections": .list([]),
                 "block_entities": .list(blockEntities), "InhabitedTime": .long(Int64(inhabitedTime)),
             ]))
             try Data(regionFile([chunk])).write(to: dimension.regionURL(at: .init(x: 0, z: 0)))
         }
         if !entities.isEmpty {
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("entities"), withIntermediateDirectories: true)
-            let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound(["DataVersion": .int(Int32(SaveVersion.java26_3)), "Entities": .list(entities)]))
+            let chunk = ChunkSpec(x: 0, z: 0, nbt: .compound(["DataVersion": .int(Int32(5023)), "Entities": .list(entities)]))
             try Data(regionFile([chunk])).write(to: dimension.regionURL(.entities, at: .init(x: 0, z: 0)))
         }
         return try dimension.scan(region: .init(x: 0, z: 0), options: options)

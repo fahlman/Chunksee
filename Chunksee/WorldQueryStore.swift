@@ -70,6 +70,12 @@ final class WorldQueryStore {
         static func == (lhs: Self, rhs: Self) -> Bool {
             lhs.query == rhs.query && lhs.context === rhs.context && lhs.blocks == rhs.blocks
         }
+
+        func canFinishBefore(_ next: Self) -> Bool {
+            guard query == next.query, context === next.context, let blocks, let nextBlocks = next.blocks else { return false }
+            return blocks.counts.world == nextBlocks.counts.world && blocks.catalog == nextBlocks.catalog &&
+                blocks.point == nextBlocks.point
+        }
     }
 
     nonisolated fileprivate final class Value: Sendable {
@@ -89,14 +95,58 @@ final class WorldQueryStore {
         }
     }
 
+    /// Count progress must not starve a running query. Finish one compatible pass, then use
+    /// only the newest pending snapshot; a new query or interpretation still retires immediately.
+    fileprivate final class QueryLoader {
+        typealias Loader = RefreshLoader<Source, RefreshInvalidation, Value>
+        private let loader: Loader
+        private var pending: Source?
+        var published: @MainActor (Loader.Publication, Loader.Publication) -> Void = { _, _ in }
+        var source: Source { loader.source }
+        var value: Value? { loader.value }
+        var isReading: Bool { loader.isReading }
+        var isClosed: Bool { loader.isClosed || loader.work.isClosed }
+
+        init(_ loader: Loader) {
+            self.loader = loader
+            loader.published = { [weak self] previous, publication in
+                guard let self else { return }
+                self.published(previous, publication)
+                guard let value = publication.value, previous.value !== value,
+                      self.loader.value === value, self.loader.source == publication.source,
+                      let next = self.pending else { return }
+                self.pending = nil
+                self.loader.request(source: next, isEnabled: true, reread: false)
+            }
+        }
+
+        func request(source: Source, isEnabled: Bool) {
+            guard !isClosed else { return }
+            if isEnabled, loader.isReading, loader.source.canFinishBefore(source) {
+                pending = source == loader.source ? nil : source
+                return
+            }
+            pending = nil
+            loader.request(source: source, isEnabled: isEnabled, reread: false)
+        }
+
+        func replace(source: Source, value: Value?) {
+            pending = nil
+            loader.replace(source: source, value: value)
+        }
+
+        func close() { pending = nil; loader.close() }
+        func waitForCurrentRead() async { await loader.waitForCurrentRead() }
+    }
+
     fileprivate final class Window {
-        let loader: RefreshLoader<Source, RefreshInvalidation, Value>
+        let loader: QueryLoader
         let work: BackgroundWork.Scope
         var shared: Shared?
         var captureOrigin: @MainActor () -> BlockSearchAnchor? = { nil }
         var origins: [String: BlockSearchAnchor] = [:]
-        var savedBlocks: [String: RefreshLoader<Source, RefreshInvalidation, Value>] = [:]
-        init(_ loader: RefreshLoader<Source, RefreshInvalidation, Value>, work: BackgroundWork.Scope) {
+        var savedBlocks: [String: QueryLoader] = [:]
+        init(_ loader: QueryLoader, work: BackgroundWork.Scope) {
             self.loader = loader; self.work = work
         }
     }
@@ -107,10 +157,10 @@ final class WorldQueryStore {
             let source: Source
             let continuation: CheckedContinuation<Value?, Never>
         }
-        let loader: RefreshLoader<Source, RefreshInvalidation, Value>
+        let loader: QueryLoader
         var users: Set<UUID> = []
         var waiters: [UUID: Waiter] = [:]
-        init(_ loader: RefreshLoader<Source, RefreshInvalidation, Value>) { self.loader = loader }
+        init(_ loader: QueryLoader) { self.loader = loader }
     }
 
     init(index: WorldIndexStore, work: BackgroundWork, names: PlayerNames, savedSearches: SavedSearches,
@@ -140,8 +190,8 @@ final class WorldQueryStore {
     }
 
     private func loader(source: Source, scope: BackgroundWork.Scope? = nil,
-                        read: @escaping @Sendable (Source) async throws -> Value) -> RefreshLoader<Source, RefreshInvalidation, Value> {
-        RefreshLoader(progressRead: { source, _, _, _ in .complete(try await read(source)) },
+                        read: @escaping @Sendable (Source) async throws -> Value) -> QueryLoader {
+        QueryLoader(RefreshLoader(progressRead: { source, _, _, _ in .complete(try await read(source)) },
             scope: scope ?? work.makeScope(), priority: .userInitiated, whenInactive: .cancel, source: source,
             firstRequest: .refresh, merge: { _, _ in .refresh }, retainingValue: { previous, _, next in
                 guard next.isActive, previous.sources.gameNamesID == next.context.key.gameNamesID,
@@ -150,7 +200,7 @@ final class WorldQueryStore {
                       previous.blockCatalog == next.blocks?.catalog,
                       previous.blockPoint == next.blocks?.point else { return nil }
                 return previous
-            })
+            }))
     }
 
     func acquire() -> Handle {
@@ -217,7 +267,7 @@ final class WorldQueryStore {
             shared[query] = nil
             entry.loader.close()
         } else {
-            entry.loader.request(source: source, isEnabled: source.context.isReady, reread: false)
+            entry.loader.request(source: source, isEnabled: source.context.isReady)
         }
     }
 
@@ -248,7 +298,7 @@ final class WorldQueryStore {
                 return
             }
         }
-        window.loader.request(source: source, isEnabled: source.isActive && source.context.isReady, reread: false)
+        window.loader.request(source: source, isEnabled: source.isActive && source.context.isReady)
     }
 
     private func source(for query: String, window: Window) -> Source {
@@ -277,7 +327,7 @@ final class WorldQueryStore {
                     return Value(source: source, results: found)
                 }
             }
-            window.savedBlocks[query]?.request(source: source, isEnabled: context.isReady, reread: false)
+            window.savedBlocks[query]?.request(source: source, isEnabled: context.isReady)
         }
         let active = window.loader.source.query
         window.origins = window.origins.filter { wanted.contains($0.key) || $0.key == active }

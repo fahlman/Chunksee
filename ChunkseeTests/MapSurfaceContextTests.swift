@@ -80,8 +80,8 @@ import Testing
         // With no supplied jar or enabled fixture pack, references stay unavailable across
         // save versions. No dimension-name or version fallback invents a ceiling.
         let cases: [(Int32, [String]?)] = [
-            (Int32(SaveVersion.java26_2), ["vanilla"]), (Int32(SaveVersion.java26_3 + 1), ["vanilla"]),
-            (Int32(SaveVersion.java26_3), nil), (Int32(SaveVersion.java26_3), ["vanilla", "unresolved_experiment"]),
+            (Int32(4903), ["vanilla"]), (Int32(5023 + 1), ["vanilla"]),
+            (Int32(5023), nil), (Int32(5023), ["vanilla", "unresolved_experiment"]),
         ]
         for (version, packs) in cases {
             let url = try roofWorld(definitions: definitions)
@@ -141,7 +141,7 @@ import Testing
         // 12-bit heightmaps share a packed length with 11-bit ones. The saved first-free Y is 8,
         // deliberately below the stored section top, so falling back to blocks would return 15.
         let chunk = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: [Fixtures.section(y: 0, palette: [.string("minecraft:stone")])],
+            dataVersion: 5023, sections: [Fixtures.section(y: 0, palette: [.string("minecraft:stone")])],
             extra: ["yPos": .int(-65), "Heightmaps": .compound([
                 "WORLD_SURFACE": .longArray(Fixtures.pack(Array(repeating: 1048, count: 256), bits: 12)),
             ])]))
@@ -166,7 +166,7 @@ import Testing
                 }, biomes: [section == 4 ? "minecraft:crimson_forest" : "minecraft:plains"])
         }
         let chunk = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+            dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         let url = try TestWorld.make(chunks: [chunk], dimensionSettings: definitions)
         let nether = url.appendingPathComponent("DIM-1/region")
         try FileManager.default.createDirectory(at: nether, withIntermediateDirectories: true)
@@ -194,7 +194,7 @@ import Testing
         #expect(map.topBlock(at: point)?.y == 127 && map.heightScale?.bounds == -64...319)
         map.setStyle(.height)
         let metadata = root.appendingPathComponent("data/minecraft/world_gen_settings.dat")
-        try Fixtures.writeGzippedNBT(.compound(["DataVersion": .int(Int32(SaveVersion.java26_3)),
+        try Fixtures.writeGzippedNBT(.compound(["DataVersion": .int(Int32(5023)),
             "data": .compound(["dimensions": .compound([id: roof])])]), to: metadata)
         resources.worldChanged([metadata])
         await resources.waitForRefresh()

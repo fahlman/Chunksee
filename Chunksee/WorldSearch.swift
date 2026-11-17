@@ -278,8 +278,15 @@ nonisolated enum WorldSearch {
     private static func blockMatches(_ input: BlockQueryInput?, query: SearchQuery, gameNames: GameNames) -> SearchMatches {
         guard let input, let index = input.counts.dimensions[input.point.dimension] else { return .all([]) }
         let groups = Set(input.catalog.groups.filter { query.matches($0.searchText(in: input.catalog, gameNames: gameNames)) })
-        let matches = index.matchingDeposits(matching: groups, using: input.catalog, from: input.point.origin,
-                                            limit: SearchModel.rowLimit)
+        let matches: BlockCountIndex.DepositMatches
+        do {
+            matches = try index.matchingDeposits(matching: groups, using: input.catalog, from: input.point.origin,
+                                                limit: SearchModel.rowLimit)
+        } catch {
+            // Like other search scans, cancellation returns no hits; the query owner rejects
+            // the cancelled task before it can replace a retained publication.
+            return .all([])
+        }
         let hits = matches.nearest.map { entry in
             let dimension = input.point.dimension, chunk = entry.chunk, deposit = entry.deposit
             return SearchHit(id: "\(dimension)@\(deposit.block.id)@\(chunk.x),\(chunk.z)",

@@ -109,11 +109,19 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.91.0`, resolved to `0.91.0` (`c416e73da5b3a2e85e3a64dfc3137cc011f86e1d`).
+  minor" from `0.93.0`, resolved to `0.93.0` (`044dfa493d471b73fccbc3f4e502cc1515de7bda`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.93.0 makes the block-count matching/nearest queries throw on task cancellation;
+    the app handles cancellation in its existing background query path and rejects retired
+    results before publication. Count progress coalesces in WorldQueryStore as described below.
+  - Kit 0.92.0 removes unused public declarations and discarded RegionContents projections.
+    Tests retain their original save-version inputs as literals after removal of
+    SaveVersion/DataVersion. Production uses the full region scan, whose saved facts and
+    regionFacts 36/blockCounts 1 interpretation remain unchanged. Neither adoption adds a
+    cache rebuild beyond the coordinated adoption below.
   - Kit 0.91.0 supplies full matching chunk/group totals alongside the nearest limited rows,
     and distinguishes failed region-folder discovery from a complete empty listing. Search
     headings keep the full total; refreshes retain the index, heat map, drawn tiles and block
@@ -1100,6 +1108,13 @@ query and source across open and later documents. Their publication key includes
 player-snapshot identity, names, game-language identity and singleplayer identity; no NBT comparison
 is needed. A source change cancels old work through the loader. Previous coherent hits remain
 visible while replacements load, except changed language or singleplayer labels clear immediately.
+Kit's block aggregation checks task cancellation between chunks and throughout ranking. The query
+store rejects cancelled results before publication; cancellation cannot replace retained hits with
+an empty result. Within WorldQueryStore, a running block pass finishes while newer count snapshots
+for the same query/context/world/catalog/origin coalesce into one pending newest input. Its result
+publishes before that next pass starts. Query, interpretation or origin changes still cancel
+immediately, as do disabled demand and closure. This policy applies to typed and saved block
+queries, uses no timer and leaves RefreshLoader's general source-retirement behavior unchanged.
 Clearing the current query clears its displayed hits immediately.
 Saving a completed typed query immediately shares that same result; retained hits from another
 query are never adopted as the new saved query's result.

@@ -44,7 +44,7 @@ import Synchronization
         let game = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:stone")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
-            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: 5023,
                                 sections: [section], extra: ["yPos": .int(0)]))])
         defer { game.remove(); try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(World(contentsOf: root).dimension("overworld"))
@@ -431,7 +431,7 @@ import Synchronization
         let game = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
-            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: 5023,
                                 sections: [section], extra: ["yPos": .int(0)]))],
             dimensionSettings: ["minecraft:overworld": TestWorld.noiseDimension(
                 type: .string("minecraft:overworld"),
@@ -498,7 +498,7 @@ import Synchronization
         let fixture = try artworkFixture()
         let section = Fixtures.section(y: 0, palette: [.string("minecraft:water")], biomes: ["test:sample"])
         let root = try TestWorld.make(chunks: [.init(x: 0, z: 0,
-            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: SaveVersion.java26_3,
+            nbt: Fixtures.chunk(x: 0, z: 0, dataVersion: 5023,
                                 sections: [section], extra: ["yPos": .int(0)]))])
         defer { fixture.remove(); try? FileManager.default.removeItem(at: root) }
         let defaults = TestDefaults.make(), names = PlayerNames(defaults: TestDefaults.make())
