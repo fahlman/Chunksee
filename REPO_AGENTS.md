@@ -109,11 +109,16 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.91.0`, resolved to `0.91.0` (`c416e73da5b3a2e85e3a64dfc3137cc011f86e1d`).
+  minor" from `0.92.0`, resolved to `0.92.0` (`24d2878fe037c48f652eddbb5229425ef3fbc50b`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.92.0 removes unused public declarations and discarded RegionContents projections.
+    The app's tests retain their original save-version inputs as literals after removal of
+    SaveVersion/DataVersion. Production uses the full region scan, whose saved facts and
+    regionFacts 36/blockCounts 1 interpretation remain unchanged. This adoption adds no cache
+    rebuild beyond the coordinated adoption below.
   - Kit 0.91.0 supplies full matching chunk/group totals alongside the nearest limited rows,
     and distinguishes failed region-folder discovery from a complete empty listing. Search
     headings keep the full total; refreshes retain the index, heat map, drawn tiles and block
