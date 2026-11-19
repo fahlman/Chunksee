@@ -14,7 +14,8 @@ with a link to this guide. Help opens only when requested.
    hidden, so in the Open panel press Shift-Command-G and enter
    `~/Library/Application Support/minecraft/saves`, then choose a world's folder. Chunksee shows
    the saved data it can read. The world does not have to match the version of Minecraft
-   installed on your Mac.
+   installed on your Mac. If a dimension was saved only in an older format that Chunksee cannot
+   display, it says so in place of the map, with steps to update the world in Minecraft.
 2. Each dimension opens as its own document: the Overworld, the Nether and the End. Each keeps its
    own map position, zoom, search, navigation history and measurement. They open as windows or
    tabs, following your tab preference in System Settings, and **Window ▸ Merge All Windows**
@@ -106,9 +107,10 @@ with a link to this guide. Help opens only when requested.
    the default skin or a skin supplied by local game resources; skins requiring an online lookup
    and animated models retain their category symbols. Items also keep those symbols when a picture's
    resources are unavailable.
-   The Normal map also averages the visible top textures of supported block models. With game
-   artwork on, grass, leaves, vines and water use each block column's biome colors, including enabled data-pack
-   overrides. Cutaway uses the biome at the displayed height. Where biome colors are unavailable,
+   The Normal map also averages the visible top textures of supported block models. Water uses
+   each block column's available biome water color with artwork on or off. With artwork on,
+   grass, leaves and vines also use biome colors, including enabled data-pack overrides.
+   Cutaway uses the biome at the displayed height. Where biome colors are unavailable,
    the map keeps its standard colors. With a saved seed, biome boundaries follow Minecraft's irregular
    borders, including neighboring chunks. Missing seed or neighboring biome data keeps the
    standard colors; saved per-block biomes use their direct values. Border colors are not blended by default.
