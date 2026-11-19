@@ -13,7 +13,9 @@ This document describes the procedure; a merged procedure is not evidence that a
 ## Prepare the release candidate
 
 The first version is **0.1.0**, build **1**, tag **v0.1.0**. Set `MARKETING_VERSION` and
-`CURRENT_PROJECT_VERSION` in the project in the final release-candidate PR before checks.
+`CURRENT_PROJECT_VERSION` in `Support/Version.xcconfig` in the final release-candidate PR
+before checks. The project's Debug and Release configurations both use that file; the app,
+test host and test bundle inherit those values without target-level overrides.
 Later releases increase the build number and choose the version in their release record.
 Version settings belong in committed source, not command-line overrides.
 

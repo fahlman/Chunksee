@@ -27,6 +27,7 @@
 /* Begin PBXFileReference section */
 		B10000000000000000000011 /* Chunksee.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chunksee.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000021 /* ChunkseeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChunkseeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000002B /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Version.xcconfig; path = Support/Version.xcconfig; sourceTree = "<group>"; };
 		B20000000000000000000011 /* ChunkseeTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChunkseeTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -70,6 +71,7 @@
 			children = (
 				B10000000000000000000012 /* Chunksee */,
 				B10000000000000000000022 /* ChunkseeTests */,
+				B1000000000000000000002B /* Version.xcconfig */,
 				B10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -259,6 +261,7 @@
 /* Begin XCBuildConfiguration section */
 		B10000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1000000000000000000002B /* Version.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				"ARCHS[sdk=macosx*]" = arm64;
@@ -290,6 +293,7 @@
 		};
 		B10000000000000000000006 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1000000000000000000002B /* Version.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				"ARCHS[sdk=macosx*]" = arm64;
@@ -320,7 +324,6 @@
 				CODE_SIGN_ENTITLEMENTS = Chunksee/Chunksee.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				ENABLE_APP_SANDBOX = YES;
@@ -334,7 +337,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.Chunksee;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -354,7 +356,6 @@
 				CODE_SIGN_ENTITLEMENTS = Chunksee/Chunksee.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				ENABLE_APP_SANDBOX = YES;
@@ -368,7 +369,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.Chunksee;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -386,12 +386,10 @@
 				"ARCHS[sdk=macosx*]" = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.ChunkseeTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -412,12 +410,10 @@
 				"ARCHS[sdk=macosx*]" = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.ChunkseeTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -439,7 +435,6 @@
 				CODE_SIGN_ENTITLEMENTS = Chunksee/Chunksee.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				ENABLE_APP_SANDBOX = YES;
@@ -453,7 +448,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.Chunksee.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -475,7 +469,6 @@
 				CODE_SIGN_ENTITLEMENTS = Chunksee/Chunksee.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = PUT2KYMV2W;
 				ENABLE_APP_SANDBOX = YES;
@@ -489,7 +482,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fahlsing.Chunksee.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
