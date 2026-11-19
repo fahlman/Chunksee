@@ -19,9 +19,10 @@ test host and test bundle inherit those values without target-level overrides.
 Later releases increase the build number and choose the version in their release record.
 Version settings belong in committed source, not command-line overrides.
 
-Before any build/test, read the shared reservation registry
-[fahlman/Tetris#41](https://github.com/fahlman/Tetris/issues/41), its comments and the queued/running
-jobs. Respect the existing runtime handoff. Release preparation does not bypass a reservation.
+Before any build/test, read the reservation list named in the shared
+[Measurements and Shared Macs](https://github.com/fahlman/AgentGuidelines/blob/main/guides/workflows/measurements-and-shared-macs.md)
+workflow, all of the list's comments, and the queued/running jobs. Respect the existing runtime
+handoff. Release preparation does not bypass a reservation.
 
 Use a clean, committed `main` checkout with the Kit pin already released. In #568 record:
 
