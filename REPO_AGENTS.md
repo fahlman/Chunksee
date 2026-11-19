@@ -109,11 +109,14 @@ renamed (fahlman/Chunksee#75); earlier issues, PRs and commits use the old names
     read or migrated because their contents may belong to a different dimension. Dimensions
     rebuild cached data once; existing world-level pruning reclaims old directories.
 - **Dependency:** ChunkseeKit (`https://github.com/fahlman/ChunkseeKit.git`), pinned "up to next
-  minor" from `0.93.0`, resolved to `0.93.0` (`044dfa493d471b73fccbc3f4e502cc1515de7bda`).
+  minor" from `0.93.1`, resolved to `0.93.1` (`9b9f5ace8a48f84dd73f4fc8770c3a6d2414f24c`).
   - ChunkseeKit releases are annotated semver tags, and each tag needs Ryan's approval (see
     ChunkseeKit's `REPO_AGENTS.md`).
   - `Package.resolved` is tracked, so every build resolves the same ChunkseeKit commit.
   - Release order: tag ChunkseeKit first, then bump the pin here.
+  - Kit 0.93.1 reports an unreadable portal-data folder as a read failure instead of an empty
+    result. The app does not use the changed standalone portal query; its region-fact path and
+    cache interpretation versions are unchanged, so this patch adoption adds no cache rebuild.
   - Kit 0.93.0 makes the block-count matching/nearest queries throw on task cancellation;
     the app handles cancellation in its existing background query path and rejects retired
     results before publication. Count progress coalesces in WorldQueryStore as described below.
