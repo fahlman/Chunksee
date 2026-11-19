@@ -12,11 +12,10 @@ with a link to this guide. Help opens only when requested.
 1. Choose **File ▸ Open…** and select a world's folder inside a `saves` folder in your Minecraft
    folder (usually Library ▸ Application Support ▸ minecraft in your home folder). Library is
    hidden, so in the Open panel press Shift-Command-G and enter
-   `~/Library/Application Support/minecraft/saves`, then choose a world's folder. Chunksee reads
-   worlds saved by Minecraft 1.18 or later. For an older world, or a dimension whose saved areas
-   are all older, it says so in place of the map. To update it, select it in
-   Minecraft's world list, choose **Upgrade and Play** if offered and return to the list, then choose
-   **Edit ▸ Optimize World**.
+   `~/Library/Application Support/minecraft/saves`, then choose a world's folder. Chunksee shows
+   the saved data it can read. The world does not have to match the version of Minecraft
+   installed on your Mac. If a dimension was saved only in an older format that Chunksee cannot
+   display, it says so in place of the map, with steps to update the world in Minecraft.
 2. Each dimension opens as its own document: the Overworld, the Nether and the End. Each keeps its
    own map position, zoom, search, navigation history and measurement. They open as windows or
    tabs, following your tab preference in System Settings, and **Window ▸ Merge All Windows**
@@ -90,27 +89,31 @@ with a link to this guide. Help opens only when requested.
    inventory, health, gear and pets in the inspector, or click their marker for the same details.
    Use the eye button beside a player in the sidebar to show or hide that player's markers.
    **Find Player Names…** at the start of Players opens **Settings**. Choose your Minecraft folder there so Chunksee
-   can read the names Minecraft remembers, item pictures and map colors from the installed version matching
-   each world. Inventory slots, equipment, trades, Storage and matching items in search details
-   share those pictures, including three-sided blocks, closed chests, shulker boxes, shields, banners,
-   decorated pots, conduits, copper golem statues, mob heads, and colored or straw beds in Minecraft 26.3,
+   can read the names Minecraft remembers, item pictures and map colors. Chunksee uses the newest
+   installed Minecraft release in that folder; if no release is installed, it uses the newest installed version.
+   A notice tells you when the world was saved with a newer version than those game files, while
+   Chunksee continues to show what it can read. **View ▸ Use Game Artwork** turns item pictures
+   and map colors from the game on or off; names from the game remain available.
+   Inventory slots, equipment, trades, Storage and matching items in search details share those
+   pictures, including three-sided blocks, closed chests, shulker boxes, shields, banners,
+   decorated pots, conduits, copper golem statues, mob heads, and colored or straw beds,
    saved leather and potion colors, and saved
    item-model overrides when the selected model is available. Armor pictures also show saved
-   trim materials from Minecraft 26.3, while preserving any leather dye. Saved custom-model choices
+   trim materials, while preserving any leather dye. Saved custom-model choices
    and colors are respected when the chosen game archive supplies their definitions.
    Shields also show their saved base color and patterns, and banners show their cloth color
-   and saved patterns from Minecraft 26.3 when the chosen archive supplies the resources. Decorated
+   and saved patterns when the chosen game files supply the resources. Decorated
    pots show the patterns saved on each side. Mob heads use their still pose. Player heads show
    the default skin or a skin supplied by local game resources; skins requiring an online lookup
    and animated models retain their category symbols. Items also keep those symbols when a picture's
    resources are unavailable.
-   The Normal map also averages the visible top textures of supported block models. Missing or
-   unresolved models keep the standard map palette. With matching Minecraft 26.3 assets, grass,
-   leaves, vines and water use each block column's biome colors, including enabled data-pack
-   overrides. Cutaway uses the biome at the displayed height. Missing definitions or assets keep
-   the standard colors. With a saved seed, biome boundaries follow Minecraft 26.3's irregular
+   The Normal map also averages the visible top textures of supported block models. Water uses
+   each block column's available biome water color with artwork on or off. With artwork on,
+   grass, leaves and vines also use biome colors, including enabled data-pack overrides.
+   Cutaway uses the biome at the displayed height. Where biome colors are unavailable,
+   the map keeps its standard colors. With a saved seed, biome boundaries follow Minecraft's irregular
    borders, including neighboring chunks. Missing seed or neighboring biome data keeps the
-   standard colors; saved per-block biomes use their direct values. Border colors are not blended.
+   standard colors; saved per-block biomes use their direct values. Border colors are not blended by default.
    At **800% zoom** and above, supported land blocks show their top textures, with saved
    orientation, position-based variation, biome tints and the same terrain lighting. Water,
    highlighted blocks and unsupported models keep the usual map colors; Height keeps its scale.
@@ -125,8 +128,9 @@ panels, alongside pets, players and in-game maps. Coordinates use the same locat
 to jump, or Control-click for Copy Coordinates, Save Place, Measure Distance and Plan Portal Here. Unknown heights
 remain absent, and items in an unavailable dimension still show details without moving the map.
 
-Enchantment labels retain the saved level, including `Sharpness I`. The nine single-level
-vanilla 26.3 enchantments omit `I`, as in Minecraft; unknown or modded enchantments keep it.
+Enchantment labels retain the saved level, including `Sharpness I`. Level `I` is omitted only
+when the available game or data-pack definition says the enchantment has a single level.
+If the definition is missing, the saved level stays visible.
 
 Chunksee only reads your world; it never changes it. Each dimension is a native Mac document in
 its own window or tab. **File ▸ Open Recent** and window restoration follow your macOS settings, including
@@ -172,9 +176,8 @@ control or **Fit World** when you want to change the scale.
 uses the world’s last saved sun direction and night color, with a moon-phase label. It updates
 when Minecraft saves, without scanning terrain again. Choose Daylight for constant lighting.
 Increase Contrast keeps nights brighter. Height maps keep their original palette.
-Saved lighting needs readable dimension definitions and timelines, usually
-from a matching Minecraft version selected in Settings; unsupported or no-skylight dimensions
-keep Daylight. This does not simulate time between saves.
+Saved lighting needs readable dimension definitions and timelines from the world and selected
+game files; unsupported or no-skylight dimensions keep Daylight. This does not simulate time between saves.
 
 **View ▸ Lighting ▸ Cast Shadows** lets trees, cliffs and other terrain cast shadows onto
 land and water. It starts on and remembers each dimension’s choice. Shadows follow Saved Time’s
@@ -237,10 +240,10 @@ xcodebuild -project Chunksee.xcodeproj -scheme Chunksee -destination 'platform=m
 
 Use **View ▸ Show/Hide Blocks…** to hide a block and see below it, or highlight a block while
 dimming the rest of the map. Search the block names saved in the current dimension, make your
-choices, then choose **Apply**. **Hide Leaves** selects saved names ending in `_leaves`; each
-block can also be changed individually. Some saved palette names may not currently occur on the map.
+choices, then choose **Apply**. **Hide Leaves** selects saved blocks in Minecraft's leaves group;
+each block can also be changed individually. If that group is unavailable, use the individual
+choices. Some saved palette names may not currently occur on the map.
 
 Turn off **Apply Block Choices** to see the ordinary map without forgetting your choices. Each
 dimension remembers its own settings. Hover details, copied block coordinates and map images
-follow the filtered surface. These controls are in development pending the shared palette-reader
-release and final checks; no world data is changed.
+follow the filtered surface; no world data is changed.
