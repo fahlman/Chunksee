@@ -198,7 +198,7 @@ import Testing
         let encoded = try PropertyListEncoder().encode(stale)
         try ((encoded as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
 
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: cache)
         let creatures = try #require(await reader.facts(region)).creatures
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maximumHealth(enchantments: [:]) == 10)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.creatures
@@ -225,7 +225,7 @@ import Testing
         encoder.outputFormat = .binary
         let data = try encoder.encode([LegacyStructureMarker(oldMarker)])
         try ((data as NSData).compressed(using: .lzfse) as Data).write(to: oldFile)
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: cache)
         let index = await TestWorld.index(reader)
         let rebuilt = try #require(index.regions[region])
         #expect(rebuilt.structures.isEmpty)
@@ -246,18 +246,18 @@ import Testing
         let date = Date(timeIntervalSince1970: 1_790_000_000)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
         // One scan reads the region...
-        let first = await TestWorld.index(RegionReader(dimension: dimension, cache: cache))
+        let first = await TestWorld.index(RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: cache))
         #expect(first.biomeAreas.map(\.chunkCount) == [4])
         // ...then blank its file but keep its size and date: only the saved envelope can still answer.
         let size = (try FileManager.default.attributesOfItem(atPath: region.path)[.size] as? NSNumber)?.intValue ?? 0
         try Data(count: size).write(to: region)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: region.path)
-        let reader = RegionReader(dimension: dimension, cache: cache)
+        let reader = RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: cache)
         #expect(await TestWorld.index(reader).biomeAreas.map(\.chunkCount) == [4])
         let times = try #require(await reader.facts(RegionPosition(x: 0, z: 0))).inhabitedTimes
         #expect(times.count == 1024)
         #expect(await TestWorld.index(reader).biomes.count == 4)
-        #expect(await TestWorld.index(RegionReader(dimension: dimension, cache: .off)).biomeAreas.isEmpty)
+        #expect(await TestWorld.index(RegionReader(world: .init(try World(contentsOf: world)), dimension: dimension, cache: .off)).biomeAreas.isEmpty)
     }
 }
 
@@ -422,7 +422,7 @@ import Testing
     @Test(arguments: [false, true]) func visibleTilesDoNotWaitForCacheButClosingDoes(closeOwner: Bool) async throws {
         try await withFixture { f in
             let gate = f.gate, dimension = try f.dimension(), work = BackgroundWork()
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: work, world: .init(try World(contentsOf: f.url)), dimension: dimension, center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache, writeCache: { operation in
                 // Represent an already-started disk operation that completes despite cancellation.
                 await gate.read("write")
                 await operation.store()
@@ -455,7 +455,7 @@ import Testing
     @Test func aDroppedRenderNeverSchedulesItsCacheWrite() async throws {
         try await withFixture { f in
             let gate = f.gate, count = WriteCount()
-            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
+            let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: f.url)), dimension: try f.dimension(), center: CGPoint(x: 8, y: 8), cacheDirectory: f.cache,
                 writeCache: { operation in await count.note(); await operation.store() }, renderTile: { renderer, region in
                     let tile = try await renderer.tile(for: region)
                     await gate.read("render")

@@ -10,7 +10,7 @@ nonisolated struct RegionTileRenderer: Sendable {
     /// The one-pixel-per-block canvas used by terrain, overlays and viewport geometry.
     static let side = 512
 
-    let dimension: ChunkseeKit.Dimension
+    var dimension: ChunkseeKit.Dimension
     /// Saved type/generation context, shared with hover reads and the region scanner.
     var surfaceContext: MapSurfaceContext = .unknown
     /// Maximum simultaneous chunk jobs, shared by decoding and coloring.

@@ -1423,6 +1423,23 @@ pending reads by that folder ID. A move or reread admits one new WorldReadSource
 inputs under the existing WorldResources and all attached sessions. The old watcher and reads
 retire; BackgroundWork drains their accepted work before releasing the old access. Compatible
 completed region facts remain visible while the replacement readers check the same world's files.
+WorldReadSource also owns the open root's availability boundary (#587). A read or folder listing
+must start and finish with an existing, readable, traversable world directory. Losing that root
+is a failed read, preserving completed values; a missing individual folder inside an accessible
+root still means a legitimate deletion. RegionReader and MapModel require the explicit source,
+including in tests; neither guesses a parent path or defaults to an unchecked source. Terrain,
+heat, index, independent block-count demand and saved metadata use this same boundary. A broad
+refresh that finds the root unavailable keeps its accumulated invalidations for the next event;
+it does not start a retry loop. Existing loader identities and cancellation still reject retired
+sources and closed owners. The controlled root-move tests establish this read/publication
+contract, not delivery of an actual volume-unmount or reconnect notification.
+The source keeps its World private; callers use its URL only for identity and cache locations.
+Metadata producers receive the World through its guarded read. Dimension producers receive their
+explicitly admitted dimension through the same boundary, preserving that opening's path even when
+an individual folder is deleted; a read never rediscovers or guesses a different layout. The source
+also owns complete region-set discovery. Composite index, heat and count passes use its availability
+transaction around their individually guarded reads. Tile, close-up, hover, copied-coordinate and
+inspector-heading reads share the boundary too; retained pixels and saved facts remain usable.
 MapModel keeps its view and chosen style, but has no currentRenderer while its dimension is absent;
 display, detail and export cannot read a retired path. Document rereads retain the same session,
 selection, navigation, search and SwiftUI view identity instead of copying a subset into a new one.

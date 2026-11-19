@@ -167,7 +167,7 @@ import Testing
         let file = try #require(try dimension.region(x: 0, z: 0))
         let scale = try #require(MapHeightScale(settings: WorldDetails.read(world).dimensionSettings[dimension.id]))
         let render = AsyncReadGate<RegionTileRenderer.RenderedTile?>(), columns = AsyncReadGate<MapModel.TopBlockRead?>()
-        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
+        let map = MapModel(definitions: { .init(context: .unknown, heightScale: scale) }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: CGPoint(x: 8, y: 8),
             renderTile: { renderer, _ in await render.read(renderer.style.rawValue) },
             readTopBlocks: { chunk, _, _ in await columns.read("\(chunk.x)") })
         map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
@@ -221,7 +221,7 @@ import Testing
         #expect(second.map?.style == .waterDepth)
         // An unreadable saved build range cannot enable a guessed height scale.
         let dimension = try #require(resources.world.dimension("overworld"))
-        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+        let unknown = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: url)), dimension: dimension, center: .zero)
         unknown.setStyle(.height)
         #expect(unknown.style == .normal)
         unknown.setStyle(.waterDepth)
@@ -320,7 +320,7 @@ import Testing
         let settings = try #require(WorldDetails.read(world).dimensionSettings[dimension.id])
         let definitions = MapStyleDefinitions(.init(settings: settings, water: nil))
         let map = MapModel(definitions: { definitions.value }, gameResources: { .unavailable },
-            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: .zero)
+            savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), world: .init(try World(contentsOf: root)), dimension: dimension, center: .zero)
         defer { map.close() }
         map.setStyle(.height)
         definitions.value = .unknown

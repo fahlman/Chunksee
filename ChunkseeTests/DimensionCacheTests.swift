@@ -40,7 +40,7 @@ import Testing
             for _ in 0..<2 {
                 let tile = try #require(try await renderer.tile(for: region))
                 #expect(tile.full.image.dataProvider?.data as Data? == Data(expectedPixels))
-                let reader = RegionReader(dimension: dimension,
+                let reader = RegionReader(world: .init(try World(contentsOf: worldURL)), dimension: dimension,
                                           cache: ScanCache(forWorldAt: worldURL, dimensionID: dimension.id, root: root))
                 let times = try #require(await reader.facts(region)).inhabitedTimes
                 await reader.close()

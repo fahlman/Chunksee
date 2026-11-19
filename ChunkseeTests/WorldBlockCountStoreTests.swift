@@ -61,6 +61,67 @@ final class BlockCountHarness {
 }
 
 @Suite(.isolatedStores, .timeLimit(.minutes(1))) struct WorldBlockCountStoreTests {
+    @Test(arguments: [false, true])
+    func newDemandRetainsCountsWhenTheWorldIsMissingOrUnreadable(unreadable: Bool) async throws {
+        let h = try BlockCountHarness(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
+        let parked = h.root.appendingPathExtension("unavailable")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: h.root.path)
+            try? FileManager.default.removeItem(at: h.root)
+            try? FileManager.default.removeItem(at: parked)
+        }
+        do {
+            let near = try h.point(8), far = try h.point(520)
+            h.counts.setDemand([near]); await h.counts.waitForCounts()
+            let initial = h.counts.snapshot
+            let changedCatalog = try h.catalog(ores: ["minecraft:diamond_ore", "minecraft:gold_ore"])
+            if unreadable { try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: h.root.path) }
+            else { try FileManager.default.moveItem(at: h.root, to: parked) }
+            h.counts.setDemand([far]); h.counts.setCatalog(changedCatalog)
+            await h.counts.waitForCounts()
+            #expect(h.counts.snapshot === initial)
+            if unreadable { try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: h.root.path) }
+            else { try FileManager.default.moveItem(at: parked, to: h.root) }
+            try Data(TestWorld.regionFile([BlockSearchFixture.chunk(x: 0, count: 8)]))
+                .write(to: h.dimension.regionURL(at: .init(x: 0, z: 0)), options: .atomic)
+            h.counts.setDemand([near]); await h.counts.waitForCounts()
+            #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions[.init(x: 0, z: 0)]?.counts?
+                .chunks[.init(x: 0, z: 0)]?.first?.count == 8)
+        } catch {
+            h.close(); await h.finish(); throw error
+        }
+        h.close(); await h.finish()
+    }
+
+    @Test func losingTheWorldDuringACountReadRejectsItsCompletionAndRecoveryCanRetry() async throws {
+        let gate = AsyncReadGate<Void>(), numbers = ReadNumbers()
+        let h = try BlockCountHarness(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)], read: { dimension, region, ids in
+            if await numbers.next() == 1 { await gate.read("held") }
+            return try await WorldBlockCountStore.count(dimension, region: region, blockIDs: ids)
+        })
+        let parked = h.root.appendingPathExtension("unavailable")
+        defer { try? FileManager.default.removeItem(at: h.root); try? FileManager.default.removeItem(at: parked) }
+        do {
+            let near = try h.point(8), far = try h.point(520), region = RegionPosition(x: 0, z: 0)
+            h.counts.setDemand([near]); await h.counts.waitForCounts()
+            let initial = h.counts.snapshot.dimensions[h.dimension.id]?.regions[region]?.counts
+            try Data(TestWorld.regionFile([BlockSearchFixture.chunk(x: 0, count: 8)]))
+                .write(to: h.dimension.regionURL(at: region), options: .atomic)
+            h.counts.setDemand([far]); await gate.waitForRequest("held")
+            try FileManager.default.moveItem(at: h.root, to: parked)
+            await gate.finish("held", with: ())
+            await h.counts.waitForCounts()
+            #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions[region]?.counts == initial)
+            try FileManager.default.moveItem(at: parked, to: h.root)
+            h.counts.setDemand([near]); await h.counts.waitForCounts()
+            #expect(h.counts.snapshot.dimensions[h.dimension.id]?.regions[region]?.counts?
+                .chunks[.init(x: 0, z: 0)]?.first?.count == 8)
+        } catch {
+            h.close(); await gate.releaseAllAndFuture(with: ()); await h.finish(); throw error
+        }
+        h.close(); await h.finish()
+    }
+
     @Test func failedFolderDiscoveryRetainsCountsUntilRecoveryOrDeletion() async throws {
         let h = try BlockCountHarness(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
         defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
@@ -95,7 +156,7 @@ final class BlockCountHarness {
         let root = try TestWorld.make(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
         defer { try? FileManager.default.removeItem(at: root) }
         let world = try World(contentsOf: root), dimension = try #require(world.dimension("overworld"))
-        let reader = RegionReader(dimension: dimension, cache: .off)
+        let reader = RegionReader(world: .init(world), dimension: dimension, cache: .off)
         let content = await DimensionContent.read(reader, previous: nil, change: .all)
         let work = BackgroundWork(), gate = AsyncReadGate<DimensionContent>(), log = BlockReadLog()
         let index = WorldIndexStore(readers: [reader], work: work, firstDimension: dimension.id, playerRoster: PlayerRoster([]),
@@ -228,7 +289,7 @@ final class BlockCountHarness {
         defer { h.close(); try? FileManager.default.removeItem(at: h.root) }
         // Finish the initial index publication before demand, so only the explicit rebuild
         // below can queue a recount after the failed read.
-        let reader = RegionReader(dimension: h.dimension, cache: .off)
+        let reader = RegionReader(world: .init(h.world), dimension: h.dimension, cache: .off)
         h.index.include([reader], firstDimension: h.dimension.id)
         await h.index.waitForIndex()
         let region = RegionPosition(x: 0, z: 0)

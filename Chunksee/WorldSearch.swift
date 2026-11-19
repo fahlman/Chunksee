@@ -34,6 +34,12 @@ nonisolated struct DimensionContent: Sendable {
     /// Reads a dimension from its regions, through the reader's cached library facts.
     @concurrent
     static func read(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
+        (try? await reader.world.whileAvailable {
+            await readAvailable(reader, previous: previous, change: change)
+        }) ?? previous ?? DimensionContent()
+    }
+
+    private static func readAvailable(_ reader: RegionReader, previous: DimensionContent?, change: RegionChange) async -> DimensionContent {
         guard let available = reader.availableRegions else { return previous ?? DimensionContent() }
         let previousIndex = previous?.shared ?? ChunkseeIndex.DimensionIndex(
             dimension: reader.dimension.id, caveBiomeIDs: BiomePresentation.caveBiomeIDs)

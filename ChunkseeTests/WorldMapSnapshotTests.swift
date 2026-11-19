@@ -28,6 +28,47 @@ import Testing
     }
 
     @Test(arguments: [false, true])
+    func unavailableWorldRetainsSavedMapsAndQueuedDeletionRefresh(lostDuringRead: Bool) async throws {
+        let root = try TestWorld.make(chunks: []), parked = root.appendingPathExtension("unavailable")
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: parked) }
+        let file = try write(1, at: root), resources = try await open(root)
+        let session = WorldSession(resources: resources), gate = AsyncReadGate<Void>()
+        do {
+            let map = try #require(resources.details.maps.first)
+            session.selection.show(map)
+            let image = try #require(MapContent(session: session).inGameMap?.image)
+            if lostDuringRead {
+                resources.readMaps = { world, previous in
+                    await gate.read("held")
+                    return WorldMapSnapshot.read(world, retaining: previous)
+                }
+                resources.worldChanged([file]); await gate.waitForRequest("held")
+            }
+            try FileManager.default.moveItem(at: root, to: parked)
+            await gate.releaseAllAndFuture(with: ())
+            resources.worldChanged([root]); await resources.waitForRefresh()
+            #expect(resources.details.maps == [map])
+            #expect(session.selection.sidebarSelection == .inGameMap(1))
+            #expect(MapContent(session: session).inGameMap?.image === image)
+
+            try FileManager.default.moveItem(at: parked, to: root)
+            try FileManager.default.removeItem(at: file)
+            resources.readMaps = { WorldMapSnapshot.read($0, retaining: $1) }
+            // This event normally refreshes terrain only. The broad invalidation from the
+            // unavailable interval must still reconcile saved maps when access returns.
+            let dimension = try #require(resources.dimensions.first)
+            resources.worldChanged([dimension.regionURL(at: .init(x: 0, z: 0))])
+            await resources.waitForRefresh()
+            #expect(resources.details.maps.isEmpty)
+            #expect(session.selection.sidebarSelection == nil)
+        } catch {
+            session.close(); resources.close(); await gate.releaseAllAndFuture(with: ())
+            await resources.waitUntilClosed(); throw error
+        }
+        session.close(); resources.close(); await resources.waitUntilClosed()
+    }
+
+    @Test(arguments: [false, true])
     func savedChangesReachSiblingSelectionsAndPicturesWithoutChangingTheirChoices(hideBeforeRemoval: Bool) async throws {
         let root = try TestWorld.make(chunks: [])
         defer { try? FileManager.default.removeItem(at: root) }

@@ -11,6 +11,32 @@ import Testing
         ]))
     }
 
+    @Test(arguments: [false, true])
+    func losingTheWorldBeforeOrDuringAReadRetainsPlayers(lostDuringRead: Bool) async throws {
+        let root = try TestWorld.make(chunks: []), parked = root.appendingPathExtension("unavailable")
+        let work = BackgroundWork(), gate = AsyncReadGate<[PlayerInfo]?>()
+        let loader = WorldPlayerLoader(world: .init(try World(contentsOf: root)), work: work, players: [player(1)])
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: parked) }
+        do {
+            let original = loader.snapshot
+            loader.readPlayers = { _ in await gate.read("held") }
+            if lostDuringRead { loader.refresh(); await gate.waitForRequest("held") }
+            try FileManager.default.moveItem(at: root, to: parked)
+            if !lostDuringRead { loader.refresh() }
+            await gate.releaseAllAndFuture(with: [])
+            await loader.work.waitUntilFinished()
+            #expect(loader.snapshot === original)
+            #expect(await gate.requested == (lostDuringRead ? ["held"] : []))
+            try FileManager.default.moveItem(at: parked, to: root)
+            loader.refresh(); await loader.work.waitUntilFinished()
+            #expect(loader.snapshot.players.isEmpty)
+        } catch {
+            loader.close(); work.close(); await gate.releaseAllAndFuture(with: [])
+            await work.waitUntilFinished(); throw error
+        }
+        loader.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test func savesCoalesceAndFailedReadsRetainPlayersWhileSuccessfulEmptyReadsClearThem() async throws {
         let root = try TestWorld.make(chunks: []), work = BackgroundWork()
         let loader = WorldPlayerLoader(world: WorldReadSource(try World(contentsOf: root)), work: work, players: [player(1)])
