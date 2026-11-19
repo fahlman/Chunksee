@@ -664,7 +664,7 @@ invalidates older scan envelopes, including those that stored a resolved maximum
 | `MapContent.swift` | A map-content value projected directly from live feature models, with an explicit immutable naming snapshot; its shared marker candidates, hit tests and accessibility locations |
 | `MapDrawingInput.swift` | Resolved terrain presentation shared by the screen, Copy/Share, area export and their legends |
 | `MapScene.swift` | Biome areas and structure, Places, creature, search, player and saved-place items, sharing coordinates, drawing anchors, geometry/style, selection targets and accessibility between drawing/export and input; area shapes stay separate from point badges, and region buckets keep point drawing/pointer candidates local |
-| `ContentView.swift`, `MapView.swift` | SwiftUI views |
+| `ContentView.swift`, `MapView.swift` | SwiftUI views; ContentView's small AppKit attachment projects native tab selection at the inspector and checks its owning window for presentation writes (see SelectionModel) |
 | `Creatures.swift`, `PetDetails.swift` | Native creature inspector and pet appearance/collar rows, using GameNames and shared health/equipment rows; applicability and data interpretation come from ChunkseeKit |
 | `PlayerDetails.swift`, `PlayerStatus.swift`, `Equipment.swift`, `Health.swift`, `CountedText.swift`, `LinkedPets.swift` | Native player inspector, shared creature/player health and equipment rows, native fractional heart/block unit wording and counted sidebar headings, saved effect duration presentation, and links to this world's pets by owner UUID; parsing/calculation belongs in ChunkseeKit |
 | `SidebarItem.swift`, `SidebarDisclosure.swift` | Live sidebar-item types and resolved creature list routes, each dimension view's expanded groups and revealing a map marker's ancestors |
@@ -738,6 +738,23 @@ separate from its map anchor; every jump keeps the destination’s zoom.
 SelectionModel owns the selected identity, inspector visibility and retained in-game map overlay.
 Sidebar actions, map clicks and linked-pet jumps call it directly; details still resolve against
 current shared world data. It refers weakly to its document and retains no detail snapshot.
+A private inspector ViewModifier projects AppKit's selected tab into the presented column,
+while SelectionModel retains the user's inspector choice. A hidden tab presents false; returning
+to it presents the retained choice again. A selected tab in a visible background window still
+presents its inspector, independently of app focus. SwiftUI's appearance preference does not
+identify selected tabs, and rejecting a background reconciliation write alone left the native
+column collapsed in both recorded original/reopened histories on #562.
+The narrow AppKit attachment observes `NSWindowTabGroup.selectedWindow` through its documented
+KVO support. Native window updates replace that observation when joining/separating tabs changes
+the group; detachment drops both observations. The owning view and group are weak references.
+Publication moves to the main actor and reads the current attachment; an old view cannot publish
+into a newer one. This also avoids changing SwiftUI state during view attachment. Only the private
+modifier observes the derived tab selection, so tab changes do not invalidate the sidebar/map body.
+Presentation writes still query current application activity, `isMainWindow` and native tab selection
+at callback time; the existing closed-document and sheet guards apply. Direct selection actions
+keep their own path. There is no second inspector choice, timer, retry or document identity reset.
+This selected-tab candidate still requires Claude's native original/reopened-history checks before
+it can be treated as a verified fix for #513.
 The document stops its observation and closes and drains its player-record reads with its other
 feature models. Native inspector bindings use `isInspectorShown`; showing details again preserves
 the selected identity, highlights and overlay without navigating. Only an empty selection with no
@@ -1000,15 +1017,20 @@ Export uses the same current map. Tile renderer version 6 keys cutaways by Y and
 plus the latest cutaway per region, rather than every slider intermediate. Slider limits come from
 the saved dimension type, including custom definitions, without changing terrain or roof behavior.
 
-The app observes SwiftUI's focused scene session to prioritize that world's front dimension and
-remember its selection immediately. Native tab/window focus does not change a session's dimension;
+WorldDocumentScene observes SwiftUI's focused scene session to prioritize that world's front dimension
+and remember its selection immediately. The app and native window tests share that activation and
+the standard sidebar and inspector commands. Each entry point supplies the termination query explicitly;
+the isolated test host supplies false because it does not run the app's termination flow.
+Native tab/window focus does not change a session's dimension;
 inactive viewport saves preserve the front dimension, and closed sessions cannot reactivate it.
 SwiftUI ScenePhase has no Quit event. The existing NSApplicationDelegate hook exposes the early
 termination query so focus changes while AppKit closes tabs cannot overwrite the last front tab.
 Before returning the normal immediate reply, the app's existing termination hook asks AppModel
 to save every live dimension's current viewport/depth through WorldResources. This flushes the
 one-second viewport debounce without waiting for document deinitialization or changing the
-front dimension. No world files are written; native termination and restoration remain AppKit's. No tab/window focus bridge is used.
+front dimension. No world files are written; native termination and restoration remain AppKit's.
+The inspector's owning-window query and selected-tab projection stay at its presentation boundary
+(see SelectionModel).
 
 The read-only `DocumentGroup` uses SwiftUI's `.defaultLaunchBehavior(.suppressed)`. With no
 documents to restore, the app stays running without an automatic Open panel or a new document.
@@ -1922,7 +1944,8 @@ can add room when it opens. The 420-point height minimum follows the inspector, 
 original window height instead of adding the navigation chrome twice. The document scene must
 not put another minimum-width frame around the loaded view: that masks the columns' combined
 minimum and lets them overflow. Only the opening placeholder has its own 640-by-420 frame.
-The app and regression tests share WorldDocumentScene. Tests open real document windows with
+The app and regression tests share WorldDocumentScene, including focused-document activation and
+the sidebar and inspector commands. Tests open real document windows with
 synthetic files, shrink first to small and medium widths, then show World Info and a location
 inspector, with and without the newer-world banner. They verify the columns fit before any
 test-driven resize, hide the inspector, shrink again and invoke native Zoom. A disposable second

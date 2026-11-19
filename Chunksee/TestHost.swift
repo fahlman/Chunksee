@@ -5,7 +5,7 @@ import SwiftUI
 @main
 struct ChunkseeTestHost: App {
     var body: some Scene {
-        WorldDocumentScene { configuration in
+        WorldDocumentScene(isTerminating: { false }) { configuration in
             guard let makeDocument = TestDocumentWindows.makeDocument else { throw CancellationError() }
             return try makeDocument(configuration)
         }
