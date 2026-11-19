@@ -2,11 +2,50 @@ import ChunkseeKitTestSupport
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import SwiftUI
 import Testing
 @testable import ChunkseeTestHost
 
 @Suite(.isolatedStores) struct TileCacheTests {
+    @Test func stableSlotsRejectLateWritesAndInvalidEnvelopes() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TileEnvelope-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TileCache(directory: directory)
+        let old = TileCache.Key(region: .init(x: -1, z: 2), file: .init(size: 1, modified: 2),
+            inputs: .init(context: .unknown, cutawayY: nil, style: .normal, assets: GameAssets.interpretationVersion,
+                          heightScale: nil, blockFilter: MapBlockFilter(), colorSource: nil,
+                          gameSource: .unavailable, samplesNeighborBiomes: false, darkSpots: nil), biomeFiles: nil)
+        var current = old
+        current.file = .init(size: 2, modified: 3)
+        var olderPixels = RegionTileRenderer.Canvas(), currentPixels = RegionTileRenderer.Canvas()
+        olderPixels.pixels[0] = 1; currentPixels.pixels[0] = 2
+        cache.store(olderPixels, for: old)
+        cache.store(currentPixels, for: current)
+        #expect(cache.load(old) == nil && cache.load(current)?.pixels[0] == 2)
+        cache.store(olderPixels, for: old)
+        #expect(cache.load(current) == nil && cache.load(old)?.pixels[0] == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+        let file = directory.appendingPathComponent(try #require(old.fileName))
+        let original = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        for field in ["storageVersion", "identity", "kind", "payload"] {
+            var broken = original
+            switch field {
+            case "storageVersion": broken.storageVersion = -1
+            case "identity": broken.identity = "different input"
+            case "kind": broken.payload.kind = .detail
+            default:
+                broken.payload.bytes[512 * 512 * 8] = 2 // Valid length, invalid water mask.
+            }
+            try CacheArchiveFixture.write(broken, to: file)
+            #expect(cache.load(old) == nil)
+        }
+        // Old packed bytes are not an envelope even when placed in a current slot.
+        let payload = original.payload.bytes
+        try ((payload as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        #expect(cache.load(old) == nil)
+    }
+
     @Test func sharedKeysHaveStableNamesAndReadFreshFileAttributes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheKeyTests-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -34,13 +73,13 @@ import Testing
         let resized = try #require(TileCache.key(for: region, regionFile: file))
         #expect(resized.file.size == 4 && resized.file.modified == original.file.modified)
         #expect(ScanCache.fingerprint([file, missing]) == [resized.file, nil])
-        #expect(resized.fileName != original.fileName)
+        #expect(resized.fileName == original.fileName && resized != original)
 
         try FileManager.default.setAttributes([.modificationDate: date.addingTimeInterval(1)], ofItemAtPath: file.path)
         let touched = try #require(TileCache.key(for: region, regionFile: file))
         #expect(touched.file.size == 4 && touched.file.modified == original.file.modified + 1_000_000)
         #expect(ScanCache.fingerprint([file, missing]) == [touched.file, nil])
-        #expect(touched.fileName != resized.fileName)
+        #expect(touched.fileName == resized.fileName && touched != resized)
         try FileManager.default.removeItem(at: file)
         #expect(TileCache.key(for: region, regionFile: file) == nil)
         #expect(ScanCache.fingerprint([file, missing]) == [nil, nil])
@@ -75,7 +114,7 @@ import Testing
         let offset = (RegionTileRenderer.side + 1) * 4
         let grass = try #require(BlockColors.color(for: "minecraft:grass_block"))
         #expect(Array(pixels[offset..<offset + 4]) == [grass.red, grass.green, grass.blue, 255])
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(FileManager.default.fileExists(atPath: oldFile.path)) // only world startup retires old layouts
         #expect(cache.load(key)?.pixels == Array(pixels))
     }
 
@@ -164,7 +203,7 @@ import Testing
         #expect(creatures.count == 1 && creatures.first?.health == 6 && creatures.first?.maximumHealth(enchantments: [:]) == 10)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.creatures
         #expect(saved?.first?.maximumHealth(enchantments: [:]) == 10)
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
     }
 
     @Test func previousStructureCacheIsRebuiltWithoutUnplacedMarkers() async throws {
@@ -177,7 +216,7 @@ import Testing
             dimension.regionDirectory.appendingPathComponent("r.-1.0.mca"),
             dimension.entitiesDirectory.appendingPathComponent("r.-1.0.mca"),
         ])
-        let oldMarker = StructureMarker(StructureTests().start("minecraft:jungle_pyramid", chunk: (-17, 4), pieces: [
+        let oldMarker = try StructureMarker(StructureTests().start("minecraft:jungle_pyramid", chunk: (-17, 4), pieces: [
             ("minecraft:tejp", [-272, 64, 64, -261, 73, 78]),
         ]))
         let oldFile = try #require(cache.directory).appendingPathComponent("structures.-1.0.\(fingerprint).v3")
@@ -192,7 +231,7 @@ import Testing
         #expect(rebuilt.structures.isEmpty)
         let saved = cache.load(.init(dimension: dimension, region: region, options: .init(RegionReader.options())))?.structures.map { StructureMarker($0) }
         #expect(saved == [])
-        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
     }
 
     @Test func oneEnvelopeServesEveryScan() async throws {
@@ -223,6 +262,75 @@ import Testing
 }
 
 @Suite(.isolatedStores) struct CacheRootTests {
+    @Test func oldLayoutsAreRemovedOnceBeforeCurrentSlotsAreWritten() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("CacheLayout-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let old = folder.appendingPathComponent("old-dimension/scans/facts.0.0.old-json.lzfse")
+        try FileManager.default.createDirectory(at: old.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("old cache".utf8).write(to: old)
+        let previousMarker = folder.appendingPathComponent("storage-layout-1")
+        try Data().write(to: previousMarker)
+        try CacheArchive.prepare(worldFolder: folder)
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(!FileManager.default.fileExists(atPath: previousMarker.path))
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("storage-layout-\(CacheArchive.storageVersion)").path))
+        let current = folder.appendingPathComponent("current-slot")
+        try Data("new cache".utf8).write(to: current)
+        let oldDate = Date(timeIntervalSince1970: 1_000)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: folder.path)
+        await WorldResources.prepareCache(folder: folder)
+        #expect(try Data(contentsOf: current) == Data("new cache".utf8))
+        let preparedDate = try #require(try FileManager.default.attributesOfItem(atPath: folder.path)[.modificationDate] as? Date)
+        #expect(preparedDate > oldDate)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func startupLayoutGatesReadsButPruningDoesNot() async throws {
+        let world = try TestWorld.make(chunks: [BlockSearchFixture.chunk(x: 0, count: 5)])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CacheStartup-\(UUID())")
+        defer {
+            try? FileManager.default.removeItem(at: world)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let gate = AsyncReadGate<Void>(), defaults = TestDefaults.make()
+        let ready = root.appendingPathComponent("ready")
+        let resources = try await WorldResources(snapshot: try await WorldSnapshot.read(world), names: PlayerNames(defaults: defaults),
+            savedSearches: SavedSearches(defaults: defaults), defaults: defaults, cacheRoot: root,
+            watchWorld: { _, _ in nil }, readRegion: { dimension, region, options in
+                #expect(FileManager.default.fileExists(atPath: ready.path))
+                return try await RegionReader.scan(dimension, region: region, options: options)
+            }, prepareCache: { folder in
+                await gate.read("preparation")
+                await WorldResources.prepareCache(folder: folder)
+                try? Data().write(to: ready)
+            }, maintainCache: { root, folder in
+                await gate.read("maintenance")
+                await WorldResources.maintainCache(root: root, folder: folder)
+            })
+        let session = WorldSession(resources: resources, renderTile: { renderer, region in
+            #expect(FileManager.default.fileExists(atPath: ready.path))
+            return try await renderer.tile(for: region)
+        })
+        let map = try #require(session.map)
+        map.viewport.center = CGPoint(x: 8, y: 8)
+        map.requestTiles(visibleIn: CGSize(width: 16, height: 16))
+        let dimension = try #require(session.selectedDimensionID)
+        session.search.text = "block:diamond"
+        await gate.waitForRequest("preparation")
+        #expect(map.tiles.isEmpty && resources.index.index.dimensions.isEmpty && resources.blockCounts.snapshot.dimensions.isEmpty)
+        await gate.finish("preparation", with: ())
+        await gate.waitForRequest("maintenance")
+        await resources.index.waitForIndex()
+        await session.search.waitForSearch()
+        await map.waitUntilIdle()
+        #expect(!map.tiles.isEmpty && !resources.index.index.dimensions.isEmpty)
+        let counts = try #require(resources.blockCounts.snapshot.dimensions[dimension])
+        #expect(counts.coverage(of: .init(x: 0, z: 0), matching: resources.blockCounts.catalog.blockIDs) == .complete)
+        #expect(counts.regions[.init(x: 0, z: 0)]?.counts?.chunks[.init(x: 0, z: 0)]?.first?.count == 5)
+        await gate.finish("maintenance", with: ())
+        resources.close()
+        await resources.waitUntilClosed()
+    }
+
     nonisolated private static func finishMaintenance(at folder: URL) {
         #expect(!Thread.isMainThread)
         TileCache.markUsed(worldFolder: folder)
@@ -245,7 +353,6 @@ import Testing
             Self.finishMaintenance(at: folder)
         })
         await gate.waitForRequest("maintenance")
-        await resources.index.waitForIndex()
         var finishedClosing = false
         let closing = Task {
             resources.close()

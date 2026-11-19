@@ -47,10 +47,13 @@ final class WorldResources {
     let savedPlaces: SavedPlaces
     var readers: [String: RegionReader] { Dictionary(uniqueKeysWithValues: index.readers.map { ($0.dimension.id, $0) }) }
     let index: WorldIndexStore
+    @ObservationIgnored private(set) lazy var blockCounts = WorldBlockCountStore(
+        world: readSource, dimensions: dimensions, catalog: details.definitions.notableBlocks,
+        cacheRoot: cacheRoot, cachePreparation: cachePreparation, index: index, work: backgroundWork)
     @ObservationIgnored private(set) lazy var queryStore = WorldQueryStore(
         index: index, work: backgroundWork, names: names, savedSearches: savedSearches,
         singleplayerUUID: { [weak self] in self?.world.level.singleplayerUUID },
-        gameNames: { [weak self] in self?.gameNames ?? .unavailable })
+        gameNames: { [weak self] in self?.gameNames ?? .unavailable }, blockCounts: blockCounts)
     let settings: WorldSettings
     let cacheRoot: URL?
     private let definitionLoader: WorldDefinitionLoader
@@ -99,9 +102,11 @@ final class WorldResources {
     var playerRoster: any PlayerSnapshotSource { playerLoader }
     var playerSnapshot: PlayerSnapshot { playerRoster.snapshot }
     var players: [PlayerInfo] { playerSnapshot.players }
-    private let makeReader: (WorldReadSource, ChunkseeKit.Dimension, WorldDefinitions) -> RegionReader
+    private let makeReader: (WorldReadSource, ChunkseeKit.Dimension, WorldDefinitions, Task<Void, Never>?) -> RegionReader
     private let watchWorld: @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher?
+    private let prepareCache: @Sendable (URL) async -> Void
     private let maintainCache: @Sendable (URL, URL) async -> Void
+    @ObservationIgnored private var cachePreparation: Task<Void, Never>?
     var activeDimensionID: String?
     private(set) var isClosed = false
     @ObservationIgnored private var sessions: [UUID: WeakSession] = [:]
@@ -264,11 +269,13 @@ final class WorldResources {
          watchWorld: @escaping @MainActor (URL, @escaping ([URL]) -> Void) -> WorldWatcher? = WorldWatcher.init,
          readRegion: @escaping RegionReader.Read = RegionReader.scan,
          readGameAssets: @escaping @Sendable (MinecraftResources) async throws -> GameResourceLibrary? = { try await $0.readLibrary() },
+         prepareCache: @escaping @Sendable (URL) async -> Void = WorldResources.prepareCache,
          maintainCache: @escaping @Sendable (URL, URL) async -> Void = WorldResources.maintainCache) {
         let snapshot = prepared.snapshot
         let readSource = WorldReadSource(snapshot.world)
         self.readSource = readSource
         self.watchWorld = watchWorld
+        self.prepareCache = prepareCache
         self.maintainCache = maintainCache
         let backgroundWork = BackgroundWork()
         self.backgroundWork = backgroundWork
@@ -295,15 +302,20 @@ final class WorldResources {
         self.names = names
         self.savedSearches = savedSearches
         self.cacheRoot = cacheRoot
-        let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions) in
+        let cachePreparation = Self.startCacheMaintenance(work: backgroundWork, root: cacheRoot,
+            world: snapshot.world.url, prepare: prepareCache, maintain: maintainCache)
+        self.cachePreparation = cachePreparation
+        let makeReader = { (source: WorldReadSource, dimension: ChunkseeKit.Dimension, definitions: WorldDefinitions,
+                           preparation: Task<Void, Never>?) in
             RegionReader(dimension: dimension,
                 cache: ScanCache(forWorldAt: source.world.url, dimensionID: dimension.id, root: cacheRoot),
-                inputs: .init(dimensionID: dimension.id, definitions: definitions), read: readRegion)
+                inputs: .init(dimensionID: dimension.id, definitions: definitions),
+                cachePreparation: preparation, read: readRegion)
         }
         self.makeReader = makeReader
         self.settings = settings
         savedPlaces = SavedPlaces(settings: settings)
-        let readers = snapshot.dimensions.map { makeReader(readSource, $0, snapshot.details.definitions) }
+        let readers = snapshot.dimensions.map { makeReader(readSource, $0, snapshot.details.definitions, cachePreparation) }
         let last = settings.lastDimension.flatMap { id in snapshot.dimensions.first { $0.id == id }?.id }
         let firstDimension = last ?? snapshot.dimensions.first?.id
         activeDimensionID = firstDimension
@@ -333,7 +345,6 @@ final class WorldResources {
         refreshGameLanguage()
         refreshBiomeColors(reload: true)
         refreshLighting()
-        maintainCurrentCache()
         _ = queryStore
     }
 
@@ -345,12 +356,29 @@ final class WorldResources {
         }
     }
 
-    private func maintainCurrentCache() {
-        guard let root = cacheRoot, let folder = TileCache.worldFolder(forWorldAt: url, root: root) else { return }
-        let maintain = maintainCache
-        backgroundWork.start(priority: .background) {
+    private static func startCacheMaintenance(work: BackgroundWork, root: URL?, world: URL,
+                                             previousPreparation: Task<Void, Never>? = nil,
+                                             prepare: @escaping @Sendable (URL) async -> Void,
+                                             maintain: @escaping @Sendable (URL, URL) async -> Void) -> Task<Void, Never>? {
+        guard let root, let folder = TileCache.worldFolder(forWorldAt: world, root: root) else { return nil }
+        let preparation = work.start(priority: .utility) {
+            await previousPreparation?.value
+            guard !Task.isCancelled else { return }
+            await Self.runCachePreparation(prepare, folder: folder)
+        }
+        work.start(priority: .background) {
+            await preparation?.value
+            guard !Task.isCancelled else { return }
             await Self.runCacheMaintenance(maintain, root: root, folder: folder)
         }
+        // Pruning skips this world's folder, so readers only need its layout ready.
+        return preparation
+    }
+
+    func waitForCachePreparation() async throws {
+        await cachePreparation?.value
+        try Task.checkCancellation()
+        guard !isClosed else { throw CancellationError() }
     }
 
     /// Native rereads and moves replace inputs for this same world and every attached window.
@@ -359,7 +387,10 @@ final class WorldResources {
         guard !isClosed else { throw CancellationError() }
         let snapshot = prepared.snapshot, oldAccess = access, retired = index.readers
         let nextSource = WorldReadSource(snapshot.world)
-        let readers = snapshot.dimensions.map { makeReader(nextSource, $0, snapshot.details.definitions) }
+        cachePreparation = Self.startCacheMaintenance(work: backgroundWork, root: cacheRoot,
+            world: snapshot.world.url, previousPreparation: cachePreparation,
+            prepare: prepareCache, maintain: maintainCache)
+        let readers = snapshot.dimensions.map { makeReader(nextSource, $0, snapshot.details.definitions, cachePreparation) }
         watcher?.stop()
         refreshWork.cancel()
         isRefreshScheduled = false
@@ -377,6 +408,7 @@ final class WorldResources {
         access = snapshot.access
         readSource = nextSource
         guard !isClosed else { return }
+        blockCounts.replace(world: nextSource, dimensions: snapshot.dimensions, cachePreparation: cachePreparation)
         // Install the prepared catalog before definition callbacks can replace its readers.
         // Completed compatible facts remain available while the new files are checked.
         index.replaceWorldSource(readers: readers, firstDimension: activeDimensionID)
@@ -398,7 +430,6 @@ final class WorldResources {
         refreshNightLighting(reread: true)
         refreshLighting()
         watchCurrentSource()
-        maintainCurrentCache()
     }
 
     /// Fresh metadata extends the catalog without replacing readers or any attached tab's map.
@@ -413,20 +444,35 @@ final class WorldResources {
         definitionLoader.include(added, settings: snapshot.details.dimensionSettings)
         guard !isClosed else { return }
         dimensionDocuments.merge(snapshot.dimensionDocuments.filter { newIDs.contains($0.value) }) { old, _ in old }
-        index.include(added.map { makeReader(readSource, $0, details.definitions) }, firstDimension: activeDimensionID)
+        index.include(added.map { makeReader(readSource, $0, details.definitions, cachePreparation) }, firstDimension: activeDimensionID)
+        blockCounts.replace(world: readSource, dimensions: dimensions, cachePreparation: cachePreparation)
         refreshInfo()
         refreshNightLighting(reread: true)
         refreshLighting()
     }
 
-    @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
+    @concurrent nonisolated static func prepareCache(folder: URL) async {
         guard !Task.isCancelled else { return }
+        // Failure leaves the marker absent so a later opening can try again. Cache failures
+        // never prevent reading the world; each envelope still validates its complete key.
+        try? CacheArchive.prepare(worldFolder: folder)
+        guard !Task.isCancelled else { return }
+        // Another opening can prune while this world's readers start.
         TileCache.markUsed(worldFolder: folder)
+    }
+
+    @concurrent nonisolated static func maintainCache(root: URL, folder: URL) async {
         guard !Task.isCancelled else { return }
         TileCache.prune(root: root, limit: 1 << 30, keeping: folder)
     }
 
     /// The work registry is main-actor isolated; maintenance keeps its off-main I/O boundary.
+    @concurrent private nonisolated static func runCachePreparation(
+        _ operation: @Sendable (URL) async -> Void, folder: URL
+    ) async {
+        await operation(folder)
+    }
+
     @concurrent private nonisolated static func runCacheMaintenance(
         _ operation: @Sendable (URL, URL) async -> Void, root: URL, folder: URL
     ) async {
@@ -536,11 +582,12 @@ final class WorldResources {
     private func adoptDefinitions(_ current: WorldDefinitionLoader.Facts?) {
         guard !isClosed else { return }
         let definitions = current?.definitions ?? WorldDefinitions()
+        blockCounts.setCatalog(definitions.notableBlocks)
         let retired = index.readers
         guard retired.contains(where: {
             $0.inputs != RegionReader.Inputs(dimensionID: $0.dimension.id, definitions: definitions)
         }) else { return }
-        let readers = retired.map { makeReader(readSource, $0.dimension, definitions) }
+        let readers = retired.map { makeReader(readSource, $0.dimension, definitions, cachePreparation) }
         // Register retirement before publishing the replacement catalog: an observer may close
         // the world synchronously, and that close must drain the retired readers too.
         backgroundWork.start(priority: .utility) {
@@ -686,6 +733,7 @@ final class WorldResources {
         watcher?.stop()
         backgroundWork.close()
         queryStore.close()
+        blockCounts.close()
         index.cancel()
         for session in sessions.values.compactMap(\.value) { session.close() }
         assetLoader.close()

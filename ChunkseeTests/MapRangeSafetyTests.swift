@@ -52,10 +52,12 @@ import Testing
         let world = UUID()
         let views = WorldSettings(id: world, defaults: defaults)
         let key = "worldSettings." + world.uuidString, dimension = "minecraft:overworld"
-        // Malformed JSON numbers and unsafe finite values must exercise the current record decoder.
-        for invalid in ["[null,0,1]", "[0,1e999,1]", "[\(Double(Int.max)),0,1]", "[0,0,null]", "[0,0,1e999]", "[0,0,-1]", "[0,0]"] {
-            let record = Data(#"{"version":1,"viewport":\#(invalid)}"#.utf8)
-            defaults.set(["version": 2, "mapPresentations": [dimension: record]], forKey: key)
+        // Invalid element types, nonfinite numbers and unsafe finite coordinates reach the current decoder.
+        let invalidViews: [[Any]] = [["invalid", 0, 1], [0, Double.infinity, 1], [Double(Int.max), 0, 1],
+                                    [0, 0, "invalid"], [0, 0, Double.nan], [0, 0, -1], [0, 0]]
+        for invalid in invalidViews {
+            let record = try PropertyListSerialization.data(fromPropertyList: ["viewport": invalid], format: .binary, options: 0)
+            defaults.set(["version": 2, "mapPresentations.plist": [dimension: record]], forKey: key)
             #expect(views.viewport(for: dimension) == nil)
         }
         let good = MapViewport(center: CGPoint(x: -12.5, y: 40), scale: 2)

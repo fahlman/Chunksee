@@ -108,9 +108,9 @@ import Testing
         try ((Data(surface.pixels) as NSData).compressed(using: .lzfse) as Data).write(to: file)
         #expect(cache.load(key) == nil)
         cache.store(surface, for: key)
-        var bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
-        bytes[512 * 512 * 8] = 2 // Invalid water mask.
-        try ((bytes as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.payload.bytes[512 * 512 * 8] = 2 // Invalid water mask.
+        try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(key) == nil)
     }
 

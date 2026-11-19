@@ -96,9 +96,10 @@ import Testing
         renderer.darkSpots = nil
         let restored = try #require(try await renderer.tile(for: region))
         #expect(try ItemPictureFixture.pixels(restored.full.image).bytes == ItemPictureFixture.pixels(ordinary.full.image).bytes)
-        var bad = try (Data(contentsOf: cache.directory.appendingPathComponent(try #require(litKey.fileName))) as NSData).decompressed(using: .lzfse) as Data
-        bad[512 * 512 * 9] = 3
-        try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: cache.directory.appendingPathComponent(try #require(litKey.fileName)))
+        let file = cache.directory.appendingPathComponent(try #require(litKey.fileName))
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.payload.bytes[512 * 512 * 9] = 3
+        try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.load(litKey) == nil)
         #expect(cache.load(key) != nil)
     }
@@ -639,7 +640,7 @@ import Testing
         }
         if malformedBlock { section["BlockLight"] = .byteArray([0]) }
         if sky { section["SkyLight"] = .byteArray(Array(repeating: -1, count: 2048)) }
-        return .init(x: chunkX, z: 0, nbt: Fixtures.chunk(x: chunkX, z: 0, dataVersion: SaveVersion.java26_3,
+        return .init(x: chunkX, z: 0, nbt: Fixtures.chunk(x: chunkX, z: 0, dataVersion: 5023,
             sections: [.compound(section)], extra: ["isLightOn": .byte(valid ? 1 : 0), "yPos": .int(0)]))
     }
 }

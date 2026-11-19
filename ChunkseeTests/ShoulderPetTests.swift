@@ -82,8 +82,8 @@ import Testing
 
         first.search.text = "pet: Gray"
         await first.search.waitForSearch()
-        let hit = try #require(first.search.results.first)
-        #expect(first.search.results.count == 1 && hit.dimension == nether && hit.position == gray.position && hit.y == 70)
+        let hit = try #require(first.search.matches(for: first.search.text).hits.first)
+        #expect(first.search.matches(for: first.search.text).hits.count == 1 && hit.dimension == nether && hit.position == gray.position && hit.y == 70)
         first.close(); second.close()
         await first.waitUntilClosed(); await second.waitUntilClosed()
     }
@@ -135,7 +135,7 @@ import Testing
         let moved = try #require(session.presentation.linkedPets(to: owner).first)
         #expect(moved.id == old.id && moved.dimension == overworld && moved.position == CGPoint(x: 12.5, y: -4.5))
         #expect(session.presentation.linkedPets(to: carrier).isEmpty)
-        #expect(session.search.results.first?.dimension == overworld && session.search.results.first?.y == 48)
+        #expect(session.search.matches(for: session.search.text).hits.first?.dimension == overworld && session.search.matches(for: session.search.text).hits.first?.y == 48)
         session.selection.showLinkedPet(moved, ownedBy: owner)
         #expect(session.selection.highlighted == [.row(.creature(moved.id)), .row(.mobCreature(moved.id))])
 

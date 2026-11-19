@@ -104,7 +104,7 @@ import Testing
                     return y == 0 ? 1 : y == 3 || y == 5 ? 3 : y < 5 ? 2 : 0
                 })
             return TestWorld.ChunkSpec(x: x, z: 0, nbt: Fixtures.chunk(x: x, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: [section], extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: [section], extra: ["yPos": .int(0)]))
         }
         let url = try TestWorld.make(chunks: chunks), fixture = try waterFixture(alpha: 192)
         defer { fixture.remove(); try? FileManager.default.removeItem(at: url) }
@@ -161,7 +161,8 @@ import Testing
         let emptyRenderer = try requiredRenderer(map), empty = emptyRenderer.surfaceContext
         #expect(empty.water?.members.isEmpty == true && empty.waterKey != original.waterKey)
         let changed = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region), context: empty))
-        #expect(changed != key && changed.fileName != key.fileName)
+        #expect(changed != key && changed.fileName == key.fileName)
+        #expect(try InterpretationKey.identity(of: changed) != InterpretationKey.identity(of: key))
         let file = try #require(try dimension.region(x: 0, z: 0))
         #expect(try await emptyRenderer.topBlocks(in: file, localX: 0, localZ: 0)?.allSatisfy { $0?.waterDepth == 0 } == true)
         try FileManager.default.removeItem(at: tagURL)
@@ -199,7 +200,7 @@ import Testing
             if lightOnly { sections.append(.compound(["Y": .int(1)])) }
             sections.append(Fixtures.section(y: 2, palette: [.string("minecraft:water")]))
             let spec = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
             let url = try TestWorld.make(chunks: [spec])
             defer { try? FileManager.default.removeItem(at: url) }
             let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
@@ -260,16 +261,17 @@ import Testing
         let region = RegionPosition(x: 0, z: 0)
         let cache = TileCache(directory: url.appendingPathComponent("test-tiles"))
         let key = try #require(TileCache.key(for: region, regionFile: dimension.regionURL(at: region)))
-        let old = cache.directory.appendingPathComponent((try #require(key.fileName)).replacingOccurrences(of: ".v\(TileCache.rendererVersion).", with: ".v34."))
+        let file = cache.directory.appendingPathComponent(try #require(key.fileName))
         try FileManager.default.createDirectory(at: cache.directory, withIntermediateDirectories: true)
         let stale = Data(repeating: 0, count: RegionTileRenderer.side * RegionTileRenderer.side * 4)
-        try ((stale as NSData).compressed(using: .lzfse) as Data).write(to: old)
+        let oldPayload = try (stale as NSData).compressed(using: .lzfse) as Data
+        try oldPayload.write(to: file)
         #expect(cache.load(key) == nil)
         let renderer = RegionTileRenderer(dimension: dimension, cache: cache, savesInBackground: false)
         let first = try #require(try await renderer.tile(for: region))
         let pixels = Array(try #require(first.full.image.dataProvider?.data as Data?))
         #expect(pixel(pixels, x: 5, z: 5) == [182, 192, 184, 255])
-        #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(try Data(contentsOf: file) != oldPayload)
         let stored = try #require(cache.load(key))
         #expect(stored.litPixels(heightScale: nil) == pixels)
         let second = try #require(try await renderer.tile(for: region))
@@ -287,7 +289,7 @@ import Testing
                     })
             }
             return TestWorld.ChunkSpec(x: x, z: 0, nbt: Fixtures.chunk(x: x, z: 0,
-                dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+                dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         }
         return try TestWorld.make(chunks: chunks)
     }

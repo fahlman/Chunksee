@@ -180,10 +180,13 @@ import Testing
         #expect(detail.detail == surface.detail && detail.heights == surface.heights)
         #expect(try Data(contentsOf: file) == ordinary)
         let detailFile = directory.appendingPathComponent(try #require(key.detailFileName))
-        let bytes = try (Data(contentsOf: detailFile) as NSData).decompressed(using: .lzfse) as Data
+        let original = try CacheArchiveFixture.read(detailFile, as: TileCache.Payload.self)
+        let bytes = original.payload.bytes
         for bad in [Data(bytes.dropLast()), Data(bytes.prefix(512 * 512 * 4 - 1)),
                     Data(repeating: 0, count: 512 * 512 * 4 + MapSurfaceDetail.maximumEncodedBytes + 1)] {
-            try ((bad as NSData).compressed(using: .lzfse) as Data).write(to: detailFile)
+            var broken = original
+            broken.payload.bytes = bad
+            try CacheArchiveFixture.write(broken, to: detailFile)
             #expect(cache.loadDetail(key) == nil)
             #expect(cache.load(key)?.heights == surface.heights)
         }
@@ -193,8 +196,13 @@ import Testing
         var changed = key
         changed.file = .init(size: key.file.size, modified: key.file.modified + 1)
         cache.store(surface, for: changed)
-        #expect(cache.load(key) == nil && cache.loadDetail(key) == nil)
+        #expect(cache.load(key) == nil && cache.loadDetail(key) != nil)
         #expect(cache.load(changed) != nil && cache.loadDetail(changed) == nil)
+        // Independently finishing old/new work can lose a cache hit, never supply the wrong data.
+        cache.storeDetail(surface, for: changed)
+        cache.store(surface, for: key)
+        #expect(cache.load(changed) == nil && cache.loadDetail(changed)?.heights == surface.heights)
+        #expect(cache.load(key)?.heights == surface.heights && cache.loadDetail(key) == nil)
     }
 
     @Test func nighttimeDetailRoundTripsAndDoesNotReplaceOrdinaryTilesOrSidecars() throws {
@@ -225,9 +233,9 @@ import Testing
         #expect(cache.load(ordinary)?.nightLight == nil && cache.loadDetail(ordinary)?.nightLight == nil)
         #expect(cache.load(night)?.nightLight == restored.nightLight)
         let file = directory.appendingPathComponent(try #require(night.detailFileName))
-        var bytes = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
-        bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
-        try ((bytes as NSData).compressed(using: .lzfse) as Data).write(to: file)
+        var entry = try CacheArchiveFixture.read(file, as: TileCache.Payload.self)
+        entry.payload.bytes[count * 4] = 3 // Unknown must be encoded explicitly, never inferred from invalid data.
+        try CacheArchiveFixture.write(entry, to: file)
         #expect(cache.loadDetail(night) == nil)
         #expect(cache.load(night)?.nightLight == restored.nightLight)
         #expect(cache.loadDetail(ordinary)?.detail == day.detail)

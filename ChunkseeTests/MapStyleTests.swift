@@ -88,7 +88,7 @@ import Testing
         try Data(#"{"pack":{"description":"Synthetic height scale","min_format":121,"max_format":121}}"#.utf8)
             .write(to: pack.appendingPathComponent("pack.mcmeta"))
         try Fixtures.writeGzippedNBT(.compound(["Data": .compound([
-            "LevelName": .string("Height Scale"), "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "LevelName": .string("Height Scale"), "DataVersion": .int(Int32(5023)),
             "DataPacks": .compound(["Enabled": .list([.string("vanilla"), .string(TestWorldResources.pack), .string("file/custom")])])
         ])]), to: url.appendingPathComponent("level.dat"))
         let details = WorldDetails.read(try World(contentsOf: url))
@@ -384,7 +384,7 @@ import Testing
                 })
         }
         let chunk = TestWorld.ChunkSpec(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: sections, extra: ["yPos": .int(0)]))
+            dataVersion: 5023, sections: sections, extra: ["yPos": .int(0)]))
         return try TestWorld.make(chunks: [chunk], dimensionSettings: definitions ?? ["minecraft:overworld": definition(sea: 40)])
     }
 }

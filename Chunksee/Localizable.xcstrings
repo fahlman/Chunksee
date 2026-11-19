@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Searching farther away…" : {
+      "comment" : "Block search list state while background counting expands outward from this window's captured point. Never an item caption."
+    },
+    "The selected Minecraft files do not provide an ore list." : {
+      "comment" : "Block search explanation when the game's ore tag is unavailable. Individually supported blocks can still have results."
+    },
     "Chunksee can’t read this folder as a world." : {
       "comment" : "Folder-opening failure. The folder may be invalid, or a restored dimension may lack remembered access to its containing world. Do not assert that the world is invalid."
     },

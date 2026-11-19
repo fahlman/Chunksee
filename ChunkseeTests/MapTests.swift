@@ -495,6 +495,37 @@ import Testing
         TestWorld.chunk(x: x, z: z, palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y <= height ? 1 : 0 }
     }
 
+    @Test func failedFolderDiscoveryKeepsDrawnTilesUntilConfirmedDeletion() async throws {
+        let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
+        defer { try? FileManager.default.removeItem(at: world) }
+        let dimension = try #require(try World(contentsOf: world).dimension("overworld"))
+        let work = BackgroundWork(), region = RegionPosition(x: 0, z: 0)
+        let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil },
+            nightLighting: { nil }, work: work, dimension: dimension, center: CGPoint(x: 8, y: 8),
+            regionConcurrency: 1, chunkConcurrency: 1)
+        defer { map.close(); work.close() }
+        map.requestTiles(visibleIn: CGSize(width: 32, height: 32))
+        await map.waitUntilIdle()
+        let before = try #require(map.tiles[region])
+        let preview = try #require(map.previews[region])
+        let directory = dimension.regionDirectory
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        let changes: [Set<RegionPosition>?] = [nil, [region]]
+        for change in changes {
+            map.regionsChanged(change)
+            await map.waitUntilIdle()
+            #expect(map.availableRegions == [region] && map.tiles[region] === before)
+            #expect(map.previews[region] === preview)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try FileManager.default.removeItem(at: dimension.regionURL(at: region))
+        map.regionsChanged()
+        await map.waitUntilIdle()
+        #expect(map.availableRegions.isEmpty && map.tiles.isEmpty && map.previews.isEmpty)
+        map.close(); work.close(); await work.waitUntilFinished()
+    }
+
     @Test func changedRegionsRedrawAndNewOnesAppear() async throws {
         let world = try TestWorld.make(chunks: [Self.stone(x: 0, z: 0, height: 0)])
         defer { try? FileManager.default.removeItem(at: world) }

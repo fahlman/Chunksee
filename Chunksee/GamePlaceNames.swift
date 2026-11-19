@@ -119,24 +119,15 @@ extension GameNames {
         return String(localized: "Loot: \(table)")
     }
 
-    nonisolated func notableBlock(_ block: NotableBlock) -> String { name(notableBlockID(block), in: "block") }
-
-    nonisolated func notableBlockSearchText(_ block: NotableBlock, in catalog: NotableBlock.Catalog?) -> String {
-        ([notableBlock(block), notableBlockID(block)] + (catalog?.ids(for: block) ?? []).sorted()).joined(separator: " ")
+    nonisolated func notableBlock(_ block: NotableBlock) -> String {
+        switch block {
+        case .tag(let id): name(id, in: "tag.block")
+        case .block(let id): name(id, in: "block")
+        }
     }
 
-    // Representative labels for the existing presentation groups; membership comes from Kit's tags.
-    private nonisolated func notableBlockID(_ block: NotableBlock) -> String {
-        switch block {
-        case .diamond: "minecraft:diamond_ore"
-        case .emerald: "minecraft:emerald_ore"
-        case .gold: "minecraft:gold_ore"
-        case .netherGold: "minecraft:nether_gold_ore"
-        case .lapis: "minecraft:lapis_ore"
-        case .ancientDebris: "minecraft:ancient_debris"
-        case .spawner: "minecraft:spawner"
-        case .trialSpawner: "minecraft:trial_spawner"
-        case .buddingAmethyst: "minecraft:budding_amethyst"
-        }
+    nonisolated func notableBlockSearchText(_ block: NotableBlock, in catalog: NotableBlock.Catalog?) -> String {
+        let ids = (catalog?.ids(for: block) ?? []).sorted()
+        return ([notableBlock(block), block.resourceID] + ids + ids.map { self.block($0) }).joined(separator: " ")
     }
 }

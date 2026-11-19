@@ -9,11 +9,13 @@ nonisolated struct SearchRequest: Sendable {
     var players: [PlayerInfo]
     var playerNames: [UUID: GameNames.PlayerName]
     var gameNames: GameNames
+    var blocks: BlockQueryInput? = nil
 }
 
 /// Per-window controls over the world's published search results. Views never scan a world.
 @Observable
 final class SearchModel {
+    nonisolated static let rowLimit = 200
     let queryStore: WorldQueryStore
     private let handle: WorldQueryStore.Handle
     var text: String {
@@ -29,7 +31,6 @@ final class SearchModel {
     var isIndexing: Bool { indexStore.isIndexing }
     var isSearching: Bool { handle.isSearching }
     var isActive: Bool { handle.isActive }
-    var results: [SearchHit] { handle.results }
     private var savedSearches: SavedSearches { queryStore.savedSearches }
 
     init(queryStore: WorldQueryStore) {
@@ -37,15 +38,27 @@ final class SearchModel {
         handle = queryStore.acquire()
     }
 
-    func results(for query: String) -> [SearchHit] {
-        guard !handle.isClosed else { return [] }
-        return query == text ? results : queryStore.results(for: query)
+    func matches(for query: String) -> SearchMatches {
+        query == text ? handle.matches : handle.matches(for: query)
     }
+
+    func captureBlockOrigin(using capture: @escaping @MainActor () -> BlockSearchAnchor?) {
+        handle.captureBlockOrigin(using: capture)
+    }
+
+    func isSearchingFarther(for query: String) -> Bool { handle.isSearchingFarther(for: query) }
+    func hasOreDefinitions(for query: String) -> Bool { handle.hasOreDefinitions(for: query) }
 
     /// The sidebar, map pins and click resolver share this row limit and dimension predicate.
     func listedHits(for query: String, where belongsToDimension: (String?) -> Bool) -> (rows: ArraySlice<SearchHit>, total: Int) {
-        let hits = results(for: query).filter { belongsToDimension($0.dimension) }
-        return (hits.prefix(200), hits.count)
+        let matches = self.matches(for: query)
+        let hits = matches.hits.filter { belongsToDimension($0.dimension) }
+        switch matches {
+        case .all:
+            return (hits.prefix(Self.rowLimit), hits.count)
+        case .nearest(_, let total, let dimension):
+            return (hits[...], belongsToDimension(dimension) ? total : 0)
+        }
     }
 
     var visibleSearchQueries: [String] {
@@ -89,15 +102,19 @@ final class SavedSearches {
     }
 
     private(set) var all: [Search] {
-        didSet { if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: Self.key) } }
+        didSet {
+            let encoder = PropertyListEncoder()
+            encoder.outputFormat = .binary
+            if let data = try? encoder.encode(all) { defaults.set(data, forKey: Self.key) }
+        }
     }
 
     private let defaults: UserDefaults
-    private static let key = "savedSearches"
+    private static let key = "savedSearches.plist"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        all = defaults.data(forKey: Self.key).flatMap { try? JSONDecoder().decode([Search].self, from: $0) } ?? []
+        all = defaults.data(forKey: Self.key).flatMap { try? PropertyListDecoder().decode([Search].self, from: $0) } ?? []
     }
 
     func contains(_ query: String) -> Bool { all.contains { $0.query == query } }

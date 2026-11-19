@@ -88,32 +88,34 @@ final class WorldSettings {
     }
 
     private func record(for dimension: String?) -> MapRecord {
-        if let dimension, let data = (stored["mapPresentations"] as? [String: Any])?[dimension] as? Data,
-           let record = try? JSONDecoder().decode(MapRecord.self, from: data) {
+        if let dimension, let data = (stored["mapPresentations.plist"] as? [String: Any])?[dimension] as? Data,
+           let record = try? PropertyListDecoder().decode(MapRecord.self, from: data) {
             return record
         }
         return MapRecord(viewport: nil, presentation: MapPresentation())
     }
 
     private func write(_ record: MapRecord, for dimension: String, in previous: [String: Any]) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
         guard let data = try? encoder.encode(record) else { return }
         var saved = previous
-        var records = saved["mapPresentations"] as? [String: Any] ?? [:]
+        var records = saved["mapPresentations.plist"] as? [String: Any] ?? [:]
         records[dimension] = data
-        saved["mapPresentations"] = records
+        saved["mapPresentations.plist"] = records
         defaults.set(saved, forKey: key)
     }
 
     var savedPlaces: [SavedPlace] {
-        (stored["places"] as? Data).flatMap { try? JSONDecoder().decode([SavedPlace].self, from: $0) } ?? []
+        (stored["places.plist"] as? Data).flatMap { try? PropertyListDecoder().decode([SavedPlace].self, from: $0) } ?? []
     }
 
     func savePlaces(_ places: [SavedPlace]) {
-        guard let data = try? JSONEncoder().encode(places) else { return }
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        guard let data = try? encoder.encode(places) else { return }
         var saved = stored
-        saved["places"] = data
+        saved["places.plist"] = data
         defaults.set(saved, forKey: key)
     }
 }

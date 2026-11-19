@@ -28,6 +28,46 @@ extension ScanCache {
     }
 }
 
+/// Damaged archives retain a valid outer codec so tests reach payload validation too.
+nonisolated enum CacheArchiveFixture {
+    static func read<Payload: Codable>(_ file: URL, as type: Payload.Type) throws -> CacheArchive.Entry<Payload> {
+        let archive = try (Data(contentsOf: file) as NSData).decompressed(using: .lzfse) as Data
+        #expect(archive.starts(with: Data("bplist00".utf8)))
+        return try CacheArchive.read(type, from: file)
+    }
+
+    static func write<Payload: Codable>(_ entry: CacheArchive.Entry<Payload>, to file: URL) throws {
+        try CacheArchive.write(entry, to: file)
+    }
+
+    /// A deliberately invalid fact cannot be represented by its validated production type.
+    /// Mutate its encoded fields inside the real envelope, retaining a readable outer codec.
+    static func corruptPayload<Payload: Codable>(_ entry: CacheArchive.Entry<Payload>, to file: URL,
+                                                change: (inout [String: Any]) throws -> Void) throws {
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        var fields = try #require(PropertyListSerialization.propertyList(from: encoder.encode(entry), format: nil) as? [String: Any])
+        var payload = try #require(fields["payload"] as? [String: Any])
+        try change(&payload)
+        fields["payload"] = payload
+        let archive = try PropertyListSerialization.data(fromPropertyList: fields, format: .binary, options: 0)
+        try ((archive as NSData).compressed(using: .lzfse) as Data).write(to: file)
+    }
+
+    static func changing(_ version: InterpretationVersion, field: String) throws -> InterpretationVersion {
+        var value = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(version)) as? [String: Any])
+        switch field {
+        case "revision": value[field] = version.revision + 1
+        case "generatedFacts": value[field] = "changed-generated-facts"
+        default:
+            var dependencies = try #require(value[field] as? [[String: Any]])
+            dependencies.append(["domain": "fixture", "revision": 1, "generatedFacts": "fixture", "dependencies": []])
+            value[field] = dependencies
+        }
+        return try JSONDecoder().decode(InterpretationVersion.self, from: JSONSerialization.data(withJSONObject: value))
+    }
+}
+
 extension RegionTileRenderer {
     /// Controlled asynchronous results retain the source and choices of their actual request.
     nonisolated func fixtureTile(_ image: CGImage, for region: RegionPosition) throws -> RenderedTile {
@@ -40,19 +80,6 @@ extension RegionTileRenderer {
     private func world() throws -> URL {
         try TestWorld.make(chunks: [TestWorld.chunk(x: 0, z: 0,
             palette: ["minecraft:air", "minecraft:stone"]) { _, y, _ in y == 7 ? 1 : 0 }])
-    }
-
-    private func changing(_ version: InterpretationVersion, field: String) throws -> InterpretationVersion {
-        var value = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(version)) as? [String: Any])
-        switch field {
-        case "revision": value[field] = version.revision + 1
-        case "generatedFacts": value[field] = "changed-generated-facts"
-        default:
-            var dependencies = try #require(value[field] as? [[String: Any]])
-            dependencies.append(["domain": "fixture", "revision": 1, "generatedFacts": "fixture", "dependencies": []])
-            value[field] = dependencies
-        }
-        return try JSONDecoder().decode(InterpretationVersion.self, from: JSONSerialization.data(withJSONObject: value))
     }
 
     @Test func wholeReaderContractsRejectOldDiskEntriesWhileAnUnchangedReopenHits() throws {
@@ -70,14 +97,15 @@ extension RegionTileRenderer {
             for owner in ["terrain", "assets", "light"] {
                 var changed = key
                 switch owner {
-                case "terrain": changed.inputs.terrain = try changing(key.inputs.terrain, field: field)
-                case "assets": changed.inputs.assets = try changing(#require(key.inputs.assets), field: field)
+                case "terrain": changed.inputs.terrain = try CacheArchiveFixture.changing(key.inputs.terrain, field: field)
+                case "assets": changed.inputs.assets = try CacheArchiveFixture.changing(#require(key.inputs.assets), field: field)
                 default:
                     var light = try #require(key.inputs.nightLight)
-                    light.interpretation = try changing(light.interpretation, field: field)
+                    light.interpretation = try CacheArchiveFixture.changing(light.interpretation, field: field)
                     changed.inputs.nightLight = light
                 }
-                #expect(changed.fileName != key.fileName)
+                #expect(changed.fileName == key.fileName)
+                #expect(try InterpretationKey.identity(of: changed) != InterpretationKey.identity(of: key))
                 #expect(reopened.load(changed) == nil)
                 #expect(reopened.load(key) != nil)
             }
@@ -123,7 +151,7 @@ extension RegionTileRenderer {
         let root = try world()
         defer { try? FileManager.default.removeItem(at: root) }
         let dimension = try #require(try World(contentsOf: root).dimension("overworld"))
-        let oldTerrain = try changing(Chunk.interpretationVersion, field: "generatedFacts")
+        let oldTerrain = try CacheArchiveFixture.changing(Chunk.interpretationVersion, field: "generatedFacts")
         let directory = root.appendingPathComponent("tiles")
         let map = MapModel(definitions: { .unknown }, gameResources: { .unavailable }, savedLighting: { nil }, nightLighting: { nil }, work: BackgroundWork(), dimension: dimension, center: CGPoint(x: 8, y: 8),
             cacheDirectory: directory, writeCache: { _ in Issue.record("Incompatible pixels started a cache write") },
@@ -152,11 +180,11 @@ extension RegionTileRenderer {
         let neutral = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{}}"#.utf8)))
         let health = try #require(EnchantmentDefinition(data: Data(#"{"slots":["head"],"effects":{"minecraft:attributes":[{"id":"test:health","attribute":"minecraft:max_health","amount":4,"operation":"add_value"}]}}"#.utf8)))
         var definitions = WorldDefinitions(enchantments: Dictionary(uniqueKeysWithValues: [("test:a", neutral), ("test:b", health)]))
-        var first = RegionReader.options(definitions: definitions)
-        first.blockIDs = Set(["minecraft:stone", "minecraft:dirt"])
+        var first = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        first.biomeIDs = Set(["minecraft:lush_caves", "minecraft:deep_dark"])
         definitions.enchantments = Dictionary(uniqueKeysWithValues: [("test:b", health), ("test:a", neutral)])
-        var reordered = RegionReader.options(definitions: definitions)
-        reordered.blockIDs = Set(["minecraft:dirt", "minecraft:stone"])
+        var reordered = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        reordered.biomeIDs = Set(["minecraft:deep_dark", "minecraft:lush_caves"])
         let region = RegionPosition(x: 0, z: 0)
         let key = ScanCache.Key(dimension: dimension, region: region, options: .init(first))
         let otherOrder = ScanCache.Key(dimension: dimension, region: region, options: .init(reordered))
@@ -165,8 +193,8 @@ extension RegionTileRenderer {
         cache.store(try dimension.scan(region: region, options: first), key: key)
         #expect(ScanCache(directory: cache.directory).load(otherOrder)?.options == first)
         definitions.enchantments["test:a"] = health
-        var newDefinitions = RegionReader.options(definitions: definitions)
-        newDefinitions.blockIDs = first.blockIDs
+        var newDefinitions = RegionReader.Inputs(dimensionID: dimension.id, definitions: definitions).options
+        newDefinitions.biomeIDs = first.biomeIDs
         let sameKey = ScanCache.Key(dimension: dimension, region: region, options: .init(newDefinitions))
         #expect(sameKey == key && cache.load(sameKey)?.options == first)
         var changed = first
@@ -174,7 +202,7 @@ extension RegionTileRenderer {
         #expect(cache.load(.init(dimension: dimension, region: region, options: .init(changed))) == nil)
         for field in ["revision", "generatedFacts", "dependencies"] {
             var changed = key
-            changed.interpretation = try changing(key.interpretation, field: field)
+            changed.interpretation = try CacheArchiveFixture.changing(key.interpretation, field: field)
             #expect(cache.load(changed) == nil)
         }
         #expect(cache.load(key) != nil)

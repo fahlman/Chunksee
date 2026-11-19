@@ -172,7 +172,7 @@ import Testing
         #expect(MapContent(session: session).creatures == [red])
         session.search.text = "creature:axolotl"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         session.selection.choose(.hit(query: session.search.text, id: hit.id))
         #expect(session.visibility.mobTypes == ["minecraft:axolotl"] && !session.visibility.creatures.contains(.mob))
         #expect(MapContent(session: session).creatures.count == 3)

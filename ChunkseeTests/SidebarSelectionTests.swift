@@ -103,7 +103,7 @@ import Testing
         let portal = try #require(index.places.first { $0.portal != nil })
         let overlay = try #require(session.presentation.inGameMaps.first)
         let saved = try #require(session.savedPlaces.add(name: "Base", dimension: map.dimension.id, at: CGPoint(x: -35, y: 20)))
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         let petTargets: Set<MapTarget> = [.row(.creature(pet.id)), .row(.mobCreature(pet.id))]
         // Biomes are areas, not point badges. Both creature row aliases refer to one badge.
         let cases: [(row: SidebarItem, targets: Set<MapTarget>, drawn: Set<MapTarget>)] = [
@@ -193,7 +193,7 @@ import Testing
         #expect(map.depth.cutawayY == 12)
         session.search.text = "place:spawner"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         map.setDepth(MapDepth(y: 99, isSurface: false))
         session.selection.choose(.hit(query: "place:spawner", id: hit.id))
         #expect(map.depth.cutawayY == 12)
@@ -355,7 +355,7 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "place:spawner"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         let viewport = session.map?.viewport
         var disclosure = SidebarDisclosure()
         disclosure.collapsedSections = [.searchResults, .savedSearches, .world]
@@ -404,7 +404,7 @@ import Testing
         for (query, entityTargets) in cases {
             session.search.text = query
             await session.search.waitForSearch()
-            let hit = try #require(session.search.results.first), position = try #require(hit.position)
+            let hit = try #require(session.search.matches(for: session.search.text).hits.first), position = try #require(hit.position)
             let expected = entityTargets.union([.searchHit(hit.id)])
             let row = SidebarItem.hit(query: query, id: hit.id)
             session.map?.viewport = MapViewport(center: .zero, scale: 0.5)
@@ -458,7 +458,7 @@ import Testing
         let query = "place:spawner"
         session.search.text = query
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first), position = try #require(hit.position)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first), position = try #require(hit.position)
         let row = SidebarItem.hit(query: query, id: hit.id)
         session.selection.choose(row)
         #expect(session.savedSearches.all.isEmpty) // Active-only searches are never saved by selection.
@@ -512,7 +512,7 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "pet:"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         session.search.saveSearch()
         session.search.text = ""
         await session.search.waitForSearch()
@@ -564,9 +564,9 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "diamond"
         await session.search.waitForSearch()
-        #expect(session.search.results.count == 4)
+        #expect(session.search.matches(for: session.search.text).hits.count == 4)
         let map = try #require(session.presentation.inGameMaps.first)
-        for hit in session.search.results {
+        for hit in session.search.matches(for: session.search.text).hits {
             let id: UUID
             switch hit.source {
             case .inventory(let player), .enderChest(let player): id = player
@@ -607,7 +607,7 @@ import Testing
         let portal = try #require(index.places.first { $0.group == .portal })
         let creature = try #require(index.creatures.first), map = try #require(session.presentation.inGameMaps.first { $0.id == 3 })
         let place = try #require(session.savedPlaces.add(name: "Base", dimension: "minecraft:overworld", at: CGPoint(x: -35, y: 20)))
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         session.selection.show(map)
         let viewport = session.map?.viewport
         let targets: [(MapTarget?, SidebarItem?)] = [
@@ -887,7 +887,7 @@ import Testing
         let index = session.presentation.selectedIndex
         let creature = try #require(index.creatures.first), portal = try #require(index.places.first { $0.portal != nil })
         let spawner = try #require(index.places.first { $0.group == .spawner }), structure = try #require(index.structures.first)
-        let biome = try #require(index.biomeAreas.first), hit = try #require(session.search.results.first)
+        let biome = try #require(index.biomeAreas.first), hit = try #require(session.search.matches(for: session.search.text).hits.first)
         let saved = try #require(session.savedPlaces.add(name: "Base", dimension: "minecraft:overworld", at: .zero))
         let detailRows: [SidebarItem] = [.creature(creature.id), .place(portal.id), .player(playerID)]
         let plainRows: [(SidebarItem, Set<MapTarget>)] = [
@@ -994,7 +994,7 @@ import Testing
         await session.search.waitForIndex()
         session.search.text = "place:spawner"
         await session.search.waitForSearch()
-        let hit = try #require(session.search.results.first)
+        let hit = try #require(session.search.matches(for: session.search.text).hits.first)
         let map = try #require(session.presentation.inGameMaps.first)
         session.selection.show(map)
         session.selection.mapClicked(.searchHit(hit.id), y: nil)
@@ -1040,7 +1040,7 @@ import Testing
             await session.search.waitForSearch()
             let listed = session.search.listedHits(for: session.search.text, where: session.presentation.lists)
             #expect(listed.total == 205 && listed.rows.count == 200)
-            #expect(session.search.results.count == 410)
+            #expect(session.search.matches(for: session.search.text).hits.count == 410)
             #expect(Set(MapContent(session: session).hits.map(\.id)) == Set(listed.rows.map(\.id)))
             let viewport = session.map?.viewport
             for hit in MapContent(session: session).hits {
@@ -1048,7 +1048,7 @@ import Testing
                 #expect(session.selection.sidebarSelection == .hit(query: "place:spawner", id: hit.id))
                 #expect(session.selection.highlighted.contains(.searchHit(hit.id)) && session.map?.viewport == viewport)
             }
-            let unlisted = try #require(session.search.results.filter { session.presentation.lists($0.dimension) }.dropFirst(200).first)
+            let unlisted = try #require(session.search.matches(for: session.search.text).hits.filter { session.presentation.lists($0.dimension) }.dropFirst(200).first)
             session.selection.mapClicked(.searchHit(unlisted.id), y: nil)
             #expect(session.selection.sidebarSelection == nil && session.selection.highlighted.isEmpty)
             session.search.saveSearch()

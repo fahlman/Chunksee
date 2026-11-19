@@ -15,5 +15,28 @@ extension NotableBlock {
     }
 }
 
-/// A chunk's deposit as retained and sorted by the shared dimension index.
-typealias ChunkDeposit = ChunkseeIndex.DimensionIndex.ChunkDeposit
+/// Captured when this window starts a query. Selection and panning never edit it. A saved
+/// player identity follows only that player's published position, retaining the last point
+/// if the player disappears or leaves the dimension.
+nonisolated struct BlockSearchAnchor: Equatable, Sendable {
+    var point: BlockSearchPoint
+    let playerID: UUID?
+
+    mutating func update(players: [PlayerInfo]) {
+        guard let playerID, let player = players.first(where: { $0.uuid == playerID }),
+              let location = PlayerPresentation.position(of: player),
+              location.dimension == point.dimension,
+              let origin = BlockSearchOrigin(x: location.x, z: location.z) else { return }
+        point = BlockSearchPoint(dimension: point.dimension, origin: origin)
+    }
+}
+
+nonisolated struct BlockQueryInput: Sendable, Equatable {
+    let counts: BlockCountSnapshot
+    let catalog: NotableBlock.Catalog
+    let point: BlockSearchPoint
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.counts === rhs.counts && lhs.catalog == rhs.catalog && lhs.point == rhs.point
+    }
+}

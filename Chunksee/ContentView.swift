@@ -390,8 +390,13 @@ private struct HitList: View {
     var body: some View {
         let search = session.search
         let hits = session.search.listedHits(for: query, where: session.presentation.lists)
+        let farther = search.isSearchingFarther(for: query)
+        if !search.hasOreDefinitions(for: query) {
+            Text("The selected Minecraft files do not provide an ore list.")
+                .foregroundStyle(.secondary)
+        }
         if (search.isIndexing || search.isSearching) && hits.rows.isEmpty {
-            ProgressView("Searching the world…")
+            ProgressView(farther ? LocalizedStringKey("Searching farther away…") : LocalizedStringKey("Searching the world…"))
                 .controlSize(.small)
                 .foregroundStyle(.secondary)
         } else if hits.rows.isEmpty {
@@ -409,6 +414,11 @@ private struct HitList: View {
                 .help(help(for: hit, availability: availability))
                 .locationMenu(session: session, position: hit.position, dimension: hit.dimension,
                               y: hit.y.map(Double.init))
+            }
+            if farther {
+                ProgressView("Searching farther away…")
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
             }
         }
     }

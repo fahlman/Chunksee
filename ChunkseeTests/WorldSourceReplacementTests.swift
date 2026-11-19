@@ -151,7 +151,7 @@ import Testing
                 first.selection.choose(.place(place.id))
                 second.search.text = "place:spawner"
                 await second.search.waitForSearch()
-                let hit = try #require(second.search.results.first)
+                let hit = try #require(second.search.matches(for: second.search.text).hits.first)
                 let selectedHit = SidebarItem.hit(query: second.search.text, id: hit.id)
                 second.selection.choose(selectedHit)
 

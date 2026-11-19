@@ -105,7 +105,7 @@ import Testing
         #expect(first.selection.sidebarSelection == .place(moving.id))
         first.search.text = "diamond"
         await first.search.waitForSearch()
-        #expect(first.search.results.count == 1 && first.search.results.first?.count == 3)
+        #expect(first.search.matches(for: first.search.text).hits.count == 1 && first.search.matches(for: first.search.text).hits.first?.count == 3)
         #expect(resources.index.index.dimensions["minecraft:the_nether"]?.places.count == 1)
         first.close(); nether.close()
         await first.waitUntilClosed(); await nether.waitUntilClosed()

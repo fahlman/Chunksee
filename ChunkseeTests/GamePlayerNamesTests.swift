@@ -11,7 +11,7 @@ import Testing
 
     private var savedPlayer: NBT {
         .compound([
-            "DataVersion": .int(Int32(SaveVersion.java26_3)),
+            "DataVersion": .int(Int32(5023)),
             "Dimension": .string("minecraft:overworld"),
             "Pos": .list([.double(-8.7), .double(48), .double(-16.2)]),
             "LastDeathLocation": .compound(["dimension": .string("minecraft:overworld"), "pos": .intArray([-9, 64, -17])]),
@@ -56,7 +56,7 @@ import Testing
             let names: [UUID: GameNames.PlayerName] = expected.singleplayer == nil && expected.known == nil ? [:] : [uuid: name]
             let results = await WorldSearch.execute(SearchRequest(queries: ["diamond"], index: .overworld(DimensionContent()),
                 players: [player], playerNames: names, gameNames: .unavailable))
-            let hits = try #require(results["diamond"])
+            let hits = try #require(results["diamond"]).hits
             #expect(hits.map { $0.title(in: .unavailable) } == [expected.ender, expected.inventory])
             #expect(hits.map(\.source) == [.enderChest(uuid), .inventory(uuid)] && hits.map(\.count) == [2, 1])
             #expect(hits.first?.position == nil && hits.last?.position == player.position.map { CGPoint(x: $0.x, y: $0.z) })
@@ -80,7 +80,7 @@ import Testing
             await session.search.waitForSearch()
             session.selection.choose(.player(uuid))
         }
-        let original = MapContent(session: first), hits = first.search.results
+        let original = MapContent(session: first), hits = first.search.matches(for: first.search.text).hits
         let player = try #require(world.players.first)
         let absent = UUID(uuidString: "52DFB519-DE9C-47E6-BC6C-BB053CC423E7")!
         let viewport = MapViewport(center: CGPoint(x: -9, y: -17), scale: 8), size = CGSize(width: 400, height: 200)
@@ -96,8 +96,8 @@ import Testing
             #expect(session.presentation.name(of: player) == "You")
             #expect(session.presentation.name(ofPlayerWith: absent) == "You")
             #expect(session.selection.sidebarSelection == .player(uuid))
-            #expect(session.search.results.map { $0.title(in: world.gameNames) } == ["You’s ender chest", "You’s inventory"])
-            #expect(session.search.results.map(\.id) == hits.map(\.id) && session.search.results.map(\.count) == hits.map(\.count))
+            #expect(session.search.matches(for: session.search.text).hits.map { $0.title(in: world.gameNames) } == ["You’s ender chest", "You’s inventory"])
+            #expect(session.search.matches(for: session.search.text).hits.map(\.id) == hits.map(\.id) && session.search.matches(for: session.search.text).hits.map(\.count) == hits.map(\.count))
             let current = MapContent(session: session)
             let locations = current.accessibleLocations(viewport: viewport, size: size).filter { $0.id.hasPrefix("player-") }
             #expect(locations.map(\.name) == ["You’s respawn point", "Where You last died", "You"])

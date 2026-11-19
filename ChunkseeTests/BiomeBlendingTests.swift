@@ -125,7 +125,7 @@ import Testing
 
     @Test(.timeLimit(.minutes(1))) func aToggleRejectsOldTilesWithoutCancellingHoverOrCoordinateCopies() async throws {
         let url = try TestWorld.make(chunks: [.init(x: 0, z: 0, nbt: Fixtures.chunk(x: 0, z: 0,
-            dataVersion: SaveVersion.java26_3, sections: [Fixtures.section(y: 0, palette: [.string("minecraft:stone")])]))])
+            dataVersion: 5023, sections: [Fixtures.section(y: 0, palette: [.string("minecraft:stone")])]))])
         defer { try? FileManager.default.removeItem(at: url) }
         let dimension = try #require(try World(contentsOf: url).dimension("overworld"))
         let file = try #require(try dimension.region(x: 0, z: 0))

@@ -30,7 +30,7 @@ nonisolated struct RegionIndex: Sendable {
     @concurrent
     static func read(_ reader: RegionReader, region: RegionPosition) async -> RegionIndex? {
         guard let facts = await reader.facts(region) else { return nil }
-        let index = ChunkseeIndex.RegionIndex(facts, caveBiomeIDs: BiomePresentation.caveBiomeIDs, notableBlocks: reader.notableBlocks)
+        let index = ChunkseeIndex.RegionIndex(facts, caveBiomeIDs: BiomePresentation.caveBiomeIDs)
         return RegionIndex(index: index, structures: index.structures.map { StructureMarker($0, groups: reader.structureGroups) },
                            creatures: index.creatures.map { CreatureMarker($0, dimension: index.dimension) })
     }

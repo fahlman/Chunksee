@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ChunkseeKit
+import ChunkseeIndex
 import Observation
 
 /// One dimension document's controls, map and navigation. The world's shared resources own its
@@ -84,14 +85,31 @@ final class WorldSession {
          renderTile: @escaping @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile?
             = { try await $0.tile(for: $1) }) {
         self.resources = resources
-        self.renderTile = renderTile
+        let renderAfterPreparation: @Sendable (RegionTileRenderer, RegionPosition) async throws -> RegionTileRenderer.RenderedTile? = {
+            [weak resources] renderer, region in
+            guard let resources else { throw CancellationError() }
+            try await resources.waitForCachePreparation()
+            return try await renderTile(renderer, region)
+        }
+        self.renderTile = renderAfterPreparation
         let selected = dimensionID ?? resources.defaultDimensionID
         let choices = resources.settings.mapPresentation(for: selected)
         search = SearchModel(queryStore: resources.queryStore)
         selectedDimensionID = selected
-        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderTile)
+        let initialMap = Self.initialMap(resources: resources, dimensionID: selected, choices: choices, renderTile: renderAfterPreparation)
         mapState = initialMap.map(MapState.loaded) ?? .unavailable(choices)
         navigation = MapNavigation(map: initialMap)
+        search.captureBlockOrigin { [weak self] in
+            guard let self, !self.isClosed, let dimension = self.selectedDimensionID, let map = self.map else { return nil }
+            if case .player(let id)? = self.selection.sidebarSelection,
+               let player = self.players.first(where: { $0.uuid == id }),
+               let location = PlayerPresentation.position(of: player),
+               location.dimension == dimension, let origin = BlockSearchOrigin(x: location.x, z: location.z) {
+                return BlockSearchAnchor(point: .init(dimension: dimension, origin: origin), playerID: id)
+            }
+            guard let origin = BlockSearchOrigin(x: map.viewport.center.x, z: map.viewport.center.y) else { return nil }
+            return BlockSearchAnchor(point: .init(dimension: dimension, origin: origin), playerID: nil)
+        }
         observeMapPresentation()
         _ = heatMap
         _ = slimeChunks
