@@ -16,14 +16,11 @@ extension MapImage {
     static func renderWithoutLegend(_ map: MapModel, content: MapContent, size: CGSize,
                                     colorScheme: ColorScheme, locale: Locale) -> MapImage? {
         let canvas = Canvas { context, size in
-            MapView.drawMap(map, content: content, portalStatus: { _ in nil }, displayScale: 1,
-                            in: context, size: size)
+            MapView.drawMap(map, content: content, portalStatus: { _ in nil }, in: context, size: size)
         }
         .frame(width: size.width, height: size.height)
         .environment(\.colorScheme, colorScheme)
         .environment(\.locale, locale)
-        let renderer = ImageRenderer(content: canvas)
-        renderer.scale = 1
-        return renderer.cgImage.flatMap(png)
+        return rasterizedImage(canvas, scale: 1).flatMap(png)
     }
 }

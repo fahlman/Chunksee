@@ -90,7 +90,7 @@ import Testing
     @Test(arguments: [ColorScheme.light, .dark])
     func realCaptionMeasurementsAndDrawingUseTheSameWinner(_ scheme: ColorScheme) throws {
         func render(includeOther: Bool, includeSelected: Bool = true) throws -> CGImage {
-            let renderer = ImageRenderer(content: Canvas { context, _ in
+            let canvas = Canvas { context, _ in
                 let point = CGPoint(x: 140, y: 20)
                 let player = MarkerStyle.player(.player)
                     .label("Nearby player", id: "player", priority: .player, at: point, scale: 2, in: context)!
@@ -103,8 +103,8 @@ import Testing
                 }
                 MarkerLabel.draw(labels, in: context)
             }.frame(width: 280, height: 100).background(scheme == .dark ? Color.black : Color.white)
-                .environment(\.colorScheme, scheme))
-            let image = try #require(renderer.cgImage)
+                .environment(\.colorScheme, scheme)
+            let image = try #require(MapImage.rasterizedImage(canvas, scale: 1))
             if includeOther { Attachment.record(image, named: "selected-label-\(scheme).png", as: .png) }
             return image
         }

@@ -344,9 +344,9 @@ import Testing
         #expect(map.shadowImages[region] != nil && map.detailImages.isEmpty)
         func screen() throws -> [UInt8] {
             let view = Canvas { context, size in
-                MapView.drawMap(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, displayScale: 1, in: context, size: size)
+                MapView.drawMap(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil }, in: context, size: size)
             }.frame(width: size.width, height: size.height)
-            return try ItemPictureFixture.pixels(#require(ImageRenderer(content: view).cgImage)).bytes
+            return try ItemPictureFixture.pixels(#require(MapImage.rasterizedImage(view, scale: 1))).bytes
         }
         func copy(_ contrast: ColorSchemeContrast) throws -> [UInt8] {
             let image = try #require(MapImage.render(map, content: MapContent(gameNames: .unavailable, terrain: map.drawingInput), portalStatus: { _ in nil },

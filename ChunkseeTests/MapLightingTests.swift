@@ -297,8 +297,7 @@ import Testing
             MapView.drawTerrain(viewport: viewport, regions: [region], image: { _ in tile }, input: input,
                                 increasedContrast: true, in: context, size: actualSize)
         }.frame(width: size.width, height: size.height)
-        let renderer = ImageRenderer(content: canvas); renderer.scale = scale
-        let expected = try rgba(#require(renderer.cgImage))
+        let expected = try rgba(#require(MapImage.rasterizedImage(canvas, scale: scale)))
         let destination = try #require(MapImage.imageContext(width: Int(size.width * scale), height: Int(size.height * scale)))
         #expect(MapImage.drawTerrainLayer(tile, region: region, viewport: viewport, size: size, scale: scale,
                                           input: input, contrast: .increased, into: destination))

@@ -74,7 +74,7 @@ struct MapView: View {
 
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-            Self.drawMap(map, content: content, portalStatus: portalStatus, displayScale: displayScale, in: context, size: size)
+            Self.drawMap(map, content: content, portalStatus: portalStatus, in: context, size: size)
         }
         .background(.background.secondary)
         .onGeometryChange(for: CGSize.self, of: \.size) { size = $0 }
@@ -182,8 +182,8 @@ struct MapView: View {
     /// Draws visible tiles, then overlays. Image creation uses the same resolved terrain input
     /// and drawing primitives, with its bounded shader rasterizer for Copy and area export.
     static func drawMap(_ map: MapModel, content: MapContent, portalStatus: (NetherPortal) -> PortalLinkStatus?,
-                        displayScale: CGFloat, in context: GraphicsContext, size: CGSize) {
-        let fullResolution = map.needsFullResolution(displayScale: displayScale)
+                        in context: GraphicsContext, size: CGSize) {
+        let fullResolution = map.needsFullResolution(displayScale: context.environment.displayScale)
         let visible = map.viewport.visibleRegions(in: size, among: map.availableRegions)
         drawTerrain(viewport: map.viewport, regions: visible,
                     image: { map.image(for: $0, fullResolution: fullResolution) }, input: content.terrain,
@@ -202,18 +202,20 @@ struct MapView: View {
         let interpolation: Image.Interpolation = viewport.scale >= 1 ? .none : .medium
         for region in regions {
             guard let image = image(region), let bounds = viewport.viewRect(for: region, in: size) else { continue }
-            // Overlap neighbors by half a point so smoothed edges don't expose seams.
-            let rect = bounds.insetBy(dx: -0.5, dy: -0.5)
+            // Filtering needs padded edges when zoomed out. Crisp tiles own their exact
+            // bounds: padding would paint over the previous region's close-up detail.
+            let rect = viewport.scale < 1 ? bounds.insetBy(dx: -0.5, dy: -0.5) : bounds
             drawTerrainImage(image, rect: rect, interpolation: interpolation, lighting: input.lighting,
                              protectsWater: input.protectsWater, increasedContrast: increasedContrast, in: context)
             if input.includesDetail {
                 drawDetail(viewport: viewport, region: region, images: detail, lighting: input.lighting,
                            increasedContrast: increasedContrast, in: context, size: size)
             }
-            // Finish each region before drawing the next overlapping edge. This keeps the
+            // Finish each region before drawing the next. This keeps the
             // screen and streamed area export identical, without double-shading transparent detail.
             if input.shadowLight != nil, let mask = shadow(region) {
-                drawShadow(mask, rect: rect, interpolation: interpolation, increasedContrast: increasedContrast, in: context)
+                drawShadow(mask, rect: rect, interpolation: interpolation,
+                           increasedContrast: increasedContrast, in: context)
             }
         }
     }
@@ -223,7 +225,7 @@ struct MapView: View {
         var shading = context
         let contrast = increasedContrast ?? (context.environment.colorSchemeContrast == .increased)
         shading.opacity = contrast ? 0.12 : 0.22
-        shading.draw(Image(decorative: mask, scale: 1).interpolation(interpolation), in: rect)
+        drawTilePixels(mask, rect: rect, interpolation: interpolation, in: shading)
     }
 
     /// Texture pixels use the same block transform as markers, grid lines and exported terrain.
@@ -248,7 +250,36 @@ struct MapView: View {
             layer.addFilter(.colorShader(lighting.shader(normals: normals, rect: rect, protectsWater: protectsWater,
                 increasedContrast: increasedContrast ?? (context.environment.colorSchemeContrast == .increased))), options: .linearColor)
         }
-        layer.draw(Image(decorative: image.image, scale: 1).interpolation(interpolation), in: rect)
+        drawTilePixels(image.image, rect: rect, interpolation: interpolation, in: layer)
+    }
+
+    private static func drawTilePixels(_ image: CGImage, rect: CGRect,
+                                       interpolation: Image.Interpolation, in context: GraphicsContext) {
+        switch interpolation {
+        case .none:
+            var coverage = Path(rect)
+            if context.environment.mapUsesCGContext {
+                // The CGContext callback can cover a fractional edge twice. Native
+                // drawing already shares that edge: an extra pixel clip can cut a gap
+                // where its image and our clip resolve a near-center tie differently.
+                // Keep texture sampling unchanged and adapt only callback coverage.
+                let scale = context.environment.displayScale
+                let toPixels = context.transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+                let pixels = rect.applying(toPixels)
+                // A pixel belongs to the tile containing its center; an exact tie
+                // belongs to the tile starting there. Neighbors share this boundary.
+                let minX = (pixels.minX - 0.5).rounded(.up), maxX = (pixels.maxX - 0.5).rounded(.up)
+                let minY = (pixels.minY - 0.5).rounded(.up), maxY = (pixels.maxY - 0.5).rounded(.up)
+                let bounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                coverage = Path(bounds).applying(toPixels.inverted())
+            }
+            var layer = context
+            let crisp = FillStyle(antialiased: false)
+            layer.clip(to: coverage, style: crisp)
+            layer.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect, style: crisp)
+        default:
+            context.draw(Image(decorative: image, scale: 1).interpolation(interpolation), in: rect)
+        }
     }
 
     static func drawOverlays(viewport: MapViewport, regions visible: [RegionPosition], content: MapContent,
@@ -257,7 +288,7 @@ struct MapView: View {
         if !content.heatMap.isEmpty {
             for region in visible {
                 guard let image = content.heatMap[region], let rect = viewport.viewRect(for: region, in: size) else { continue }
-                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
+                drawTilePixels(image, rect: rect, interpolation: .none, in: context)
             }
         }
         if let (item, image, opacity) = content.inGameMap {
@@ -273,7 +304,7 @@ struct MapView: View {
         scene.drawBiomeAreas(in: context)
         for region in visible {
             if let image = content.slimeChunks[region], let rect = viewport.viewRect(for: region, in: size) {
-                context.draw(Image(decorative: image, scale: 1).interpolation(.none), in: rect)
+                drawTilePixels(image, rect: rect, interpolation: .none, in: context)
             }
         }
         if content.showsGrid {

@@ -4,6 +4,10 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension EnvironmentValues {
+    @Entry var mapUsesCGContext = false
+}
+
 /// A PNG of the map as shown, to copy or share. The sandbox allows only read-only access to
 /// files the user picks, so there's no save panel (Ryan's decision, fahlman/Chunksee#89).
 nonisolated struct MapImage: Sendable {
@@ -76,9 +80,7 @@ nonisolated struct MapImage: Sendable {
                                         increasedContrast: contrast == .increased, in: translated, size: size)
                 }
                 .frame(width: crop.width, height: crop.height)
-                let renderer = ImageRenderer(content: canvas)
-                renderer.scale = scale
-                guard let image = renderer.cgImage else { return false }
+                guard let image = rasterizedImage(canvas, scale: scale) else { return false }
                 // Canvas is top-left based; the destination bitmap context is bottom-left based.
                 let rect = CGRect(x: crop.minX * scale, y: (size.height - crop.maxY) * scale,
                                   width: crop.width * scale, height: crop.height * scale)
@@ -88,20 +90,37 @@ nonisolated struct MapImage: Sendable {
         return true
     }
 
-    /// Copy, Share and area export keep the same CGContext rasterizer for nonshader layers,
-    /// preserving their existing antialiased edges. Terrain shaders use the bounded helper above.
+    /// Copy, Share and area export share the CGContext rasterizer for nonshader layers.
+    /// Each layer controls its edge filtering. Terrain shaders use the bounded helper above.
     @MainActor
     static func drawImageLayer<V: View>(_ layer: V, size: CGSize, scale: CGFloat, into destination: CGContext) -> Bool {
-        let renderer = ImageRenderer(content: layer.frame(width: size.width, height: size.height))
+        // The CGContext callback covers fractional image edges differently from native
+        // drawing. Only this entry point requests the shared tile coverage adaptation.
+        let renderer = imageRenderer(layer.frame(width: size.width, height: size.height)
+            .environment(\.mapUsesCGContext, true), scale: scale)
         var drawn = false
-        renderer.render(rasterizationScale: scale) { _, draw in
+        renderer.render(rasterizationScale: renderer.scale) { _, draw in
             destination.saveGState()
-            destination.scaleBy(x: scale, y: scale)
+            destination.scaleBy(x: renderer.scale, y: renderer.scale)
             draw(destination)
             destination.restoreGState()
             drawn = true
         }
         return drawn
+    }
+
+    @MainActor
+    static func rasterizedImage<V: View>(_ layer: V, scale: CGFloat) -> CGImage? {
+        imageRenderer(layer, scale: scale).cgImage
+    }
+
+    /// Offscreen drawing must choose tile resolution and coverage on the output's pixel grid.
+    /// Bind both together here so neither rendering route can supply only one of them.
+    @MainActor
+    private static func imageRenderer<V: View>(_ layer: V, scale: CGFloat) -> ImageRenderer<some View> {
+        let renderer = ImageRenderer(content: layer.environment(\.displayScale, scale))
+        renderer.scale = scale
+        return renderer
     }
 
     static func imageContext(width: Int, height: Int) -> CGContext? {
